@@ -227,25 +227,22 @@ Or try it from a checkout without installing:
 claude --plugin-dir <path to this folder>
 ```
 
-### 2. Moving from an earlier install
+### 2. Updating an earlier install
 
-The repository was republished with a fresh history, so an update cannot pull.
-Remove the marketplace and add it again.
+Update the marketplace, then the plugin.
+This also works for a copy installed before the repository was republished.
 
 ```bash
-/plugin marketplace remove 3echo-social-campaign
+claude plugin marketplace update 3echo-social-campaign
 ```
 
 ```bash
-/plugin marketplace add 3echo-dev/social-campaign
-```
-
-```bash
-/plugin install social-campaign@3echo-social-campaign
+claude plugin update social-campaign@3echo-social-campaign
 ```
 
 Then open a new chat.
 Your workspace, brands and jobs are kept, because they live in your working folder and not in the plugin.
+If the update reports an error, remove the marketplace with `claude plugin marketplace remove 3echo-social-campaign`, then add and install it again as in step 1.
 
 ### 3. Dependencies
 
