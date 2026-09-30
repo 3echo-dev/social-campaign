@@ -1,198 +1,383 @@
 # Social Campaign
 
-Social Campaign runs social content jobs in a local working folder and shows their progress, outputs, reviews, tokens, and timing on a board.
-The current implementation adapts `social-media-pipeline` v0.12.13 and the board presentation from `CS-pre-production` v0.1.24.
-The local workflow is ready for a supervised trial; a complete campaign in the real Claude host remains to be verified.
-Version 0.7.3 keeps brand onboarding clear from start to save. The brand form stays in Researching until research is done, even in the moment before research starts or while it restarts, and lets you fill it in by hand if research never begins. The Inbox tells you when onboarding has started and when the profile is ready to check and save. Logo options no longer include icons from other brands such as Gmail or social networks, each option can be removed on its own, and Remove logo works while research runs. Choosing a post or campaign opens the New job form once a brand is ready, and Notify Claude only appears when the automatic message did not go through.
-Version 0.3.18 reads the brief into the job at Create job so it routes and researches right away, adds a Finish the brief form for anything genuinely missing, and shows research, strategy, concepts, storyboard, price, final post and posting on the board to approve there or in chat.
-Version 0.3.17 moves a board logo to the local workspace as a file, so its bytes never pass through Claude, and deletes the transit copy from claude.ai; board requests follow an exact step list.
-Version 0.3.16 gives the brand card the same subtle border as the pre-production board instead of a gold one.
-Version 0.3.15 keeps what the person typed in the brand card when they add a logo, colour or font.
-Version 0.3.14 keeps keyboard focus in place when adding or removing colours, fonts and the logo, and shows the full brand status on phones.
-Version 0.3.13 redesigns the brand card's logo, colours and fonts section to match the rest of the card, with an upload tile, colour and font rows, and clear empty states.
-Version 0.3.12 brand onboarding captures the logo, colour palette and fonts from the website, shows them on the board to edit, and New job waits for Save and continue.
-Version 0.3.11 keeps the brand context fields at one fixed height with their own scrollbar.
-Version 0.3.10 applies board clicks immediately with no second approval in chat, including brand onboarding, connectors, new job entry, and gate decisions.
-Credit approvals apply at the board-shown amount and are re-presented if the quote changed.
-The onboarding button cycles through Start onboarding, Researching, and Save and continue states.
-Research fills profile text fields directly without displaying source notes.
-The Connectors step displays provider cards in a full-width stacked layout.
-A Notify Claude button appears only on waiting requests and replaces the previous Signal pipeline action.
-The board header displays when it was last updated.
-Context fields are taller and scrollbars are styled to match the brand theme.
+A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
+Current version: 0.7.3.
 
-## Start with the current plugin
+You describe a brand once, on a page called the board.
+You write a brief for a job.
+Claude researches the audience and the competitors, proposes an idea, writes the script and the storyboard, prices any images and video, makes them, checks them, and writes the captions.
+It **stops for you** at the idea, at the price, at the sample image, at the final post and at where and when it goes out.
+It does not post for you: a job ends in a hand-off package that a person publishes.
 
-You need Claude Code installed and signed in, Node 22.13 or later on your PATH, and a browser only when you choose the explicit local board fallback.
-The bundled server has no npm dependencies to install.
-The source `social-media-pipeline` and `CS-pre-production` repositories are not required on the test machine.
+Nothing paid runs before you approve the price on the board.
+Nothing is posted.
+Every research claim carries its source, and what could not be checked is said plainly.
 
-Open a terminal in this checkout, then start a fresh Claude Code session:
+---
 
-```powershell
-claude --plugin-dir .
+## How it works
+
+A workspace folder holds your brands and jobs.
+A private board shows every job and asks for every decision.
+A producer walks the job through its stages, handing each one to a specialist.
+
+```
+      /social-campaign
+            |
+            v
+   +--------------------------+
+   |  SETUP  (once)           |  pick a working folder
+   |                          |  publish the private board
+   |                          |  connect 3echo Studio, ElevenLabs (or skip)
+   +------------+-------------+
+                v
+   +--------------------------+
+   |  BRAND ONBOARDING        |  name, site, channels, what you know
+   |  (once per brand)        |  research fills the blanks
+   |                          |  logo, colours, fonts read from the site
+   +------------+-------------+
+                |         you check the brand card, Save and continue
+                v
+   +--------------------------+
+   |  NEW JOB                 |  a brief on the board, links and files
+   +------------+-------------+
+                v
+   +-------------+----------+-----------+-----------+-----------+
+   | BRIEF       | RESEARCH | IDEA      | MEDIA     | POSTS     |
+   | read, few   | audience | strategy  | price     | captions  |
+   | questions   | rivals   | concepts  | sample    | checks    |
+   |             | product  | storyboard| the rest  | labels    |
+   +-------------+----------+-----------+-----------+-----------+
+                                ^           ^   ^        ^
+                            YOU PICK    YOU APPROVE   YOU APPROVE
+                            the concept  the price    the final post
+                            and the      and the      and where and
+                            storyboard   sample       when it goes out
 ```
 
-If your terminal is elsewhere, pass the absolute path to the plugin folder instead of `.`.
-Invoke `/social-campaign` from Claude's slash-command menu to open the existing board, or invoke `/social-campaign:setup` to set up the explicitly selected current project workspace.
-Claude starts the bundled server.
-When the current project already has a workspace, setup reuses it and its existing private artifact.
-When the project is unbound, setup offers one current-project folder choice in chat and uses only the folder you explicitly select.
-Setup creates, binds, and opens a new artifact automatically when that selected workspace has no artifact yet.
-Invoke `/social-campaign:setup --new` only to publish and bind a replacement artifact for the same workspace from local authoritative data.
-Use version 0.7.3 for this trial; an older 0.2.15 installation does not include the new workflow.
+A job shows only the stages it needs.
+A text-only post has no media stages.
+A research job has no idea stage and no media at all: it ends with a report you approve.
 
-### Update an existing marketplace installation
+**The board click is the approval.**
+When you approve, choose or decline on the board, Claude applies it at once.
+It does not ask you again in chat.
+You can answer the same decision in chat instead, and the board follows.
 
-Refresh the marketplace and update the plugin:
+**A decision is tied to what you saw.**
+It is applied only if the job and the exact files are still the ones you reviewed.
+If something changed in between, Claude shows you the current version instead.
 
-```powershell
-claude plugin marketplace update 3echo-social-campaign
-claude plugin update social-campaign@3echo-social-campaign
+**The plain-language rule.**
+Claude does not narrate limits, file names, stage codes or internal states.
+It fixes what it can quietly and asks one plain question when it needs you.
+
+---
+
+## Roles
+
+Nine agents, one file each.
+The producer dispatches and verifies.
+No specialist can spawn another agent, because every specialist file sets `disallowedTools: Agent`.
+Each specialist gets only the tools its stage needs.
+
+| Role | What it owns | Skills it uses | Model |
+|---|---|---|---|
+| `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off | all of them, as the plan names them | sonnet |
+| `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | sonnet |
+| `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | **opus** |
+| `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | sonnet |
+| `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | sonnet |
+| `media-buyer` | Paid campaigns only: ad requirements, campaign proposal, activation checklist | write-cta, platform-format | sonnet |
+| `videographer` | Watching and breaking down source video, and checking rendered clips | watch-video, analyze-video, source-validation, write-report | sonnet |
+| `editor` | Check-only review: facts, brand, policy, platform rules | fact-check, brand-check, policy-check, platform-format, source-validation | sonnet |
+| `publisher` | The hand-off package after final approval | publish | sonnet |
+
+The strategist keeps Opus because the brief is the file every later stage reads.
+A weak angle is copied faithfully into the concepts, the script and the copy, where no gate will catch it.
+The workflow also runs the scriptwriter on Opus for the script and storyboard step.
+
+---
+
+## Skills
+
+Claude runs almost all of these itself.
+Three are for you to type.
+
+| Skill | You type it | Runs when |
+|---|---|---|
+| `/social-campaign` | Yes | The entry point. Opens the board, sets up a workspace if there is none, and asks "What do you need?" |
+| `/social-campaign:setup` | Yes | Set up or recover the workspace and its private board. `--new` publishes a replacement board for the same workspace |
+| `/social-campaign:doctor` | Yes, only you | A health check and repair. Claude never starts it on its own |
+| `board-setup` | No | The first publication of the board as a private claude.ai artifact |
+| `board-sync` | No | Pushing the current state to the board, and applying what you decided there |
+| `onboard-brand` | No | Building a brand profile and running the brand research |
+| `new-job` | No | Creating a job from a brief and resuming a saved one |
+| `job-intake`, `resume-job`, `social-pipeline` | No | The pipeline's own intake, resume and entry contracts |
+| `research`, `strategy`, `creative` | No | The research, strategy and copy or script stages of a job |
+| `generate`, `make-image`, `make-video` | No | Pricing and making media, sample first |
+| `write-hook`, `write-script`, `write-caption`, `write-cta`, `storyboard`, `platform-format` | No | Craft skills for the writers |
+| `fact-check`, `brand-check`, `policy-check`, `source-validation` | No | The editor's checks, and the label and logo check on every image and video |
+| `watch-video`, `analyze-video`, `write-report` | No | Frames, transcript and breakdown of a video, and the written report |
+| `review` | No | Presenting a decision and landing the answer |
+| `publish` | No | The hand-off after final approval |
+
+---
+
+## What you get
+
+**A brand card that fills itself in.**
+Give a name, a site and your channel links.
+Research fills audience, market and positioning, brand voice, content pillars and competitors where you left them blank.
+A field you typed, or cleared, stays as you left it.
+The logo, colours and fonts are read from the website and shown for you to edit.
+
+**Research with sources.**
+Audience, competitors and product evidence, each claim traced to where it came from.
+Competitor work covers at most three competitors.
+Research defaults to the Singapore market.
+
+**An idea you pick.**
+Ranked concepts with a hook, the proof pattern and the credit price of making them.
+Copy choices such as pillar, angle, hook, call to action and hashtags can be picked with the concept.
+
+**A script and a storyboard you approve panel by panel.**
+Each panel keeps its id.
+You approve or change each one.
+
+**Images and video, sample first.**
+One sample image is made and shown before the rest of the batch.
+Images and clips play on the board from small review copies.
+
+**Posts that were checked.**
+Captions and ad copy per platform, a platform-rules check, an editor review, and a label and logo check on every image and video, including footage you supplied.
+You can accept a flagged item as it is.
+
+**A hand-off package.**
+Copy, media, schedule and a per-platform checklist, with a manifest.
+For paid work, a campaign proposal and an activation checklist to set up in Ads Manager.
+
+**Reports for three more kinds of work.**
+Research, an analysis of a post or campaign, and a breakdown of a video each end in one report you approve.
+It downloads as Markdown or HTML.
+A brand is optional for all three.
+
+**Usage by stage.**
+The board shows tokens and time for each stage and for the whole job.
+Time you spent deciding is its own row.
+Media shows in 3echo credits.
+A figure that was not measured reads "Not reported".
+
+---
+
+## What it costs
+
+The plugin is free.
+Thinking, research and writing run in your own Claude session.
+Only media generation spends anything else.
+
+| Step | Cost |
+|---|---|
+| Brand onboarding, research, strategy, script, storyboard, captions, checks | No credits |
+| Research, analysis and video breakdown jobs | No credits |
+| A still image | 1 credit each on 3echo Studio |
+| A video clip | Priced per clip by 3echo Studio before it is made |
+| A voice line | Priced by ElevenLabs before it is made, through your own ElevenLabs connector |
+| A regenerated image, clip or line | Priced again, and shown again |
+| Hand-off | No credits, and nothing is posted |
+
+A clip is 4 to 15 seconds.
+Its price moves with the length, the resolution and whether sound is generated.
+The plugin does not model that curve, so every clip is estimated on its own and the price you see is the sum of what came back.
+One example from a run, 720p with sound: a 4 second clip quoted 15 credits and a 5 second clip 19.
+Your quote will differ.
+
+**Nothing paid runs before you approve the price.**
+Every image, clip and voice line is estimated first.
+The board then shows each item, its credits and the total, with Approve at that total and Ask for changes.
+A request for changes is re-priced and shown again.
+The concept approval also carries the most you agreed to spend, and the plugin refuses to go past it.
+If a paid call is blocked, the run stops and tells you what it is waiting on.
+It does not work around the block.
+
+3echo Studio credits are drawn from a Studio workspace.
+When your account has more than one, the price panel asks which one pays, and you can set it per job or as the brand's default.
+
+---
+
+## Install
+
+### 1. Add the plugin
+
+```bash
+/plugin marketplace add 3echo-dev/social-campaign
 ```
 
-Restart Claude Code after the update to load version 0.7.3.
-If you load the plugin with `--plugin-dir`, pull the latest checkout and start a fresh session with that directory instead.
-
-## Set up a local workspace
-
-The plugin folder contains the application; the working folder contains your brands, jobs, inputs, and results.
-Choose a separate, dedicated local working folder for the first trial.
-
-1. Invoke `/social-campaign:setup` and choose the one current-project folder offered when the project is not already bound.
-2. Use the artifact that setup creates or reopens for that workspace.
-3. If no brand is ready, submit the inline Brand onboarding form before starting a job.
-4. Once a brand is ready, choose New job or Brand onboarding to add another profile or update an existing one.
-
-You can also reopen a recognized workspace to continue its saved brands and jobs.
-The workspace folder can be moved or renamed and it keeps working; a copy of it becomes its own separate workspace the next time it is opened.
-Keep the Claude session running while using the artifact so the local runner can handle requests.
-Setup also asks whether to connect 3Echo Studio and ElevenLabs, with an option to skip either one and connect it later from Connectors on the board.
-
-Workspace setup and onboarding do not require Google Drive, a Studio account, or a research helper installation.
-The local files and runner do not make network requests.
-Artifact presentation and later online research or provider tasks have their own host and connectivity requirements.
-The research helper installs automatically in the background once a workspace is approved.
-Media tasks may require ffmpeg, ffprobe, or yt-dlp; check those tools only when the active task needs them.
-
-### Complete brand onboarding
-
-Submit the inline form once with a brand name, its website, Facebook, Instagram, and TikTok links, and anything you already know about its audience, market and positioning, brand voice, content pillars, and competitors.
-Each channel accepts a full URL or its explicit `Not available` toggle.
-The top 3 competitors default to Singapore market research when you list fewer than 3; the profile keeps your own entries when you add them.
-
-After you save the profile, a research pass runs with Claude's web tools while the local runner stays offline.
-Any of the five context fields left blank is filled in by the research; a field you changed, including one you cleared, stays as you entered it.
-The research finds articles, social posts, ad samples and brand statements as evidence; you can review these sources and findings before accepting them.
-
-New job becomes available after the profile is saved as complete.
-The saved profile can be reused across jobs, and entering a social account URL does not authenticate a publishing connector.
-
-## Run the first job
-
-After workspace selection, the private Claude artifact is the default board.
-If the host cannot publish or sync the artifact, setup stops with the missing native capability and the local browser board remains available only after you explicitly request local mode.
-
-Start with one organic text-only post and local delivery.
-
-1. Choose New job for an onboarded brand and enter a title and written brief.
-   Specify the platform, audience, objective, deliverable, and any timing or brand restrictions you know.
-2. Optionally select local source files or folders outside the working folder.
-   Imports copy the selected files into immutable revisions and preserve the originals.
-3. Answer the intake questions shown for missing information.
-   Continue the saved draft with the same job ID until its route is ready.
-4. Follow the stages generated from the job's plan on the board.
-   Claude runs the planned agents and asks for a provider connection only when a stage needs it.
-5. Review the generated outputs and request one revision during the trial.
-   Approve the current files at each required gate before continuing to local delivery.
-6. Inspect the saved outputs, events, token observations, and timing.
-   Missing measurements should remain unavailable.
-7. Restart Claude with the same plugin, reopen the working folder, and continue the same job.
-   Confirm that its outputs, decisions, and progress remain present without duplicated work.
-
-Incomplete intake stays on the existing draft; use its continuation action rather than creating a replacement job.
-If a review becomes stale after an edit, refresh it and approve the current revision.
-Record the job ID and exact action if anything fails during the trial.
-Use `/social-campaign:doctor` only when you need the manual compatibility diagnostic.
-
-## Workflow and guardrails
-
-The bundled runtime under `pipeline/` owns routing, frozen plans, state transitions, research budgets, artifact validation, approvals, delivery, and reporting.
-Its local overrides are recorded in [LOCAL-ADAPTER.md](pipeline/LOCAL-ADAPTER.md).
-
-The nine active agents are producer, researcher, strategist, copywriter, scriptwriter, media-buyer, videographer, editor, and publisher.
-Their permissions, task ownership, and dispatch rules follow the source pipeline.
-
-Dispatch only the active tasks in the current plan.
-Reuse accepted evidence, media analysis, validation results, tool responses, and board addresses while their inputs and revisions remain current.
-Research covers one named workstream per dispatch and searches only a documented gap.
-Provider checks belong to the task that needs the provider.
-
-Paid generation requires its spending approval.
-Scheduling and publishing require final approval.
-A board decision must match the current gate, job revision, and exact reviewed file hashes before the local runner applies it.
-
-## Board and local files
-
-The board uses the reference repository's navy and gold presentation with a production slate, routed job stages, output details, decisions, and metrics.
-Artifact mode is the default presentation for a selected workspace.
-The workspace projection is written to `.social-pipeline/board/workspace-projection.json`, and the artifact database stores it with db (with access rules) and comments capabilities.
-The Claude artifact adapter is available through `board-setup` and `board-sync` when the host exposes its Artifact, ArtifactData, and comments tools.
-The local browser board remains an explicit mode outside the setup flow.
-Use `/social-campaign:setup --new` only for explicit recovery when the old artifact needs replacement.
-Replacement publication binds the new host URL immediately, keeps the old binding when publication fails, and preserves local brands, jobs, files, approvals, events, and metrics.
-The backend preserves the prior binding bytes in a local recovery backup at `.social-pipeline/board/binding.json.recovery-<sha256>.bak`, adding a unique suffix on collision.
-Requests or comments that existed only on an inaccessible old artifact cannot be restored from the local projection.
-Routine source freshness updates keep the existing artifact URL.
-Local absolute paths and source file bytes stay on the local runner and are not entered into the artifact database.
-Live host publication, metadata writes, artifact watch, and automatic decision wake-up still require verification on the supported host.
-
-Brand onboarding and new job intake stay inline in the board, preserve drafts while Claude validates requests, and use explicit `Not available` channel controls when a profile has no URL.
-
-```text
-<working folder>/
-  .social-pipeline/                 Workspace identity, requests, and migration records
-  inputs/<brand>/<job>/              Immutable source revisions
-  workspaces/<brand>/brand/          Reusable brand profile
-  workspaces/<brand>/onboarding/     Research runs with evidence and findings
-  workspaces/<brand>/jobs/           Briefs, routes, plans, outputs, approvals, and events
+```bash
+/plugin install social-campaign@3echo-social-campaign
 ```
 
-The board shows routed stages, current outputs, review decisions, and metrics at the bottom: a "Usage by stage" footer with Claude tokens (native token count) and wall-clock elapsed time per stage and per job from start to end, including separate rows for time waiting for your approval, media generation shown in 3echo credits with ElevenLabs marked "Not reported", and Brand research metrics shared across every job for that brand.
-Unknown measurements remain unavailable instead of displaying invented zeroes.
-Stop and SubagentStop hooks collect supported Claude Code usage without replaying an existing receipt.
-The API-equivalent cost estimate stays in local report data only and is not shown on the board.
-Tool-call records with timestamps and durations stay local for the team to review and are never shown on the board.
+Or try it from a checkout without installing:
 
-Legacy SQLite workspaces have a previewable, resumable migration with backups and verification.
-Imported approvals remain history, and imported jobs stay blocked until reviewed.
-Migrated jobs cannot execute through both workflow engines.
+```bash
+claude --plugin-dir <path to this folder>
+```
 
-## Optional connectors and parked Studio sync
+### 2. Moving from an earlier install
 
-When a job needs supported generation or asset operations, use the authenticated native connectors actually available in that Claude session.
-3Echo Studio connects only through the person's own claude.ai connector, added from Settings > Connectors; the plugin no longer bundles a Studio MCP entry or a sign-in of its own.
-Local setup and text-only trials can proceed without authenticating that optional connection.
-The Studio MCP extension and Supabase implementation are parked while the plugin is tested.
-Local jobs can remain unbound, and their data is not synchronized into Studio.
+The repository was republished with a fresh history, so an update cannot pull.
+Remove the marketplace and add it again.
 
-The reference repository uses Studio generation calls, but its artifact database is a separate Claude relay.
-It does not establish a Studio API for ingesting our workflow jobs and metrics.
-Live database ingestion requires implementing the proposed backend contract.
-Future outbound records require a verified Studio owner user ID, with verified email as metadata.
-Workspace ownership alone is not proof of the current authenticated user.
+```bash
+/plugin marketplace remove 3echo-social-campaign
+```
 
-The agreed destination for new Social Campaign records is a separate Supabase PostgreSQL database reached through that backend.
-Existing Studio MongoDB, authentication, media, and generation remain in place.
+```bash
+/plugin marketplace add 3echo-dev/social-campaign
+```
 
-## Verification status
+```bash
+/plugin install social-campaign@3echo-social-campaign
+```
 
-The 0.3.5 backend focused checks passed 31 cases plus 2 artifact-refresh cases, and the active tool reference and manifest checks passed.
-The frontend artifact transport checks passed 5 of 5 cases, the board escaping check passed, and `buildBoard` embedded the exact supplied logo bytes without a machine path.
-An isolated browser fixture using the actual artifact-mode board and mocked native database, comments, permissions, and runner controls covered the inline onboarding gate, live draft and focus preservation, pending combined requests, applied brand readiness, existing-brand receipt gating, inline New job entry with an existing project, and applied job navigation with metrics visible.
-The browser fixture was a local contract mock and does not prove live host publication, native artifact availability, or hosted comments and watch behavior.
-The current CUA surface did not expose a narrow viewport override or a filesystem screenshot path, so the focused browser evidence is desktop-only and its screenshot is available inline in the QA task transcript.
-Live generation, publishing, Studio ingestion, host artifact publication, metadata writes, artifact watch, and decision wake-up remain unverified.
+Then open a new chat.
+Your workspace, brands and jobs are kept, because they live in your working folder and not in the plugin.
 
-Historical validation reports describe earlier releases and do not prove the new workflow.
+### 3. Dependencies
 
+A hook checks these each time a session starts and says what is missing.
+
+**Required:** Node 22.13 or later.
+The plugin has no npm packages to install.
+If Node is older, the start of the session says so.
+
+**Recommended:** FFmpeg, for video and audio.
+`winget install Gyan.FFmpeg` on Windows, `brew install ffmpeg` on a Mac.
+Without it video work cannot be analysed, and clips are delivered numbered instead of joined into one cut.
+
+**Recommended:** yt-dlp, for TikTok posts and video addresses.
+
+**Optional:** a browser-driven research helper, for sites that show almost nothing to a plain page fetch.
+It needs Python 3.10 or later, and it installs itself in the background once your workspace is set up.
+Nothing else waits for it.
+`/social-campaign:doctor` reports on it and offers a repair.
+
+### 4. Connect 3echo Studio and ElevenLabs
+
+Both connect through your own claude.ai connectors.
+Add them in claude.ai under Settings > Connectors.
+The plugin has no sign-in of its own and stores no keys.
+
+- 3echo Studio makes images and video.
+- ElevenLabs makes voice lines.
+
+Setup detects a connector you already added and shows it as Connected.
+It asks about the ones that are missing, each with Connect or Skip for now.
+A skipped connector is asked about again only when a stage needs it.
+Text-only jobs and all research jobs need neither.
+
+### 5. Pick a working folder
+
+Type `/social-campaign` in the folder of your project.
+If it has no workspace, setup suggests one folder for it and offers a choose-another option.
+Your brands, jobs, inputs and results live there.
+The folder can be moved or renamed and it keeps working.
+Setup may also ask once to let the plugin's tools and the board update run without a prompt for each click.
+
+### 6. After a plugin update
+
+Open a new chat and type `/social-campaign`.
+A running chat keeps the old version until you do.
+Quitting Claude is not needed.
+Your jobs and board are kept.
+
+---
+
+## Use
+
+### Start
+
+```
+/social-campaign
+```
+
+It opens your board.
+On a new workspace it sets one up first.
+It then asks what you need: a post or campaign, research, an analysis of a post or campaign, or a breakdown of a video.
+
+### Onboard a brand
+
+A post or campaign needs a brand that is ready.
+On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, and anything you already know about the audience, market, voice, content pillars and competitors.
+Each link can be marked Not available.
+Add a logo, colours and fonts on the card if you have them.
+Click Start onboarding.
+
+Research then fills the blanks.
+Claude tells you which fields it filled and which are only suggestions to check.
+Look over the card and click Save and continue.
+
+### First job
+
+Click **+ New job**, or answer the question in the Inbox, and fill in the form with a title and a brief.
+Add links or local files if you have them.
+Claude reads the brief and the brand profile first and fills in every field they already answer.
+It asks only for what is genuinely missing, one plain question at a time.
+Your original files are copied in and left untouched.
+
+For a first run, one organic text-only post is the smallest test.
+
+### Reviews and approvals on the board
+
+The board opens beside the chat.
+Each stage shows in plain words, and the current decision shows on the job.
+
+- **Pick a concept**, and any copy choices that come with it.
+- **Approve the storyboard**, panel by panel.
+- **Approve the price.** The total and each item are shown.
+- **Approve the sample image**, before the rest is made.
+- **Approve the final post.** Any label or logo item found is shown with Accept as is.
+- **Confirm where and when it goes out.**
+- **Approve the report**, for the three report kinds.
+
+Ask for changes on any of them and the job goes back to that stage with your note.
+
+### Resume
+
+Reopen the same working folder and type `/social-campaign`.
+Jobs, decisions and progress are still there.
+A job that was waiting on you is still waiting, and nothing is done twice.
+An unfinished brief stays a draft under its own job, so continue it rather than starting a new one.
+
+---
+
+## Where it runs
+
+| Environment | How |
+|---|---|
+| **Claude Code CLI and Desktop** | `/plugin marketplace add`, then `/plugin install`, or `--plugin-dir` for a checkout |
+| **Board** | A private claude.ai artifact bound to your workspace. It needs the host to offer the Artifact, ArtifactData and comments tools. If it does not, setup stops and says which one is missing |
+| **Local browser board** | Available only when you explicitly ask for it. It is never a fallback inside setup |
+
+### The board
+
+The board is the decision surface.
+It shows the Inbox, the brands, every job with its stages and outputs, the decision waiting on you, and the usage footer.
+
+It is a private page on your claude.ai account.
+Your decisions come back to Claude as saved requests, and Claude applies them.
+While a chat is open Claude picks them up as they arrive.
+If a chat was closed, the next session sweeps what was saved.
+
+Your source files and local file paths stay on your computer.
+Small review copies of images and clips are uploaded to your private board so you can view them there.
+They are removed after the final approval, or when the job is cancelled.
+
+The bundled runtime under `pipeline/` owns routing, plans, state changes and approvals.
+Its local overrides are in [pipeline/LOCAL-ADAPTER.md](pipeline/LOCAL-ADAPTER.md).
+
+---
+
+## Requirements
+
+Claude Code with subagents and claude.ai artifacts · Node 22.13+ · a 3echo Studio connector for images and video · an ElevenLabs connector for voice · FFmpeg and yt-dlp recommended · Python 3.10+ optional.
