@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RouteDecision v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "status",
+    "requiredDisciplines",
+    "riskFlags",
+    "gates",
+    "confidence",
+    "missingFields",
+    "unsupported",
+    "rationale",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "jobId": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ROUTED",
+        "NEEDS_CLARIFICATION",
+        "UNSUPPORTED",
+        "BLOCKED"
+      ]
+    },
+    "workflowId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflowVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requiredDisciplines": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "research",
+          "strategy",
+          "social_post",
+          "ugc",
+          "ads",
+          "video_intelligence",
+          "performance",
+          "review"
+        ]
+      }
+    },
+    "owner": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "support": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "riskFlags": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "external_publish",
+          "paid_spend",
+          "regulated_claim",
+          "synthetic_person",
+          "licensed_media",
+          "missing_source",
+          "ambiguous_request"
+        ]
+      }
+    },
+    "modelAddedRiskFlags": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "external_publish",
+          "paid_spend",
+          "regulated_claim",
+          "synthetic_person",
+          "licensed_media",
+          "missing_source",
+          "ambiguous_request"
+        ]
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "concept",
+          "storyboard",
+          "content",
+          "publish",
+          "campaign_proposal",
+          "campaign_activation",
+          "findings",
+          "report"
+        ]
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "missingFields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unsupported": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rationale": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "deliverableModes": {
+      "type": "array",
+      "description": "One row per UGC deliverable: ai_generated runs the board and the generator, creator_brief writes a brief for a real creator instead.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "ai_generated",
+              "creator_brief"
+            ]
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specific things to fetch before this job can run at all."
+    },
+    "researchDecision": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "action",
+        "required",
+        "needsResearch",
+        "zeroCall",
+        "counts",
+        "reasons",
+        "gaps"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "reuse",
+            "dispatch"
+          ]
+        },
+        "status": {
+          "enum": [
+            "current",
+            "required"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "needsResearch": {
+          "type": "boolean"
+        },
+        "dispatch": {
+          "type": "boolean"
+        },
+        "reuseOnly": {
+          "type": "boolean"
+        },
+        "zeroCall": {
+          "type": "boolean"
+        },
+        "work": {
+          "type": "array"
+        },
+        "questionIds": {
+          "type": "array"
+        },
+        "questions": {
+          "type": "array"
+        },
+        "counts": {
+          "type": "object"
+        },
+        "reasons": {
+          "type": "array"
+        },
+        "consideredEvidence": {
+          "type": "array"
+        },
+        "acceptedEvidence": {
+          "type": "array"
+        },
+        "refreshRequired": {
+          "type": "array"
+        },
+        "gaps": {
+          "type": "array"
+        },
+        "budget": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "stop": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policyVersion": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

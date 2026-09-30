@@ -1,0 +1,33 @@
+{
+  "n": 1,
+  "raisedBy": "editor",
+  "at": "YYYY-MM-DD HH:MM {tz}",
+  "targetTask": "draft.copy",
+  "artifactRefs": ["drafts/D1/post.md"],
+  "artifactRevision": "1",
+  "targetStage": "9",
+  "scope": ["drafts/D1/post.md"],
+  "reasonCode": "R-LIMIT",
+  "attemptOfStage": 1,
+  "correctionPass": 0,
+  "recheckOf": null,
+  "dependencyRefs": ["brief.md", "platform-rules/instagram.md"],
+  "finding": "what is wrong, specifically and checkably, quoting the failing text and the rule with its source",
+  "directive": "what the retrying agent must do differently. This is the only thing added to its inputs.",
+  "preserve": [],
+  "resolved": false,
+  "_reasonCodes": {
+    "R-EVIDENCE": "research gap; must include a specific gap list",
+    "R-ANGLE": "wrong strategic direction",
+    "R-VOICE": "off brand",
+    "R-FACT": "unsupported or unlisted claim",
+    "R-LIMIT": "platform rule breach",
+    "R-HOOK": "weak or buried opening",
+    "R-VISUAL": "image wrong",
+    "R-SHOT": "storyboard problem",
+    "R-RENDER": "video quality",
+    "R-TIMING": "schedule",
+    "R-SCOPE": "wrong product or audience",
+    "R-POLICY": "disclosure or platform policy"
+  }
+}

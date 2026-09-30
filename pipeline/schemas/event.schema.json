@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PipelineEvent v1",
+  "type": "object",
+  "required": ["eventId", "eventName", "schemaVersion", "occurredAt", "job", "subject", "attrs"],
+  "properties": {
+    "eventId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$" },
+    "eventName": {
+      "enum": [
+        "job.routed", "state.transitioned", "gate.decided", "job.rated", "revision.opened",
+        "credits.tallied", "tokens.observed", "tool.completed", "operation.started",
+        "operation.completed", "decision.recorded", "decision.consumed", "provider.charge",
+        "retry.recorded", "delivery.recorded", "campaign.reported", "turn.observed",
+        "research.checked", "task.completed", "validation.completed"
+      ]
+    },
+    "schemaVersion": { "const": 1 },
+    "occurredAt": { "type": "string", "minLength": 1 },
+    "observedAt": { "type": "string", "minLength": 1 },
+    "ownerUserId": { "type": ["string", "null"], "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$" },
+    "ownerEmail": { "type": ["string", "null"], "maxLength": 320 },
+    "actorUserId": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$" },
+    "workspaceId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "brandId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "jobId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "job": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "runId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "stage": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "operationId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "attemptId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "assetRefs": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "assetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "previewUrl": { "type": "string", "pattern": "^https://" },
+          "sha256": { "type": "string", "maxLength": 128 },
+          "mediaType": { "type": "string", "maxLength": 120 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "title": { "type": "string", "maxLength": 240 }
+        },
+        "additionalProperties": false,
+        "anyOf": [{ "required": ["assetId"] }, { "required": ["previewUrl"] }]
+      }
+    },
+    "source": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "host": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "quality": { "enum": ["measured", "estimated", "inferred", "missing", "partial", "operator_confirmed"] },
+    "subject": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": { "type": { "type": "string" }, "id": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "attrs": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" }, "provider": { "type": "string" },
+        "inputTokens": { "type": "number", "minimum": 0 },
+        "outputTokens": { "type": "number", "minimum": 0 },
+        "cacheCreationTokens": { "type": "number", "minimum": 0 },
+        "cacheReadTokens": { "type": "number", "minimum": 0 },
+        "usageSemantics": { "enum": ["delta", "cumulative"] },
+        "inputTokensCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "outputTokensCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "cacheCreationTokensCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "cacheReadTokensCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "requestId": { "type": "string" }, "messageId": { "type": "string" },
+        "sessionId": { "type": "string" }, "agentType": { "type": "string" },
+        "tool": { "type": "string" }, "status": { "type": "string" }, "state": { "type": "string" },
+        "waiting": { "type": "boolean" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "from": { "type": ["string", "null"] }, "to": { "type": "string" },
+        "by": { "type": "string" }, "workflowId": { "type": "string" },
+        "disciplines": { "type": "array", "items": { "type": "string" } },
+        "gates": { "type": "array", "items": { "type": "string" } },
+        "gate": { "type": "string" }, "decision": { "type": "string" },
+        "score": { "type": "number" }, "artifacts": { "type": ["number", "array"] },
+        "rating": { "type": "number" }, "ratedBy": { "type": "string" }, "reasonCode": { "type": "string" },
+        "raisedBy": { "type": "string" }, "stage": { "type": "string" },
+        "why": { "type": "string" }, "comment": { "type": "string" },
+        "gateAppDecisionId": { "type": "string" },
+        "reportVersion": { "type": "integer", "minimum": 1 },
+        "inputRefs": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 240 }, "maxItems": 50 },
+        "coverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "scope": { "type": "string", "maxLength": 500 },
+        "deliverables": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 240 }, "maxItems": 50 },
+        "revisionRounds": { "type": "integer", "minimum": 0 },
+        "approvalMilestone": { "type": "string", "maxLength": 240 },
+        "costCoverage": { "type": "string", "maxLength": 100 },
+        "spentCredits": { "type": "number", "minimum": 0 },
+        "approvedCredits": { "type": "number", "minimum": 0 },
+        "elevenLabsSpentCredits": { "type": "number", "minimum": 0 },
+        "elevenLabsApprovedCredits": { "type": "number", "minimum": 0 },
+        "elapsedMs": { "type": ["number", "null"], "minimum": 0 },
+        "elapsedMsCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "approvalWaitMs": { "type": ["number", "null"], "minimum": 0 },
+        "approvalWaitMsCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "processingWindowMs": { "type": ["number", "null"], "minimum": 0 },
+        "processingWindowMsCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "blockedMs": { "type": ["number", "null"], "minimum": 0 },
+        "blockedMsCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "recordedTokens": { "type": ["number", "null"], "minimum": 0 },
+        "tokenCoverage": { "type": ["string", "null"] },
+        "totalCostUsd": { "type": ["number", "null"] },
+        "totalCostUsdCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "recordedApiEstimateUsd": { "type": ["number", "null"] },
+        "recordedApiEstimateUsdCoverage": { "enum": ["measured", "estimated", "inferred", "missing", "operator_confirmed", "partial"] },
+        "baselineCostUsd": { "type": ["number", "null"] },
+        "estimatedSavingsUsd": { "type": ["number", "null"] },
+        "humanHours": { "type": ["number", "null"], "minimum": 0 },
+        "humanHoursSaved": { "type": ["number", "null"] },
+        "evidencePlanRevision": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "policyVersion": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "reusedCount": { "type": "integer", "minimum": 0 },
+        "adaptedCount": { "type": "integer", "minimum": 0 },
+        "refreshedCount": { "type": "integer", "minimum": 0 },
+        "missingCount": { "type": "integer", "minimum": 0 },
+        "excludedCount": { "type": "integer", "minimum": 0 },
+        "searchCount": { "type": "integer", "minimum": 0 },
+        "fetchCount": { "type": "integer", "minimum": 0 },
+        "failedAttemptCount": { "type": "integer", "minimum": 0 },
+        "completionReason": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "taskId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "attemptId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "role": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "status": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "inputRevision": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stopReason": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "reviewTaskId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "artifactRevision": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][-A-Za-z0-9._:]{0,159}$" },
+        "blockingFindingCount": { "type": "integer", "minimum": 0 },
+        "advisoryFindingCount": { "type": "integer", "minimum": 0 },
+        "correctionPassCount": { "type": "integer", "minimum": 0 },
+        "reusedCheckCount": { "type": "integer", "minimum": 0 },
+        "title": { "type": "string" },
+        "operationalCostUsd": { "type": ["number", "null"], "minimum": 0 },
+        "customerCashCostUsd": { "type": ["number", "null"], "minimum": 0 },
+        "humanCostUsd": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "eventName": { "const": "tokens.observed" } } },
+      "then": {
+        "properties": {
+          "attrs": {
+            "required": ["model", "inputTokens", "outputTokens", "cacheCreationTokens", "cacheReadTokens"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "credits.tallied" } } },
+      "then": {
+        "properties": {
+          "attrs": { "required": ["spentCredits", "approvedCredits"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "research.checked" } } },
+      "then": {
+        "properties": {
+          "attrs": {
+            "required": ["evidencePlanRevision", "policyVersion", "reusedCount", "adaptedCount", "refreshedCount", "missingCount", "excludedCount", "searchCount", "fetchCount", "failedAttemptCount", "elapsedMs", "completionReason"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "task.completed" } } },
+      "then": {
+        "properties": {
+          "attrs": {
+            "required": ["taskId", "attemptId", "role", "status", "inputRevision", "durationMs", "stopReason"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "validation.completed" } } },
+      "then": {
+        "properties": {
+          "attrs": {
+            "required": ["reviewTaskId", "artifactRevision", "blockingFindingCount", "advisoryFindingCount", "correctionPassCount", "reusedCheckCount"]
+          }
+        }
+      }
+    }
+  ]
+}

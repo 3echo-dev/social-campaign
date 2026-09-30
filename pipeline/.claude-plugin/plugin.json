@@ -1,0 +1,23 @@
+{
+  "name": "social-pipeline",
+  "displayName": "Social Pipeline",
+  "description": "Runs social media content and ads production: a router turns a request into a typed job, eight role agents (producer, researcher, strategist, copywriter, scriptwriter, media-buyer, videographer, editor) share atomic skills, and media is generated through 3echo after an approved quote. Delivers approved handoff packages for Facebook, Instagram and TikTok with time, token and cost receipts.",
+  "version": "0.12.13",
+  "keywords": [
+    "social media",
+    "ugc",
+    "ads",
+    "content",
+    "tiktok",
+    "instagram",
+    "facebook",
+    "agency",
+    "pipeline"
+  ],
+  "author": {
+    "name": "3echo"
+  },
+  "homepage": "https://github.com/3echo-dev/social-media-pipeline",
+  "repository": "https://github.com/3echo-dev/social-media-pipeline",
+  "license": "MIT"
+}

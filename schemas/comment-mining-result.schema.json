@@ -1,0 +1,303 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/comment-mining-result.schema.json",
+  "title": "CommentMiningResult",
+  "description": "Voice of customer themes mined from public comments by the comment-mining method: reactions, questions, objections, complaints, praise, product ideas and buying intent, each counted and backed by quoted comments.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "sources",
+    "themes",
+    "observations",
+    "inferences",
+    "coverage",
+    "observed_at",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "brand_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "url",
+          "comments_read"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok"
+            ]
+          },
+          "owner": {
+            "enum": [
+              "brand",
+              "competitor",
+              "creator",
+              "other",
+              null
+            ]
+          },
+          "comments_read": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "coverage": {
+            "enum": [
+              "full",
+              "partial",
+              "none"
+            ],
+            "description": "How much of what was asked for could actually be read."
+          }
+        }
+      }
+    },
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "category",
+          "theme",
+          "count",
+          "evidence",
+          "confidence"
+        ],
+        "properties": {
+          "category": {
+            "enum": [
+              "reaction",
+              "question",
+              "objection",
+              "complaint",
+              "praise",
+              "product_idea",
+              "buying_intent"
+            ]
+          },
+          "theme": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many comments read carry this theme."
+          },
+          "share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids.",
+            "minItems": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "voc_language": {
+      "type": "array",
+      "description": "Phrases the audience actually uses, for copy and scripts.",
+      "items": {
+        "type": "object",
+        "required": [
+          "phrase",
+          "evidence"
+        ],
+        "properties": {
+          "phrase": {
+            "type": "string"
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "description": "What was seen or read, each with its own provenance. Nothing here is interpreted.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "source_type",
+          "source_ref",
+          "observed_at",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example O1, that inferences point at."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "official_source",
+              "public_platform",
+              "ad_library",
+              "web_evidence",
+              "user_supplied",
+              "local_media"
+            ]
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The url, file path, asset id or tool call the claim came from."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbatim text when the claim is a quote."
+          },
+          "timestamp_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Where in a video, when it is from one."
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok",
+              "meta",
+              "web",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "description": "What the analyst concluded. Every inference names the observations it rests on.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "based_on",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example I1."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "based_on": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          },
+          "source_type": {
+            "const": "model_inference"
+          },
+          "reasoning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "coverage": {
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of what was asked for could actually be read."
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why coverage is not full, in plain words. Null when it is."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

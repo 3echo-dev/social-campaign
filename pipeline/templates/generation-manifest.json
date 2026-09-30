@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0",
+  "jobId": "{job-id}",
+  "deliverable": "D1",
+  "boardVersion": 1,
+  "style": "",
+  "continuity": "",
+  "negative": "no readable text, no logos other than the brand, no other products, no extra people",
+  "referenceAssets": [],
+  "items": [
+    {
+      "panel": "P1",
+      "kind": "image",
+      "prompt": "",
+      "aspectRatio": "9:16",
+      "assetIds": [],
+      "status": "pending",
+      "file": "media/D1/P1.png",
+      "credits": 1
+    },
+    {
+      "panel": "P1",
+      "kind": "video",
+      "prompt": "",
+      "ratio": "9:16",
+      "resolution": "720p",
+      "durationSeconds": 5,
+      "generateAudio": true,
+      "assetIds": [],
+      "seedFromPanelImage": true,
+      "status": "pending",
+      "file": "media/D1/S1.mp4",
+      "credits": null
+    }
+  ],
+  "stitch": {
+    "order": [
+      "S1"
+    ],
+    "output": "media/D1/final.mp4",
+    "captions": "burned from the script on-screen text"
+  },
+  "_status": [
+    "pending",
+    "quoted",
+    "approved",
+    "generated",
+    "downloaded",
+    "validated",
+    "rejected"
+  ],
+  "_notes": {
+    "durationSeconds": "What the tool is asked for and what the beat actually is. A whole number from 4 to 15. write-script floors beats at 4 s so these are the same number.",
+    "characters": "Only for a talkingCharacter deliverable: [{\"id\": \"MINA\", \"description\": \"\", \"voice\": \"one voice description, pasted verbatim into every prompt where she speaks\"}].",
+    "dialogue": "Only for a talkingCharacter deliverable, on a video item that speaks: {\"character\": \"MINA\", \"line\": \"...\"}. The line and the voice go in the prompt and generateAudio stays true; a silent beat has no dialogue.",
+    "credits": "Images are 1 each. Video is null until estimate_video_job returns a quote; the concept approval's maxSpendCredits is the ceiling."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JobRating v1",
+  "type": "object",
+  "required": ["schemaVersion", "jobId", "brand", "rating", "ratedBy", "ratedAt"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "jobId": { "type": "string" },
+    "brand": { "type": "string" },
+    "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "comment": { "type": "string" },
+    "ratedBy": { "type": "string", "minLength": 1 },
+    "ratedAt": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

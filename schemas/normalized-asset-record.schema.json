@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/normalized-asset-record.schema.json",
+  "title": "NormalizedAssetRecord",
+  "description": "Objective facts about one media file, from the Media Librarian. Produced before any subjective analysis, and mapped one to one onto the assets table. Originals are never modified, renamed, moved or deleted.",
+  "type": "object",
+  "required": ["schema_version", "id", "path", "kind", "origin", "indexed_at"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "description": "Stable asset id, also the assets.id primary key." },
+    "brand_id": { "type": ["string", "null"] },
+    "path": { "type": "string", "description": "Absolute path to the original file, referenced in place." },
+    "sha256": { "type": ["string", "null"], "description": "Content hash, used for dedupe." },
+    "mime": { "type": ["string", "null"] },
+    "kind": { "enum": ["video", "image", "audio", "document", "script", "other"] },
+    "bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "width": { "type": ["integer", "null"], "minimum": 0 },
+    "height": { "type": ["integer", "null"], "minimum": 0 },
+    "duration": { "type": ["number", "null"], "minimum": 0, "description": "Seconds." },
+    "fps": { "type": ["number", "null"], "minimum": 0 },
+    "codec": { "type": ["string", "null"] },
+    "audio_tracks": { "type": ["integer", "null"], "minimum": 0 },
+    "thumbnail_path": { "type": ["string", "null"], "description": "Derived file inside the workspace." },
+    "keyframe_paths": { "type": "array", "items": { "type": "string" } },
+    "origin": { "enum": ["reference", "generated", "imported"] },
+    "duplicate_of": { "type": ["string", "null"], "description": "Set when the hash matched an existing asset." },
+    "indexed_at": { "type": "string", "format": "date-time" },
+    "probe_source": { "enum": ["ffprobe", "declared", "unknown"] },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

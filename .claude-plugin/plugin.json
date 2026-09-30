@@ -1,0 +1,23 @@
+{
+  "name": "social-campaign",
+  "displayName": "Social Campaign",
+  "description": "Orchestrates social media research, strategy, creative analysis, media generation, human approval and publishing for Facebook, Instagram and TikTok. Keeps a local workspace with brand, creative and preference memory, and drives an interactive review pane for every approval gate.",
+  "version": "0.7.3",
+  "keywords": [
+    "social media",
+    "campaign",
+    "ugc",
+    "ads",
+    "brand",
+    "creative",
+    "tiktok",
+    "instagram",
+    "facebook"
+  ],
+  "author": {
+    "name": "3echo"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/3echo-dev/social-campaign",
+  "repository": "https://github.com/3echo-dev/social-campaign"
+}

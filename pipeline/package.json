@@ -1,0 +1,8 @@
+{
+  "name": "@3echo/social-media-pipeline-runtime",
+  "version": "0.12.13",
+  "private": true,
+  "description": "Vendored runtime assets for Social Campaign.",
+  "type": "commonjs",
+  "license": "MIT"
+}

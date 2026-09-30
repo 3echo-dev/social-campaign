@@ -1,0 +1,27 @@
+{
+  "name": "3echo-social-campaign",
+  "owner": {
+    "name": "3echo"
+  },
+  "metadata": {
+    "description": "Private marketplace for the Social Campaign plugin.",
+    "version": "0.7.3"
+  },
+  "plugins": [
+    {
+      "name": "social-campaign",
+      "source": "./",
+      "description": "Social Campaign - social media research, strategy, creative and publishing orchestration with a local workspace and an interactive review pane.",
+      "version": "0.7.3",
+      "author": {
+        "name": "3echo"
+      },
+      "keywords": [
+        "social media",
+        "campaign",
+        "ugc",
+        "ads"
+      ]
+    }
+  ]
+}

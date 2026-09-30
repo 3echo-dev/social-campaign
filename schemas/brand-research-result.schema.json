@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/brand-research-result.schema.json",
+  "title": "BrandResearchResult",
+  "description": "Authoritative brand identity knowledge from the Brand Researcher. Every field carries provenance. Nothing here is written to canonical memory directly, it is proposed.",
+  "type": "object",
+  "required": ["schema_version", "brand", "fields", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "brand": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "website": { "type": ["string", "null"] },
+        "handles": {
+          "type": "object",
+          "properties": {
+            "facebook": { "type": ["string", "null"] },
+            "instagram": { "type": ["string", "null"] },
+            "tiktok": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "description": "Field level records matching the brand_fields table.",
+      "items": {
+        "type": "object",
+        "required": ["field_path", "value", "source_type", "observed_at", "confidence"],
+        "properties": {
+          "field_path": {
+            "type": "string",
+            "examples": ["identity.tagline", "audience.primary", "voice.tone", "visual.palette", "positioning.category", "positioning.differentiators", "icp.primary", "jtbd.core_job", "objections.top", "messaging.pillars", "proof.claims"]
+          },
+          "value": {},
+          "source_type": {
+            "enum": [
+              "user_correction",
+              "user_brand_guide",
+              "official_source",
+              "verified_research",
+              "model_inference"
+            ]
+          },
+          "source_ref": { "type": ["string", "null"] },
+          "observed_at": { "type": "string", "format": "date-time" },
+          "last_verified_at": { "type": ["string", "null"], "format": "date-time" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "restrictions": {
+      "type": "array",
+      "description": "Claims, words or treatments the brand forbids. These outrank user preferences.",
+      "items": { "type": "string" }
+    },
+    "gaps": { "type": "array", "items": { "type": "string" }, "description": "What could not be verified." },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

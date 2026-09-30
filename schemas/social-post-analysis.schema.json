@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/social-post-analysis.schema.json",
+  "title": "SocialPostAnalysis",
+  "description": "One public post decomposed by the social-post-analysis method: format, caption, hook, structure, call to action and a performance read against the account baseline. A post is never called a winner from likes alone.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "post",
+    "performance_read",
+    "observations",
+    "inferences",
+    "coverage",
+    "observed_at",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "post": {
+      "type": "object",
+      "required": [
+        "platform",
+        "url"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "facebook",
+            "instagram",
+            "tiktok"
+          ]
+        },
+        "url": {
+          "type": "string"
+        },
+        "post_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "author_handle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "posted_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "media_kind": {
+          "enum": [
+            "video",
+            "image",
+            "carousel",
+            "text",
+            "unknown"
+          ]
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "caption": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hashtags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sound": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "views": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "likes": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "comments": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "shares": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "saves": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "format": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hook_analysis_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "HookAnalysis artifact kind:version."
+    },
+    "video_analysis_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "VideoCreativeAnalysis record for the post media."
+    },
+    "evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "VideoEvidencePackage id."
+    },
+    "comment_mining_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "CommentMiningResult artifact kind:version."
+    },
+    "structure": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "start_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "end_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          }
+        }
+      }
+    },
+    "cta": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "performance_read": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "basis"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": [
+            "outlier",
+            "above_baseline",
+            "typical",
+            "below_baseline",
+            "unknown"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "description": "What the verdict rests on. The verdict is unknown when there is no baseline."
+        },
+        "baseline_median_views": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "baseline_sample": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "outlier_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "description": "What was seen or read, each with its own provenance. Nothing here is interpreted.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "source_type",
+          "source_ref",
+          "observed_at",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example O1, that inferences point at."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "official_source",
+              "public_platform",
+              "ad_library",
+              "web_evidence",
+              "user_supplied",
+              "local_media"
+            ]
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The url, file path, asset id or tool call the claim came from."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbatim text when the claim is a quote."
+          },
+          "timestamp_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Where in a video, when it is from one."
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok",
+              "meta",
+              "web",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "description": "What the analyst concluded. Every inference names the observations it rests on.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "based_on",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example I1."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "based_on": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          },
+          "source_type": {
+            "const": "model_inference"
+          },
+          "reasoning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "coverage": {
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of what was asked for could actually be read."
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why coverage is not full, in plain words. Null when it is."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

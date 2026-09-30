@@ -1,0 +1,35 @@
+node_modules/
+dist/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.social-campaign/
+.social-pipeline/
+test-output/
+workspaces/
+tmp/
+.DS_Store
+
+# local product docs, kept out of the repo
+docs/3Echo_Social_Campaign_Product_Doc.html
+docs/campaign-organization-and-workflow.html
+
+# Supabase CLI local state
+supabase/.temp/
+
+# local only, never pushed
+/AGENTS.md
+/CLAUDE.md
+/THIRD_PARTY_NOTICES.md
+/HANDOFF.md
+/test-output.txt
+/.claude/
+/test/
+/supabase/
+/evals/
+/docs/
+/workflows/
+/.creative-studio-pipeline/
+/workspace-a/
+/\[object Object\]/

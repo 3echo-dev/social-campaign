@@ -1,0 +1,51 @@
+# User data lives in the working directory, never in the plugin
+workspaces/
+inputs/
+.pane/
+gate-app.json
+.social-pipeline/
+.creative-discovery/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+desktop.ini
+scripts/test/.out/
+
+# Internal planning and review documents stay local. Everything listed below ships,
+# because something depends on it: agents read SHARED-RULES.md at runtime, a test reads
+# the source tables and THIRD_PARTY_SOURCES.md, the README links the architecture, flow
+# and attribution files, and AUTHORING.md is how the next person adds a skill without
+# guessing the house style. The .excalidraw is the diagram's source, so it can be edited
+# later rather than redrawn.
+docs/*
+!docs/ARCHITECTURE.md
+!docs/FLOW.md
+!docs/ATTRIBUTION.md
+!docs/THIRD_PARTY_SOURCES.md
+!docs/AUTHORING.md
+!docs/SHARED-RULES.md
+!docs/STAGES.md
+!docs/PRESENTATION.md
+!docs/assets/
+!docs/3echo-social-campaign-flow.html
+!docs/3echo-social-campaign-product-doc.html
+!docs/publishing-backend.md
+# The defect log ships because trace-run.js tells whoever reads it to add a row, and a
+# log that only exists on one machine cannot stop a defect coming back on another.
+!docs/RUN-DEFECTS.md
+# The function-hooks plan ships because the agents implementing it read it from here,
+# and the probes it names write their answers into RUN-DEFECTS.md beside it.
+!docs/FUNCTION-HOOKS-PLAN.md
+# The media pricing contract ships because make-video and SHARED-RULES.md both send the run
+# to it at the moment it is about to quote somebody a number.
+!docs/PRICING.md
+!docs/sources/
+!docs/CURRENT_ARCHITECTURE_FLOW.png
+!docs/CURRENT_ARCHITECTURE_FLOW.excalidraw
+# The pannable execution map. Self-contained, no network, and the README links it.
+!docs/EXECUTION-MAP.html
+!docs/CURRENT-FLOW.html
+.claude/settings.json
+.claude/settings.local.json

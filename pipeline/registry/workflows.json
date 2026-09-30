@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "workflows": [
+    { "workflowId": "organic-post", "version": "1.0.0", "status": "active", "kinds": ["organic_post", "organic_series", "ugc_creative"], "file": "workflows/organic-post.md",
+      "conditionalTags": ["if:research", "if:strategy", "unless:strategy", "if:ugc", "if:media", "if:video_qa", "unless:merged_publish"],
+      "gates": ["concept", "storyboard", "content", "publish"] },
+    { "workflowId": "paid-ugc-campaign", "version": "1.0.0", "status": "active", "kinds": ["paid_campaign"], "file": "workflows/paid-ugc-campaign.md",
+      "conditionalTags": ["if:research", "if:ugc", "if:media", "if:video_qa"],
+      "gates": ["concept", "storyboard", "content", "campaign_proposal", "campaign_activation"] },
+    { "workflowId": "repurpose-video", "version": "1.0.0", "status": "active", "kinds": ["content_repurpose"], "file": "workflows/repurpose-video.md",
+      "conditionalTags": ["if:research", "if:strategy", "unless:strategy", "if:media", "unless:merged_publish"],
+      "gates": ["storyboard", "content", "publish"] },
+    { "workflowId": "research-report", "version": "1.0.0", "status": "active", "kinds": ["research"], "file": "workflows/research-report.md",
+      "conditionalTags": ["if:sources"],
+      "gates": ["findings"] },
+    { "workflowId": "creative-analysis", "version": "1.0.0", "status": "active", "kinds": ["creative_analysis"], "file": "workflows/creative-analysis.md",
+      "conditionalTags": ["if:reference_video"],
+      "gates": ["findings"] },
+    { "workflowId": "video-breakdown", "version": "1.0.0", "status": "active", "kinds": ["video_breakdown"], "file": "workflows/video-breakdown.md",
+      "conditionalTags": [],
+      "gates": ["findings"] }
+  ]
+}

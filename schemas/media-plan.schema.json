@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/media-plan.schema.json",
+  "title": "MediaPlan",
+  "description": "What a job is going to make, item by item, before any money is spent. This is the object media_plan_save stores and cost_estimate prices; items point back at the storyboard panels they realise.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "items",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "storyboard_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Storyboard artifact kind:version."
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video",
+              "voice",
+              "audio",
+              "subtitle"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ratio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "characters": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "panel_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reference_asset_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Item ids that must be generated and approved first, for example the hero image."
+          },
+          "provider_quote": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "credits": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "per": {
+                "enum": [
+                  "clip",
+                  "batch"
+                ]
+              },
+              "quoted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "regeneration_headroom": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "images": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "videos": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "video_credits_each": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "edit": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Present when the generated pieces are cut together locally afterwards.",
+      "properties": {
+        "edl_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

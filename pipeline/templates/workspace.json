@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "brand": "{brand}",
+  "name": "{Brand Name}",
+  "status": "active",
+  "timezone": "Asia/Manila",
+  "approver": "{who approves gates}",
+  "created": "YYYY-MM-DD",
+  "accounts": {
+    "facebook":  { "handle": null, "pageId": null, "url": null, "state": "unknown", "notes": "" },
+    "instagram": { "handle": null, "url": null, "state": "unknown", "notes": "Must be a Business or Creator account linked to the Facebook Page." },
+    "tiktok":    { "handle": null, "url": null, "state": "unknown", "notes": "Hand-off in v1. Generated video must be disclosed as AI-made on the post." }
+  },
+  "cadence": { "facebook": null, "instagram": null, "tiktok": null },
+  "brandFilesReviewed": false,
+  "brandFiles": {
+    "brand-voice": 1, "audience": 1, "positioning": 1, "platform-playbook": 1
+  },
+  "policies": {
+    "namedTestimonials": "paraphrase_only_until_permission_confirmed",
+    "syntheticPeopleDisclosure": "always"
+  }
+}

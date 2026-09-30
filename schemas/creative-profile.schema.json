@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/creative-profile.schema.json",
+  "title": "CreativeProfile",
+  "description": "Asset level analysis synthesized into brand creative intelligence by the Creative Director. Stored in creative_profiles. The Creative Director proposes; it cannot overwrite canonical memory.",
+  "type": "object",
+  "required": ["schema_version", "brand_id", "formats", "hooks", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "brand_id": { "type": "string" },
+    "version": { "type": ["integer", "null"], "minimum": 1 },
+    "asset_count": { "type": ["integer", "null"], "minimum": 0, "description": "How many assets this reading is based on." },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["format"],
+        "properties": {
+          "format": { "type": "string" },
+          "frequency": { "enum": ["rare", "occasional", "common", "dominant"] },
+          "platforms": { "type": "array", "items": { "enum": ["facebook", "instagram", "tiktok"] } }
+        }
+      }
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["family"],
+        "properties": {
+          "family": { "type": "string", "description": "A named hook mechanism the brand returns to." },
+          "example_asset_ids": { "type": "array", "items": { "type": "string" } },
+          "frequency": { "enum": ["rare", "occasional", "common", "dominant"] }
+        }
+      }
+    },
+    "video_structures": { "type": "array", "items": { "type": "string" } },
+    "talent_patterns": { "type": "array", "items": { "type": "string" } },
+    "shot_grammar": { "type": "array", "items": { "type": "string" } },
+    "pacing": {
+      "type": "object",
+      "properties": {
+        "typical_duration_s": { "type": ["number", "null"], "minimum": 0 },
+        "typical_cuts_per_minute": { "type": ["number", "null"], "minimum": 0 },
+        "energy": { "enum": ["slow", "steady", "brisk", "frantic", null] }
+      }
+    },
+    "product_treatment": { "type": ["string", "null"] },
+    "cta_style": { "type": ["string", "null"] },
+    "visual_language": {
+      "type": "object",
+      "properties": {
+        "palette": { "type": "array", "items": { "type": "string" } },
+        "typography": { "type": ["string", "null"] },
+        "lighting": { "type": ["string", "null"] },
+        "settings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

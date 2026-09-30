@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/storyboard.schema.json",
+  "title": "Storyboard",
+  "description": "Panels that turn an approved VideoScript into shots, from the storyboard-planning method: permanent panel ids, one or more panels per script segment, the continuity rules for talent and product, and for each panel whether it is generated, taken from the library or cut from a reference. Text only until approved.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "script_ref",
+    "aspect_ratio",
+    "panels",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "script_ref": {
+      "type": "string",
+      "description": "VideoScript artifact kind:version this storyboard follows."
+    },
+    "aspect_ratio": {
+      "enum": [
+        "9:16",
+        "1:1",
+        "4:5",
+        "16:9"
+      ]
+    },
+    "continuity": {
+      "type": "object",
+      "properties": {
+        "talent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "setting": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wardrobe": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lighting": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reference_asset_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "panels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "segment_id",
+          "start_s",
+          "end_s",
+          "action",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Permanent id, P01, P02 and so on. Never renumbered on revision."
+          },
+          "segment_id": {
+            "type": "string"
+          },
+          "start_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "end_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "framing": {
+            "enum": [
+              "extreme_close",
+              "close",
+              "medium",
+              "wide",
+              "establishing",
+              "insert",
+              null
+            ]
+          },
+          "camera": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "on_screen_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spoken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "generate",
+              "library",
+              "reference_cut"
+            ]
+          },
+          "asset_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The library clip, when source is library or reference_cut."
+          },
+          "image_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "video_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

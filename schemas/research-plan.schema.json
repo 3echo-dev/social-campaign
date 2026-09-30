@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/research-plan.schema.json",
+  "title": "ResearchPlan",
+  "description": "What the Research Planner decided for one job: what is known, what is stale, what is missing, which specialists run with which questions, and which were skipped and why (spec section 12).",
+  "type": "object",
+  "required": ["schema_version", "job_type", "starting_point", "platforms", "specialists", "skipped", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "job_type": { "enum": ["social_post", "ad_campaign", "ugc", "analyze_existing"] },
+    "starting_point": { "enum": ["scratch", "reference", "existing_creative"] },
+    "platforms": { "type": "array", "items": { "enum": ["facebook", "instagram", "tiktok"] } },
+    "known": { "type": "object", "description": "Family name to whether anything is known about it." },
+    "stale": { "type": "object", "description": "Family name to whether everything known about it is older than its time to live." },
+    "missing": { "type": "array", "items": { "type": "string" } },
+    "families": { "type": "object", "description": "Per family detail: state, count, stale_count, newest." },
+    "staleness_days": {
+      "type": "object",
+      "properties": {
+        "brand": { "type": "integer" },
+        "competitor": { "type": "integer" },
+        "trends": { "type": "integer" },
+        "audience": { "type": "integer" }
+      }
+    },
+    "specialists": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent", "reason", "questions", "platforms"],
+        "properties": {
+          "agent": {
+            "enum": ["brand-researcher", "competitor-researcher", "trend-scout", "audience-researcher", "platform-analyst"]
+          },
+          "family": { "type": ["string", "null"] },
+          "reason": { "type": "string" },
+          "because": { "enum": ["missing", "stale", "required", "requested"] },
+          "questions": { "type": "array", "items": { "type": "string" } },
+          "platforms": { "type": "array", "items": { "enum": ["facebook", "instagram", "tiktok"] } }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent", "reason"],
+        "properties": {
+          "agent": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

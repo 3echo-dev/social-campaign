@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/strategy-set.schema.json",
+  "title": "StrategySet",
+  "description": "Exactly three campaign directions from the Strategist, unless the user asked for a different number. Normal mode is brand_native, competitor_opportunity and trend_forward. Reference mode is reference_led, brand_evolution and trend_competitive_evolution. This is what the strategy gate reviews.",
+  "type": "object",
+  "required": ["schema_version", "mode", "directions", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "mode": { "enum": ["normal", "reference"] },
+    "custom_count": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "Set only when the user explicitly asked for a number of directions other than three. Lifts the exactly three rule and the fixed direction names."
+    },
+    "reference": {
+      "type": ["object", "null"],
+      "description": "The user supplied anchor in reference mode. It is the priority creative reference.",
+      "properties": {
+        "url": { "type": ["string", "null"] },
+        "asset_id": { "type": ["string", "null"] },
+        "why_it_works": { "type": ["string", "null"] }
+      }
+    },
+    "directions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "title", "angle", "rationale"],
+        "properties": {
+          "key": {
+            "enum": [
+              "brand_native",
+              "competitor_opportunity",
+              "trend_forward",
+              "reference_led",
+              "brand_evolution",
+              "trend_competitive_evolution"
+            ]
+          },
+          "title": { "type": "string" },
+          "angle": { "type": "string", "description": "The single idea, in one sentence." },
+          "rationale": { "type": "string", "description": "The evidence behind it, not an opinion." },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "claim": { "type": "string" },
+                "source": { "type": ["string", "null"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          },
+          "core_message": { "type": ["string", "null"] },
+          "hook_family": { "type": ["string", "null"] },
+          "cta_intent": { "enum": ["awareness", "engagement", "traffic", "leads", "sales", null] },
+          "awareness_stage": { "enum": ["unaware", "problem_aware", "solution_aware", "product_aware", "most_aware", null] },
+          "format": { "type": ["string", "null"], "description": "The creative format the direction is built for, for example ugc_testimonial or founder_story." },
+          "platform_notes": { "type": "array", "items": { "type": "string" } },
+          "risks": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "evidence_gaps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named gaps the Strategist sends back to a researcher rather than guessing."
+    },
+    "distribution": { "enum": ["organic", "paid", "mixed", null], "description": "Which method shaped the set: organic-social-strategy, ad-strategy or both." },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

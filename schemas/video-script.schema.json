@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/video-script.schema.json",
+  "title": "VideoScript",
+  "description": "A time budgeted short form video script from the video-script-writing method: segments whose spoken words fit their seconds at the stated words per second, on screen text that differs from the spoken line, and every claim traced to an approved source.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "platform",
+    "target_duration_s",
+    "words_per_second",
+    "delivery",
+    "segments",
+    "claims",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "concept_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "direction_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "platform": {
+      "enum": [
+        "facebook",
+        "instagram",
+        "tiktok"
+      ]
+    },
+    "target_duration_s": {
+      "type": "number",
+      "minimum": 1
+    },
+    "words_per_second": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 5,
+      "description": "2.5 unless the brand voice says otherwise."
+    },
+    "delivery": {
+      "enum": [
+        "on_camera",
+        "voiceover",
+        "mixed",
+        "text_only"
+      ]
+    },
+    "persona": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "enum": [
+            "creator",
+            "customer",
+            "expert",
+            "founder",
+            "narrator",
+            null
+          ]
+        }
+      }
+    },
+    "hook_family": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "start_s",
+          "end_s",
+          "beat",
+          "spoken",
+          "word_count"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Permanent id, S1, S2 and so on. Storyboard panels point at it."
+          },
+          "start_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "end_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "beat": {
+            "enum": [
+              "hook",
+              "context",
+              "problem",
+              "discovery",
+              "proof",
+              "product",
+              "objection",
+              "offer",
+              "cta",
+              "other"
+            ]
+          },
+          "spoken": {
+            "type": "string",
+            "description": "Empty string for a silent segment."
+          },
+          "on_screen_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visual_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "word_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "claim_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "description": "Every factual claim the script makes. A claim without an approved source is not allowed in the script.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "source_type",
+          "source_ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "brand_field",
+              "approved_research",
+              "user_instruction"
+            ]
+          },
+          "source_ref": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "total_words": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "cta": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "disclosure": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

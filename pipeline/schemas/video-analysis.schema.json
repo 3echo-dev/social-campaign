@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VideoAnalysis front matter v1",
+  "type": "object",
+  "required": ["job", "source", "watch_report", "version", "duration_s", "frames_read", "transcript", "analysed_at"],
+  "properties": {
+    "job": { "type": "string", "pattern": "^job-\\d{8}-[a-z0-9][a-z0-9-]*$" },
+    "source": { "type": "string", "minLength": 1 },
+    "watch_report": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "frames_read": { "type": "integer", "minimum": 0 },
+    "transcript": { "enum": ["captions", "supplied", "whisper", "none"] },
+    "analysed_at": { "type": "string", "minLength": 1 }
+  }
+}

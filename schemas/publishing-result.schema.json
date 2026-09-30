@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/publishing-result.schema.json",
+  "title": "PublishingResult",
+  "description": "The outcome of scheduling or publishing, from the Publisher. final_approval_id is required: nothing leaves the machine without a resolved final gate. A provider acknowledgement without proof of publication remains accepted, and an unanswered provider call remains unclear. When no publisher is connected the outcome is exported, with a package on disk the user posts from by hand.",
+  "type": "object",
+  "required": ["schema_version", "final_approval_id", "outcome", "posts"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "final_approval_id": {
+      "type": "string",
+      "description": "The reviews.id of the resolved final gate."
+    },
+    "outcome": { "enum": ["pending", "scheduled", "published", "accepted", "unclear", "exported", "failed"] },
+    "provider": { "type": ["string", "null"], "examples": ["blotato", "postiz", "buffer"] },
+    "posts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["platform", "status"],
+        "properties": {
+          "post_index": { "type": "integer", "minimum": 0 },
+          "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+          "status": { "enum": ["scheduled", "published", "accepted", "pending", "unclear", "exported", "failed"] },
+          "scheduled_for": { "type": ["string", "null"], "format": "date-time" },
+          "published_at": { "type": ["string", "null"], "format": "date-time" },
+          "post_url": { "type": ["string", "null"] },
+          "provider_ref": { "type": ["string", "null"] },
+          "media_asset_ids": { "type": "array", "items": { "type": "string" } },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "export_path": {
+      "type": ["string", "null"],
+      "description": "The publishing ready package, set when outcome is exported."
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

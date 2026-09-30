@@ -1,0 +1,227 @@
+[
+  {
+    "route_id": "organic_social_post_scratch",
+    "job_type": "social_post",
+    "starting_point": "scratch",
+    "stages": [
+      "brand_context",
+      "trend_research",
+      "competitor_research",
+      "audience_research",
+      "platform_analysis",
+      "strategy",
+      "strategy_gate",
+      "copywriting",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "organic_social_post_reference",
+    "job_type": "social_post",
+    "starting_point": "reference",
+    "stages": [
+      "reference_resolution",
+      "creative_decomposition",
+      "creative_decomposition_image",
+      "creative_decomposition_script",
+      "brand_context",
+      "competitor_context",
+      "trend_context",
+      "platform_analysis",
+      "strategy_reference_mode",
+      "strategy_gate",
+      "copywriting",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "organic_social_post_existing_creative",
+    "job_type": "social_post",
+    "starting_point": "existing_creative",
+    "stages": [
+      "asset_analysis",
+      "asset_analysis_video",
+      "platform_suitability",
+      "reuse_brief",
+      "reuse_brief_gate",
+      "subtitle_check",
+      "caption_copy",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "ad_campaign_scratch",
+    "job_type": "ad_campaign",
+    "starting_point": "scratch",
+    "stages": [
+      "brand_context",
+      "competitor_ad_research",
+      "audience_research",
+      "platform_analysis",
+      "strategy",
+      "strategy_gate",
+      "copy_variants",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_ad_package"
+    ]
+  },
+  {
+    "route_id": "ad_campaign_reference",
+    "job_type": "ad_campaign",
+    "starting_point": "reference",
+    "stages": [
+      "reference_resolution",
+      "creative_decomposition",
+      "creative_decomposition_image",
+      "creative_decomposition_script",
+      "brand_context",
+      "competitor_context",
+      "competitor_ad_research",
+      "trend_context",
+      "platform_analysis",
+      "strategy_reference_mode",
+      "strategy_gate",
+      "copy_variants",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_ad_package"
+    ]
+  },
+  {
+    "route_id": "ad_campaign_existing_creative",
+    "job_type": "ad_campaign",
+    "starting_point": "existing_creative",
+    "stages": [
+      "brand_context",
+      "asset_analysis",
+      "asset_analysis_video",
+      "ad_specific_research",
+      "audience_funnel_message_strategy",
+      "platform_suitability",
+      "reuse_brief",
+      "reuse_brief_gate",
+      "copy_variants",
+      "release_preparation",
+      "final_ad_package"
+    ]
+  },
+  {
+    "route_id": "ugc_creative_scratch",
+    "job_type": "ugc",
+    "starting_point": "scratch",
+    "stages": [
+      "brand_context",
+      "trend_research",
+      "competitor_research",
+      "audience_research",
+      "platform_analysis",
+      "strategy",
+      "strategy_gate",
+      "ugc_creative_direction",
+      "copywriting",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "ugc_creative_reference",
+    "job_type": "ugc",
+    "starting_point": "reference",
+    "stages": [
+      "reference_resolution",
+      "creative_decomposition",
+      "creative_decomposition_image",
+      "creative_decomposition_script",
+      "brand_context",
+      "competitor_context",
+      "trend_context",
+      "platform_analysis",
+      "strategy_reference_mode",
+      "strategy_gate",
+      "ugc_creative_direction",
+      "copywriting",
+      "concept_review",
+      "media_plan",
+      "cost_gate",
+      "media_production",
+      "media_review",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "ugc_creative_existing_creative",
+    "job_type": "ugc",
+    "starting_point": "existing_creative",
+    "stages": [
+      "asset_analysis",
+      "asset_analysis_video",
+      "platform_suitability",
+      "reuse_brief",
+      "reuse_brief_gate",
+      "subtitle_check",
+      "caption_copy",
+      "release_preparation",
+      "final_review",
+      "publish"
+    ]
+  },
+  {
+    "route_id": "analysis_only_reference",
+    "job_type": "analyze_existing",
+    "starting_point": "reference",
+    "stages": [
+      "reference_resolution",
+      "creative_decomposition",
+      "creative_decomposition_image",
+      "creative_decomposition_script",
+      "brand_context",
+      "competitor_context",
+      "trend_context",
+      "analysis_report"
+    ]
+  },
+  {
+    "route_id": "analysis_only_existing_creative",
+    "job_type": "analyze_existing",
+    "starting_point": "existing_creative",
+    "stages": [
+      "asset_analysis",
+      "asset_analysis_video",
+      "platform_suitability",
+      "analysis_report"
+    ]
+  }
+]

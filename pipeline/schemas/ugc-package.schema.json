@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UGC generation package v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "deliverable",
+    "boardVersion",
+    "style",
+    "continuity",
+    "negative",
+    "referenceAssets",
+    "items",
+    "stitch"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "jobId": {
+      "type": "string",
+      "pattern": "^job-\\d{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "deliverable": {
+      "type": "string",
+      "pattern": "^D\\d+$"
+    },
+    "boardVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "style": {
+      "type": "string",
+      "minLength": 1
+    },
+    "continuity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "negative": {
+      "type": "string"
+    },
+    "referenceAssets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "characters": {
+      "type": "array",
+      "description": "Required by preflight-generation.js when the job's deliverable is a talkingCharacter. One entry per speaking character.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "voice"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One voice description for the whole job (accent, tempo, manner, pacing cue), pasted verbatim into every prompt where the character speaks."
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "panel",
+          "kind",
+          "prompt",
+          "assetIds",
+          "status",
+          "file",
+          "credits"
+        ],
+        "properties": {
+          "panel": {
+            "type": "string",
+            "pattern": "^P\\d+$"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "aspectRatio": {
+            "enum": [
+              "9:16",
+              "1:1",
+              "4:5",
+              "16:9",
+              "4:3",
+              "3:4"
+            ]
+          },
+          "ratio": {
+            "enum": [
+              "9:16",
+              "1:1",
+              "4:5",
+              "16:9",
+              "4:3",
+              "3:4"
+            ]
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 15
+          },
+          "generateAudio": {
+            "type": "boolean"
+          },
+          "dialogue": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "What the one speaker says in this clip. Omitted or null for a silent beat.",
+            "required": [
+              "character",
+              "line"
+            ],
+            "properties": {
+              "character": {
+                "type": "string",
+                "minLength": 1
+              },
+              "line": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "assetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "seedFromPanelImage": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "quoted",
+              "approved",
+              "generated",
+              "downloaded",
+              "validated",
+              "rejected"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "credits": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "stitch": {
+      "type": "object",
+      "required": [
+        "order",
+        "output",
+        "captions"
+      ],
+      "properties": {
+        "order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1
+        },
+        "captions": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

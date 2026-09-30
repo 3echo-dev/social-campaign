@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/reuse-brief.schema.json",
+  "title": "ReuseBrief",
+  "description": "What a job built on creative the person already has is going to do with it: which asset, what it is for, which platforms it is being adapted to, and what will and will not be changed. It takes the place of a strategy set on the existing creative route, and it is what the person approves at the concept gate before any caption is written.",
+  "type": "object",
+  "required": ["schema_version", "asset_ids", "objective", "adaptations", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "asset_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "The finished assets this job reuses, as registered asset ids or workspace paths."
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What this creative is being used to achieve, in the person's terms."
+    },
+    "audience": { "type": ["string", "null"] },
+    "adaptations": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per platform this creative is being adapted to.",
+      "items": {
+        "type": "object",
+        "required": ["platform", "changes"],
+        "properties": {
+          "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+          "changes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What is being changed for this platform: crop, subtitles, cover frame, caption angle. An empty list means posted as it is."
+          },
+          "keeps": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "restrictions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Brand or claim restrictions that still apply to creative made earlier."
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "source_ref"],
+        "properties": {
+          "claim": { "type": "string" },
+          "source_ref": { "type": "string" },
+          "confidence": { "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "summary": { "type": "string", "description": "One or two plain sentences the approval screen shows." }
+  },
+  "additionalProperties": false
+}

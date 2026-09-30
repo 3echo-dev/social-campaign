@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JobSpec v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "brand",
+    "kind",
+    "request",
+    "requestedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "jobId": {
+      "type": "string",
+      "pattern": "^job-\\d{8}-[a-z0-9][a-z0-9-]*$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+    },
+    "ownerUserId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+    },
+    "ownerEmail": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 320
+    },
+    "ownerEmailVerified": {
+      "type": "boolean"
+    },
+    "identitySource": {
+      "enum": [
+        "native_mcp",
+        "http_oauth"
+      ]
+    },
+    "brand": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "organic_post",
+        "organic_series",
+        "ugc_creative",
+        "paid_campaign",
+        "creative_analysis",
+        "content_repurpose",
+        "research",
+        "video_breakdown",
+        "performance_review"
+      ]
+    },
+    "objective": {
+      "enum": [
+        "awareness",
+        "engagement",
+        "traffic",
+        "leads",
+        "app_installs",
+        "sales",
+        "retention"
+      ]
+    },
+    "distribution": {
+      "enum": [
+        "organic",
+        "paid",
+        "both"
+      ]
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "facebook",
+          "instagram",
+          "tiktok",
+          "linkedin",
+          "x",
+          "threads",
+          "youtube"
+        ]
+      }
+    },
+    "deliverables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "count",
+          "creativeDiscipline"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^D\\d+$"
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok",
+              "linkedin",
+              "x",
+              "threads",
+              "youtube"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "creativeDiscipline": {
+            "enum": [
+              "ugc",
+              "brand_video",
+              "static_image",
+              "carousel",
+              "motion_graphic",
+              "text_only"
+            ]
+          },
+          "ugcSource": {
+            "enum": [
+              "ai",
+              "creator"
+            ],
+            "description": "Required when creativeDiscipline is ugc: ai generates the person, creator briefs a real one. route-job.js rule 1 enforces it."
+          },
+          "talkingCharacter": {
+            "type": "boolean",
+            "description": "True when a person or character speaks to camera in the clips. Only valid on a ugc or brand_video deliverable. The dialogue is generated inside each clip with generateAudio on, so there is no separate voiceover stage. route-job.js flags synthetic_person for it."
+          },
+          "aspectRatios": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "9:16",
+                "1:1",
+                "4:5",
+                "16:9",
+                "4:3",
+                "3:4"
+              ]
+            }
+          },
+          "durationSeconds": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            }
+          },
+          "locale": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "audience": {
+      "type": "object",
+      "description": "Optional. A brief-specific narrowing of the brand's own audience. When absent, the router uses the brand profile's audience.",
+      "required": [
+        "description"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "personas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "offer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "landingPageUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "uri",
+          "mediaType"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "mediaType": {
+            "enum": [
+              "video",
+              "image",
+              "document",
+              "url",
+              "transcript",
+              "metrics_export"
+            ]
+          },
+          "ownedByBrand": {
+            "type": "boolean"
+          },
+          "usedInPost": {
+            "type": "boolean"
+          },
+          "suppliedBy": {
+            "enum": [
+              "user",
+              "integration",
+              "research"
+            ]
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "supplied"
+      ],
+      "properties": {
+        "supplied": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "requiredClaims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "prohibitedClaims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schedule": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "publishAt": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      }
+    },
+    "budget": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "currency",
+        "maxTotalAmount"
+      ],
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "dailyAmount": {
+          "type": "number"
+        },
+        "lifetimeAmount": {
+          "type": "number"
+        },
+        "maxTotalAmount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "startAt": {
+          "type": "string"
+        },
+        "endAt": {
+          "type": "string"
+        }
+      }
+    },
+    "usesHistoricalData": {
+      "type": "boolean"
+    },
+    "metricsScope": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "requestedAt": {
+      "type": "string"
+    },
+    "subject": {
+      "enum": [
+        "product",
+        "character",
+        "none"
+      ]
+    },
+    "productAsset": {
+      "type": [
+        "object",
+        "string",
+        "null"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "ownedByBrand": {
+          "type": "boolean"
+        },
+        "licence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "account": {
+      "type": [
+        "object",
+        "string",
+        "null"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "handle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "specWork": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/trend-research-result.schema.json",
+  "title": "TrendResearchResult",
+  "description": "Current creative patterns on Facebook, Instagram and TikTok, from the Trend Scout. Trends age fast, so observed_at and an expected shelf life are mandatory.",
+  "type": "object",
+  "required": ["schema_version", "observed_at", "trends", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "trends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "platform", "description", "confidence"],
+        "properties": {
+          "name": { "type": "string" },
+          "platform": { "enum": ["facebook", "instagram", "tiktok", "cross_platform"] },
+          "description": { "type": "string" },
+          "mechanism": {
+            "type": ["string", "null"],
+            "description": "Why it works, not only what it looks like. The Strategist needs the mechanism to adapt it."
+          },
+          "brand_fit": { "enum": ["strong", "possible", "poor"] },
+          "evidence_urls": { "type": "array", "items": { "type": "string" } },
+          "expected_shelf_life": { "enum": ["days", "weeks", "months", "durable"] },
+          "evidence": { "type": "array", "items": { "type": "string" }, "description": "Observation ids." },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "outliers": { "type": "array", "description": "Posts that beat their own account baseline, from the outlier-content-analysis method.", "items": { "type": "object", "required": ["url", "platform", "outlier_ratio"], "properties": { "url": { "type": "string" }, "platform": { "enum": ["facebook", "instagram", "tiktok"] }, "author_handle": { "type": ["string", "null"] }, "outlier_ratio": { "type": "number", "minimum": 0 }, "baseline_median_views": { "type": ["number", "null"], "minimum": 0 }, "why_it_worked": { "type": ["string", "null"] }, "evidence": { "type": "array", "items": { "type": "string" }, "description": "Observation ids." } } } },
+    "observations": {"type":"array","description":"What was seen or read, each with its own provenance. Nothing here is interpreted.","items":{"type":"object","required":["id","claim","source_type","source_ref","observed_at","confidence"],"properties":{"id":{"type":"string","description":"Short local id, for example O1, that inferences point at."},"claim":{"type":"string"},"source_type":{"enum":["official_source","public_platform","ad_library","web_evidence","user_supplied","local_media"]},"source_ref":{"type":"string","description":"The url, file path, asset id or tool call the claim came from."},"observed_at":{"type":"string","format":"date-time"},"confidence":{"type":"number","minimum":0,"maximum":1},"quote":{"type":["string","null"],"description":"Verbatim text when the claim is a quote."},"timestamp_s":{"type":["number","null"],"minimum":0,"description":"Where in a video, when it is from one."},"platform":{"enum":["facebook","instagram","tiktok","meta","web",null]}}}},
+    "inferences": {"type":"array","description":"What the analyst concluded. Every inference names the observations it rests on.","items":{"type":"object","required":["id","claim","based_on","confidence"],"properties":{"id":{"type":"string","description":"Short local id, for example I1."},"claim":{"type":"string"},"based_on":{"type":"array","minItems":1,"items":{"type":"string"},"description":"Observation ids."},"source_type":{"const":"model_inference"},"reasoning":{"type":["string","null"]},"confidence":{"type":"number","minimum":0,"maximum":1}}}},
+    "coverage": { "enum": ["full", "partial", "none"], "description": "How much of what was asked for could actually be read." },
+    "degraded_reason": { "type": ["string", "null"], "description": "Why coverage is not full, in plain words. Null when it is." },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0",
+  "skills": [
+    { "skillId": "social-pipeline", "risk": "read_only", "userInvocable": true, "preloadedBy": [], "invokedBy": ["user"], "description": "Entry point: what is in progress, then new job, resume, or onboard." },
+    { "skillId": "onboard-brand", "risk": "read_only", "userInvocable": true, "preloadedBy": [], "invokedBy": ["user"], "description": "Create or update workspace.json and the four brand files. Draft first, ask second." },
+    { "skillId": "new-job", "risk": "read_only", "userInvocable": true, "preloadedBy": [], "invokedBy": ["user"], "description": "Scaffold, intake, route, plan, run to the first gate." },
+    { "skillId": "resume-job", "risk": "read_only", "userInvocable": true, "preloadedBy": [], "invokedBy": ["user"], "description": "Reconcile status.md against disk and continue; never passes a gate." },
+    { "skillId": "review", "risk": "read_only", "userInvocable": true, "preloadedBy": [], "invokedBy": ["user"], "description": "Apply a verdict: approve, edit, changes, reject. Hashes at decision time." },
+    { "skillId": "job-intake", "risk": "read_only", "userInvocable": false, "preloadedBy": [], "invokedBy": ["producer"], "description": "Request to job.json in one batch of questions; runs route-job.js." },
+    { "skillId": "research", "risk": "read_only", "userInvocable": false, "preloadedBy": ["researcher"], "invokedBy": [], "description": "Fetch-before-cite web and social research with per-source retry chains." },
+    { "skillId": "source-validation", "risk": "read_only", "userInvocable": false, "preloadedBy": ["researcher", "strategist", "videographer", "editor"], "invokedBy": [], "description": "Claim taxonomy, traceability blocks, never-fabricate list." },
+    { "skillId": "write-report", "risk": "generation", "userInvocable": false, "preloadedBy": ["researcher", "videographer"], "invokedBy": [], "description": "Writes report/report.md in plain marketing language; adds a shot list and stills for a video breakdown." },
+    { "skillId": "fact-check", "risk": "read_only", "userInvocable": false, "preloadedBy": ["editor"], "invokedBy": [], "description": "Provenance list vs research files. Never rescues a claim." },
+    { "skillId": "brand-check", "risk": "read_only", "userInvocable": false, "preloadedBy": ["strategist", "editor"], "invokedBy": [], "description": "Voice constant, tone flexes; banned claims; AI-tell vocabulary." },
+    { "skillId": "policy-check", "risk": "read_only", "userInvocable": false, "preloadedBy": ["scriptwriter", "editor"], "invokedBy": [], "description": "Disclosure, platform policy, compliance trigger words, AI-made video flags." },
+    { "skillId": "write-hook", "risk": "generation", "userInvocable": false, "preloadedBy": ["strategist", "copywriter", "scriptwriter"], "invokedBy": [], "description": "Three-component hooks across mechanisms, labelled by family." },
+    { "skillId": "write-caption", "risk": "generation", "userInvocable": false, "preloadedBy": ["copywriter"], "invokedBy": [], "description": "Platform-native caption with provenance; cleanup pass." },
+    { "skillId": "write-cta", "risk": "generation", "userInvocable": false, "preloadedBy": ["strategist", "copywriter", "scriptwriter", "media-buyer"], "invokedBy": [], "description": "One CTA by objective and platform." },
+    { "skillId": "write-script", "risk": "generation", "userInvocable": false, "preloadedBy": ["scriptwriter", "copywriter"], "invokedBy": [], "description": "Short-form beats with word budgets, VO, on-screen text, disclosure." },
+    { "skillId": "storyboard", "risk": "generation", "userInvocable": false, "preloadedBy": ["scriptwriter", "copywriter"], "invokedBy": ["producer"], "description": "Panel table with stable IDs; text-only gate before any frame." },
+    { "skillId": "make-image", "risk": "generation", "cost": "credits", "adapterIds": ["3echo-mcp"], "userInvocable": false, "preloadedBy": [], "invokedBy": ["producer"], "description": "Quote, confirm, preflight, one hero sample, batch, download, validate." },
+    { "skillId": "make-video", "risk": "generation", "cost": "credits", "adapterIds": ["3echo-mcp"], "userInvocable": false, "preloadedBy": [], "invokedBy": ["producer"], "description": "estimate_video_job, confirm, per-shot clips 4 to 15 s, stitch, validate." },
+    { "skillId": "watch-video", "risk": "read_only", "userInvocable": false, "preloadedBy": ["videographer"], "invokedBy": ["producer"], "description": "Probe, sample frames, transcript; report with timestamps and transcript status." },
+    { "skillId": "analyze-video", "risk": "read_only", "userInvocable": false, "preloadedBy": ["videographer", "scriptwriter"], "invokedBy": [], "description": "Classify hooks, structure, product moments, CTA, style, proof from a watch report." },
+    { "skillId": "platform-format", "risk": "read_only", "userInvocable": false, "preloadedBy": ["copywriter", "scriptwriter", "media-buyer", "editor"], "invokedBy": ["producer"], "description": "Producer runs platform-check.js for the current artifact revision; specialists read its result and apply scoped prose checks." },
+    { "skillId": "publish", "risk": "external_write", "adapterIds": ["handoff"], "userInvocable": false, "preloadedBy": [], "invokedBy": ["producer"], "description": "MCP contract documented; v1 executable path is build-handoff.js.",
+      "mcpContract": ["job.create", "job.get", "job.transition", "artifact.put", "artifact.get", "artifact.list", "approval.request", "approval.decide", "approval.get", "publish.preflight", "publish.post", "publish.reconcile", "campaign.create_paused", "campaign.activate", "campaign.reconcile", "integration.list", "integration.schema", "media.upload", "post.schedule_or_draft", "post.list", "post.settings"] }
+  ]
+}

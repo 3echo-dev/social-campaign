@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "core": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "--no-warnings=ExperimentalWarning",
+        "${CLAUDE_PLUGIN_ROOT}/server/index.mjs"
+      ]
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "1.0",
+  "jobId": "{job-id}",
+  "workspaceId": "{workspace-id}",
+  "ownerUserId": "{owner-user-id}",
+  "ownerEmail": null,
+  "ownerEmailVerified": false,
+  "brand": "{brand}",
+  "title": "{title}",
+  "request": "",
+  "kind": "organic_post",
+  "objective": "engagement",
+  "distribution": "organic",
+  "platforms": [],
+  "deliverables": [],
+  "audience": {
+    "description": "",
+    "personas": []
+  },
+  "offer": null,
+  "landingPageUrl": null,
+  "sourceRefs": [],
+  "evidence": {
+    "supplied": false
+  },
+  "requiredClaims": [],
+  "prohibitedClaims": [],
+  "schedule": null,
+  "budget": null,
+  "requestedAt": "{timestamp}",
+  "_enums": {
+    "kind": [
+      "organic_post",
+      "organic_series",
+      "ugc_creative",
+      "paid_campaign",
+      "content_repurpose"
+    ],
+    "objective": [
+      "awareness",
+      "engagement",
+      "traffic",
+      "leads",
+      "app_installs",
+      "sales",
+      "retention"
+    ],
+    "distribution": [
+      "organic",
+      "paid",
+      "both"
+    ],
+    "platform": [
+      "facebook",
+      "instagram",
+      "tiktok"
+    ],
+    "creativeDiscipline": [
+      "ugc",
+      "brand_video",
+      "static_image",
+      "carousel",
+      "motion_graphic",
+      "text_only"
+    ],
+    "deliverable": {
+      "id": "D1",
+      "platform": "tiktok",
+      "count": 3,
+      "creativeDiscipline": "ugc",
+      "aspectRatios": [
+        "9:16"
+      ],
+      "durationSeconds": {
+        "min": 15,
+        "max": 30
+      },
+      "locale": "en"
+    },
+    "sourceRef": {
+      "uri": "https://...",
+      "mediaType": "video | image | document | url",
+      "ownedByBrand": true,
+      "suppliedBy": "user | research"
+    },
+    "schedule": {
+      "publishAt": "2026-09-05T09:00:00+08:00",
+      "timezone": "Asia/Manila"
+    },
+    "budget": {
+      "currency": "USD",
+      "dailyAmount": 100,
+      "maxTotalAmount": 3000
+    },
+    "productAsset": {
+      "path": "inputs/{brand}/shoe.jpg",
+      "ownedByBrand": true,
+      "licence": "name it, or null"
+    },
+    "account": {
+      "platform": "tiktok",
+      "handle": "@brand"
+    }
+  },
+  "productAsset": null,
+  "account": null,
+  "specWork": false
+}

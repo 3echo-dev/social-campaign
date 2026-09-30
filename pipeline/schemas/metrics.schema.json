@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MetricObservation file v1",
+  "type": "object",
+  "required": ["schemaVersion", "brand", "jobId", "platform", "objectType", "externalObjectId", "deliverableId", "collectedAt", "windowStart", "windowEnd", "settlement", "source", "metrics"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "brand": { "type": "string" },
+    "jobId": { "type": "string" },
+    "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+    "objectType": { "enum": ["post", "campaign", "ad_set", "ad", "creative"] },
+    "externalObjectId": { "type": "string" },
+    "deliverableId": { "type": "string" },
+    "publishedAt": { "type": "string" },
+    "collectedAt": { "type": "string" },
+    "windowStart": { "type": "string" },
+    "windowEnd": { "type": "string" },
+    "checkpoint": { "enum": ["24h", "72h", "7d", "28d", "end"] },
+    "settlement": { "enum": ["provisional", "settled"] },
+    "settlesAt": { "type": "string" },
+    "attributionWindow": { "type": "string" },
+    "source": { "enum": ["human_paste", "csv_export", "json_export", "api"] },
+    "metrics": { "type": "object" },
+    "raw": { "type": "object" }
+  }
+}

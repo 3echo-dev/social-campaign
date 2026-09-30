@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/video-creative-analysis.schema.json",
+  "title": "VideoCreativeAnalysis",
+  "description": "A video decomposed into a structured creative record by the Video Analyst. Stored in asset_analyses with analyst set to video-analyst.",
+  "type": "object",
+  "required": ["schema_version", "asset_id", "hook", "beats", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "asset_id": { "type": "string" },
+    "hook": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": { "type": "string" },
+        "visual_action": { "type": ["string", "null"] },
+        "spoken_line": { "type": ["string", "null"] },
+        "on_screen_text": { "type": ["string", "null"] },
+        "mechanism": { "type": ["string", "null"] },
+        "duration_s": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "beats": {
+      "type": "array",
+      "description": "The narrative in order, with timestamps.",
+      "items": {
+        "type": "object",
+        "required": ["start_s", "label"],
+        "properties": {
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": ["number", "null"], "minimum": 0 },
+          "label": { "type": "string" },
+          "purpose": { "enum": ["hook", "context", "problem", "proof", "product", "objection", "cta", "other"] },
+          "description": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_s": { "type": "number", "minimum": 0 },
+          "framing": { "enum": ["extreme_close", "close", "medium", "wide", "establishing", "unknown"] },
+          "camera": { "type": ["string", "null"] },
+          "subject": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "pacing": {
+      "type": "object",
+      "properties": {
+        "cuts_per_minute": { "type": ["number", "null"], "minimum": 0 },
+        "average_shot_s": { "type": ["number", "null"], "minimum": 0 },
+        "energy": { "enum": ["slow", "steady", "brisk", "frantic", null] }
+      }
+    },
+    "talent": {
+      "type": "object",
+      "properties": {
+        "present": { "type": "boolean" },
+        "style": { "type": ["string", "null"] },
+        "delivery": { "type": ["string", "null"] },
+        "count": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "product_treatment": {
+      "type": "object",
+      "properties": {
+        "first_appearance_s": { "type": ["number", "null"], "minimum": 0 },
+        "prominence": { "enum": ["hero", "supporting", "incidental", "absent", null] },
+        "demonstration": { "type": ["boolean", "null"] }
+      }
+    },
+    "text_overlays": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_s": { "type": "number", "minimum": 0 },
+          "text": { "type": "string" },
+          "position": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "has_voiceover": { "type": ["boolean", "null"] },
+        "has_music": { "type": ["boolean", "null"] },
+        "works_muted": { "type": ["boolean", "null"] },
+        "transcript_available": { "type": ["boolean", "null"] }
+      }
+    },
+    "cta": {
+      "type": ["object", "null"],
+      "properties": {
+        "text": { "type": ["string", "null"] },
+        "start_s": { "type": ["number", "null"], "minimum": 0 },
+        "intent": { "enum": ["awareness", "engagement", "traffic", "leads", "sales", null] }
+      }
+    },
+    "platform_fit": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+          "verdict": { "enum": ["native", "workable", "poor"] },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "coverage": {
+      "enum": ["full", "frames_only", "metadata_only"],
+      "description": "Downgraded when transcription or frame extraction was unavailable."
+    },
+    "evidence_ref": { "type": ["string", "null"], "description": "The VideoEvidencePackage id this analysis read." },
+    "hook_analysis_ref": { "type": ["string", "null"], "description": "HookAnalysis artifact kind:version, when the hook was graded separately." },
+    "source_ref": { "type": ["string", "null"], "description": "Where the video came from: a url, file path or asset id." },
+    "observed_at": { "type": ["string", "null"], "format": "date-time" },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

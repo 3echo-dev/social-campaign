@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "approvalId": "content-1",
+  "jobId": "{job-id}",
+  "brand": "{brand}",
+  "gate": "content",
+  "round": 1,
+  "decision": "approved",
+  "artifacts": [
+    { "path": "drafts/D1/post.md", "sha256": "", "bytes": 0 }
+  ],
+  "decidedBy": "",
+  "decidedAt": "YYYY-MM-DD HH:MM {tz}",
+  "channel": "chat",
+  "comment": "",
+  "scope": { "publishPlanIncluded": false, "maxSpendCredits": null },
+  "supersedes": null,
+  "_enums": {
+    "gate": ["concept", "storyboard", "content", "publish", "campaign_proposal", "campaign_activation", "report"],
+    "decision": ["approved", "changes_requested", "rejected"],
+    "channel": ["chat", "file"]
+  }
+}

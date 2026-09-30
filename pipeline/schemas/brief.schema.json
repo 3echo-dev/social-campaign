@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BriefArtifact front matter v1",
+  "type": "object",
+  "required": ["job", "brand", "version", "status", "pillar", "angle", "objective", "distribution", "created", "learnings_used"],
+  "properties": {
+    "job": { "type": "string", "pattern": "^job-\\d{8}-[a-z0-9][a-z0-9-]*$" },
+    "brand": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["draft", "approved", "superseded"] },
+    "pillar": { "type": "string", "minLength": 1 },
+    "angle": { "type": "string", "minLength": 1 },
+    "objective": { "enum": ["awareness", "engagement", "traffic", "leads", "app_installs", "sales", "retention"] },
+    "distribution": { "enum": ["organic", "paid", "both"] },
+    "created": { "type": "string", "minLength": 1 },
+    "learnings_used": { "type": "array", "items": { "type": "string" } }
+  }
+}

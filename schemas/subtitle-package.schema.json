@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/subtitle-package.schema.json",
+  "title": "SubtitlePackage",
+  "description": "Social native subtitle tracks from the Subtitle Composer: a transcript with timings, the subtitle files on disk, and optional styling for a rendered burn in.",
+  "type": "object",
+  "required": ["schema_version", "asset_id", "language", "cues", "files"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "asset_id": { "type": "string", "description": "The video or audio these subtitles belong to." },
+    "language": { "type": "string", "description": "BCP 47 tag, for example en or en-GB." },
+    "source": { "enum": ["transcription", "script", "manual"] },
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start_s", "end_s", "text"],
+        "properties": {
+          "start_s": { "type": "number", "minimum": 0 },
+          "end_s": { "type": "number", "minimum": 0 },
+          "text": { "type": "string" },
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "srt_path": { "type": ["string", "null"] },
+        "vtt_path": { "type": ["string", "null"] },
+        "burned_in_path": { "type": ["string", "null"] }
+      }
+    },
+    "style": {
+      "type": ["object", "null"],
+      "properties": {
+        "font_family": { "type": ["string", "null"] },
+        "font_size": { "type": ["number", "null"], "minimum": 0 },
+        "position": { "enum": ["top", "middle", "lower_third", "bottom", null] },
+        "max_chars_per_line": { "type": ["integer", "null"], "minimum": 1 },
+        "max_lines": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

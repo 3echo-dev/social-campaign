@@ -1,0 +1,20 @@
+{
+  "name": "3echo",
+  "owner": {
+    "name": "3echo",
+    "url": "https://github.com/3echo-dev"
+  },
+  "plugins": [
+    {
+      "name": "social-pipeline",
+      "displayName": "Social Pipeline",
+      "source": "./",
+      "description": "Request in, approved social content and ad packages out. Specialist agents, shared skills, deterministic routing, human gates before anything external.",
+      "version": "0.12.13",
+      "author": {
+        "name": "3echo"
+      }
+    }
+  ],
+  "description": "Social content and ads tooling from 3echo. Specialist agents with mandatory human approval gates."
+}

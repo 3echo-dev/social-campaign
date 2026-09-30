@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/ad-library-research-result.schema.json",
+  "title": "AdLibraryResearchResult",
+  "description": "A teardown of ads found in the public Meta or TikTok ad libraries by the ad-library-research method: hooks, offers, calls to action, landing page claims, how long each ran, the patterns across them and test ideas. Longevity and variant counts are investment signals, not proof of performance.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "query",
+    "ads",
+    "observations",
+    "inferences",
+    "coverage",
+    "observed_at",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "brand_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "query": {
+      "type": "object",
+      "required": [
+        "platform",
+        "advertiser_or_query"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "meta",
+            "tiktok"
+          ]
+        },
+        "advertiser_or_query": {
+          "type": "string"
+        },
+        "country": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "advertiser",
+          "platform",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "advertiser": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "meta",
+              "tiktok"
+            ]
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "facebook",
+                "instagram",
+                "tiktok",
+                "messenger",
+                "audience_network",
+                "other"
+              ]
+            }
+          },
+          "library_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ad_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "days_running": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "variant_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "format": {
+            "enum": [
+              "video",
+              "image",
+              "carousel",
+              "unknown"
+            ]
+          },
+          "hook": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "primary_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "headline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "landing_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "landing_claims": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "VideoEvidencePackage id when the ad video was watched."
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "pattern",
+          "kind",
+          "ad_ids",
+          "confidence"
+        ],
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "hook",
+              "offer",
+              "cta",
+              "message",
+              "format",
+              "landing",
+              "visual"
+            ]
+          },
+          "ad_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "investment_signal": {
+            "enum": [
+              "longevity",
+              "variant_count",
+              "repetition",
+              "none",
+              null
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "test_ideas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "idea",
+          "based_on"
+        ],
+        "properties": {
+          "idea": {
+            "type": "string"
+          },
+          "based_on": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "description": "What was seen or read, each with its own provenance. Nothing here is interpreted.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "source_type",
+          "source_ref",
+          "observed_at",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example O1, that inferences point at."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "official_source",
+              "public_platform",
+              "ad_library",
+              "web_evidence",
+              "user_supplied",
+              "local_media"
+            ]
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The url, file path, asset id or tool call the claim came from."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbatim text when the claim is a quote."
+          },
+          "timestamp_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Where in a video, when it is from one."
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok",
+              "meta",
+              "web",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "description": "What the analyst concluded. Every inference names the observations it rests on.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "based_on",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example I1."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "based_on": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          },
+          "source_type": {
+            "const": "model_inference"
+          },
+          "reasoning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "coverage": {
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of what was asked for could actually be read."
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why coverage is not full, in plain words. Null when it is."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/job-execution-plan.schema.json",
+  "title": "JobExecutionPlan",
+  "description": "The minimum pipeline the Job Planner decided this job needs. Produced by the Job Planner, owned by the Orchestrator, stored in the job_plans table.",
+  "type": "object",
+  "required": ["schema_version", "job_type", "starting_point", "platforms", "stages", "required_capabilities"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"], "description": "Set once the campaign row exists." },
+    "brand_id": { "type": ["string", "null"] },
+    "job_type": { "enum": ["social_post", "ad_campaign", "ugc", "analyze_existing"] },
+    "starting_point": { "enum": ["scratch", "reference", "existing_creative"] },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "enum": ["facebook", "instagram", "tiktok"] }
+    },
+    "stages": {
+      "type": "array",
+      "description": "Every stage the planner considered, in execution order.",
+      "items": {
+        "type": "object",
+        "required": ["stage", "status", "order"],
+        "properties": {
+          "stage": { "type": "string" },
+          "status": { "enum": ["required", "completed", "skipped", "not_applicable", "waiting"] },
+          "order": { "type": "integer", "minimum": 0 },
+          "reason": { "type": ["string", "null"], "description": "Why it was skipped or marked not applicable." },
+          "owner_agent": { "type": ["string", "null"] },
+          "gate": { "enum": ["strategy", "concept", "cost", "media", "final", null] }
+        }
+      }
+    },
+    "required_capabilities": { "type": "array", "items": { "type": "string" } },
+    "blockers": {
+      "type": "array",
+      "description": "Required capabilities that are not connected or not available and have no fallback. Only the stages that need them wait. Empty means the whole job can run.",
+      "items": {
+        "type": "object",
+        "required": ["capability", "state"],
+        "properties": {
+          "capability": { "type": "string" },
+          "state": { "enum": ["ready", "not_connected", "unavailable", "degraded", "not_needed"] },
+          "user_action": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Required capabilities that do not hold their stages back: degraded ones, whose findings carry their source and confidence, and missing ones the job can finish without (publishing falls back to a package to post by hand).",
+      "items": {
+        "type": "object",
+        "required": ["capability", "state", "user_message"],
+        "properties": {
+          "capability": { "type": "string" },
+          "state": { "enum": ["degraded", "not_connected", "unavailable"] },
+          "stages": { "type": "array", "items": { "type": "string" } },
+          "user_message": { "type": "string" }
+        }
+      }
+    },
+    "reference": {
+      "type": ["object", "null"],
+      "description": "The priority creative anchor when starting_point is reference.",
+      "properties": {
+        "kind": { "enum": ["post", "ad", "video", "image", "campaign"] },
+        "url": { "type": ["string", "null"] },
+        "asset_id": { "type": ["string", "null"] }
+      }
+    },
+    "refusal": {
+      "type": ["object", "null"],
+      "description": "Set when this job type and starting point has no route. `stages` is then empty and `reason` is the plain sentence to show the person.",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string" }
+      }
+    },
+    "summary": { "type": "string", "description": "One or two plain sentences for the user." }
+  },
+  "additionalProperties": false
+}

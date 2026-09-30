@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/script-analysis.schema.json",
+  "title": "ScriptAnalysis",
+  "description": "The structure of a spoken or written script, from the Script Analyst. Works from a transcript or from a written script file.",
+  "type": "object",
+  "required": ["schema_version", "source", "hook", "framework", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "asset_id": { "type": ["string", "null"] },
+    "source": { "enum": ["transcript", "written_script", "caption"] },
+    "hook": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "mechanism": { "type": ["string", "null"] },
+        "word_count": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "framework": {
+      "type": "string",
+      "description": "The recognised shape, for example problem-agitate-solve or before-after-bridge."
+    },
+    "problem": { "type": ["string", "null"] },
+    "discovery": { "type": ["string", "null"] },
+    "proof": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": { "type": "string" },
+          "kind": { "enum": ["demonstration", "testimonial", "statistic", "authority", "none"] },
+          "substantiated": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+    "offer": { "type": ["string", "null"] },
+    "cta": { "type": ["string", "null"] },
+    "voice": {
+      "type": "object",
+      "properties": {
+        "tone": { "type": ["string", "null"] },
+        "person": { "enum": ["first", "second", "third", "mixed", null] },
+        "reading_level": { "type": ["string", "null"] }
+      }
+    },
+    "product_intro_s": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "How far in the product is named. Null when there is no timing."
+    },
+    "word_count": { "type": ["integer", "null"], "minimum": 0 },
+    "transcript_source": { "enum": ["platform_captions", "elevenlabs", "manual", "written", null] },
+    "transcript_id": { "type": ["string", "null"] },
+    "hook_analysis_ref": { "type": ["string", "null"], "description": "HookAnalysis artifact kind:version." },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

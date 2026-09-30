@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/generation-manifest.schema.json",
+  "title": "GenerationManifest",
+  "description": "The working record of one campaign's media generation: what was planned, what is being made, what came back, and which cost approval paid for it. It is written while a plan is still forming, so cost_approval_id may be null until the cost gate passes. The finished projection of this document is a GeneratedMediaPackage.",
+  "type": "object",
+  "required": ["schema_version", "items", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "cost_approval_id": {
+      "type": ["string", "null"],
+      "description": "The reviews.id of the resolved cost gate, once one exists."
+    },
+    "media_plan": { "type": ["object", "null"] },
+    "cost_estimate": { "type": ["object", "null"] },
+    "estimate": { "type": ["object", "null"] },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "count": { "type": ["integer", "null"], "minimum": 1 },
+          "label": { "type": ["string", "null"] },
+          "prompt": { "type": ["string", "null"] },
+          "status": { "enum": ["planned", "generating", "generated", "approved", "rejected", "regenerate"] },
+          "provider_job_id": { "type": ["string", "null"] },
+          "asset_id": { "type": ["string", "null"] },
+          "asset_path": { "type": ["string", "null"] },
+          "cost_approval_id": { "type": ["string", "null"] },
+          "regenerations": { "type": ["integer", "null"], "minimum": 0 },
+          "note": { "type": ["string", "null"] },
+          "updated_at": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "assets": { "type": "array", "items": { "type": "object" } },
+    "failures": { "type": "array", "items": { "type": "object" } },
+    "summary": { "type": "string" },
+    "updated_at": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

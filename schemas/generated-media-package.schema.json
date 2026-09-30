@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/generated-media-package.schema.json",
+  "title": "GeneratedMediaPackage",
+  "description": "What the Media Producer generated after the cost gate passed. cost_approval_id is required: media that cannot name its approval was generated out of order and must be treated as invalid.",
+  "type": "object",
+  "required": ["schema_version", "cost_approval_id", "assets", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "campaign_id": { "type": ["string", "null"] },
+    "cost_approval_id": {
+      "type": "string",
+      "description": "The reviews.id of the resolved cost gate that authorised this spend."
+    },
+    "estimate": {
+      "type": ["object", "null"],
+      "properties": {
+        "credits": { "type": ["number", "null"], "minimum": 0 },
+        "currency": { "type": ["string", "null"] },
+        "amount": { "type": ["number", "null"], "minimum": 0 },
+        "quoted_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "actual_cost": {
+      "type": ["object", "null"],
+      "properties": {
+        "credits": { "type": ["number", "null"], "minimum": 0 },
+        "amount": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset_id", "kind", "path", "provider"],
+        "properties": {
+          "asset_id": { "type": "string" },
+          "kind": { "enum": ["image", "video", "audio"] },
+          "path": { "type": "string", "description": "Inside the workspace generated folder." },
+          "provider": { "type": "string", "examples": ["3echo_studio", "elevenlabs"] },
+          "provider_ref": { "type": ["string", "null"] },
+          "prompt": { "type": ["string", "null"] },
+          "panel_id": { "type": ["string", "null"], "description": "Which storyboard panel this fulfils." },
+          "duration_s": { "type": ["number", "null"], "minimum": 0 },
+          "aspect_ratio": { "type": ["string", "null"] },
+          "review_state": { "enum": ["pending", "approved", "rejected", "regenerate"] }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "panel_id": { "type": ["string", "null"] },
+          "reason": { "type": "string" },
+          "retryable": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

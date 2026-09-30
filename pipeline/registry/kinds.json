@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "1.0",
+  "noBrand": "no-brand",
+  "unknownKind": {
+    "makesContent": true,
+    "brandRequired": true,
+    "productPhoto": "when_media",
+    "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+    "requiredSources": "none"
+  },
+  "kinds": {
+    "organic_post": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "when_media",
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+      "requiredSources": "none",
+      "workflowId": "organic-post",
+      "owner": "copywriter"
+    },
+    "organic_series": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "when_media",
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+      "requiredSources": "none",
+      "workflowId": "organic-post",
+      "owner": "copywriter"
+    },
+    "ugc_creative": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "when_media",
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+      "requiredSources": "none",
+      "workflowId": "organic-post",
+      "owner": "scriptwriter"
+    },
+    "paid_campaign": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "when_media",
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+      "requiredSources": "none",
+      "workflowId": "paid-ugc-campaign",
+      "owner": "media-buyer"
+    },
+    "content_repurpose": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "never",
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables"],
+      "requiredSources": "none",
+      "workflowId": "repurpose-video",
+      "owner": "copywriter"
+    },
+    "research": {
+      "status": "active",
+      "makesContent": false,
+      "brandRequired": false,
+      "productPhoto": "never",
+      "requiredFields": [],
+      "requiredSources": "none",
+      "workflowId": "research-report",
+      "owner": "researcher"
+    },
+    "creative_analysis": {
+      "status": "active",
+      "makesContent": false,
+      "brandRequired": false,
+      "productPhoto": "never",
+      "requiredFields": [],
+      "requiredSources": "link_or_file",
+      "workflowId": "creative-analysis",
+      "owner": "researcher"
+    },
+    "video_breakdown": {
+      "status": "active",
+      "makesContent": false,
+      "brandRequired": false,
+      "productPhoto": "never",
+      "requiredFields": [],
+      "requiredSources": "video",
+      "workflowId": "video-breakdown",
+      "owner": "videographer"
+    },
+    "performance_review": {
+      "status": "retired",
+      "makesContent": false,
+      "brandRequired": true,
+      "productPhoto": "never",
+      "requiredFields": [],
+      "requiredSources": "none",
+      "workflowId": null,
+      "owner": null
+    }
+  }
+}

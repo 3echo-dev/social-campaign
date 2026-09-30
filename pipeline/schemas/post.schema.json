@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostArtifact front matter v1",
+  "type": "object",
+  "required": [
+    "job",
+    "deliverable",
+    "platform",
+    "version",
+    "status",
+    "hook_family",
+    "hook_mechanism",
+    "hook_alternates",
+    "char_count",
+    "media",
+    "accessibility_text",
+    "recipe",
+    "created"
+  ],
+  "properties": {
+    "job": { "type": "string", "pattern": "^job-\\d{8}-[a-z0-9][a-z0-9-]*$" },
+    "deliverable": { "type": "string", "pattern": "^D\\d+$" },
+    "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["draft", "validated", "approved", "rejected", "superseded"] },
+    "hook_family": { "type": "string", "pattern": "^H-[A-Z]+$" },
+    "hook_mechanism": { "type": "string", "minLength": 1 },
+    "hook_alternates": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } },
+    "char_count": { "type": "integer", "minimum": 0 },
+    "visible_cutoff_ok": { "type": "boolean" },
+    "hashtags": { "type": "array", "items": { "type": "string" } },
+    "media": { "type": "array", "items": { "type": "string" } },
+    "accessibility_text": { "type": "string" },
+    "recipe": {
+      "type": "object",
+      "required": ["pillar", "angle", "format", "cta_style"],
+      "properties": {
+        "pillar": { "type": "string", "minLength": 1 },
+        "angle": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["text_only", "static_image", "carousel", "ugc", "brand_video"] },
+        "cta_style": { "type": "string", "minLength": 1 },
+        "proof_style": { "type": ["string", "null"] },
+        "duration_bucket": { "type": ["string", "null"] }
+      },
+      "_notes": "proof_style and duration_bucket are format-dependent, so they are not required here. duration_bucket carries a value only for ugc and brand_video (0-15s, 15-30s, 30-60s); write-script and the editor enforce that, since this validator has no conditional rules."
+    },
+    "created": { "type": "string", "minLength": 1 }
+  }
+}

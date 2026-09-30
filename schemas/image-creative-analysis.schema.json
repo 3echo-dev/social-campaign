@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/image-creative-analysis.schema.json",
+  "title": "ImageCreativeAnalysis",
+  "description": "One image turned into searchable attributes by the Image Analyst. Stored in asset_analyses with analyst set to image-analyst.",
+  "type": "object",
+  "required": ["schema_version", "asset_id", "composition", "summary"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "asset_id": { "type": "string" },
+    "composition": {
+      "type": "object",
+      "required": ["layout"],
+      "properties": {
+        "layout": { "type": "string" },
+        "focal_point": { "type": ["string", "null"] },
+        "crop": { "enum": ["9:16", "1:1", "4:5", "16:9", "other", null] },
+        "negative_space": { "enum": ["generous", "balanced", "tight", null] }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "properties": {
+        "primary": { "type": ["string", "null"] },
+        "people_count": { "type": ["integer", "null"], "minimum": 0 },
+        "setting": { "type": ["string", "null"] }
+      }
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "present": { "type": ["boolean", "null"] },
+        "prominence": { "enum": ["hero", "supporting", "incidental", "absent", null] },
+        "packaging_visible": { "type": ["boolean", "null"] }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "properties": {
+        "has_text": { "type": ["boolean", "null"] },
+        "hierarchy": { "type": ["string", "null"] },
+        "text_content": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "lighting": { "type": ["string", "null"] },
+    "background": { "type": ["string", "null"] },
+    "palette": { "type": "array", "items": { "type": "string" }, "description": "Dominant colours." },
+    "cta": { "type": ["string", "null"] },
+    "platform_fit": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": { "enum": ["facebook", "instagram", "tiktok"] },
+          "verdict": { "enum": ["native", "workable", "poor"] },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

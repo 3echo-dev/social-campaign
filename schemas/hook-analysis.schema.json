@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/hook-analysis.schema.json",
+  "title": "HookAnalysis",
+  "description": "The opening of a post, ad, video or script graded from structured evidence by the hook-analysis method. Visual, verbal and text hooks are read independently, and a hook that is not in the evidence is null rather than guessed.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "subject",
+    "hooks",
+    "observations",
+    "inferences",
+    "coverage",
+    "observed_at",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "asset",
+            "post",
+            "ad",
+            "script",
+            "concept"
+          ]
+        },
+        "asset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "kind:version of the artifact analyzed, for a script or concept."
+        },
+        "platform": {
+          "enum": [
+            "facebook",
+            "instagram",
+            "tiktok",
+            null
+          ]
+        }
+      }
+    },
+    "evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The VideoEvidencePackage id the analysis read, when there was one."
+    },
+    "hooks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "hook_type",
+          "mechanism",
+          "evidence",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "hook_type": {
+            "type": "string",
+            "description": "A named family from the method hook taxonomy, for example curiosity_gap or pattern_interrupt."
+          },
+          "visual_hook": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verbal_hook": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_hook": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "window": {
+            "type": "object",
+            "properties": {
+              "start_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "mechanism": {
+            "type": "string",
+            "description": "The psychological reason it stops the scroll."
+          },
+          "target_tension": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conversion_link": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How the hook sets up the offer or call to action."
+          },
+          "grade": {
+            "type": "object",
+            "properties": {
+              "score": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 10
+              },
+              "strengths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "weaknesses": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids.",
+            "minItems": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "description": "What was seen or read, each with its own provenance. Nothing here is interpreted.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "source_type",
+          "source_ref",
+          "observed_at",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example O1, that inferences point at."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "official_source",
+              "public_platform",
+              "ad_library",
+              "web_evidence",
+              "user_supplied",
+              "local_media"
+            ]
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "The url, file path, asset id or tool call the claim came from."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbatim text when the claim is a quote."
+          },
+          "timestamp_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Where in a video, when it is from one."
+          },
+          "platform": {
+            "enum": [
+              "facebook",
+              "instagram",
+              "tiktok",
+              "meta",
+              "web",
+              null
+            ]
+          }
+        }
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "description": "What the analyst concluded. Every inference names the observations it rests on.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "claim",
+          "based_on",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Short local id, for example I1."
+          },
+          "claim": {
+            "type": "string"
+          },
+          "based_on": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Observation ids."
+          },
+          "source_type": {
+            "const": "model_inference"
+          },
+          "reasoning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "coverage": {
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of what was asked for could actually be read."
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why coverage is not full, in plain words. Null when it is."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

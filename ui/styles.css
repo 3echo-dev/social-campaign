@@ -1,0 +1,2926 @@
+/*
+ * Social Campaign pane styling, in the 3Echo brand kit colours.
+ *
+ * One stylesheet, no external fonts, no CDN. The pane is a branded dark app, so
+ * there is one theme: a navy foundation, a slightly lighter rounded panel,
+ * hairline borders, gold highlights and indigo/sky accents. Every colour is a
+ * variable in :root, and a screen module never sets a colour of its own.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest. Inset is for things nested inside a card
+     (options, fields, chips), so they sit a step below it like the chips in the
+     3Echo composer. */
+  --bg: #071a3a;
+  --panel: #0d2149;
+  --surface-inset: #102551;
+  --surface: #14295a;
+  --surface-raised: #1a3268;
+  --media: #061530;
+  --scrim: rgba(7, 26, 58, 0.78);
+
+  /* Hairlines, from Mist. */
+  --border: rgba(200, 210, 230, 0.1);
+  --border-strong: rgba(200, 210, 230, 0.17);
+  --border-dashed: rgba(200, 210, 230, 0.26);
+
+  /* Text tiers. Muted is body grey; subtle is the quietest text that still meets
+     WCAG AA on every surface above. */
+  --text: #ffffff;
+  --text-muted: #c8d2e6;
+  --text-subtle: rgba(200, 210, 230, 0.72);
+
+  /* Brand gold, now Signal Gold. Solid for emphasis and icons, a soft tint and a
+     hairline for selected states, a vertical gradient with dark ink for the
+     primary pill, and a darker gold for the small badge inset in it. */
+  --gold: #ffc629;
+  --gold-bright: #ffd75e;
+  --gold-soft: rgba(255, 198, 41, 0.1);
+  --gold-soft-strong: rgba(255, 198, 41, 0.16);
+  --gold-line: rgba(255, 198, 41, 0.45);
+  --gold-gradient: linear-gradient(180deg, #ffc629 0%, #e0a400 100%);
+  --gold-gradient-bar: linear-gradient(90deg, #e0a400 0%, #ffc629 100%);
+  --gold-edge: rgba(255, 215, 94, 0.45);
+  --gold-ink: #071a3a;
+  --gold-badge: #8a6a00;
+  --gold-badge-text: #fff1c8;
+
+  /* Indigo and sky, used sparingly for a secondary highlight or a small eyebrow
+     label; gold stays the action and selection colour. */
+  --indigo: #3e4be1;
+  --indigo-soft: rgba(62, 75, 225, 0.18);
+  --sky: #84a8ff;
+
+  /* Status, retuned for navy. Warn is orange amber so it never reads as the brand. */
+  --ok: #4cd18a;
+  --warn: #ffa53d;
+  --danger: #ff6b6b;
+
+  /* The cool glow that falls from the top edge. */
+  --glow-top: rgba(62, 75, 225, 0.3);
+  --glow-page: rgba(132, 168, 255, 0.06);
+
+  --focus: var(--gold-bright);
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 24px 60px rgba(0, 0, 0, 0.45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --shadow-gold: 0 1px 0 var(--gold-edge) inset, 0 6px 18px rgba(255, 198, 41, 0.18);
+
+  --radius-panel: 24px;
+  --radius-card: 20px;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 70% 320px at 50% 0, var(--glow-page), transparent 70%) no-repeat,
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, "Inter Variable", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--gold-soft-strong);
+}
+
+a {
+  color: var(--gold-bright);
+  text-underline-offset: 2px;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+svg.icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------
+ * Top bar: the 3Echo strip with its warm glow
+ * --------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--glow-top) 0%, transparent 100%), var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* sticky already makes this a positioning context for .busy-bar below */
+}
+
+/* The brand lockup sits bare, no tile and no fill, at a height that matches the
+   title beside it. The logo art carries the wordmark, so nothing is set in type. */
+.logo-tile {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.logo-tile img {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-strong);
+  flex: none;
+}
+
+.topbar h1 {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px 2px 8px;
+  white-space: nowrap;
+}
+
+.status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.status[data-state="live"] {
+  color: var(--ok);
+}
+
+.status[data-state="live"]::before {
+  background: var(--ok);
+}
+
+.status[data-state="lost"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.status[data-state="lost"]::before {
+  background: var(--danger);
+}
+
+.status-chat[data-state="active"] {
+  color: var(--gold);
+}
+
+.status-chat[data-state="active"]::before {
+  background: var(--gold);
+  animation: busy-pulse-dot 1.1s ease-in-out infinite;
+}
+
+.status-chat[data-state="waiting"] {
+  color: var(--warn);
+}
+
+.status-chat[data-state="waiting"]::before {
+  background: var(--warn);
+}
+
+.status-chat[data-state="idle"] {
+  color: var(--text-muted);
+}
+
+.status-chat[data-state="unavailable"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.status-chat[data-state="unavailable"]::before {
+  background: var(--danger);
+}
+
+/* Busy pill: the system is working on the last action, until the next screen
+ * arrives. Sits in the top bar so it stays visible even once the pressed
+ * button that started it has scrolled out of view. */
+.status-busy {
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.status-busy::before {
+  background: var(--gold);
+  animation: busy-pulse-dot 1.1s ease-in-out infinite;
+}
+
+/* Slim animated bar under the top bar, visible whenever the pane is busy. */
+.busy-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.busy-bar[data-busy="true"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: var(--gold-gradient-bar);
+  animation: busy-bar-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes busy-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes busy-bar-sweep {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-busy::before {
+    animation: none;
+  }
+  .busy-bar[data-busy="true"]::before {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * The main rounded panel, and the cards inside it
+ * --------------------------------------------------------------------- */
+
+.root {
+  width: min(800px, calc(100% - 40px));
+  margin: 20px auto 48px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+h2 {
+  font-size: 21px;
+  line-height: 1.3;
+  margin: 0 0 6px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+h3 {
+  font-size: 15px;
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+p {
+  margin: 0 0 12px;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+/* A screen that is more than one block: a hero on top, then its cards. */
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* Hero: a centred heading whose last phrase is the gold emphasis, over a muted
+   lead. Same type scale as every other heading; only the colour changes. */
+.hero {
+  text-align: center;
+  padding: 18px 8px 10px;
+}
+
+.hero h2 {
+  margin: 0;
+}
+
+.hero-emphasis {
+  color: var(--gold);
+}
+
+.hero-lead {
+  margin: 8px auto 0;
+  max-width: 520px;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------
+ * Fields, styled like the 3Echo composer: an inset well with a hairline
+ * --------------------------------------------------------------------- */
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="datetime-local"],
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+::placeholder {
+  color: var(--text-subtle);
+  opacity: 1;
+}
+
+input[type="text"]:hover,
+input[type="password"]:hover,
+input[type="datetime-local"]:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--border-dashed);
+}
+
+input[type="text"]:focus-visible,
+input[type="password"]:focus-visible,
+input[type="datetime-local"]:focus-visible,
+button:focus-visible,
+.button-link:focus-visible,
+.tile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="datetime-local"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--gold-line);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
+.path {
+  font-family: Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-subtle);
+  /* A path breaks at a separator where it can, rather than mid word. */
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* ---------------------------------------------------------------------
+ * Buttons: a gold pill for the main action, dark hairline pills for the rest
+ * --------------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+button,
+.button-link {
+  font: inherit;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 60ms ease, filter 120ms ease;
+}
+
+button:hover,
+.button-link:hover {
+  border-color: var(--gold-line);
+}
+
+button:active,
+.button-link:active {
+  transform: translateY(1px);
+}
+
+button.primary,
+.button-link.primary {
+  background: var(--gold-gradient);
+  border-color: var(--gold-edge);
+  color: var(--gold-ink);
+  box-shadow: var(--shadow-gold);
+}
+
+button.primary:hover,
+.button-link.primary:hover {
+  filter: brightness(1.08);
+  border-color: var(--gold-edge);
+}
+
+.button-link {
+  text-decoration: none;
+}
+
+/* The small darker pill inside a primary button: credits at the cost gate, a count
+   of what is waiting elsewhere. */
+.btn-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--gold-badge);
+  color: var(--gold-badge-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+button.has-badge {
+  padding-right: 7px;
+}
+
+button:not(.primary) .btn-badge {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+/* A toggle that is on: gold hairline, soft gold tint, gold text. */
+button[aria-pressed="true"] {
+  background: var(--gold-soft);
+  border-color: var(--gold-line);
+  color: var(--gold);
+}
+
+/* "Add" buttons are dashed until they are on. */
+button.add {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-dashed);
+  color: var(--text-muted);
+}
+
+button.add:hover {
+  border-color: var(--gold-line);
+  color: var(--text);
+}
+
+button.add[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+button[disabled] {
+  opacity: 0.5;
+  cursor: default;
+  filter: none;
+  transform: none;
+}
+
+button[disabled]:hover {
+  border-color: var(--border-strong);
+}
+
+button.primary[disabled]:hover {
+  border-color: var(--gold-edge);
+}
+
+/* The clicked button on any gate screen: a pressed, busy state with a spinner and a
+   short status line, generalised from the tile selected state in armButtonGroup. The
+   other buttons in the group are simply disabled (see button[disabled] above), so a
+   click always shows feedback and cannot be doubled up while the server decides what
+   screen comes next. */
+button.pressed {
+  background: var(--gold-soft);
+  border-color: var(--gold-line);
+  color: var(--gold);
+  opacity: 1;
+}
+
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--gold);
+  animation: tile-spin 800ms linear infinite;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-spinner {
+    animation: none;
+  }
+}
+
+.btn-status {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------
+ * Tiles: the home, new job and starting point choices, as composer cards
+ * --------------------------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  gap: 12px;
+}
+
+.tile {
+  text-align: left;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 18px 18px 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tile:hover {
+  border-color: var(--gold-line);
+  background: linear-gradient(135deg, var(--gold-soft) 0%, transparent 60%), var(--surface);
+}
+
+/* Selected: the hover treatment made to persist, plus a slightly raised surface so
+   the choice reads as stronger than hover alone even for a mouse user who is still
+   hovering it. */
+.tile.selected,
+.tile.selected:hover {
+  border-color: var(--gold-line);
+  background: linear-gradient(135deg, var(--gold-soft-strong) 0%, transparent 60%), var(--surface-raised);
+  box-shadow: var(--shadow-gold);
+  cursor: default;
+}
+
+.tile.selected .tile-arrow svg.icon {
+  display: none;
+}
+
+.tile.selected .tile-arrow {
+  border-color: var(--gold-line);
+}
+
+.tile.selected .tile-spinner {
+  display: block;
+}
+
+.tile.selected .tile-status {
+  display: block;
+}
+
+/* While a border trail is running, drop the solid gold border back to the
+   ordinary hairline so the moving gold segment is the only gold on the ring.
+   Keeps the raised surface, soft tint, spinner and status line from the
+   selected state. */
+.tile.selected.has-trail,
+.tile.selected.has-trail:hover {
+  border-color: var(--border-strong);
+}
+
+/* The other tiles recede once one is chosen, and stop taking clicks. */
+.tile.tile-receded {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+.tile.tile-receded:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-inset);
+  color: var(--gold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile-arrow {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.tile-arrow svg.icon {
+  width: 14px;
+  height: 14px;
+}
+
+.tile:hover .tile-arrow,
+.tile:focus-visible .tile-arrow {
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+
+.tile-text {
+  min-width: 0;
+}
+
+.tile h3 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.tile p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  /* The tile is a button, which sets a heavier weight. Body copy has to opt out. */
+  font-weight: 400;
+}
+
+/* The "Opening..." line only appears once a tile is selected. */
+.tile-status {
+  display: none;
+  margin-top: 4px !important;
+  color: var(--gold) !important;
+  font-size: 13px !important;
+}
+
+/* The spinner swaps in for the arrow on the selected tile while the pane waits on
+   the server. Hidden until selected. */
+.tile-spinner {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--gold);
+  animation: tile-spin 800ms linear infinite;
+}
+
+@keyframes tile-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-spinner {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Border trail: a travelling glow around a card's edge while it works, in
+ * place of (or alongside) a spinner. See borderTrail() in screens/dom.js.
+ * --------------------------------------------------------------------- */
+
+.border-trail {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 300ms ease;
+  -webkit-mask-image: linear-gradient(transparent, transparent), linear-gradient(#000, #000);
+  mask-image: linear-gradient(transparent, transparent), linear-gradient(#000, #000);
+  -webkit-mask-clip: padding-box, border-box;
+  mask-clip: padding-box, border-box;
+  -webkit-mask-composite: source-out;
+  mask-composite: intersect;
+}
+
+.border-trail-fade {
+  opacity: 0;
+}
+
+.border-trail-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  offset-distance: 0%;
+  offset-rotate: 0deg;
+  background: linear-gradient(90deg, transparent 0%, transparent 33%, var(--gold) 70%, var(--gold-bright) 100%);
+  filter: drop-shadow(0 0 9px var(--gold)) drop-shadow(0 0 4px var(--gold-bright));
+  animation: border-trail-run linear infinite;
+}
+
+@keyframes border-trail-run {
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/* Reduced motion: a static gold hairline traces the ring instead of a moving
+   trail. The mask already keeps just the ring, so a flat gold fill reads as
+   a hairline without any animation at all. */
+.border-trail-static {
+  background: var(--gold-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .border-trail-head {
+    animation: none;
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Chips: status pills, and option chips with a small label over a value
+ * --------------------------------------------------------------------- */
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-inset);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  flex: none;
+}
+
+.chip[data-state="ready"] .dot,
+.option-chip[data-state="ready"] .dot {
+  background: var(--ok);
+}
+
+.chip[data-state="degraded"] .dot,
+.option-chip[data-state="degraded"] .dot {
+  background: var(--warn);
+}
+
+.option-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 14px 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.option-chip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.option-chip-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------
+ * Banners
+ * --------------------------------------------------------------------- */
+
+.banner {
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-inset);
+  margin-bottom: 16px;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner[data-tone="error"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface-inset));
+}
+
+.banner[data-tone="success"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 7%, var(--surface-inset));
+}
+
+.banner[data-tone="warning"] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 7%, var(--surface-inset));
+}
+
+.banner[data-tone="info"] {
+  color: var(--text);
+  border-color: var(--gold-line);
+  background: linear-gradient(135deg, var(--gold-soft) 0%, transparent 70%), var(--surface-inset);
+}
+
+/* A banner that carries its own action (Connect) puts it on the right, and moves it
+   under the sentence when the pane is too narrow for both. */
+.banner:has(> button) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.banner > .primary {
+  padding: 5px 14px;
+  font-size: 14px;
+}
+
+.plan-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.plan-platforms .chip {
+  padding: 3px 10px 3px 8px;
+}
+
+.plan-note-action {
+  margin-top: 8px;
+}
+
+.plan-note-action button {
+  padding: 4px 14px;
+  font-size: 13px;
+}
+
+.stub {
+  border-style: dashed;
+  border-color: var(--border-dashed);
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------
+ * Review gates: strategy, concept, cost, media, final, research, publish
+ * --------------------------------------------------------------------- */
+
+.field {
+  margin: 0 0 14px;
+}
+
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.option {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  background: var(--surface-inset);
+  overflow-wrap: anywhere;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.option[data-selected="true"] {
+  border-color: var(--gold-line);
+  background: linear-gradient(135deg, var(--gold-soft-strong) 0%, var(--gold-soft) 55%, transparent 100%), var(--surface-inset);
+}
+
+.option h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.option .tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin-bottom: 8px;
+}
+
+.option[data-selected="true"] .tag {
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+
+.option ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.option li::marker {
+  color: var(--text-subtle);
+}
+
+/* ---------------------------------------------------------------------
+ * Research results: coverage status, findings with a confidence marker, the
+ * "so what" line, and the collapsed "what could not be checked" card.
+ * --------------------------------------------------------------------- */
+
+.coverage-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.coverage-status[data-level="full"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.coverage-status[data-level="partial"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.coverage-status[data-level="thin"] {
+  color: var(--text-subtle);
+  border-color: var(--border-strong);
+}
+
+.findings {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.findings li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.confidence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-subtle);
+  transform: translateY(-1px);
+}
+
+.confidence-dot[data-confidence="high"] {
+  background: var(--ok);
+}
+
+.confidence-dot[data-confidence="medium"] {
+  background: var(--warn);
+}
+
+.confidence-dot[data-confidence="low"] {
+  background: var(--text-subtle);
+}
+
+.source-link {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
+.so-what {
+  margin-top: 10px;
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.gaps-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  background: var(--surface-inset);
+  margin-top: 4px;
+}
+
+.gaps-card > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  list-style: none;
+}
+
+.gaps-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gaps-card[open] > summary {
+  margin-bottom: 8px;
+}
+
+.gaps-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.gaps-card li::marker {
+  color: var(--text-subtle);
+}
+
+/* A question screen's option cards are buttons, so the option look needs to override
+   the base button chrome (pill radius, centered flex) explicitly. */
+.question-option {
+  display: block;
+  text-align: left;
+  width: 100%;
+  border-radius: var(--radius);
+  font-weight: 400;
+}
+
+/* The platform notes line sits under the evidence list, not against it. */
+.option ul + p {
+  margin-top: 10px;
+}
+
+.option .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.option .row-actions button {
+  padding: 6px 14px;
+  font-size: 14px;
+}
+
+.section-title {
+  margin: 20px 0 10px;
+}
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 14px;
+  font-size: 14px;
+}
+
+.cost-table th,
+.cost-table td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.cost-table th:first-child,
+.cost-table td:first-child {
+  padding-left: 0;
+}
+
+.cost-table th:last-child,
+.cost-table td:last-child {
+  padding-right: 0;
+}
+
+.cost-table th {
+  color: var(--text-subtle);
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom-color: var(--border-strong);
+}
+
+.cost-table td {
+  color: var(--text-muted);
+}
+
+.cost-table td:first-child {
+  color: var(--text);
+}
+
+.cost-table td.num,
+.cost-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-total {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border-strong);
+}
+
+.cost-total span:last-child {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-block {
+  margin: 18px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+}
+
+.ledger-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.ledger {
+  margin: 0;
+}
+
+.ledger-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.ledger-row + .ledger-row {
+  border-top: 1px solid var(--border);
+}
+
+.ledger-row dt {
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.ledger-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-block .hint {
+  margin-top: 8px;
+}
+
+.asset-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.asset-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-inset);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.asset-card[data-state="approved"] {
+  border-color: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.asset-card[data-state="rejected"] {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.asset-preview {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: var(--media);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.asset-preview img,
+.asset-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.asset-media-facts {
+  font-size: 12px;
+  margin: -4px 0 4px;
+}
+
+.asset-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.asset-body .muted {
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.asset-body .field {
+  margin: 0;
+}
+
+.asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.asset-actions button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Platform post preview cards: a dark mock of an FB/IG/TikTok post. */
+
+.post-card {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.post-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.post-card-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gold-soft-strong);
+  border: 1px solid var(--gold-line);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.post-card-brand {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Platform names are written the way the platforms write them (TikTok, not TIKTOK). */
+.post-card-platform {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gold);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.post-card-media {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--media);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-subtle);
+  font-size: 13px;
+}
+
+.post-card-media img,
+.post-card-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Cards in a row are as tall as the tallest, so the schedule line is pinned to the
+   foot of each one rather than floating under a short caption. */
+.post-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.post-card-body {
+  padding: 12px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.post-card-caption {
+  font-size: 13.5px;
+  white-space: pre-wrap;
+  /* A caption is user text: one long url or hashtag must not push the card wide. */
+  overflow-wrap: anywhere;
+  margin: 0 0 8px;
+}
+
+.post-card-hashtags {
+  font-size: 12.5px;
+  color: var(--gold-bright);
+  overflow-wrap: anywhere;
+  margin: 0 0 8px;
+}
+
+.post-card-schedule {
+  font-size: 12px;
+  color: var(--text-subtle);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: auto;
+}
+
+/* States the duration and whether subtitles are burned in, in words, right under
+   the deliverable at the top of the card. */
+.post-card-media-facts {
+  font-size: 12px;
+  padding: 6px 14px 0;
+  margin: 0;
+}
+
+.post-card-first-comment {
+  font-size: 12.5px;
+  color: var(--text-subtle);
+  margin: 0 0 8px;
+}
+
+.job-stats {
+  margin-top: 12px;
+}
+
+.job-stats-summary {
+  font-size: 13px;
+  margin: 0;
+}
+
+.job-stats-secondary {
+  color: var(--text-subtle);
+}
+
+.job-stats-details summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.job-stats-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
+}
+
+.job-secondary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.job-secondary-stats .job-stats {
+  margin-top: 4px;
+}
+
+.cost-card {
+  flex: 1 1 260px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+}
+
+.cost-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.cost-card-headline {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-card-secondary {
+  margin: 0 0 8px;
+  display: grid;
+  gap: 3px;
+}
+
+.cost-card-secondary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.cost-card-secondary dt {
+  color: var(--text-muted);
+}
+
+.cost-card-secondary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cost-card-details summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cost-card-item-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
+}
+
+.cost-card .hint {
+  margin: 8px 0 0;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+}
+
+.steps li[data-status="active"] {
+  color: var(--text);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+  position: relative;
+  overflow: hidden;
+}
+
+/* A subtle indeterminate shimmer sweeping the active row, CSS only. */
+.steps li[data-status="active"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--gold-soft-strong) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: step-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.steps li[data-status="done"] {
+  color: var(--text);
+}
+
+.steps li[data-status="error"] {
+  color: var(--danger);
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid var(--text-subtle);
+  flex: none;
+}
+
+.steps li[data-status="done"] .step-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.steps li[data-status="active"] .step-dot {
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px var(--gold-soft-strong);
+  animation: busy-pulse-dot 1.1s ease-in-out infinite;
+}
+
+@keyframes step-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .steps li[data-status="active"]::after {
+    animation: none;
+    display: none;
+  }
+  .steps li[data-status="active"] .step-dot {
+    animation: none;
+  }
+}
+
+.steps li[data-status="error"] .step-dot {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Connect a service: the numbered steps the user follows outside the pane. */
+
+.connect-steps {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.connect-steps li::marker {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.connect-steps code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--gold-bright);
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-line);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+/* Intake and job plan, added with the job planner screens. */
+
+.lede {
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.form {
+  display: block;
+}
+
+.form label:not(.check) {
+  margin-top: 14px;
+}
+
+.form label:not(.check):first-of-type {
+  margin-top: 0;
+}
+
+/* A column of labelled fields with even spacing (brand onboarding). */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+select:focus-visible,
+textarea:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 16px 0 6px;
+}
+
+/* Multi choice toggles as a segmented group: each choice is a pill with its own
+   check box, gold when it is on. */
+.checks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+  max-width: 100%;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 14px 7px 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.check:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.check:has(input:checked) {
+  color: var(--gold);
+  background: var(--gold-soft);
+  border-color: var(--gold-line);
+}
+
+.check input {
+  accent-color: var(--gold);
+  margin: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.check:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.check:has(input:focus-visible) input {
+  outline: none;
+}
+
+.stages {
+  list-style: none;
+  counter-reset: stage;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.stage:nth-child(odd) {
+  background: var(--surface-inset);
+}
+
+.stage[data-status="skipped"],
+.stage[data-status="not_applicable"] {
+  opacity: 0.6;
+}
+
+.stage-name {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.stage-status {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.stage-status[data-status="required"] {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.stage-status[data-status="waiting"] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+}
+
+.stage-status[data-status="completed"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+.stage-gate {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.stage .hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* Five phase stepper, the job plan screen's headline view. */
+
+.phase-stepper {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.phase-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-inset);
+}
+
+.phase-step[data-status="skipped"] {
+  opacity: 0.55;
+}
+
+.phase-step-marker {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.phase-step[data-status="done"] .phase-step-marker {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+.phase-step[data-status="in_progress"] .phase-step-marker {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.phase-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.phase-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-step-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.phase-step-status {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.phase-step-status[data-status="in_progress"],
+.phase-step-status[data-status="waiting"] {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.phase-step-status[data-status="done"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+.phase-step-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.phase-step-elapsed {
+  font-size: 12px;
+}
+
+.plan-stage-details {
+  margin-top: 16px;
+}
+
+.plan-stage-details > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plan-stage-details .stages {
+  margin-top: 12px;
+}
+
+/* Compact five dot phase strip, dropped at the top of any screen whose payload
+   carries a `phase` field so the person always knows roughly where they are. */
+
+.phase-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.phase-dot[data-state="done"] {
+  background: color-mix(in srgb, var(--ok) 60%, var(--border-strong));
+}
+
+.phase-dot[data-state="current"] {
+  width: 10px;
+  height: 10px;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-soft);
+}
+
+.phase-dot[data-state="skipped"] {
+  background: var(--border);
+}
+
+/* Creative library screen */
+
+.lib {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.lib-bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.lib-bar-fill {
+  height: 100%;
+  background: var(--gold-gradient-bar);
+  border-radius: var(--radius-pill);
+  transition: width 300ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* The library bar is only ever rendered while indexing or analysing is in
+ * flight, so it always gets the shimmer; it disappears with the bar itself
+ * once the phase completes and the screen re-renders without it. */
+.lib-bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: step-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lib-bar-fill::after {
+    animation: none;
+    display: none;
+  }
+}
+
+.lib-progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.lib-progress-row span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Library counters, in the option chip grammar: the label over the number. */
+.lib-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.lib-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  min-width: 0;
+}
+
+.lib-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-stat-label {
+  font-size: 12px;
+  color: var(--text-subtle);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.lib-tile {
+  min-width: 0;
+}
+
+.lib-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--media);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lib-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lib-thumb-placeholder {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.lib-badge,
+.lib-duration {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--scrim);
+  border: 1px solid var(--border);
+}
+
+.lib-badge {
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+}
+
+.lib-duration {
+  bottom: 8px;
+  right: 8px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-name {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-subtle);
+  margin-top: 3px;
+}
+
+.lib-status[data-analyzed="yes"] .dot {
+  background: var(--ok);
+}
+
+.results-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.results-list ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.asset-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.asset-label {
+  font-size: 12.5px;
+  color: var(--text-subtle);
+}
+
+.asset-prompt {
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.asset-heading .chip {
+  padding: 1px 9px;
+  font-size: 12px;
+}
+
+.asset-heading .chip[data-state="approved"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.asset-heading .chip[data-state="rejected"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.asset-heading .chip[data-state="regenerate"] {
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+
+/* Actions sit at the foot of every card, so a row of cards lines them up. */
+.asset-body .asset-actions {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+/* A settled asset has no form, so it keeps its own height next to one that does. */
+.asset-card[data-state="approved"],
+.asset-card[data-state="rejected"] {
+  align-self: start;
+}
+
+.schedule-field {
+  margin-top: 18px;
+}
+
+.publish-outcome {
+  margin: 4px 0 14px;
+}
+
+.publish-post {
+  padding: 12px 16px;
+}
+
+.publish-post-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.publish-platform {
+  font-weight: 600;
+}
+
+.publish-status {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.publish-status[data-status="published"],
+.publish-status[data-status="scheduled"] {
+  color: var(--ok);
+}
+
+.publish-status[data-status="exported"] {
+  color: var(--gold);
+}
+
+.publish-status[data-status="failed"] {
+  color: var(--danger);
+}
+
+.publish-post > p,
+.publish-post > a {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.publish-post > .banner {
+  margin: 10px 0 0;
+}
+
+.offscreen {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.actions .publish-folder {
+  flex: 1 1 280px;
+  font-family: Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------------
+ * Folder picker: shortcuts, a breadcrumb, a scrollable list of folders, and the
+ * chosen path said in plain language. Shared by setup, the creative library and
+ * brand onboarding, so it uses the card's inset surface like every other nested
+ * thing in the pane.
+ * --------------------------------------------------------------------- */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.picker-notice {
+  margin-bottom: 0;
+}
+
+.picker-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.picker-chip {
+  padding: 5px 13px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--surface-inset);
+}
+
+button.picker-chip[aria-current="true"] {
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+}
+
+button.picker-crumb {
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+button.picker-crumb:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+  border-color: transparent;
+}
+
+button.picker-crumb[aria-current="page"] {
+  color: var(--text);
+}
+
+.picker-crumb-sep {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  /* Tall enough to show several folders without the card growing past a phone
+     screen, and it scrolls rather than pushing Continue out of reach. */
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.picker-list:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button.picker-row {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-align: left;
+  /* A long folder name is cut, not wrapped: every row stays one line high so the
+     list reads as a list. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+}
+
+button.picker-row:hover {
+  background: var(--surface-raised);
+  border-color: transparent;
+}
+
+button.picker-row .icon {
+  color: var(--gold);
+  flex: none;
+}
+
+button.picker-up {
+  color: var(--text-muted);
+}
+
+.picker-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+.picker-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.picker-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+}
+
+.picker-new[hidden] {
+  display: none;
+}
+
+.picker-new label {
+  margin: 0;
+}
+
+.picker-new input[type="text"] {
+  flex: 1 1 180px;
+  margin: 0;
+}
+
+.picker-chosen {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius);
+  background: var(--gold-soft);
+}
+
+.picker-chosen-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.picker-chosen-path {
+  font-family: Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* No folder explicitly chosen yet (selectionRequired mode): the same chosen line,
+   toned down with the muted palette rather than the gold "confirmed" look. */
+.picker-chosen-empty {
+  border-color: var(--border-strong);
+  background: var(--surface-inset);
+}
+
+.picker-chosen-empty .picker-chosen-label,
+.picker-chosen-empty .picker-chosen-path {
+  color: var(--text-muted);
+}
+
+/* A row in selectionRequired mode: the folder name (which browses) plus a small
+   "Use this folder" control (which selects) side by side. */
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.picker-item .picker-row {
+  flex: 1 1 auto;
+}
+
+button.picker-use-row {
+  flex: none;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--surface-inset);
+}
+
+/* The folder actually chosen, visually distinct from the folder merely being
+   browsed: a gold border/text, same treatment as an active crumb or chip. */
+.picker-item-selected {
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-sm);
+  background: var(--gold-soft);
+}
+
+.picker-item-selected .picker-row {
+  color: var(--gold);
+}
+
+button.picker-use-current,
+button.picker-use-typed {
+  background: var(--surface-inset);
+}
+
+.picker-typed > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.picker-typed > summary::-webkit-details-marker {
+  display: none;
+}
+
+.picker-typed > summary::before {
+  content: "+";
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.picker-typed[open] > summary::before {
+  content: "-";
+}
+
+.picker-typed > summary:hover {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * A narrow pane: the panel hugs the edges and cards lose some padding
+ * --------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .topbar {
+    padding: 10px 14px;
+  }
+
+  .root {
+    width: calc(100% - 20px);
+    margin: 10px auto 32px;
+    padding: 14px;
+    border-radius: var(--radius-card);
+    gap: 14px;
+  }
+
+  .card {
+    padding: 18px 16px;
+  }
+
+  .screen {
+    gap: 14px;
+  }
+
+  .hero {
+    padding: 12px 4px 4px;
+  }
+
+  .tile {
+    grid-template-columns: 36px minmax(0, 1fr) 24px;
+    gap: 12px;
+    padding: 14px 12px 14px 14px;
+  }
+
+  .tile-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .tile-arrow {
+    width: 24px;
+    height: 24px;
+  }
+
+  .option {
+    padding: 14px;
+  }
+
+  .lib-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lib-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+  }
+
+  .picker-list {
+    max-height: 200px;
+  }
+
+  button.picker-crumb {
+    max-width: 140px;
+  }
+
+  .asset-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Brand onboarding: the references dropzone, its attachment tiles, the
+ * larger preview overlay, and the font sample card.
+ * --------------------------------------------------------------------- */
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 96px;
+  border: 1px dashed var(--border-dashed);
+  border-radius: 12px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 16px;
+  text-align: center;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible {
+  border-color: var(--gold-line);
+  color: var(--text);
+  outline: none;
+}
+
+.dropzone-hover {
+  border-color: var(--gold-bright);
+  background: var(--gold-soft);
+  color: var(--text);
+}
+
+.reference-tiles {
+  list-style: none;
+  display: grid;
+  /* A fixed track width, not minmax(..., 1fr): a 1fr track stretches to fill the
+     row and lets its content (long names, the two action buttons) grow past the
+     column it was given, which is what let one tile's buttons sit on top of the
+     next tile. A fixed width never stretches, so tiles wrap instead of
+     overlapping at any pane width. */
+  grid-template-columns: repeat(auto-fill, 132px);
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.reference-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 132px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.reference-tile-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.reference-tile-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reference-tile-preview.reference-tile-preview-pending {
+  color: var(--text-subtle);
+}
+
+.reference-tile-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.reference-tile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.reference-tile-actions button {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reference-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.reference-preview {
+  max-width: min(90vw, 720px);
+  max-height: 90vh;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+}
+
+.reference-preview img,
+.reference-preview video {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 8px;
+}
+
+.font-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  color: var(--text);
+}
+
+.font-card-large {
+  min-width: 260px;
+  min-height: 160px;
+  padding: 24px;
+}
+
+.font-card span:first-child {
+  font-size: 22px;
+}
+
+.font-card-name {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+.font-card-plain {
+  color: var(--text-subtle);
+}
+
+/* ---------------------------------------------------------------------
+ * Connections: one card per thing that can be connected, plus the quiet
+ * link on the home strip that opens the whole screen.
+ * --------------------------------------------------------------------- */
+
+#busy-pill[hidden] {
+  display: none;
+}
+
+.conn-card h2 {
+  margin-bottom: 4px;
+}
+
+/* The one status line every card carries, in the same grammar as the home strip:
+   a coloured dot, then the sentence. */
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.conn-status[data-state="ready"] .dot {
+  background: var(--ok);
+}
+
+.conn-status[data-state="degraded"] .dot {
+  background: var(--warn);
+}
+
+/* The card a just in time prompt pointed at, so the reason line is not the only
+   thing saying "this one". */
+.conn-card[data-focus="true"] {
+  border-color: var(--gold-line);
+}
+
+.conn-form {
+  margin-top: 16px;
+  padding: 16px 18px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+}
+
+.conn-form .field-label:first-child {
+  margin-top: 0;
+}
+
+/* A button that reads as a link: used once, for Connections at the end of the
+   home connection strip. */
+.link {
+  align-self: center;
+  margin-left: 6px;
+  border: none;
+  background: none;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gold);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: 6px;
+}
+
+.link:hover {
+  color: var(--gold-bright);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

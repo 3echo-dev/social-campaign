@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://social-campaign.3echo.dev/schemas/video-evidence-package.schema.json",
+  "title": "VideoEvidencePackage",
+  "description": "What video_watch saw in one video: the source, the media facts, timestamped frames, the transcript and where it came from. Evidence only; nothing here is interpreted, so it carries no inferences.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "source",
+    "detail",
+    "media",
+    "frames",
+    "transcript",
+    "source_type",
+    "source_ref",
+    "observed_at",
+    "confidence",
+    "coverage",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "url",
+            "file",
+            "asset"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "asset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "enum": [
+            "facebook",
+            "instagram",
+            "tiktok",
+            "youtube",
+            "other",
+            null
+          ]
+        }
+      }
+    },
+    "detail": {
+      "enum": [
+        "quick",
+        "standard",
+        "deep"
+      ]
+    },
+    "window": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "start_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "required": [
+        "path",
+        "duration_s"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Local file the frames were taken from, inside the workspace for downloads."
+        },
+        "asset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "fps": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "has_audio": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "source_metadata": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What the platform page says about the video, when it came from one.",
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "author_handle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "posted_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "views": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "likes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "comments": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "timestamp_s",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "timestamp_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reason": {
+            "enum": [
+              "scene_change",
+              "keyframe",
+              "interval",
+              "focus_window",
+              "first",
+              "last"
+            ]
+          },
+          "scene_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "frame_budget": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The most frames this detail level and duration allow."
+        },
+        "returned": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "How many frames are in frames, the number to read."
+        },
+        "extracted": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Every candidate frame the scene, keyframe and interval passes wrote."
+        },
+        "duplicates_removed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "extracted minus kept_after_dedupe: candidates dropped as too close in time or as near duplicates."
+        },
+        "kept_after_dedupe": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Candidates left after spacing and near duplicate removal, before the budget was applied. Can be larger than returned; kept for older readers."
+        },
+        "over_budget": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "kept_after_dedupe minus returned: distinct candidates left out because the budget was full."
+        }
+      },
+      "description": "How the frames in this package were chosen: the budget, every candidate extracted, how many survived dedupe, and how many are returned in frames."
+    },
+    "transcript": {
+      "type": "object",
+      "required": [
+        "status",
+        "source"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ready",
+            "needs_transcription_provider",
+            "no_speech",
+            "no_audio"
+          ],
+          "description": "needs_transcription_provider: no saved transcript, no platform captions and no speech to text service, so the package covers the frames only. media_transcribe answers with the same status."
+        },
+        "source": {
+          "enum": [
+            "platform_captions",
+            "elevenlabs",
+            "manual",
+            "none"
+          ]
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transcript_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audio_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Always null today: nothing is sent for transcription. Kept so a later speech to text step can say which audio file it used."
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "start_s",
+              "end_s",
+              "text"
+            ],
+            "properties": {
+              "start_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string"
+              },
+              "speaker": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "words_available": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "source_type": {
+      "enum": [
+        "public_platform",
+        "ad_library",
+        "user_supplied",
+        "local_media"
+      ]
+    },
+    "source_ref": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "coverage": {
+      "enum": [
+        "full",
+        "frames_only",
+        "metadata_only",
+        "none"
+      ]
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why coverage is not full, in plain words. Null when it is."
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
