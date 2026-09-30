@@ -10,19 +10,17 @@ const svgSanitize = require('./lib-svg-sanitize.js');
 const LIMITS = Object.freeze({
   logoUploadBytes: 40 * 1024,
   logoThumbBytes: 6 * 1024,
-  // Shared by website capture and the board's asset-store upload path (kit.logo
-  // {action:'file'}): both hand the server a bigger, un-downscaled-for-chat file
-  // read straight off disk, rather than the small inline base64 the board also
-  // downscales client-side for the 'upload' action above.
+  // The board's asset-store upload path (kit.logo {action:'file'}) hands the
+  // server a bigger, un-downscaled-for-chat file read straight off disk, rather
+  // than the small inline base64 the board also downscales client-side for the
+  // 'upload' action above.
   captureLogoBytes: 256 * 1024,
   logoFileThumbBytes: 64 * 1024,
   paletteMax: 8,
   proposedPaletteMax: 6,
   fontsMax: 4,
-  logoCandidatesMax: 3,
   thumbProjectionBytes: 12 * 1024,
   svgThumbProjectionBytes: 24 * 1024,
-  captureRetainCount: 3,
   captureRunningMs: 10 * 60 * 1000,
   pendingWaitingMs: 10 * 60 * 1000,
   colorNameMax: 60,
@@ -31,7 +29,7 @@ const LIMITS = Object.freeze({
 const ROLES = Object.freeze(['primary', 'secondary', 'accent', 'background', 'text', 'other']);
 const FONT_USES = Object.freeze(['headings', 'body', 'captions', 'other']);
 const CAPTURE_ID = /^cap-\d{8}T\d{6}Z-[a-f0-9]{6}$/;
-const CANDIDATE_ID = /^c[1-3]$/;
+const PALETTE_SOURCES = Object.freeze(['website', 'instagram', 'tiktok', 'facebook']);
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const FONT_FAMILY = /^[A-Za-z0-9][A-Za-z0-9 ._'-]{0,79}$/;
 const MIME_EXT = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' };
@@ -134,53 +132,8 @@ function beginCapture(brandDir, options = {}) {
   return { started, record };
 }
 
-function pruneCaptures(capturesRoot, keepLatestId) {
-  let entries;
-  try { entries = fs.readdirSync(capturesRoot, { withFileTypes: true }); } catch { return; }
-  const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
-  const keep = new Set(dirs.slice(-LIMITS.captureRetainCount));
-  keep.add(keepLatestId);
-  for (const name of dirs) {
-    if (!keep.has(name)) {
-      try { fs.rmSync(path.join(capturesRoot, name), { recursive: true, force: true }); } catch { /* best effort */ }
-    }
-  }
-}
-
 function recordCapture(brandDir, captureId, result, options = {}) {
   const nowIso = toIso(options.now);
-  const capturesRoot = path.join(brandDir, 'brand', 'kit-captures');
-  const dir = path.join(capturesRoot, captureId);
-  const logoCandidates = [];
-  const candidates = Array.isArray(result && result.candidates) ? result.candidates.slice(0, LIMITS.logoCandidatesMax) : [];
-  if (candidates.length) {
-    fs.mkdirSync(dir, { recursive: true });
-    for (const c of candidates) {
-      let buffer = c.buffer;
-      let width = c.width ?? null;
-      let height = c.height ?? null;
-      if (c.mimeType === 'image/svg+xml') {
-        const clean = inspectImage(buffer);
-        if (!clean || clean.mimeType !== 'image/svg+xml') continue;
-        buffer = clean.buffer;
-        width = clean.width;
-        height = clean.height;
-      }
-      const ext = MIME_EXT[c.mimeType] || 'bin';
-      const file = path.join(dir, `${c.id}.${ext}`);
-      fs.writeFileSync(file, buffer);
-      logoCandidates.push({
-        id: c.id,
-        kind: c.kind,
-        file: `kit-captures/${captureId}/${c.id}.${ext}`,
-        mimeType: c.mimeType,
-        width,
-        height,
-        sourceUrl: c.sourceUrl || null,
-      });
-    }
-  }
-  pruneCaptures(capturesRoot, captureId);
   const file = kitFile(brandDir);
   let record;
   durable.update(file, (raw) => {
@@ -192,8 +145,8 @@ function recordCapture(brandDir, captureId, result, options = {}) {
       at: nowIso,
       method: (result && result.method) || 'static',
       finalUrl: (result && result.finalUrl) || null,
-      logoCandidates,
       palette: Array.isArray(result && result.palette) ? result.palette.slice(0, LIMITS.proposedPaletteMax) : [],
+      paletteSource: result && PALETTE_SOURCES.includes(result.paletteSource) ? result.paletteSource : null,
       fonts: Array.isArray(result && result.fonts) ? result.fonts.slice(0, LIMITS.fontsMax) : [],
     };
     existing.capture = {
@@ -274,21 +227,7 @@ function validateLogo(logo, record, errors) {
   const action = logo.action;
   if (action === 'keep') return { action: 'keep' };
   if (action === 'remove') return { action: 'remove' };
-  if (action === 'select') {
-    if (!CAPTURE_ID.test(String(logo.captureId || '')) || !CANDIDATE_ID.test(String(logo.candidateId || ''))) {
-      errors.push('Select a valid captured logo.');
-      return undefined;
-    }
-    const proposed = record && record.proposed;
-    const candidate = proposed && proposed.captureId === logo.captureId
-      ? (proposed.logoCandidates || []).find((c) => c.id === logo.candidateId)
-      : null;
-    if (!candidate) {
-      errors.push('That logo candidate is no longer available.');
-      return undefined;
-    }
-    return { action: 'select', captureId: logo.captureId, candidateId: logo.candidateId, candidate };
-  }
+  if (action === 'select') return { action: 'keep' };
   if (action === 'upload') {
     const mimeType = logo.mimeType;
     if (!MIME_EXT[mimeType]) {
@@ -511,20 +450,6 @@ function resolveLogo(brandDir, logo, record) {
     }
     return { asset: null, confirmedLogo: null, write: null };
   }
-  if (logo.action === 'select') {
-    const c = logo.candidate;
-    const ext = MIME_EXT[c.mimeType] || 'png';
-    return {
-      asset: assetFromLogo({ file: `assets/logo.${ext}`, source: 'website' }),
-      confirmedLogo: null,
-      write: () => {
-        const destRel = `assets/logo.${ext}`;
-        clearLogoFiles(assetsRoot);
-        copyFileSafe(path.join(brandDir, 'brand', c.file), path.join(brandDir, 'brand', destRel));
-        return { file: destRel, thumb: null, mimeType: c.mimeType, width: c.width ?? null, height: c.height ?? null, source: 'website', sourceUrl: c.sourceUrl || null };
-      },
-    };
-  }
   if (logo.action === 'upload') {
     const ext = MIME_EXT[logo.mimeType] || 'png';
     return {
@@ -663,28 +588,14 @@ function thumbDataUrl(brandDir, relFile, mimeType) {
   }
 }
 
-function projectLogo(brandDir, confirmedLogo, candidate, captureId) {
-  if (confirmedLogo) {
-    return {
-      source: confirmedLogo.source || null,
-      thumb: thumbDataUrl(brandDir, confirmedLogo.thumb || confirmedLogo.file, confirmedLogo.mimeType),
-      width: confirmedLogo.width ?? null,
-      height: confirmedLogo.height ?? null,
-      captureId: null,
-      candidateId: null,
-    };
-  }
-  if (candidate) {
-    return {
-      source: 'website',
-      thumb: thumbDataUrl(brandDir, candidate.file, candidate.mimeType),
-      width: candidate.width ?? null,
-      height: candidate.height ?? null,
-      captureId,
-      candidateId: candidate.id,
-    };
-  }
-  return null;
+function projectLogo(brandDir, confirmedLogo) {
+  if (!confirmedLogo) return null;
+  return {
+    source: confirmedLogo.source || null,
+    thumb: thumbDataUrl(brandDir, confirmedLogo.thumb || confirmedLogo.file, confirmedLogo.mimeType),
+    width: confirmedLogo.width ?? null,
+    height: confirmedLogo.height ?? null,
+  };
 }
 
 function projectCapture(record, st, nowIso) {
@@ -716,36 +627,32 @@ function projection(brandDir, options = {}) {
 
   let logo = null;
   let palette = [];
+  let paletteSource = null;
   let fonts = [];
   let basis = 'empty';
 
   if (st === 'confirmed' && confirmed) {
-    logo = projectLogo(brandDir, confirmed.logo, null, null);
+    logo = projectLogo(brandDir, confirmed.logo);
     palette = confirmed.palette || [];
     fonts = confirmed.fonts || [];
     basis = 'confirmed';
   } else {
     const providedLogo = provided && provided.logo;
-    const proposedCandidate = proposed && Array.isArray(proposed.logoCandidates) ? proposed.logoCandidates[0] : null;
     if (providedLogo) {
-      logo = projectLogo(brandDir, providedLogo, null, null);
+      logo = projectLogo(brandDir, providedLogo);
       basis = 'provided';
-    } else if (proposedCandidate) {
-      logo = projectLogo(brandDir, null, proposedCandidate, proposed.captureId);
-      basis = 'proposed';
     }
     const providedPalette = provided && Array.isArray(provided.palette) && provided.palette.length ? provided.palette : null;
     const providedFonts = provided && Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : null;
     palette = providedPalette || (proposed && proposed.palette) || [];
     fonts = providedFonts || (proposed && proposed.fonts) || [];
+    if (!providedPalette && palette.length) {
+      paletteSource = PALETTE_SOURCES.includes(proposed.paletteSource) ? proposed.paletteSource : 'website';
+    }
     if (basis === 'empty' && (palette.length || fonts.length)) {
       basis = (providedPalette || providedFonts) ? 'provided' : 'proposed';
     }
   }
-
-  const logoCandidates = st !== 'confirmed' && proposed && Array.isArray(proposed.logoCandidates)
-    ? proposed.logoCandidates.map((c) => ({ captureId: proposed.captureId, candidateId: c.id, kind: c.kind, thumb: thumbDataUrl(brandDir, c.file, c.mimeType) }))
-    : [];
 
   return {
     status: st,
@@ -753,8 +660,8 @@ function projection(brandDir, options = {}) {
     basis,
     capture,
     logo,
-    logoCandidates,
     palette,
+    paletteSource,
     fonts,
     provided: {
       logo: Boolean(provided && provided.logo),

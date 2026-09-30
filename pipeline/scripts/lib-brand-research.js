@@ -349,6 +349,7 @@ function changedProfileFields(previousProfile, profile) {
   compare('channels', 'platform_assumptions');
   compare('competitors', 'competitor_identity');
   compare('market', 'audience');
+  if ((previousProfile.targetMarket || '') !== (profile.targetMarket || '')) fields.push('audience');
   compare('audience', 'audience');
   compare('visualIdentity', 'brand_identity');
   compare('voice', 'brand_identity');
@@ -444,7 +445,10 @@ function profileCompetitors(profile, input, previous, replacement) {
     seen.add(key);
     items.push(name);
   }
-  const source = !declared.length ? 'research' : items.length > declared.length ? 'mixed' : 'declared';
+  const profileSource = profile && profile.competitors && profile.competitors.source;
+  const source = profileSource === 'research' || profileSource === 'mixed'
+    ? profileSource
+    : !declared.length ? 'research' : items.length > declared.length ? 'mixed' : 'declared';
   return { items, source };
 }
 
@@ -610,13 +614,22 @@ function staleError(expected, actual) {
 }
 
 function save(dir, input, options = {}) {
-  const profile = profiles.read(dir);
+  const profile = options.profile || profiles.read(dir);
   if (!profile) throw new Error('Complete the required brand profile before research.');
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Expected research fields.');
   const file = path.join(dir, 'brand', 'research.json');
   const expected = input.expectedRevision !== undefined ? input.expectedRevision : input.baseRevision !== undefined ? input.baseRevision : options.expectedRevision !== undefined ? options.expectedRevision : options.baseRevision;
   const now = clockNow(options);
   let saved;
+  if (options.dryRun) {
+    let previous = null;
+    try { previous = normalizeRecord(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { previous = null; }
+    const actual = Number(previous && (previous.revision || previous.researchRevision)) || 0;
+    if (expected !== undefined && Number(expected) !== actual) throw staleError(expected, actual);
+    const draft = buildDraft(dir, input, options, previous, profile, now);
+    if (Buffer.byteLength(JSON.stringify(draft, null, 2) + '\n', 'utf8') > MAX_RESEARCH_BYTES) throw new Error('Keep research under 60 KB.');
+    return draft;
+  }
   durable.update(file, raw => {
     let previous = null;
     try { previous = raw ? normalizeRecord(JSON.parse(raw)) : null; } catch { previous = null; }

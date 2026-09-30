@@ -197,7 +197,7 @@ function start(root, options = {}) {
     const workspaceId = text(options.workspaceId, 200);
     const run = {
       version: 1, kind: KIND, runId, brand, brandId, workspaceId,
-      stage: STAGE, stageLabel: STAGE_LABEL, market: text(options.market, 16) || 'SG',
+      stage: STAGE, stageLabel: STAGE_LABEL, market: text(options.market, 60) || 'Singapore',
       status: 'running', startedAt, completedAt: null,
       profileRevisionAtStart: count(options.profileRevision), profileRevisionAtEnd: null,
       researchRevisionAtStart: count(options.researchRevision), researchRevision: null,

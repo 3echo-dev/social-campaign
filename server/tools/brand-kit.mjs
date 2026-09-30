@@ -29,16 +29,23 @@ function resolveBrandEntry(root, value) {
   return brand;
 }
 
-function websiteUrl(brand) {
+function channelUrl(profile, name) {
+  const channel = profile?.channels?.[name];
+  if (!channel || channel.status === 'unavailable') return null;
+  return typeof channel.url === 'string' && channel.url ? channel.url : null;
+}
+
+function savedChannels(brand) {
   let profile = null;
   try { profile = brandProfileRuntime.read(brand.path); } catch { profile = null; }
-  const website = profile?.channels?.website;
-  if (!website || website.status === 'unavailable') return null;
-  return typeof website.url === 'string' ? website.url : null;
+  return {
+    website: channelUrl(profile, 'website'),
+    social: { instagram: channelUrl(profile, 'instagram'), tiktok: channelUrl(profile, 'tiktok'), facebook: channelUrl(profile, 'facebook') },
+  };
 }
 
 function emptyKitOutput(status, brand, reason, skippedParts) {
-  return { status, brand: brand.slug, captureId: null, logoCandidates: 0, palette: [], fonts: [], code: null, reason: reason || null, skippedParts };
+  return { status, brand: brand.slug, captureId: null, palette: [], paletteSource: null, fonts: [], code: null, reason: reason || null, skippedParts };
 }
 
 function sectionSixOutput(brand, recorded, skippedParts) {
@@ -48,8 +55,8 @@ function sectionSixOutput(brand, recorded, skippedParts) {
     status: capture.status || 'failed',
     brand: brand.slug,
     captureId: capture.captureId || null,
-    logoCandidates: proposed && Array.isArray(proposed.logoCandidates) ? proposed.logoCandidates.length : 0,
     palette: (proposed && proposed.palette) || [],
+    paletteSource: (proposed && proposed.paletteSource) || null,
     fonts: (proposed && proposed.fonts) || [],
     code: capture.code ?? null,
     reason: capture.reason ?? null,
@@ -60,34 +67,32 @@ function sectionSixOutput(brand, recorded, skippedParts) {
 export const brandKitTools = [
   tool(
     'web_brand_kit',
-    'Read a brand website\'s public logo, colour and font signals to propose a starter brand kit. Static read only, honours robots.txt, and never returns image bytes.',
+    'Read a brand website\'s public colours and fonts to propose a starter brand kit. When the website shows no colours, the colours come from the brand\'s social profile picture. Static read only, honours the site\'s rules for automated readers, and never returns image bytes.',
     { brand: string, url: string },
     ['brand'],
     async (args, { workspace }) => {
       const root = local(workspace);
       const brand = resolveBrandEntry(root, args.brand);
       const provided = libBrandKit.providedParts(brand.path);
-      const skippedParts = ['logo', 'palette', 'fonts'].filter((part) => provided?.[part]);
-      if (provided?.logo && provided?.palette && provided?.fonts) {
-        return emptyKitOutput('skipped', brand, 'The person provided the logo, colours and fonts.', skippedParts);
+      const skippedParts = ['palette', 'fonts'].filter((part) => provided?.[part]);
+      if (provided?.palette && provided?.fonts) {
+        return emptyKitOutput('skipped', brand, 'The colours and fonts were provided.', skippedParts);
       }
-      const url = (typeof args.url === 'string' && args.url.trim()) ? args.url.trim() : websiteUrl(brand);
-      if (!url) {
-        return emptyKitOutput('no_website', brand, 'No website is on file for this brand.', skippedParts);
-      }
+      const saved = savedChannels(brand);
+      const url = (typeof args.url === 'string' && args.url.trim()) ? args.url.trim() : saved.website;
       const now = new Date();
       const captureId = libBrandKit.newCaptureId(now);
       const begun = libBrandKit.beginCapture(brand.path, { url, now, captureId });
       if (!begun.started) {
         const runningId = begun.record?.capture?.captureId || captureId;
         const reason = begun.record?.capture?.reason || 'A capture is already running for this brand.';
-        return { status: 'already_running', brand: brand.slug, captureId: runningId, logoCandidates: 0, palette: [], fonts: [], code: null, reason, skippedParts };
+        return { status: 'already_running', brand: brand.slug, captureId: runningId, palette: [], paletteSource: null, fonts: [], code: null, reason, skippedParts };
       }
       let result;
       try {
-        result = await captureBrandKit({ url, now });
+        result = await captureBrandKit({ url, social: saved.social, wantPalette: !provided?.palette });
       } catch (error) {
-        result = { status: 'failed', code: 'unexpected', reason: error?.message || 'The capture failed.', candidates: [], palette: [], fonts: [] };
+        result = { status: 'failed', code: 'unexpected', reason: 'We could not read colours or fonts for this brand.', palette: [], paletteSource: null, fonts: [] };
       }
       const recorded = libBrandKit.recordCapture(brand.path, captureId, result, { now });
       return sectionSixOutput(brand, recorded, skippedParts);

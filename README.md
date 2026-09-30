@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.7.3.
+Current version: 0.7.4.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -34,7 +34,7 @@ A producer walks the job through its stages, handing each one to a specialist.
    +--------------------------+
    |  BRAND ONBOARDING        |  name, site, channels, what you know
    |  (once per brand)        |  research fills the blanks
-   |                          |  logo, colours, fonts read from the site
+   |                          |  colours, fonts read from the site      
    +------------+-------------+
                 |         you check the brand card, Save and continue
                 v
@@ -130,12 +130,16 @@ Three are for you to type.
 Give a name, a site and your channel links.
 Research fills audience, market and positioning, brand voice, content pillars and competitors where you left them blank.
 A field you typed, or cleared, stays as you left it.
-The logo, colours and fonts are read from the website and shown for you to edit.
+Colours and fonts are read from the website and shown for you to edit, with fonts shown by their real names.
+If the website gives no colours, they are taken from your social profile picture when FFmpeg is installed, and the card says where they came from.
+The logo is your own upload; nothing is picked for you.
+Competitors you name stay first, and research adds more up to three.
+If the site does not say who the brand is for, research suggests an audience from its competitors and marks it Suggested, please check.
 
 **Research with sources.**
 Audience, competitors and product evidence, each claim traced to where it came from.
 Competitor work covers at most three competitors.
-Research defaults to the Singapore market.
+Brand research uses the target market you name, and Singapore when you leave it blank.
 
 **An idea you pick.**
 Ranked concepts with a hook, the proof pattern and the credit price of making them.
@@ -254,6 +258,7 @@ If Node is older, the start of the session says so.
 **Recommended:** FFmpeg, for video and audio.
 `winget install Gyan.FFmpeg` on Windows, `brew install ffmpeg` on a Mac.
 Without it video work cannot be analysed, and clips are delivered numbered instead of joined into one cut.
+It is also what reads colours from a social profile picture when a website gives none.
 
 **Recommended:** yt-dlp, for TikTok posts and video addresses.
 
@@ -308,9 +313,9 @@ It then asks what you need: a post or campaign, research, an analysis of a post 
 ### Onboard a brand
 
 A post or campaign needs a brand that is ready.
-On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, and anything you already know about the audience, market, voice, content pillars and competitors.
+On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, the target market if it is not Singapore, and anything you already know about the audience, positioning, voice, content pillars and competitors.
 Each link can be marked Not available.
-Add a logo, colours and fonts on the card if you have them.
+Upload a logo if you have one, and add colours and fonts if you already know them.
 Click Start onboarding.
 
 Research then fills the blanks.

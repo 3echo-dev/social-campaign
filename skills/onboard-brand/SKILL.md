@@ -43,8 +43,9 @@ Quietly rewrite any research-filled field it flags into a short plain statement 
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
 If the artifact board is ready, direct the user to its single inline Brand onboarding form and wait for one `onboard_brand` request.
-The form collects the brand name, the four channel URLs, and the five declared context fields (audience, market and positioning, brand voice, content pillars, and competitors) in one submission.
+The form collects the brand name, the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors) in one submission.
 Any of those five fields left blank is filled in by research.
+A blank target market means Singapore, and research never fills it.
 A field the person did not change is omitted from the submission, so a value research already filled in is kept.
 Do not call `pipeline_brand_create` first, ask for a name-only draft, or repeat the form as a chat questionnaire.
 
@@ -57,7 +58,7 @@ Use `brand` only when updating an existing draft or ready brand.
 ## 2. Collect declared brand context
 
 Use the inline board fields when the artifact is ready.
-The board collects the brand name, the four channel URLs, and the five declared context fields (audience, market and positioning, brand voice, content pillars, and competitors) in one submission.
+The board collects the brand name, the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors) in one submission.
 For explicit chat intake, ask for the website URL.
 
 For explicit chat intake, ask for the Facebook URL or the exact value Not available.
@@ -66,7 +67,8 @@ For explicit chat intake, ask for the Instagram URL or the exact value Not avail
 
 For explicit chat intake, ask for the TikTok URL or the exact value Not available.
 
-For explicit chat intake, ask for audience, market and positioning, brand voice, content pillars, and competitors, and accept a blank answer for any of them.
+For explicit chat intake, ask for the target market, then audience, positioning, brand voice, content pillars, and competitors, and accept a blank answer for any of them.
+A blank target market means Singapore.
 
 In chat intake, keep only the first 3 competitors the person lists, and tell them that only 3 are kept.
 
@@ -97,6 +99,8 @@ Social URLs must point to the official platform host.
 
 Include the declared context fields that the user provided.
 
+The target market goes in the profile as `targetMarket`, and positioning goes in `market`.
+
 A profile can be completed without competitors, palette, fonts, or creative references.
 
 The tool validates and writes a new profile revision before marking onboarding complete.
@@ -110,32 +114,42 @@ Do not claim that a provider is authenticated because a profile URL was recorded
 After any profile save, whether through the board's `onboard_brand` request, `pipeline_brand_onboard`, or the legacy `pipeline_brand_complete` path, call `pipeline_brand_research_start` with the brand right away, with no chat confirmation before starting: the board request (or the chat submission) already carries the person's approval.
 
 The board card lets the person add their logo, colours and fonts before research, and those travel with the Start onboarding click as `kit` on the kickoff `onboard_brand` request.
-If the person offers a logo, colours or fonts in chat before research, ask them to add those on the board card before clicking Start onboarding.
+If the person offers a logo, colours or fonts in chat before research, ask them to add those on the board card before clicking Start onboarding, where the logo is an upload.
 Do not call `pipeline_brand_kit_save` before research; it confirms the kit and is only for the review step in chat intake.
 When that kit carries a logo, follow the Handling a board request procedure in `skills/board-sync/SKILL.md` before landing the request.
 
 Right after the `pipeline_brand_research_start` call, even when it returns `skipped`, call `web_brand_kit` with the brand once.
 Never retry `web_brand_kit` against a blocked site.
-Call it only once per onboarding: when research is restarted after a failure, do not call `web_brand_kit` again, because the first capture already stands and a second one would replace the logo options the person may be reviewing.
-`web_brand_kit` skips any part of the kit the person already provided and returns `skipped` when logo, colours and fonts were all already provided; do not look for those parts another way.
+Call it only once per onboarding: when research is restarted after a failure, do not call `web_brand_kit` again, because the first capture already stands.
+The logo is upload only: nothing looks for one, so never search a website or a social page for a logo and never offer logo choices.
+`web_brand_kit` reads the website's colours and fonts only, and when the website shows no colours it uses the colours of the brand's social profile picture.
+It returns `{status, brand, captureId, palette, paletteSource, fonts, code, reason, skippedParts}`.
+It skips any part the person already provided and returns `skipped` when colours and fonts were both already provided; do not look for those parts another way.
 
 If the `pipeline_brand_research_start` result is `skipped`, do not dispatch the researcher.
 There is nothing blank to fill, or research is already current.
 
-Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields`, the declared competitors, `toFind`, market `SG`, the returned `limits` (including its `turns` budget), and `draftPath`.
+Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
+The file at `draftPath` already holds the right keys for the researcher to fill in.
 
 Then call `pipeline_brand_research_save` with the brand and `runId`.
 
-Right after a successful save, tell the person plainly which fields research filled, from the `filled` list, in marketing words such as "Research filled in Audience, Brand voice and Content pillars."
-If `suggested` lists a field, say it is a suggestion to check, for example "The audience is a suggestion based on competitors, so please check it."
-If the form on the board looks empty, tell them to reopen the board.
+When the save returns `needs_changes`, never close the run and never tell the person about it.
+Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems` and `draftPath`, then save again.
+Do this for at most two rounds.
+When `needsAudience` is true, the researcher either finds the brand's own audience or suggests one from the top competitors' audiences in the target market.
+If audience alone still remains after the two rounds, save once more with `audienceUnavailable: true` and tell the person plainly that no audience could be found and that they can add one on the board.
 
-On any failure, call `pipeline_brand_research_close` with `status: 'failed'` and a reason.
+Right after a successful save, tell the person plainly which fields research filled, from the `filled` list, in marketing words such as "Research filled in Audience, Brand voice and Content pillars."
+If `competitorsAdded` lists names, say research added them as competitors, for example "Research added Northshore Grocer and FreshCart SG to your competitors."
+If `suggested` lists a field, say it is a suggestion to check, for example "The audience is a suggestion based on competitors, so please check it."
+
+Close the run as failed with `pipeline_brand_research_close`, `status: 'failed'` and a reason, only when a tool itself returns an error.
 After a first failure, call `pipeline_brand_research_start` once more to restart the research, without calling `web_brand_kit` again; the board keeps showing that research is under way until the restart ends. A second failure is final.
 
-Publish the board so the logo, colours and fonts `web_brand_kit` proposed are visible.
+Publish the board so the colours and fonts `web_brand_kit` proposed are visible.
 
-Tell the person in one sentence to check the logo, colours and fonts on the board and click Save and continue.
+Tell the person in one sentence to check the colours and fonts on the board, add their logo by uploading it if they have one, and click Save and continue.
 
 If something about the profile or the research is worth flagging, for example the TikTok account reading as the US market while the website reads as Singapore, say so in chat in one plain sentence once research starts; do not block starting it, and do not turn it into a confirmation question.
 

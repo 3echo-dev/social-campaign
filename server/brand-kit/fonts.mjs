@@ -26,7 +26,8 @@ const FILE_NOISE_WORDS = new Set([
   'font', 'fonts', 'webfont', 'webfonts', 'web', 'subset', 'latin', 'woff', 'woff2', 'ttf', 'otf', 'eot', 'static',
   'asset', 'assets', 'file', 'files', 'main', 'icons', 'icon', 'min', 'wght', 'ital', 'vf', 'var', 'variable',
 ]);
-const STYLE_ONLY_WORDS = new Set(['thin', 'hairline', 'extralight', 'ultralight', 'light', 'book', 'regular', 'roman', 'normal', 'medium', 'semibold', 'demibold', 'bold', 'extrabold', 'ultrabold', 'heavy', 'black', 'italic', 'oblique']);
+const GENERIC_NAME_WORDS = new Set(['font', 'my', 'local', 'custom', 'heading', 'body', 'text', 'sans', 'serif', 'mono', 'display', 'main', 'primary', 'secondary', 'brand']);
+const STYLE_ONLY_WORDS =new Set(['thin', 'hairline', 'extralight', 'ultralight', 'light', 'book', 'regular', 'roman', 'normal', 'medium', 'semibold', 'demibold', 'bold', 'extrabold', 'ultrabold', 'heavy', 'black', 'italic', 'oblique']);
 
 /** @param {string} raw */
 function cleanName(raw) {
@@ -62,14 +63,26 @@ export function isJunkFamily(name) {
 }
 
 /** @param {string} name */
+export function displayFamily(name) {
+  let value = cleanName(name);
+  const wrapped = value.match(/^__(.+)_[0-9a-f]{6,8}$/i);
+  if (wrapped) value = wrapped[1];
+  if (/fallback$/i.test(value)) return null;
+  const words = value
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((word) => (/^[a-z]/.test(word) ? splitCamel(word).split(' ') : [word]))
+    .map((word) => (word === word.toLowerCase() ? titleWord(word) : word));
+  if (!words.length || words.every((word) => GENERIC_NAME_WORDS.has(word.toLowerCase()))) return null;
+  return words.join(' ');
+}
+
+/** @param {string} name */
 function readableDeclared(name) {
   const cleaned = cleanName(name);
-  const next = cleaned.match(/^__([A-Za-z0-9]+(?:_[A-Za-z0-9]+)*)_[0-9a-f]{6,8}$/);
-  if (next) {
-    const words = next[1].split('_');
-    return /^fallback$/i.test(words[words.length - 1]) ? null : words.join(' ');
-  }
-  return isJunkFamily(cleaned) ? null : baseFamily(cleaned);
+  if (/^__.+_[0-9a-f]{6,8}$/i.test(cleaned)) return displayFamily(cleaned);
+  return isJunkFamily(cleaned) ? null : displayFamily(baseFamily(cleaned));
 }
 
 /** @param {string} name */

@@ -721,7 +721,7 @@ function completeBrandOnboardingUnlocked(options = {}) {
     : Object.fromEntries([
       'website', 'facebook', 'instagram', 'tiktok', 'competitors', 'market', 'audience',
       'palette', 'fonts', 'voice', 'strategy', 'contentPillars', 'assets', 'sourceRefs',
-      'geography', 'language', 'customerSegment', 'voiceGuidance', 'terminology',
+      'geography', 'targetMarket', 'language', 'customerSegment', 'voiceGuidance', 'terminology',
       'examples', 'forbiddenClaims',
     ].filter((key) => options[key] !== undefined).map((key) => [key, options[key]]));
   if (profileInput.channels && typeof profileInput.channels === 'object') {

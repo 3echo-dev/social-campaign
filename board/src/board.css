@@ -188,6 +188,8 @@ small,.muted{color:var(--faint)}
 @media(max-width:900px){.need-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.need-grid{grid-template-columns:1fr}}
 .context-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.context-field-wide{grid-column:1/-1}
+.start-card.onboarding{container-type:inline-size}
 /* min-height keeps this row the same height whether or not the field carries an Edit
    button, so two fields side by side in the grid line up: label row, then textarea, both
    matching top to bottom. */
@@ -271,9 +273,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-fieldset:disabled label{cursor:not-allowed}
 .kit-stack{position:relative;display:flex;flex-direction:column;gap:calc(var(--gap) / 2);min-width:0}
 .kit-add{align-self:flex-start}
-/* From 721px to 1024px a third of the card is too narrow for a colour row, so the kit uses
-   the channel grid's two columns instead: Logo on the left, Colours over Fonts beside it. */
-@media(min-width:721px) and (max-width:1024px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
+@container (min-width:521px) and (max-width:960px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
 /* Logo. Empty: a dashed upload tile with the inputs' radius and border colour; the whole
    tile is the label of the visually hidden file input. With a logo: the image on a light,
    low-contrast checkerboard so transparent and dark marks both read. Tile and preview share
@@ -285,27 +285,11 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-file:enabled+.kit-upload:hover{border-color:var(--dim);background:rgba(255,255,255,.04)}
 .kit-file:focus-visible+.kit-upload,.kit-file:focus-visible+.kit-file-button{outline:2px solid var(--tape);outline-offset:2px}
 .kit-file:disabled+.kit-file-button{cursor:not-allowed}
-.kit-logo-preview,.kit-candidate-thumb{border:1px solid var(--line2);background:repeating-conic-gradient(#e2e6ed 0 25%,#f1f3f7 0 50%) 50% / 16px 16px}
+.kit-logo-preview{border:1px solid var(--line2);background:repeating-conic-gradient(#e2e6ed 0 25%,#f1f3f7 0 50%) 50% / 16px 16px}
 .kit-logo-preview{display:flex;align-items:center;justify-content:center;padding:var(--gap);overflow:hidden}
 .kit-logo-preview img{display:block;max-width:100%;max-height:100%;object-fit:contain}
 .kit-logo-preview.kit-logo-preview-none{background:var(--ink);color:var(--faint);font-size:12px}
 .kit-logo-actions{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
-/* Alternate logos: small thumbnails, the selected one ringed in --tape with a check badge. */
-.kit-candidates{display:flex;flex-wrap:wrap;gap:calc(var(--gap) / 2);padding:6px 0 0 6px}
-.kit-candidate{position:relative;display:block;cursor:pointer}
-.kit-candidate-wrap{position:relative;display:block}
-.kit-candidates .kit-candidate-remove{position:absolute;top:-6px;left:-6px;z-index:1;width:16px;height:16px;min-height:0;padding:0;border-radius:50%;background:var(--ink);color:var(--paper);border-color:var(--dim)}
-.kit-candidates .kit-candidate-remove::after{content:'';position:absolute;inset:-9px}
-.kit-candidates .kit-candidate-remove:hover{background:var(--hold);border-color:var(--hold);color:var(--ink)}
-.kit-candidates .kit-candidate-remove:disabled{display:none}
-.kit-candidate-thumb{position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;padding:4px;border-radius:var(--radius);transition:border-color 150ms ease,box-shadow 150ms ease}
-.kit-candidate-thumb img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-.kit-candidate-none{display:flex;color:var(--faint)}
-.kit-candidate:hover .kit-candidate-thumb{border-color:var(--dim)}
-.kit-candidate input:checked+.kit-candidate-thumb{border-color:var(--tape);box-shadow:0 0 0 1px var(--tape)}
-.kit-candidate input:focus-visible+.kit-candidate-thumb{outline:2px solid var(--tape);outline-offset:3px}
-.kit-candidate-check{position:absolute;top:-6px;right:-6px;display:none;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--tape);color:var(--ink)}
-.kit-candidate input:checked+.kit-candidate-thumb .kit-candidate-check{display:flex}
 /* Colour and font rows. Swatch and remove button are 32px (the board's button height); the
    text input keeps at least 88px (a whole #RRGGBB) and the select grows to 124px (its
    longest option, "Background"), so one row fits a third of the desktop card and a 375px
@@ -314,6 +298,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-row .field-error{grid-column:1/-1}
 .kit-color-row{grid-template-columns:32px minmax(88px,1fr) minmax(0,124px) 32px}
 .kit-font-row{grid-template-columns:minmax(88px,1fr) minmax(0,124px) 32px 32px}
+@container (max-width:520px){.kit-font-row{grid-template-columns:minmax(0,1fr) 32px 32px}.kit-font-row>input{grid-column:1/-1}}
 .kit-swatch{width:32px;height:32px;min-height:0;padding:0;border-radius:50%;background:none;cursor:pointer}
 .kit-swatch::-webkit-color-swatch-wrapper{padding:0}
 .kit-swatch::-webkit-color-swatch{border:0;border-radius:50%}

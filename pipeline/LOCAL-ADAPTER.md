@@ -20,9 +20,11 @@ The brand gate is the board's `onboard_brand` request, or `pipeline_brand_onboar
 
 `pipeline_brand_create` and `pipeline_brand_complete` are a compatibility path only.
 
-After a profile save, the research pass runs `pipeline_brand_research_start`, one researcher dispatch for the `brand-onboarding` workstream, `pipeline_brand_research_save`, or `pipeline_brand_research_close` on failure.
+After a profile save, the research pass runs `pipeline_brand_research_start`, one researcher dispatch for the `brand-onboarding` workstream, and `pipeline_brand_research_save`.
+A save that returns `needs_changes` leaves the run open, so the draft is fixed and saved again, and `pipeline_brand_research_close` is used only when a tool itself fails.
 
-Onboarding also runs `web_brand_kit`, a public, read-only website read by the server, and New job waits for the kit to be saved.
+Onboarding also runs `web_brand_kit`, a public, read-only read by the server that returns colours and fonts only, and New job waits for the kit to be saved.
+The logo is upload only.
 
 Limits: Hard limits table in pipeline/skills/research/SKILL.md.
 

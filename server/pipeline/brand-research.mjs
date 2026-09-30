@@ -2,7 +2,7 @@
  * The one onboarding research pass for a brand.
  *
  * A brand onboarding research run fills only the blank declared-profile
- * fields and tops up a shortlist of competitors, scoped to Singapore. It
+ * fields and tops up a shortlist of competitors, scoped to the brand's target market. It
  * never touches a job's own research or routing. The run is durable: start
  * records a marker and a run file, save applies the researcher's draft to
  * the brand profile and research record in one order (profile first, then
@@ -26,6 +26,7 @@ const brandProfile = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-profile.j
 const brandResearch = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-research.js'));
 const researchBudgets = require(join(PIPELINE_ROOT, 'scripts', 'lib-research-budget.js'));
 const onboardingRun = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
+const durable = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 
 const MAX_SOURCES = 12;
 const MAX_EVIDENCE_PER_COMPETITOR = 3;
@@ -68,6 +69,28 @@ function draftPathFor(brandDir, runId) {
   return join(onboardingRun.runDir(brandDir, runId), 'research-draft.json');
 }
 
+const SKELETON_FILLS = Object.freeze({ audience: '', market: '', voice: '', contentPillars: [], competitors: [] });
+
+function draftSkeleton(runId, blankFields, toFind) {
+  const fills = {};
+  for (const name of brandProfile.CONTEXT_FIELDS) {
+    if (name === 'competitors' ? toFind > 0 : blankFields.includes(name)) fills[name] = structuredClone(SKELETON_FILLS[name]);
+  }
+  return {
+    version: 1,
+    runId,
+    fills,
+    suggested: [],
+    research: { sources: [], evidenceMatrix: [], competitorDetails: [], findings: {}, gaps: [] },
+    budget: { searches: 0, fetches: 0, stopReason: '' },
+  };
+}
+
+function ensureDraftSkeleton(draftPath, runId, blankFields, toFind) {
+  if (existsSync(draftPath)) return;
+  durable.atomicWrite(draftPath, JSON.stringify(draftSkeleton(runId, blankFields, toFind), null, 2) + '\n');
+}
+
 /**
  * Start (or resume) the one onboarding research pass for a brand.
  * @returns {object} the section 1 `started`/`already_running`/`skipped` shape.
@@ -106,7 +129,7 @@ export function startBrandResearch({ root, brand }) {
       limits,
       profileRevision: profile.revision,
       researchRevision,
-      market: 'SG',
+      market: brandProfile.targetMarketOf(profile),
       now: new Date(),
     });
   } catch (error) {
@@ -121,16 +144,19 @@ export function startBrandResearch({ root, brand }) {
 
   const run = started.run;
   const declaredCompetitors = Array.isArray(run.declaredCompetitors) ? run.declaredCompetitors : declared;
+  const draftPath = draftPathFor(brandDir, run.runId);
+  const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
+  ensureDraftSkeleton(draftPath, run.runId, run.blankFields || blankFields, toFind);
   return {
     status: started.created ? 'started' : 'already_running',
     runId: run.runId,
     brand: entry.slug,
     brandId: entry.id,
-    market: run.market || 'SG',
+    market: run.market || brandProfile.targetMarketOf(profile),
     blankFields: run.blankFields || blankFields,
-    competitors: { declared: declaredCompetitors, toFind: brandProfile.MAX_COMPETITORS - declaredCompetitors.length },
+    competitors: { declared: declaredCompetitors, toFind },
     limits: run.limits || limits,
-    draftPath: draftPathFor(brandDir, run.runId),
+    draftPath,
     profileRevision: run.profileRevisionAtStart ?? profile.revision,
     researchRevision: run.researchRevisionAtStart ?? researchRevision,
   };
@@ -150,17 +176,27 @@ function readDraft(draftPath) {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new UserFacingError('The research draft is not valid JSON.', { code: 'research_draft_invalid' });
+    return { invalid: 'The research draft is not valid JSON.' };
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new UserFacingError('The research draft must be a JSON object.', { code: 'research_draft_invalid' });
+    return { invalid: 'The research draft must be a JSON object.' };
   }
-  return parsed;
+  return { value: parsed };
 }
 
-function defaultScope(item, slug) {
+function scopePlace(profile) {
+  const market = brandProfile.targetMarketOf(profile);
+  const named = Boolean(profile && typeof profile.targetMarket === 'string' && profile.targetMarket.trim());
+  return { market, geography: named ? market : 'SG' };
+}
+
+function defaultResearchScope(slug, place) {
+  return { brand: slug, market: place.market, geography: place.geography, label: 'Brand onboarding research' };
+}
+
+function defaultScope(item, slug, place) {
   if (item && typeof item === 'object' && item.scope) return item;
-  return { ...item, scope: { brand: slug, market: 'Singapore', geography: 'SG' }, applicableDimensions: (item && item.applicableDimensions) || ['brand'] };
+  return { ...item, scope: { brand: slug, market: place.market, geography: place.geography }, applicableDimensions: (item && item.applicableDimensions) || ['brand'] };
 }
 
 function latestObservedAtByKind(sources) {
@@ -181,13 +217,13 @@ function requiredFalseGaps(gaps) {
   return gaps.map((gap) => (typeof gap === 'string' ? { question: gap, reason: gap, required: false } : gap));
 }
 
-// Board context fields hold brand-facing content, never evidence notes. A fill that leaks a
-// citation, a fetch date, or run commentary is rejected here, before anything is written, so
-// the session can rewrite the draft and call save again without losing the run.
 const FILL_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 300 });
 const SUGGESTIBLE_FIELDS = Object.freeze(['audience']);
 const CONTENT_PILLARS_MIN = 1;
 const CONTENT_PILLARS_MAX = 5;
+const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'budget']);
+const RESEARCH_KEYS = Object.freeze(['scope', 'sources', 'evidenceMatrix', 'competitorDetails', 'findings', 'gaps', 'competitors']);
+const RESEARCH_LISTS = Object.freeze(['sources', 'evidenceMatrix', 'competitorDetails', 'gaps', 'competitors']);
 const FILL_BANNED_PATTERNS = Object.freeze([
   { test: /http/i, rule: 'must not contain a URL ("http")' },
   { test: /www\./i, rule: 'must not contain a URL ("www.")' },
@@ -197,126 +233,203 @@ const FILL_BANNED_PATTERNS = Object.freeze([
   { test: /\bverbatim\b/i, rule: 'must not contain the word "verbatim"' },
 ]);
 
-function checkFillText(field, text, errors) {
+function isObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function filled(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function checkFillText(field, text, problems) {
   for (const { test, rule } of FILL_BANNED_PATTERNS) {
-    if (test.test(text)) errors.push(`${field} ${rule}.`);
+    if (test.test(text)) problems.push({ field: `fills.${field}`, problem: `${field} ${rule}.` });
   }
 }
 
-/**
- * Reject a research draft's profile fills before anything is written. Evidence notes,
- * citations, fetch dates and run commentary belong in research.sources, research.evidenceMatrix
- * and research.findings, never in a board context field. Every violation is collected and names
- * its field and rule so the session can rewrite the draft in one pass.
- */
-function validateFillContent(fills) {
-  const errors = [];
+function fillProblems(fills, problems) {
+  for (const key of Object.keys(fills)) {
+    if (!brandProfile.CONTEXT_FIELDS.includes(key)) {
+      problems.push({ field: `fills.${key}`, problem: `Brand research cannot fill "${key}".` });
+    }
+  }
   for (const field of ['audience', 'market', 'voice']) {
     if (!own(fills, field)) continue;
     const value = fills[field];
-    if (typeof value !== 'string') continue;
-    checkFillText(field, value, errors);
+    if (typeof value !== 'string') {
+      problems.push({ field: `fills.${field}`, problem: `${field} must be text.` });
+      continue;
+    }
+    checkFillText(field, value, problems);
     const max = FILL_TEXT_LIMITS[field];
-    if (value.length > max) errors.push(`${field} must be at most ${max} characters (has ${value.length}).`);
+    if (value.length > max) problems.push({ field: `fills.${field}`, problem: `${field} must be at most ${max} characters (has ${value.length}).` });
   }
-  if (own(fills, 'contentPillars')) {
-    const pillars = Array.isArray(fills.contentPillars) ? fills.contentPillars : [];
-    if (pillars.length < CONTENT_PILLARS_MIN || pillars.length > CONTENT_PILLARS_MAX) {
-      errors.push(`contentPillars must list ${CONTENT_PILLARS_MIN} to ${CONTENT_PILLARS_MAX} items (has ${pillars.length}).`);
+  for (const field of ['contentPillars', 'competitors']) {
+    if (!own(fills, field)) continue;
+    const list = fills[field];
+    if (!Array.isArray(list) || list.some((item) => typeof item !== 'string')) {
+      problems.push({ field: `fills.${field}`, problem: `${field} must be a list of text items.` });
+      continue;
     }
-    for (const pillar of pillars) {
-      if (typeof pillar === 'string') checkFillText('contentPillars', pillar, errors);
+    for (const item of list) checkFillText(field, item, problems);
+  }
+  if (Array.isArray(fills.contentPillars) && fills.contentPillars.length) {
+    const count = fills.contentPillars.length;
+    if (count < CONTENT_PILLARS_MIN || count > CONTENT_PILLARS_MAX) {
+      problems.push({ field: 'fills.contentPillars', problem: `contentPillars must list ${CONTENT_PILLARS_MIN} to ${CONTENT_PILLARS_MAX} items (has ${count}).` });
     }
   }
-  if (own(fills, 'competitors')) {
-    const competitors = Array.isArray(fills.competitors) ? fills.competitors : [];
-    for (const competitor of competitors) {
-      if (typeof competitor === 'string') checkFillText('competitors', competitor, errors);
-    }
-  }
-  if (errors.length) {
-    throw new UserFacingError(`Brand research draft has invalid fills: ${[...new Set(errors)].join(' ')}`, { code: 'invalid_input' });
+  if (Array.isArray(fills.competitors) && fills.competitors.length > brandProfile.MAX_COMPETITORS) {
+    problems.push({ field: 'fills.competitors', problem: 'Brand research saves at most 3 competitors.' });
   }
 }
 
-function readSuggested(value, fills) {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) {
-    throw new UserFacingError('Brand research draft suggested must be a list of field names.', { code: 'invalid_input' });
+function suggestedProblems(suggested, fills, problems) {
+  if (suggested === undefined) return [];
+  if (!Array.isArray(suggested)) {
+    problems.push({ field: 'suggested', problem: 'suggested must be a list of field names.' });
+    return [];
   }
-  const names = [...new Set(value)];
+  const names = [...new Set(suggested)];
   if (names.some((name) => !SUGGESTIBLE_FIELDS.includes(name))) {
-    throw new UserFacingError('Brand research draft: only the audience can be marked as a suggestion.', { code: 'invalid_input' });
+    problems.push({ field: 'suggested', problem: 'Only the audience can be marked as a suggestion.' });
+    return [];
   }
   for (const name of names) {
-    if (typeof fills[name] !== 'string' || !fills[name].trim()) {
-      throw new UserFacingError(`Brand research draft marks the ${name} as a suggestion but has no ${name} fill.`, { code: 'invalid_input' });
+    if (!filled(fills[name])) {
+      problems.push({ field: 'suggested', problem: `The ${name} is marked as a suggestion but has no ${name} fill.` });
     }
   }
   return names;
 }
 
-/**
- * Save a completed onboarding research draft: fill blank profile fields,
- * write the research record, then close the run as complete.
- * @returns {object} the section 1 `complete` shape.
- */
-export function saveBrandResearch({ root, brand, runId }) {
-  const entry = requireOnboardedBrand(root, brand);
-  const brandDir = entry.path;
-
-  // a. The run exists, is running and belongs to this brand; read the draft.
-  const run = onboardingRun.read(brandDir, runId);
-  if (!run || run.status !== 'running' || run.brand !== entry.slug) {
-    throw new UserFacingError('This brand research run is not active for this brand.', { code: 'onboarding_run_not_active' });
+function attempt(field, problems, step) {
+  try {
+    step();
+  } catch (error) {
+    problems.push({ field, problem: error && error.message ? error.message : String(error) });
   }
-  const draft = readDraft(draftPathFor(brandDir, runId));
-  const draftFills = draft.fills && typeof draft.fills === 'object' ? draft.fills : {};
-  const researchDraft = draft.research && typeof draft.research === 'object' ? draft.research : {};
+}
 
-  // b. Limits.
-  for (const key of Object.keys(draftFills)) {
-    if (!brandProfile.CONTEXT_FIELDS.includes(key)) {
-      throw new UserFacingError(`Brand research cannot fill "${key}".`, { code: 'invalid_input' });
+function researchProblems(researchDraft, slug, place, problems) {
+  for (const key of Object.keys(researchDraft)) {
+    if (!RESEARCH_KEYS.includes(key)) {
+      problems.push({ field: `research.${key}`, problem: `"${key}" is not a research field. Use ${RESEARCH_KEYS.join(', ')}.` });
     }
   }
-  const fills = draftFills;
-  const suggested = readSuggested(draft.suggested, fills);
-  validateFillContent(fills);
-  const fillsCompetitors = Array.isArray(fills.competitors) ? fills.competitors : [];
-  const researchCompetitors = Array.isArray(researchDraft.competitors) ? researchDraft.competitors : [];
-  const competitorDetails = Array.isArray(researchDraft.competitorDetails) ? researchDraft.competitorDetails : [];
-  if (fillsCompetitors.length > brandProfile.MAX_COMPETITORS
-    || researchCompetitors.length > brandProfile.MAX_COMPETITORS
-    || competitorDetails.length > brandProfile.MAX_COMPETITORS) {
-    throw new UserFacingError('Brand research saves at most 3 competitors.', { code: 'invalid_input' });
-  }
-  for (const detail of competitorDetails) {
-    if (Array.isArray(detail && detail.evidence) && detail.evidence.length > MAX_EVIDENCE_PER_COMPETITOR) {
-      throw new UserFacingError('Brand research saves at most 3 evidence items per competitor.', { code: 'invalid_input' });
+  let listsOk = true;
+  for (const key of RESEARCH_LISTS) {
+    if (own(researchDraft, key) && !Array.isArray(researchDraft[key])) {
+      problems.push({ field: `research.${key}`, problem: `research.${key} must be a list.` });
+      listsOk = false;
     }
   }
+  if (own(researchDraft, 'findings') && !isObject(researchDraft.findings)) {
+    problems.push({ field: 'research.findings', problem: 'research.findings must be an object.' });
+  }
+  if (own(researchDraft, 'scope') && !isObject(researchDraft.scope)) {
+    problems.push({ field: 'research.scope', problem: 'research.scope must be an object.' });
+  }
+  if (!listsOk) return;
+
   const sources = Array.isArray(researchDraft.sources) ? researchDraft.sources : [];
-  if (sources.length > MAX_SOURCES) {
-    throw new UserFacingError('Brand research saves at most 12 sources.', { code: 'invalid_input' });
-  }
+  if (!sources.length) problems.push({ field: 'research.sources', problem: 'Add at least one dated source the research used.' });
+  if (sources.length > MAX_SOURCES) problems.push({ field: 'research.sources', problem: 'Brand research saves at most 12 sources.' });
   const boundary = brandResearch.createCapabilityBoundary({});
-  for (const source of sources) boundary.fetch(source && source.url, 'Source');
+  sources.forEach((source, index) => {
+    if (!isObject(source)) {
+      problems.push({ field: `research.sources[${index}]`, problem: 'Each source must be an object with url, observedAt, kind and title.' });
+      return;
+    }
+    attempt(`research.sources[${index}].url`, problems, () => boundary.fetch(source.url, 'Source'));
+  });
+  const researchCompetitors = Array.isArray(researchDraft.competitors) ? researchDraft.competitors : [];
+  if (researchCompetitors.length > brandProfile.MAX_COMPETITORS) {
+    problems.push({ field: 'research.competitors', problem: 'Brand research saves at most 3 competitors.' });
+  }
+  const competitorDetails = Array.isArray(researchDraft.competitorDetails) ? researchDraft.competitorDetails : [];
+  if (competitorDetails.length > brandProfile.MAX_COMPETITORS) {
+    problems.push({ field: 'research.competitorDetails', problem: 'Brand research saves at most 3 competitors.' });
+  }
+  competitorDetails.forEach((detail, index) => {
+    if (Array.isArray(detail && detail.evidence) && detail.evidence.length > MAX_EVIDENCE_PER_COMPETITOR) {
+      problems.push({ field: `research.competitorDetails[${index}].evidence`, problem: 'Brand research saves at most 3 evidence items per competitor.' });
+    }
+  });
 
-  // c. Build the research.save input.
-  const scope = researchDraft.scope && typeof researchDraft.scope === 'object'
-    ? researchDraft.scope
-    : { brand: entry.slug, market: 'Singapore', geography: 'SG', label: 'Brand onboarding research' };
-  const preparedSources = sources.map((source) => {
-    const scoped = defaultScope(source, entry.slug);
+  const scope = isObject(researchDraft.scope) ? researchDraft.scope : defaultResearchScope(slug, place);
+  const preparedSources = sources.filter(isObject).map((source) => {
+    const scoped = defaultScope(source, slug, place);
     return { ...scoped, kind: scoped.kind || 'brand_identity' };
   });
   const evidenceMatrix = Array.isArray(researchDraft.evidenceMatrix) ? researchDraft.evidenceMatrix : [];
-  const preparedEvidence = evidenceMatrix.map((item) => defaultScope(item, entry.slug));
+  if (evidenceMatrix.some((item) => !isObject(item))) {
+    problems.push({ field: 'research.evidenceMatrix', problem: 'Each evidence item must be an object with id, question, finding, confidence, source, observedAt and semantics.' });
+  } else {
+    attempt('research.evidenceMatrix', problems, () => brandResearch.normalizeEvidenceMatrix(evidenceMatrix.map((item) => defaultScope(item, slug, place))));
+  }
+  attempt('research.scope', problems, () => brandResearch.normalizeScope(scope));
+  if (preparedSources.length === sources.length) attempt('research.sources', problems, () => brandResearch.normalizeSources(preparedSources));
+  if (own(researchDraft, 'competitors')) attempt('research.competitors', problems, () => brandResearch.normalizeCompetitors(researchCompetitors));
+  if (own(researchDraft, 'competitorDetails')) attempt('research.competitorDetails', problems, () => brandResearch.normalizeCompetitorDetails(competitorDetails));
+  if (own(researchDraft, 'gaps')) attempt('research.gaps', problems, () => brandResearch.normalizeGaps(requiredFalseGaps(researchDraft.gaps)));
+}
+
+function audienceProblemText(market) {
+  return `The audience is blank. Add the brand's own audience, or suggest one from the top competitors' audiences in ${market} using sources from the last 12 months and list audience under suggested.`;
+}
+
+function draftProblems(draft, ctx) {
+  const problems = [];
+  for (const key of Object.keys(draft)) {
+    if (!DRAFT_KEYS.includes(key)) {
+      problems.push({ field: key, problem: `"${key}" is not a draft field. Use ${DRAFT_KEYS.join(', ')}.` });
+    }
+  }
+  const fills = own(draft, 'fills') ? draft.fills : {};
+  const researchDraft = own(draft, 'research') ? draft.research : {};
+  if (!isObject(fills)) problems.push({ field: 'fills', problem: 'fills must be an object.' });
+  if (!isObject(researchDraft)) problems.push({ field: 'research', problem: 'research must be an object.' });
+  if (own(draft, 'budget') && !isObject(draft.budget)) problems.push({ field: 'budget', problem: 'budget must be an object.' });
+  const safeFills = isObject(fills) ? fills : {};
+  if (isObject(fills)) fillProblems(fills, problems);
+  const suggested = suggestedProblems(draft.suggested, safeFills, problems);
+  if (isObject(researchDraft)) researchProblems(researchDraft, ctx.slug, ctx.place, problems);
+  const shapeCount = problems.length;
+  let needsAudience = false;
+  if (ctx.audienceBlank && !filled(safeFills.audience) && !ctx.audienceUnavailable) {
+    needsAudience = true;
+    problems.push({ field: 'fills.audience', problem: audienceProblemText(ctx.market) });
+  }
+  return { problems, shapeCount, suggested, needsAudience, fills: safeFills, researchDraft: isObject(researchDraft) ? researchDraft : {} };
+}
+
+function foundCompetitors(fills, researchDraft) {
+  const names = [];
+  const seen = new Set();
+  for (const list of [fills.competitors, researchDraft.competitors]) {
+    for (const raw of Array.isArray(list) ? list : []) {
+      const name = typeof raw === 'string' ? raw : raw && (raw.name || raw.label);
+      if (typeof name !== 'string' || !name.trim()) continue;
+      const key = name.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(name.trim());
+    }
+  }
+  return names.slice(0, brandProfile.MAX_COMPETITORS);
+}
+
+function buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found }) {
+  const scope = isObject(researchDraft.scope) ? researchDraft.scope : defaultResearchScope(entry.slug, place);
+  const sources = Array.isArray(researchDraft.sources) ? researchDraft.sources : [];
+  const preparedSources = sources.map((source) => {
+    const scoped = defaultScope(source, entry.slug, place);
+    return { ...scoped, kind: scoped.kind || 'brand_identity' };
+  });
+  const evidenceMatrix = Array.isArray(researchDraft.evidenceMatrix) ? researchDraft.evidenceMatrix : [];
+  const preparedEvidence = evidenceMatrix.map((item) => defaultScope(item, entry.slug, place));
   const preparedGaps = requiredFalseGaps(researchDraft.gaps);
-
-  const previousResearch = brandResearch.read(brandDir);
-
   const saveInput = {
     expectedRevision: run.researchRevisionAtStart,
     scope,
@@ -325,8 +438,8 @@ export function saveBrandResearch({ root, brand, runId }) {
     freshness: latestObservedAtByKind(preparedSources),
   };
   if (preparedGaps !== undefined) saveInput.gaps = preparedGaps;
-  if (own(researchDraft, 'competitors')) saveInput.competitors = researchCompetitors;
-  if (own(researchDraft, 'competitorDetails')) saveInput.competitorDetails = competitorDetails;
+  if (found.length) saveInput.competitors = found;
+  if (own(researchDraft, 'competitorDetails')) saveInput.competitorDetails = researchDraft.competitorDetails;
   if (own(researchDraft, 'findings')) saveInput.findings = researchDraft.findings;
   if (previousResearch) {
     for (const field of REPLACEABLE_FIELDS) {
@@ -334,29 +447,85 @@ export function saveBrandResearch({ root, brand, runId }) {
     }
     saveInput.authorizedReason = `Brand onboarding research ${runId}`;
   }
+  return saveInput;
+}
 
-  // d. Pre-validate with the exported normalizers and the expected revision. Nothing is written yet.
-  try {
-    brandResearch.normalizeScope(scope);
-    brandResearch.normalizeSources(preparedSources);
-    brandResearch.normalizeEvidenceMatrix(preparedEvidence);
-    if (saveInput.competitors !== undefined) brandResearch.normalizeCompetitors(saveInput.competitors);
-    if (saveInput.competitorDetails !== undefined) brandResearch.normalizeCompetitorDetails(saveInput.competitorDetails);
-    if (saveInput.gaps !== undefined) brandResearch.normalizeGaps(saveInput.gaps);
-  } catch (error) {
-    throw new UserFacingError(error.message, { code: 'invalid_input' });
+function needsChanges({ runId, entry, draftPath, needsAudience, problems }) {
+  return {
+    status: 'needs_changes',
+    runOpen: true,
+    runId,
+    brand: entry.slug,
+    draftPath,
+    needsAudience,
+    problems,
+  };
+}
+
+/**
+ * Save a completed onboarding research draft: fill blank profile fields,
+ * write the research record, then close the run as complete. A draft with any
+ * problem in its shape or content returns needs_changes with every problem at
+ * once, writes nothing and leaves the run open.
+ * @returns {object} the `complete` shape, or the `needs_changes` shape.
+ */
+export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
+  const entry = requireOnboardedBrand(root, brand);
+  const brandDir = entry.path;
+
+  const run = onboardingRun.read(brandDir, runId);
+  if (!run || run.status !== 'running' || run.brand !== entry.slug) {
+    throw new UserFacingError('This brand research run is not active for this brand.', { code: 'onboarding_run_not_active' });
   }
+  const draftPath = draftPathFor(brandDir, runId);
+  const read = readDraft(draftPath);
+  const profile = brandProfile.read(brandDir);
+  const market = brandProfile.targetMarketOf(profile);
+  const place = scopePlace(profile);
+  if (read.invalid) {
+    return needsChanges({ runId, entry, draftPath, needsAudience: false, problems: [{ field: 'draft', problem: read.invalid }] });
+  }
+  const draft = read.value;
+  const audienceBlank = Array.isArray(run.blankFields) && run.blankFields.includes('audience')
+    && Boolean(profile) && brandProfile.blankContextFields(profile).includes('audience');
+  const checked = draftProblems(draft, { slug: entry.slug, market, place, audienceBlank, audienceUnavailable: audienceUnavailable === true });
+  const { fills, researchDraft, suggested } = checked;
+  const problems = [...checked.problems];
+
+  const previousResearch = brandResearch.read(brandDir);
   const actualRevision = previousResearch ? previousResearch.revision : 0;
   if (actualRevision !== run.researchRevisionAtStart) {
     throw new UserFacingError('Brand research is stale: the saved research changed since this run started.', { code: 'stale_research_output' });
   }
 
-  // e, f, g. Fill the profile, then save the research, then close the run.
-  // Any failure past this point closes the run as failed instead of leaving it active.
+  const found = foundCompetitors(fills, researchDraft);
+  const fillInput = { ...fills };
+  if (found.length) fillInput.competitors = found;
+  let saveInput = null;
+  if (!checked.shapeCount) {
+    saveInput = buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found });
+    let dryFill = null;
+    try {
+      dryFill = brandProfile.fillBlankContext(brandDir, fillInput, { runId, now: new Date(), suggested, dryRun: true });
+    } catch (error) {
+      problems.push({ field: 'fills', problem: error.message });
+    }
+    if (dryFill) {
+      try {
+        brandResearch.save(brandDir, saveInput, { now: new Date(), dryRun: true, profile: dryFill.profile });
+      } catch (error) {
+        problems.push({ field: 'research', problem: error.message });
+      }
+    }
+  }
+  if (problems.length) {
+    return needsChanges({ runId, entry, draftPath, needsAudience: checked.needsAudience, problems });
+  }
+
   let fillResult = null;
   let savedResearch = null;
   try {
-    fillResult = brandProfile.fillBlankContext(brandDir, fills, { runId, now: new Date(), suggested });
+    fillResult = brandProfile.fillBlankContext(brandDir, fillInput, { runId, now: new Date(), suggested });
     savedResearch = brandResearch.save(brandDir, saveInput, { now: new Date() });
     onboardingRun.close(root, {
       brandDir,
@@ -401,6 +570,8 @@ export function saveBrandResearch({ root, brand, runId }) {
     researchRevision: savedResearch.revision,
     competitors: savedResearch.competitors,
     competitorSource: savedResearch.competitorSource,
+    competitorsAdded: fillResult.added,
+    audienceMissing: brandProfile.blankContextFields(fillResult.profile).includes('audience'),
     sourceCount: savedResearch.sources.length,
     gapCount: savedResearch.gaps.length,
     current: savedResearch.current,

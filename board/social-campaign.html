@@ -198,6 +198,8 @@ small,.muted{color:var(--faint)}
 @media(max-width:900px){.need-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.need-grid{grid-template-columns:1fr}}
 .context-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.context-field-wide{grid-column:1/-1}
+.start-card.onboarding{container-type:inline-size}
 /* min-height keeps this row the same height whether or not the field carries an Edit
    button, so two fields side by side in the grid line up: label row, then textarea, both
    matching top to bottom. */
@@ -281,9 +283,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-fieldset:disabled label{cursor:not-allowed}
 .kit-stack{position:relative;display:flex;flex-direction:column;gap:calc(var(--gap) / 2);min-width:0}
 .kit-add{align-self:flex-start}
-/* From 721px to 1024px a third of the card is too narrow for a colour row, so the kit uses
-   the channel grid's two columns instead: Logo on the left, Colours over Fonts beside it. */
-@media(min-width:721px) and (max-width:1024px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
+@container (min-width:521px) and (max-width:960px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
 /* Logo. Empty: a dashed upload tile with the inputs' radius and border colour; the whole
    tile is the label of the visually hidden file input. With a logo: the image on a light,
    low-contrast checkerboard so transparent and dark marks both read. Tile and preview share
@@ -295,27 +295,11 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-file:enabled+.kit-upload:hover{border-color:var(--dim);background:rgba(255,255,255,.04)}
 .kit-file:focus-visible+.kit-upload,.kit-file:focus-visible+.kit-file-button{outline:2px solid var(--tape);outline-offset:2px}
 .kit-file:disabled+.kit-file-button{cursor:not-allowed}
-.kit-logo-preview,.kit-candidate-thumb{border:1px solid var(--line2);background:repeating-conic-gradient(#e2e6ed 0 25%,#f1f3f7 0 50%) 50% / 16px 16px}
+.kit-logo-preview{border:1px solid var(--line2);background:repeating-conic-gradient(#e2e6ed 0 25%,#f1f3f7 0 50%) 50% / 16px 16px}
 .kit-logo-preview{display:flex;align-items:center;justify-content:center;padding:var(--gap);overflow:hidden}
 .kit-logo-preview img{display:block;max-width:100%;max-height:100%;object-fit:contain}
 .kit-logo-preview.kit-logo-preview-none{background:var(--ink);color:var(--faint);font-size:12px}
 .kit-logo-actions{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
-/* Alternate logos: small thumbnails, the selected one ringed in --tape with a check badge. */
-.kit-candidates{display:flex;flex-wrap:wrap;gap:calc(var(--gap) / 2);padding:6px 0 0 6px}
-.kit-candidate{position:relative;display:block;cursor:pointer}
-.kit-candidate-wrap{position:relative;display:block}
-.kit-candidates .kit-candidate-remove{position:absolute;top:-6px;left:-6px;z-index:1;width:16px;height:16px;min-height:0;padding:0;border-radius:50%;background:var(--ink);color:var(--paper);border-color:var(--dim)}
-.kit-candidates .kit-candidate-remove::after{content:'';position:absolute;inset:-9px}
-.kit-candidates .kit-candidate-remove:hover{background:var(--hold);border-color:var(--hold);color:var(--ink)}
-.kit-candidates .kit-candidate-remove:disabled{display:none}
-.kit-candidate-thumb{position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;padding:4px;border-radius:var(--radius);transition:border-color 150ms ease,box-shadow 150ms ease}
-.kit-candidate-thumb img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-.kit-candidate-none{display:flex;color:var(--faint)}
-.kit-candidate:hover .kit-candidate-thumb{border-color:var(--dim)}
-.kit-candidate input:checked+.kit-candidate-thumb{border-color:var(--tape);box-shadow:0 0 0 1px var(--tape)}
-.kit-candidate input:focus-visible+.kit-candidate-thumb{outline:2px solid var(--tape);outline-offset:3px}
-.kit-candidate-check{position:absolute;top:-6px;right:-6px;display:none;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--tape);color:var(--ink)}
-.kit-candidate input:checked+.kit-candidate-thumb .kit-candidate-check{display:flex}
 /* Colour and font rows. Swatch and remove button are 32px (the board's button height); the
    text input keeps at least 88px (a whole #RRGGBB) and the select grows to 124px (its
    longest option, "Background"), so one row fits a third of the desktop card and a 375px
@@ -324,6 +308,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-row .field-error{grid-column:1/-1}
 .kit-color-row{grid-template-columns:32px minmax(88px,1fr) minmax(0,124px) 32px}
 .kit-font-row{grid-template-columns:minmax(88px,1fr) minmax(0,124px) 32px 32px}
+@container (max-width:520px){.kit-font-row{grid-template-columns:minmax(0,1fr) 32px 32px}.kit-font-row>input{grid-column:1/-1}}
 .kit-swatch{width:32px;height:32px;min-height:0;padding:0;border-radius:50%;background:none;cursor:pointer}
 .kit-swatch::-webkit-color-swatch-wrapper{padding:0}
 .kit-swatch::-webkit-color-swatch{border:0;border-radius:50%}
@@ -847,12 +832,15 @@ export const CONTEXT_LIMITS = Object.freeze({
 
 export const CONTEXT_FIELDS = Object.freeze([
   { name: 'audience', label: 'Audience', short: 'audience', placeholder: 'Who are you speaking to?', maxlength: CONTEXT_LIMITS.text.audience },
-  { name: 'market', label: 'Market and positioning', short: 'market and positioning', placeholder: 'What do you offer, and what makes it different?', maxlength: CONTEXT_LIMITS.text.market },
+  { name: 'market', label: 'Positioning', short: 'positioning', placeholder: 'What do you offer, and what makes it different?', maxlength: CONTEXT_LIMITS.text.market },
   { name: 'voice', label: 'Brand voice', short: 'brand voice', placeholder: 'How should your brand sound?', maxlength: CONTEXT_LIMITS.text.voice },
   { name: 'contentPillars', label: 'Content pillars (one per line)', short: 'content pillars', placeholder: 'One topic per line' },
   { name: 'competitors', label: 'Top 3 competitors (one per line)', short: 'top 3 competitors', placeholder: 'Up to 3 names or URLs, one per line' },
 ]);
 export const CONTEXT_FIELD_NAMES = CONTEXT_FIELDS.map(field => field.name);
+export const TARGET_MARKET_FIELD = Object.freeze({ name: 'targetMarket', label: 'Target market', short: 'target market', placeholder: 'Singapore', maxlength: 60 });
+const TARGET_MARKET_TOO_LONG = 'Keep the target market under 60 characters.';
+const normalizeTargetMarket = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 // Normalize what a person actually types: a bare domain becomes an https URL,
 // and a bare @handle becomes the channel's official profile URL. A full URL
@@ -905,6 +893,8 @@ export function buildProfile(values = {}, prefilled = {}, unlocked = {}) {
       profile[name] = current;
     }
   }
+  const market = normalizeTargetMarket(values.targetMarket);
+  if (market !== normalizeTargetMarket(prefilled.targetMarket)) profile.targetMarket = market;
   return profile;
 }
 
@@ -914,7 +904,7 @@ export function buildProfile(values = {}, prefilled = {}, unlocked = {}) {
 // the draft object, and kept unchanged through re-renders so a later edit
 // (or a deliberate clear) can be told apart from an untouched field.
 export function contextPrefill(values = {}) {
-  return Object.fromEntries(CONTEXT_FIELD_NAMES.map(name => [name, values[name] || '']));
+  return Object.fromEntries([...CONTEXT_FIELD_NAMES, TARGET_MARKET_FIELD.name].map(name => [name, values[name] || '']));
 }
 
 // The brand name, four channels, and five declared context fields, read
@@ -931,6 +921,7 @@ export function profileFormValues(brand) {
     values[name] = value || '';
     values[name + '_unavailable'] = /^not available$/i.test(value) || channel?.status === 'unavailable';
   }
+  values.targetMarket = typeof profile.targetMarket === 'string' ? normalizeTargetMarket(profile.targetMarket) : '';
   values.audience = typeof profile.audience === 'string' ? profile.audience : '';
   values.market = typeof profile.market === 'string' ? profile.market : '';
   values.voice = typeof profile.voice === 'string' ? profile.voice : '';
@@ -952,34 +943,47 @@ export function onboardDraft(brand) {
 }
 
 export function markContextEdited(draft, name) {
-  if (!draft || !CONTEXT_FIELD_NAMES.includes(name)) return draft;
+  if (!draft || !name || String(name).startsWith('kit_')) return draft;
   draft.edited = { ...(draft.edited || {}), [name]: true };
   return draft;
 }
 
-export function rebaselineOnboardDraft(draft, brand) {
-  const fresh = profileFormValues(brand);
+const DRAFT_TEXT_FIELDS = Object.freeze(['name', TARGET_MARKET_FIELD.name]);
+
+export function reconcileOnboardDraft(draft, brand) {
+  if (!draft || !brand) return draft;
+  const saved = profileFormValues(brand);
   const values = { ...(draft.values || {}) };
-  const typed = {};
+  const edited = draft.edited || {};
+  const unlocked = {};
+  const ownedContext = name => Boolean(edited[name]) && (Boolean(String(values[name] ?? '').trim()) || Boolean(draft.unlocked?.[name]));
   for (const name of CONTEXT_FIELD_NAMES) {
-    const current = String(values[name] ?? '').trim();
-    if (draft.edited?.[name] && current && current !== String(draft.prefilled?.[name] ?? '').trim()) typed[name] = true;
-    else values[name] = fresh[name];
+    if (ownedContext(name) || draft.unlocked?.[name]) unlocked[name] = true;
+    if (!ownedContext(name)) values[name] = saved[name];
+  }
+  for (const name of DRAFT_TEXT_FIELDS) {
+    if (!edited[name]) values[name] = saved[name];
+  }
+  for (const name of CHANNEL_NAMES) {
+    if (edited[name] || edited[name + '_unavailable']) continue;
+    values[name] = saved[name];
+    values[name + '_unavailable'] = saved[name + '_unavailable'];
   }
   draft.values = values;
-  draft.prefilled = contextPrefill(fresh);
-  draft.unlocked = { ...typed };
-  draft.edited = typed;
+  draft.prefilled = contextPrefill(saved);
+  draft.unlocked = unlocked;
   return draft;
 }
 
-export function syncOnboardDraftToResearch(draft, brand) {
-  const phase = brandResearchPhase(brand, draft);
-  const runId = brand?.usage?.runId ?? null;
-  const finished = phase === 'complete' || phase === 'failed';
-  if (brand && finished && (draft.researchPhase !== phase || (draft.researchRunId ?? null) !== runId)) rebaselineOnboardDraft(draft, brand);
-  draft.researchPhase = phase;
-  draft.researchRunId = runId;
+export function adoptBrand(draft, brands = []) {
+  if (!draft || draft.kind !== 'onboard' || draft.brand) return draft;
+  const open = (Array.isArray(brands) ? brands : []).filter(brand => brand && !brandReady(brand));
+  const wanted = [draft.values?.name, draft.args?.name].map(name => String(name ?? '').trim().toLowerCase()).filter(Boolean);
+  const untouched = !wanted.length && !Object.keys(draft.edited || {}).length && !draft.researchRequested;
+  const match = wanted.length
+    ? open.find(brand => wanted.includes(String(brand.name || '').trim().toLowerCase()))
+    : untouched ? open[0] : null;
+  if (match) draft.brand = match.slug;
   return draft;
 }
 
@@ -1007,6 +1011,7 @@ export function validateProfile(values = {}, prefilled = {}, unlocked = {}) {
     const error = channelFieldError(name, values[name], Boolean(values[name + '_unavailable']));
     if (error) errors[name] = error;
   }
+  if (normalizeTargetMarket(values.targetMarket).length > TARGET_MARKET_FIELD.maxlength) errors.targetMarket = TARGET_MARKET_TOO_LONG;
   for (const field of CONTEXT_FIELDS) {
     const limit = CONTEXT_LIMITS.text[field.name];
     const length = contextTextLength(values[field.name]);
@@ -1035,6 +1040,13 @@ export function researchSuggested(brand, name, values = {}, prefilled = {}) {
   if (!Array.isArray(fields) || !fields.includes(name)) return false;
   const saved = String(prefilled[name] ?? '').trim();
   return Boolean(saved) && String(values[name] ?? '').trim() === saved;
+}
+
+export function targetMarketField(values = {}, fieldErrors = null) {
+  const field = TARGET_MARKET_FIELD;
+  const fieldError = fieldErrors?.[field.name];
+  const errorId = `context-${field.name}-error`;
+  return `<div class="context-field context-field-wide"><div class="context-field-head"><label for="context-${field.name}">${esc(field.label)}</label></div><input id="context-${field.name}" name="${field.name}" type="text" maxlength="${field.maxlength}" placeholder="${esc(field.placeholder)}" value="${esc(values[field.name] ?? '')}" autocomplete="off" aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}</div>`;
 }
 
 // One declared context field: a normal textarea, prefilled and locked
@@ -1068,6 +1080,7 @@ export function contextField(field, values = {}, prefilled = {}, unlocked = {}, 
 export const KIT_COLOR_ROLES = Object.freeze(['primary', 'secondary', 'accent', 'background', 'text', 'other']);
 export const KIT_FONT_USES = Object.freeze(['headings', 'body', 'captions', 'other']);
 export const KIT_LIMITS = Object.freeze({ maxColors: 8, maxFonts: 4 });
+const KIT_SOCIAL_PLATFORMS = Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
 
 // A hex colour, with or without '#', 3 or 6 digits, normalized to
 // '#RRGGBB' uppercase. Anything else (empty, malformed) returns null so a
@@ -1121,83 +1134,18 @@ export function validateKit(kit = {}) {
   return errors;
 }
 
-// The candidate currently shown as the logo: whatever the person picked, or
-// (for a pending brand with alternates) the first proposed candidate, so an
-// untouched kit still has one selected radio.
-export const candidateKey = candidate => `${candidate?.captureId || ''}/${candidate?.candidateId || ''}`;
-
-export function visibleCandidates(projected, kit = {}) {
-  const dismissed = new Set(Array.isArray(kit?.dismissed) ? kit.dismissed : []);
-  return (projected?.logoCandidates || []).filter(candidate => !dismissed.has(candidateKey(candidate)));
-}
-
-function pickedCandidate(projected, kit = {}) {
-  const logoState = kit.logo || {};
-  if (logoState.action !== 'select') return null;
-  return visibleCandidates(projected, kit).find(item => item.candidateId === logoState.candidateId && item.captureId === logoState.captureId) || null;
-}
-
-function shownCandidate(projected, logoState, dismissed = []) {
-  const kit = { logo: logoState, dismissed };
-  const candidates = visibleCandidates(projected, kit);
-  const savedId = projected.logo?.candidateId || null;
-  const saved = savedId ? candidates.find(item => item.candidateId === savedId && (!projected.logo.captureId || item.captureId === projected.logo.captureId)) : null;
-  const chosen = pickedCandidate(projected, kit) || saved || candidates[0] || null;
-  if (chosen) return { candidateId: chosen.candidateId, captureId: chosen.captureId, candidate: chosen };
-  return { candidateId: savedId, captureId: projected.logo?.captureId || null, candidate: null };
-}
-
-export function selectedLogoCandidate(projected, kit = {}) {
-  const logoState = kit.logo || {};
-  if (logoState.action === 'remove' || logoState.action === 'upload' || logoState.action === 'asset') return null;
-  const picked = pickedCandidate(projected, kit);
-  if (picked) return picked;
-  const shown = shownCandidate(projected, logoState, kit.dismissed);
-  if (projected.logo && !projected.logo.candidateId) return null;
-  return shown.candidate;
-}
-
-export function dismissLogoCandidate(projected, kit = {}, candidate) {
-  const wasSelected = candidateKey(selectedLogoCandidate(projected, kit)) === candidateKey(candidate);
-  const kept = (Array.isArray(kit.dismissed) ? kit.dismissed : []).filter(key => key.startsWith(`${candidate.captureId}/`));
-  const next = { ...kit, dismissed: [...new Set([...kept, candidateKey(candidate)])] };
-  if (wasSelected) {
-    const [first] = visibleCandidates(projected, next);
-    next.logo = first ? { action: 'select', candidateId: first.candidateId, captureId: first.captureId } : { action: 'remove' };
-  }
-  return next;
-}
-
-// The onboard_brand `args.kit` shape (section 4), built from the projection
-// (brand.kit, section 7) plus whatever the person changed in this draft.
-// An untouched kit on a pending brand with proposed alternates still sends
-// a full kit: 'select' of whichever candidate is shown. An untouched kit
-// whose shown logo is the person's own provided upload (kit.provided.logo,
-// unchanged since) sends 'keep' instead, since there is nothing to select.
 export function kitPayload(brand, kit = {}) {
   const projected = brand?.kit || {};
   const logoState = kit.logo || {};
-  const candidates = visibleCandidates(projected, kit);
   let logo;
   if (logoState.action === 'upload' && logoState.dataBase64) {
     logo = { action: 'upload', mimeType: logoState.mimeType, dataBase64: logoState.dataBase64 };
     if (logoState.thumbBase64) { logo.thumbBase64 = logoState.thumbBase64; logo.thumbMimeType = logoState.thumbMimeType || logoState.mimeType; }
   } else if (logoState.action === 'asset' && logoState.assetId) {
-    // Uploaded straight to the artifact's asset store (see encodeLogoUpload): the
-    // request carries the asset id, never the bytes. board-sync downloads it to a
-    // local file before landing the request.
     logo = { action: 'asset', assetId: logoState.assetId, mimeType: logoState.mimeType, width: logoState.width ?? null, height: logoState.height ?? null };
     if (logoState.thumbAssetId) { logo.thumbAssetId = logoState.thumbAssetId; logo.thumbMimeType = logoState.thumbMimeType || logoState.mimeType; }
   } else if (logoState.action === 'remove') {
     logo = { action: 'remove' };
-  } else if (pickedCandidate(projected, kit)) {
-    const shown = shownCandidate(projected, logoState, kit.dismissed);
-    logo = { action: 'select', captureId: shown.captureId, candidateId: shown.candidateId };
-  } else if (projected.logo?.source === 'upload') {
-    logo = { action: 'keep' };
-  } else if (candidates.length) {
-    const shown = shownCandidate(projected, logoState, kit.dismissed);
-    logo = shown.candidateId && shown.captureId ? { action: 'select', captureId: shown.captureId, candidateId: shown.candidateId } : { action: 'keep' };
   } else {
     logo = { action: 'keep' };
   }
@@ -1318,7 +1266,6 @@ export function kitFocusSelector(action, index, count) {
   if (action === 'remove-color') return count > 0 ? `[name="kit_color_hex_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-color"]';
   if (action === 'remove-font') return count > 0 ? `[name="kit_font_family_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-font"]';
   if (action === 'remove-logo' || action === 'replace-logo') return '#kit-logo-file';
-  if (action === 'remove-candidate') return count > 1 ? '.kit-candidate input:checked' : count === 1 ? '[data-kit-action="remove-logo"]' : '#kit-logo-file';
   return null;
 }
 
@@ -1358,34 +1305,17 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const logoState = kit.logo || {};
   const palette = Array.isArray(kit.palette) ? kit.palette : (projected.palette || []);
   const fonts = Array.isArray(kit.fonts) ? kit.fonts : (projected.fonts || []);
-  const candidates = visibleCandidates(projected, kit);
-  const shown = shownCandidate(projected, logoState, kit.dismissed);
-  // The logo this draft would send, mirrored for display: nothing once
-  // removed, the person's upload, the candidate they picked, or else the
-  // projected logo (an untouched pending kit with no logo of its own shows
-  // the candidate kitPayload would select).
   const removed = logoState.action === 'remove';
-  // 'asset' is the same "the person just picked a file" case as 'upload': the
-  // bytes went (or are going) to the artifact's asset store instead of inline
-  // base64, but the draft still shows the locally-rendered previewDataUrl.
   const ownUpload = logoState.action === 'upload' || logoState.action === 'asset';
-  const selected = removed || ownUpload ? null : selectedLogoCandidate(projected, kit);
-  const selectedKey = selected ? candidateKey(selected) : null;
-  const preview = kitImageSrc(removed ? null
-    : ownUpload ? (logoState.previewDataUrl || null)
-    : pickedCandidate(projected, kit) ? (selected?.thumb || null)
-    : projected.logo?.thumb || selected?.thumb || null);
-  const hasLogo = !removed && Boolean(preview || ownUpload || selected || projected.logo);
-  const savedLogo = !logoState.action && Boolean(projected.logo) && !projected.logo.candidateId;
-  const logoAlt = brand?.name ? `${brand.name} logo` : 'Proposed logo';
+  const preview = kitImageSrc(removed ? null : ownUpload ? (logoState.previewDataUrl || null) : projected.logo?.thumb || null);
+  const hasLogo = !removed && Boolean(preview || ownUpload || projected.logo);
+  const savedLogo = !logoState.action && Boolean(projected.logo);
+  const logoAlt = brand?.name ? `${brand.name} logo` : 'Logo';
   const logoError = fieldErrors?.logo || null;
   const fileInput = label => `<input type="file" id="kit-logo-file" class="kit-file visually-hidden" name="kit_logo_file" accept="image/png,image/jpeg,image/webp,image/svg+xml"${label ? ` aria-label="${label}"` : ''} aria-invalid="${logoError ? 'true' : 'false'}" ${logoError ? 'aria-describedby="kit-logo-error"' : ''} ${dis}>`;
-  const candidateList = candidates.length > 1
-    ? `<div class="kit-candidates" role="radiogroup" aria-label="Logo options">${candidates.map((candidate, index) => `<div class="kit-candidate-wrap"><label class="kit-candidate"><input type="radio" class="visually-hidden" name="kit_logo_candidate" value="${esc(candidate.candidateId)}" data-capture="${esc(candidate.captureId)}" aria-label="Logo option ${index + 1}" ${selectedKey === candidateKey(candidate) ? 'checked' : ''} ${dis}><span class="kit-candidate-thumb">${kitImageSrc(candidate.thumb) ? `<img src="${esc(kitImageSrc(candidate.thumb))}" alt="">` : `<span class="kit-candidate-none">${KIT_ICONS.image}</span>`}<span class="kit-candidate-check">${KIT_ICONS.check}</span></span></label><button type="button" class="kit-candidate-remove" data-kit-action="remove-candidate" data-candidate="${esc(candidate.candidateId)}" data-capture="${esc(candidate.captureId)}" aria-label="Remove logo option ${index + 1}" ${dis}>${KIT_ICONS.removeSmall}</button></div>`).join('')}</div>`
-    : '';
   const logoBody = hasLogo
-    ? `<div class="kit-logo-preview${preview ? '' : ' kit-logo-preview-none'}">${preview ? `<img src="${esc(preview)}" alt="${esc(logoAlt)}">` : `<span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span>`}</div>${candidateList}<div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div>`
-    : `${fileInput('')}<label class="kit-upload" for="kit-logo-file">${KIT_ICONS.upload}<span class="kit-upload-title">Upload logo</span><span class="kit-upload-hint">PNG, JPG, WebP or SVG</span></label>${candidateList}`;
+    ? `<div class="kit-logo-preview${preview ? '' : ' kit-logo-preview-none'}">${preview ? `<img src="${esc(preview)}" alt="${esc(logoAlt)}">` : `<span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div>`
+    : `${fileInput('')}<label class="kit-upload" for="kit-logo-file">${KIT_ICONS.upload}<span class="kit-upload-title">Upload logo</span><span class="kit-upload-hint">PNG, JPG, WebP or SVG</span></label>`;
   const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, showTags && provided.logo ? tag : '', 'kit-logo-block');
 
   const removeButton = (action, index, label) => `<button type="button" class="quiet kit-icon-button" data-kit-action="${action}" data-index="${index}" aria-label="${label}" ${dis}>${KIT_ICONS.remove}</button>`;
@@ -1395,7 +1325,11 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     const errorId = `kit-color-${index}-error`;
     return `<div class="kit-row kit-color-row"><input type="color" class="kit-swatch" name="kit_color_swatch_${index}" value="${esc(normalizeHex(color?.value) || '#000000')}" aria-label="Pick colour ${n}" ${dis}><input type="text" name="kit_color_hex_${index}" maxlength="7" placeholder="#1A2B3C" value="${esc(color?.value || '')}" aria-label="Colour ${n} hex code" spellcheck="false" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} ${dis}><select name="kit_color_role_${index}" aria-label="Colour ${n} role" ${fieldErrors?.palette ? 'aria-describedby="kit-palette-error"' : ''} ${dis}>${KIT_COLOR_ROLES.map(role => `<option value="${role}" ${color?.role === role ? 'selected' : ''}>${humanize(role)}</option>`).join('')}</select>${removeButton('remove-color', index, `Remove colour ${n}`)}${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
   }).join('');
-  const colorsBody = `${colorRows || '<p class="muted">No colours yet</p>'}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}<button type="button" class="kit-add" data-kit-action="add-color" ${loading || palette.length >= KIT_LIMITS.maxColors ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
+  const settled = phase === 'ready' && CAPTURE_SETTLED.has(projected.capture?.status) && !(projected.palette || []).length;
+  const socialPlatform = KIT_SOCIAL_PLATFORMS[projected.paletteSource];
+  const paletteNote = socialPlatform && !provided.palette && palette.length ? `<p class="muted">From your ${socialPlatform} profile picture.</p>` : '';
+  const emptyColours = settled ? 'We could not read your colours. Add them here.' : 'No colours yet';
+  const colorsBody = `${paletteNote}${colorRows || `<p class="muted">${emptyColours}</p>`}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}<button type="button" class="kit-add" data-kit-action="add-color" ${loading || palette.length >= KIT_LIMITS.maxColors ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
   const colorsBlock = kitBlock('colors', 'Colours', colorsBody, showTags && provided.palette ? tag : '');
 
   const fontOptions = (projected.fonts || []).map(font => `<option value="${esc(font.family)}">`).join('');
@@ -1462,7 +1396,7 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}) {
     : 'Save and continue';
   const buttonDisabled = state.busy || pending || phase === 'running';
   const kit = kitSection(existing ? brand : null, state.kit || {}, state.kitErrors || null, !existing && phase === 'running');
-  return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><small>Claude validates the saved request and updates this board when complete.</small><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
+  return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
 }
 
 const NEW_JOB_PLACEHOLDERS = Object.freeze({
@@ -4192,13 +4126,9 @@ if (typeof document !== 'undefined') {
     if (!inline) inline = defaultInline();
     if (inline.kind === 'new') return inlineJobForm();
     if (artifactMode()) ensureSignalAvailability();
+    adoptBrand(inline, data.brands || []);
     const brand = inline.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
-    // The moment research finishes (or gives up), re-baseline this draft's
-    // prefilled snapshot to the brand's now-current profile so a
-    // research-filled field renders locked with its Edit button, and an
-    // untouched field stays omitted from the next submit; only once per
-    // transition, so it never clobbers an edit the person made afterward.
-    syncOnboardDraftToResearch(inline, brand);
+    reconcileOnboardDraft(inline, brand);
     const signalInfo = { artifact: artifactMode(), availability: signalAvailability, busy: transport?.signalState?.status === 'sending' };
     return inlineOnboardingForm(brand, inline, signalInfo);
   }
@@ -4514,8 +4444,6 @@ if (typeof document !== 'undefined') {
         if (kitTarget) { kitTarget.focus({preventScroll:true}); kitTarget.scrollIntoView({block:'nearest', inline:'nearest'}); }
       } else if (inline?.focusName) {
         const named = inlineForm.elements.namedItem(inline.focusName);
-        // A radio group (kit_logo_candidate) returns a RadioNodeList, which has no
-        // .focus: refocus the one radio restoreForm already checked back above.
         const focused = named instanceof RadioNodeList ? [...named].find(item => item.checked) || named[0] : named;
         focused?.focus({preventScroll:true});
         if (focused && typeof focused.setSelectionRange === 'function' && Number.isInteger(inline.selectionStart) && Number.isInteger(inline.selectionEnd)) {
@@ -4888,15 +4816,6 @@ if (typeof document !== 'undefined') {
       } else if (action === 'remove-logo') {
         kit.logo = { action: 'remove' };
         inline.kitFocus = kitFocusSelector('remove-logo');
-      } else if (action === 'remove-candidate') {
-        const candidate = (projected.logoCandidates || []).find(item => item.candidateId === target.dataset.candidate && item.captureId === (target.dataset.capture || item.captureId));
-        if (candidate) {
-          const next = dismissLogoCandidate(projected, kit, candidate);
-          kit.dismissed = next.dismissed;
-          if (next.logo) kit.logo = next.logo;
-          const left = visibleCandidates(projected, next).length;
-          inline.kitFocus = kitFocusSelector('remove-candidate', null, kit.logo?.action === 'remove' ? 0 : left);
-        }
       }
       render();
       return;
@@ -5032,6 +4951,7 @@ if (typeof document !== 'undefined') {
           active.brand = result.brand?.slug || active.brand;
           active.researchRequested = true;
           active.edited = {};
+          active.unlocked = {};
           active.submitted = false;
           active.needsReconciliation = false;
           active.requestId = null;
@@ -5475,7 +5395,7 @@ if (typeof document !== 'undefined') {
     const answerForm = field.closest?.('[data-inbox-form]');
     if (answerForm) { questionState(answerForm.dataset.inboxForm).draft = field.value; return; }
     if (intakeEdit(field)) return;
-    if (inline?.kind === 'onboard' && field.tagName === 'TEXTAREA' && field.closest?.('#inline-form')) {
+    if (inline?.kind === 'onboard' && field.closest?.('#inline-form')) {
       markContextEdited(inline, field.name);
       const limit = CONTEXT_LIMITS.text[field.name];
       const counter = limit ? document.getElementById(`context-${field.name}-count`) : null;
@@ -5586,16 +5506,6 @@ if (typeof document !== 'undefined') {
     if (name === 'need' && inline?.kind === 'new') {
       captureInlineValues();
       inline.fieldErrors = null;
-      setTimeout(render, 0);
-      return;
-    }
-    if (name === 'kit_logo_candidate') {
-      captureInlineValues();
-      const kit = ensureInlineKit();
-      kit.logo = { action: 'select', candidateId: field.value, captureId: field.dataset.capture || null };
-      // A label click is still activating its radio while this change event runs (see the
-      // concept_choice handler above): redrawing synchronously would swap the control out
-      // from under the browser, which then scrolls the page to the top. Redraw once it is done.
       setTimeout(render, 0);
       return;
     }

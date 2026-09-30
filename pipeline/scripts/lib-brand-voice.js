@@ -22,7 +22,7 @@ const NOT_SET = 'Not set yet.';
 const REQUIREMENTS = Object.freeze([
   { field: 'voice', reason: 'Add the brand voice: how the brand should sound.' },
   { field: 'audience', reason: 'Add the audience: who the brand is speaking to.' },
-  { field: 'market', reason: 'Add the market and positioning: what the brand offers and what makes it different.' },
+  { field: 'market', reason: 'Add the positioning: what the brand offers and what makes it different.' },
   { field: 'contentPillars', reason: 'Add at least one content pillar: a topic the brand posts about.' },
 ]);
 
@@ -171,9 +171,9 @@ function renderBody(options) {
   const guidance = block(p.voiceGuidance);
   section(lines, 'How the brand sounds', [voice, guidance && guidance !== voice ? guidance : '']);
   section(lines, 'Who it speaks to', [clean(p.audience), audienceIsSuggested(p) ? 'This audience is a suggestion from competitor research and has not been checked yet.' : '', clean(p.customerSegment) ? 'Customer segment: ' + clean(p.customerSegment) : '']);
-  section(lines, 'Market and positioning', [
+  section(lines, 'Positioning', [
     clean(p.market),
-    [clean(p.geography) ? 'Where: ' + clean(p.geography) : '', clean(p.language) ? 'Language: ' + clean(p.language) : ''].filter(Boolean).join('\n'),
+    ['Target market: ' + profiles.targetMarketOf(p), clean(p.geography) ? 'Where: ' + clean(p.geography) : '', clean(p.language) ? 'Language: ' + clean(p.language) : ''].filter(Boolean).join('\n'),
   ]);
   section(lines, 'Content pillars', [pillarsOf(p).map(item => '- ' + item).join('\n')]);
   section(lines, 'Vocabulary', [block(p.terminology)]);

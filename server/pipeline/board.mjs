@@ -49,25 +49,9 @@ function serializedByteSize(value) {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
 
-// Logo candidate thumbnails (small radio previews shown only while a brand is
-// pending) are the cheapest thing to drop: never the brand's own chosen
-// logo.thumb, which board.mjs always keeps so the board can still show the
-// saved logo.
-function dropLogoCandidateThumbnails(truncated) {
-  for (const brand of truncated.brands || []) {
-    const candidates = brand.kit && Array.isArray(brand.kit.logoCandidates) ? brand.kit.logoCandidates : [];
-    for (const candidate of candidates) {
-      if (!candidate || candidate.thumb == null) continue;
-      candidate.thumb = null;
-      if (serializedByteSize(truncated) <= PROJECTION_BUDGET_BYTES) return;
-    }
-  }
-}
-
 function applyProjectionBudget(projection) {
   if (serializedByteSize(projection) <= PROJECTION_BUDGET_BYTES) return { ...projection, truncated: false };
   const truncated = { ...projection, truncated: true };
-  dropLogoCandidateThumbnails(truncated);
   if (serializedByteSize(truncated) > PROJECTION_BUDGET_BYTES) throw new Error(PROJECTION_TOO_LARGE);
   return truncated;
 }
@@ -94,7 +78,7 @@ function artifactFile(dir, path) {
 }
 
 const SAFE_BRAND_PROFILE_FIELDS = [
-  'market', 'audience', 'geography', 'language', 'customerSegment',
+  'market', 'targetMarket', 'audience', 'geography', 'language', 'customerSegment',
   'voice', 'voiceGuidance', 'strategy', 'contentPillars', 'terminology',
   'examples', 'forbiddenClaims', 'competitors',
 ];

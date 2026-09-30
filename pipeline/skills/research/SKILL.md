@@ -78,10 +78,24 @@ Never exceed a limit.
 ## Brand onboarding workstream
 
 Fill only the blank fields listed in the spawn prompt.
-The market is Singapore.
-Competitors are the declared first 3, else the top competitors for that product in Singapore, up to 3 in total, each with a one-line rationale and at most 3 items.
+The target market comes from the spawn prompt.
+It is Singapore when the person named none.
+Use it for the competitors and for the audience suggestion, and never fill it in.
+Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total, each with a one-line rationale and at most 3 items.
 Keep competitor work light.
-Write the draft to `draftPath` in the shape `pipeline_brand_research_save` expects.
+The file at `draftPath` already holds the right keys.
+Fill it in place and never add, rename or remove a key.
+The file looks like this, with only the fields still blank in `fills`:
+
+```json
+{"version":1,"runId":"...","fills":{"audience":"","market":"","voice":"","contentPillars":[],"competitors":[]},"suggested":[],"research":{"sources":[],"evidenceMatrix":[],"competitorDetails":[],"findings":{},"gaps":[]},"budget":{"searches":0,"fetches":0,"stopReason":""}}
+```
+
+An empty value means not filled.
+A source is `{url, observedAt, kind, title}`.
+An evidence row is `{id, question, finding, confidence, source, observedAt, semantics}`.
+A competitor detail is `{name, rationale, origin: "research", evidence}`.
+Add at least one dated source.
 
 Each fill is board content for a marketer to read, not a research note.
 Write every fill as if it will be pasted straight onto the brand's board.
@@ -93,22 +107,23 @@ Evidence, citations and run details never belong in a fill; save validates this 
   1 to 3 plain sentences, at most 400 characters.
 - `market`: what the brand offers and what makes it different, its positioning.
   1 to 3 plain sentences, at most 400 characters.
-  This is not the geographic market, and it never describes the research run; the market is fixed to Singapore separately from this fill.
+  This is not the geographic market, and it never describes the research run; the target market is kept separately from this fill.
 - `voice`: how the brand sounds.
   3 to 5 descriptive words, followed by one short example line written in that voice, at most 300 characters in total.
 - `contentPillars`: 3 to 5 short topic names, 2 to 6 words each.
   No explanations, no sentences, names only.
-- `competitors`: brand names only, the top 3 for that product in the Singapore market, the declared ones listed first.
-  Find all 3 unless fewer genuine competitors exist for that product in Singapore.
+- `competitors`: brand names only, the top 3 for that product in the target market, the declared ones listed first.
+  List only the names you found, and the save keeps the declared ones first and adds yours up to 3.
+  Find enough to make 3 in total unless fewer genuine competitors exist for that product in the target market.
   When fewer exist, record why in `research.gaps` instead of padding the list to 3.
 
 ### Audience fallback
 
 Look for the brand's own audience first, in its own site, its social pages and coverage of the brand.
 When no reliable source describes the brand's own audience, fill `audience` with a suggestion instead of leaving it blank.
-Derive the suggestion from the audiences of the top competitors for the same product niche in the brand's own geography and market from `brand/profile.json`.
-Use Singapore only when the profile leaves geography and market blank.
-Use current sources and prefer the last 12 months.
+Derive the suggestion from the audiences of the top competitors for the same product niche in the target market from the spawn prompt.
+The target market is Singapore when the person named none.
+Use only sources from the last 12 months.
 Record each competitor audience source in `research.sources` and `research.evidenceMatrix` as usual.
 Write the fill as a plain audience description with no marker and no competitor names.
 List `audience` in `suggested`, a top-level array in the draft next to `fills`, so save records the field as a research suggestion and the board labels it "Suggested, please check".
@@ -119,8 +134,9 @@ Never suggest `market`, `voice`, `contentPillars` or `competitors`; leave them b
 
 A fill never contains a URL, a domain, a date, the word "fetched", the word "observed", a source note, a quote marked as verbatim, or any commentary about the research run itself.
 All of that belongs in `research.sources`, `research.evidenceMatrix` and `research.findings`, never in `fills`.
-`pipeline_brand_research_save` validates every fill before writing anything and rejects a draft that breaks these rules, naming the offending field and the rule it broke.
-The run stays open on a rejected draft; rewrite the named field as plain board content and call save again.
+`pipeline_brand_research_save` checks the whole draft before writing anything and returns every problem at once, naming the field and the rule it broke.
+The run stays open and nothing is written; rewrite each named field as plain board content and save again.
+When the spawn prompt passes `problems`, fix exactly those in the file at `draftPath` and finish.
 
 ## Steps
 

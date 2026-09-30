@@ -7,6 +7,8 @@ const SOCIAL_CHANNELS = new Set(CHANNELS.slice(1));
 const UNAVAILABLE = /^(?:n\/?a|not[ _-]?available|unavailable|none|not[ _-]?applicable)$/i;
 const MAX_PROFILE_BYTES = 40000;
 const MAX_COMPETITORS = 3;
+const TARGET_MARKET_MAX = 60;
+const DEFAULT_TARGET_MARKET = 'Singapore';
 const COMPETITOR_ITEM_MAX = 500;
 // The declared-context fields a brand onboarding research pass is allowed to fill in when blank.
 const CONTEXT_FIELDS = Object.freeze(['audience', 'market', 'voice', 'contentPillars', 'competitors']);
@@ -190,6 +192,19 @@ function normalizeText(value, name, max = 6000) {
   return value.trim();
 }
 
+function normalizeTargetMarket(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') throw new Error('Keep the target market under ' + TARGET_MARKET_MAX + ' characters.');
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length > TARGET_MARKET_MAX) throw new Error('Keep the target market under ' + TARGET_MARKET_MAX + ' characters.');
+  return text;
+}
+
+function targetMarketOf(profile) {
+  const value = profile && typeof profile.targetMarket === 'string' ? profile.targetMarket.replace(/\s+/g, ' ').trim() : '';
+  return value || DEFAULT_TARGET_MARKET;
+}
+
 function normalizeField(value, name) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     if (JSON.stringify(value).length > 6000) throw new Error('Keep ' + name + ' under 6000 characters.');
@@ -292,6 +307,10 @@ function prepareProfile(input, existing, options = {}) {
     const limit = CONTEXT_TEXT_LIMITS[key];
     fields[key] = limit ? normalizeText(value, 'the ' + key, limit) : normalizeField(value, key);
   }
+  const targetMarketInput = inputValue(input, null, 'targetMarket');
+  fields.targetMarket = targetMarketInput === undefined
+    ? previousValue(existing, 'targetMarket', '')
+    : normalizeTargetMarket(targetMarketInput);
   const pillarsInput = inputValue(input, null, 'contentPillars');
   const contentPillars = pillarsInput === undefined
     ? previousValue(existing, 'contentPillars', [])
@@ -340,6 +359,15 @@ function withoutSuggestions(provenance) {
   return { ...provenance, researchFilled: next };
 }
 
+function withCompetitorsStillListed(provenance, items) {
+  const filled = provenance.researchFilled;
+  const entry = filled && typeof filled === 'object' ? filled.competitors : null;
+  if (!entry || !Array.isArray(entry.added)) return provenance;
+  const listed = new Set(items.map(name => name.toLowerCase()));
+  const added = entry.added.filter(name => typeof name === 'string' && listed.has(name.toLowerCase()));
+  return { ...provenance, researchFilled: { ...filled, competitors: { ...entry, added } } };
+}
+
 function buildProfileRecord(prepared, existing, revision, completedAt, options = {}) {
   const built = withoutStaleSuggestions({
     ...previousValue(existing, 'provenance', {}),
@@ -348,7 +376,7 @@ function buildProfileRecord(prepared, existing, revision, completedAt, options =
     revision,
     updatedAt: completedAt,
   }, existing, prepared.fields);
-  const provenance = options.acknowledgeSuggestions ? withoutSuggestions(built) : built;
+  const provenance = withCompetitorsStillListed(options.acknowledgeSuggestions ? withoutSuggestions(built) : built, prepared.competitors);
   return {
     version: 1,
     kind: 'declared_profile',
@@ -366,6 +394,7 @@ function buildProfileRecord(prepared, existing, revision, completedAt, options =
     forbiddenClaims: prepared.fields.forbiddenClaims,
     strategy: prepared.fields.strategy,
     market: prepared.fields.market,
+    targetMarket: prepared.fields.targetMarket,
     audience: prepared.fields.audience,
     geography: prepared.fields.geography,
     language: prepared.fields.language,
@@ -458,6 +487,7 @@ function context(dirOrProfile, options = {}) {
     channelState: channelState(profile),
     competitors: clone(profile.competitors),
     market: profile.market || '',
+    targetMarket: profile.targetMarket || '',
     audience: profile.audience || profile.market || '',
     geography: profile.geography || '',
     language: profile.language || '',
@@ -549,7 +579,9 @@ function profileTidyReport(profile) {
     out.push({
       field: name,
       reason: tooLong ? 'too_long' : 'has_source_notes',
-      researchFilled: Boolean(researchFilled[name]),
+      researchFilled: name === 'competitors'
+        ? Boolean(researchFilled[name]) && Boolean(profile.competitors) && profile.competitors.source === 'research'
+        : Boolean(researchFilled[name]),
     });
   }
   return out;
@@ -559,6 +591,24 @@ function fillIsEmpty(name, value) {
   if (value === undefined || value === null) return true;
   if (name === 'contentPillars' || name === 'competitors') return !Array.isArray(value) || value.length === 0;
   return typeof value !== 'string' || !value.trim();
+}
+
+function topUpCompetitors(existing, proposed) {
+  const items = existing.competitors && Array.isArray(existing.competitors.items) ? existing.competitors.items.slice(0, MAX_COMPETITORS) : [];
+  const seen = new Set(items.map(name => name.toLowerCase()));
+  const merged = [...items];
+  const added = [];
+  for (const raw of Array.isArray(proposed) ? proposed : []) {
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    if (merged.length >= MAX_COMPETITORS) break;
+    const name = raw.trim();
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(name);
+    added.push(name);
+  }
+  return { existingCount: items.length, merged, added };
 }
 
 /**
@@ -576,7 +626,7 @@ function fillBlankContext(dir, fills, options = {}) {
   const suggested = new Set(Array.isArray(options.suggested) ? options.suggested : []);
   const source = fills && typeof fills === 'object' ? fills : {};
   let result;
-  durable.update(file, raw => {
+  const apply = raw => {
     let diskRecord;
     try { diskRecord = JSON.parse(raw); } catch { diskRecord = null; }
     const existing = validRecord(diskRecord) ? diskRecord : null;
@@ -585,31 +635,54 @@ function fillBlankContext(dir, fills, options = {}) {
     const filled = [];
     const kept = [];
     const input = {};
+    let added = [];
     for (const name of CONTEXT_FIELDS) {
       if (!own(source, name)) continue;
+      if (name === 'competitors') {
+        const topUp = topUpCompetitors(existing, source.competitors);
+        if (!topUp.added.length) {
+          if (topUp.existingCount) kept.push(name);
+          continue;
+        }
+        input.competitors = topUp.merged;
+        added = topUp.added;
+        filled.push(name);
+        continue;
+      }
       if (!blanks.has(name)) { kept.push(name); continue; }
       if (fillIsEmpty(name, source[name])) continue;
       input[name] = source[name];
       filled.push(name);
     }
     if (!filled.length) {
-      result = { profile: existing, filled: [], kept };
+      result = { profile: existing, filled: [], kept, added: [] };
       return raw;
     }
     const prepared = prepareProfile(input, existing, {});
     const revision = (Number(existing.revision) || 0) + 1;
     const record = buildProfileRecord(prepared, existing, revision, nowIso);
     if (filled.includes('competitors')) {
-      record.competitors = { ...record.competitors, source: 'research' };
+      record.competitors = { ...record.competitors, source: existing.competitors.items.length ? 'mixed' : 'research' };
     }
     const researchFilled = { ...(record.provenance.researchFilled || {}) };
-    for (const name of filled) researchFilled[name] = { runId, at: nowIso, ...(suggested.has(name) ? { suggested: true } : {}) };
+    for (const name of filled) {
+      researchFilled[name] = name === 'competitors'
+        ? { runId, at: nowIso, added }
+        : { runId, at: nowIso, ...(suggested.has(name) ? { suggested: true } : {}) };
+    }
     record.provenance = { ...record.provenance, researchFilled };
     const text = JSON.stringify(record, null, 2) + '\n';
     if (Buffer.byteLength(text, 'utf8') > MAX_PROFILE_BYTES) throw new Error('Keep the brand profile under 40 KB.');
-    result = { profile: record, filled, kept };
+    result = { profile: record, filled, kept, added };
     return text;
-  });
+  };
+  if (options.dryRun) {
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); } catch { raw = ''; }
+    apply(raw);
+    return result;
+  }
+  durable.update(file, apply);
   return result;
 }
 
@@ -639,4 +712,7 @@ module.exports = {
   blankContextFields,
   fillBlankContext,
   profileTidyReport,
+  targetMarketOf,
+  TARGET_MARKET_MAX,
+  DEFAULT_TARGET_MARKET,
 };
