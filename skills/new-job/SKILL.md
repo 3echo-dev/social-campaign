@@ -80,6 +80,12 @@ This step runs on its own, with no confirmation question first: do not ask the u
 
 A stated duration and format such as "one 30s Reel" gives a video content type, an Instagram platform, and one deliverable for a 30-second Reel at 9:16.
 
+Every deliverable for Facebook, Instagram or TikTok also gets its fixed post type, `placement`, read from the brief.
+"An Instagram reel" is instagram/reel, "a Facebook story" is facebook/story, and "TikTok" alone is tiktok/video unless the brief says photos.
+A reel, a story and a TikTok video are 9:16, so give them `aspectRatios: ["9:16"]` as well.
+Never guess between two post types: when the brief does not settle one, leave `placement` out and let the router ask, one plain question per unclear deliverable, inside the one batch of questions below.
+The post type is fixed from here on: wanting another one later is a change to the brief, not a choice at publish time.
+
 A word such as "awareness" gives the objective, "organic" gives the distribution, and the product named in the brief is the subject of the request.
 
 When the brief itself narrows the audience (for example "women 35+ in Singapore"), write that as a short plain statement, one or two sentences, for `audience`.
@@ -99,7 +105,7 @@ Put everything extracted into the typed `job` object of the single pipeline_job_
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
 - `platforms`: a list of `facebook`, `instagram` and `tiktok`.
-- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline}`, where `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc`, `motion_graphic` or `text_only`; a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
+- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`) and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc`, `motion_graphic` or `text_only`; a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
 - `audience`: `{description}`, only when the brief itself narrows the audience; leave it out otherwise, and never copy the brand profile's audience in.
 - `budget` and `landingPageUrl`, only when the brief states them for paid work: `{currency, maxTotalAmount}` and an https URL.
 - `schedule`: `{publishAt, timezone}`, only when the brief states a time.
@@ -282,7 +288,7 @@ Use the snapshot's blockers, questions, and nextAction rather than conversation 
 
 When the route and all required stages are complete, show the approved delivery artifacts and the local path.
 
-Keep posting as a separate human action.
+Posting happens only after the person approves the posting plan at the posting decision, never as a side effect of finishing the job.
 
 If the job is abandoned, preserve its local history and do not delete inputs or approvals.
 

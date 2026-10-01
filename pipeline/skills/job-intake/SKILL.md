@@ -27,6 +27,14 @@ The request verbatim, `workspace.json` (account handles), the brand record in th
    - `distribution`: a budget or the word ads means paid, otherwise organic
    - `platforms`: named, otherwise those with accounts in `workspace.json`
    - `deliverables`: the count and format asked for, one row per platform and format, ids `D1`, `D2`
+   - `placement`, on every deliverable for facebook, instagram or tiktok: the one fixed post type, read from the brief
+     Instagram is `post`, `reel` or `story`, Facebook is `post`, `reel` or `story`, TikTok is `video` or `photo`.
+     "An Instagram reel" is instagram/reel, "a Facebook story" is facebook/story, and "TikTok" alone is tiktok/video unless the brief says photos.
+     A reel, a story and a TikTok video are 9:16, so set `aspectRatios` to `["9:16"]` for them.
+     A reel and a TikTok video are `ugc`, `brand_video` or `motion_graphic`.
+     A story is a picture or a video, a TikTok photo post is a picture or a set of pictures, and an Instagram post is a picture or a video.
+     Paid-only work (`paid_campaign`, or `distribution` `paid`) asks for no post type.
+     Never guess between two types: a plain "Instagram post" that could be a post or a reel is a question, not a default.
    - `creativeDiscipline`: "creator", "testimonial", "UGC", "talking to camera" is ugc; no media is text_only
    - `subject`: ask whether the job is about a product, a character or neither, unless the request says; `product`, `character` or `none`
 
@@ -43,6 +51,10 @@ The request verbatim, `workspace.json` (account handles), the brand record in th
 4. **On exit 3, ask what is missing as one batch**: four at most, once, each with options and a recommended default first. Run `ask.js "{job-id}" "{questions.json}"`, make one bounded `wait-answer.js "{job-id}" 0` read, and end the turn when it returns `waiting`, per `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`.
 
    - `deliverables`, if unclear: "How many, on which platform, and in what format?"
+   - `placement`, only for a deliverable whose post type the brief does not settle: one question per unclear deliverable, in this same batch, with the platform's post types as the options and the likeliest one first, for example "Which post type is the Instagram one: Reel, post or Story?"
+     The router lists each one as `deliverables.<id>.placement` in `missingFields`, already worded as that question.
+     Never say a deliverable id to the person: name it as they see it, "the Instagram Reel", or "the second Instagram post" when there are several.
+     The answer is a change to the brief's deliverable, never a publish-time choice.
    - `ugcSource`: UGC uses AI-generated media; explicit real-creator requests are unsupported.
    - `productAsset`, unless text only or `subject` is `character` or `none`: `ask-product-photo.js "{job-id}"`, a card with a drop area, two ways on and a box; never print a folder at them.
    - a `character` job with no reference is not blocked and gets no card: the first step after the brief is a small reference-art price and pictures, before the storyboard.

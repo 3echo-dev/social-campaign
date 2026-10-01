@@ -1,7 +1,7 @@
 # The publishing backend contract
 
-v1 of this plugin publishes nothing. A job ends in `handoff/` and a human posts it.
-This file is what a backend would have to implement to take that last step over, so the
+The plugin sends posts through Metricool from the main session, and `handoff/` is the record of what was approved and the package a person posts by hand.
+This file is what a different backend would have to implement to take that last step over, so the
 agents, workflows and gates would not have to change. It is design, not a dependency, and
 no skill reads it at runtime.
 

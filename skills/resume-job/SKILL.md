@@ -35,3 +35,6 @@ If it returns needs_publication, invoke board-setup before presenting the resume
 Use board-sync for projection refresh and artifact requests.
 
 Read the canonical nested contract for its output shape and checks.
+
+When a resumed job has posts sent to Metricool, bring their status up to date first, with the steps in `skills/board-sync/SKILL.md` under "Where the posts stand": `pipeline_publish_reconcile` with only the job, then `getScheduledPosts` for the span it names, and `pipeline_publish_reconcile` again, when it says a lookup is needed.
+A post with no known result is never sent again, whatever the lookup shows; only the person's answer on the board allows it.

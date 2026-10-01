@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { readJsonFile, writeJsonFile } from '../lib/json.mjs';
+import { hasPublishApproval } from './media-host.mjs';
 import * as runtime from './runtime.mjs';
 
 const FILE_NAME = 'studio-workspace.json';
@@ -33,10 +34,16 @@ function writeChoice(dir, { workspaceId, name }) {
   return { workspaceId: record.workspaceId, name: record.name };
 }
 
-export function readStudioWorkspaceChoice({ brandDir = null, jobDir = null } = {}) {
-  const job = readChoice(jobDir);
+/**
+ * The saved choice, job override first. With `root`, a choice that is not in the saved workspace list reads
+ * as no choice, so a stale or invented id is never treated as chosen.
+ */
+export function readStudioWorkspaceChoice({ brandDir = null, jobDir = null, root = null } = {}) {
+  const known = root ? new Set(readStudioWorkspaceList(root).map(item => item.id)) : null;
+  const usable = choice => (choice && (!known || known.has(choice.workspaceId)) ? choice : null);
+  const job = usable(readChoice(jobDir));
   if (job) return { workspaceId: job.workspaceId, name: job.name, source: 'job' };
-  const brand = readChoice(brandDir);
+  const brand = usable(readChoice(brandDir));
   if (brand) return { workspaceId: brand.workspaceId, name: brand.name, source: 'brand' };
   return { workspaceId: null, name: null, source: null };
 }
@@ -115,9 +122,27 @@ export function chooseStudioWorkspace({ root, brand, jobId = null, workspaceId }
   const id = String(jobId || '').trim();
   if (id) {
     const jobDir = resolveJobDir(root, brand, id);
+    // The choice is free until the person approves a posting plan: from then on uploads follow the approved plan.
+    const current = readStudioWorkspaceChoice({ brandDir, jobDir, root }).workspaceId;
+    if (hasPublishApproval(jobDir) && current && current !== match.id) {
+      throw new Error("This job's 3echo workspace is locked now that you approved its posting plan, because uploads follow the approved plan. To change it, the final post has to be reworked and approved again.");
+    }
     return { scope: 'job', jobId: id, ...saveJobStudioWorkspace(jobDir, { workspaceId: match.id, name: match.name }) };
   }
   return { scope: 'brand', ...saveBrandStudioWorkspace(brandDir, { workspaceId: match.id, name: match.name }) };
+}
+
+/**
+ * The jobs a workspace choice reaches, as `[{ jobId, brand, path }]`: the one job for a job choice, and for the brand
+ * default every job of the brand that has no choice of its own. Whatever the choice changes for them (a posting
+ * plan, an open decision) is for the caller above this module, which also loads the plan builder and the board.
+ */
+export function studioWorkspaceReach({ root, brand, jobId = null }) {
+  const brandDir = resolveBrandDir(root, brand);
+  const id = String(jobId || '').trim();
+  return runtime.listJobs({ root, brand })
+    .filter(job => (id ? job.jobId === id : readStudioWorkspaceChoice({ brandDir, jobDir: job.path, root }).source === 'brand'))
+    .map(job => ({ jobId: job.jobId, brand: job.brand, path: job.path }));
 }
 
 export function getStudioWorkspace({ root, brand, jobId = null }) {

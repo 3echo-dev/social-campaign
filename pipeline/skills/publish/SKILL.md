@@ -8,11 +8,11 @@ user-invocable: false
 
 # Skill: Publish
 
-**Purpose:** deliver approved content in a package a human can post.
+**Purpose:** record approved content in a package a person can post.
 
 **Used by:** the producer, at the hand-off stage of `organic-post`, `paid-ugc-campaign` and `repurpose-video`.
 
-**v1 publishes nothing.** The executable path writes files; the tool contract below documents the backend that will replace it.
+**This skill never sends a post.** The tool contract below documents a backend.
 
 ## Inputs
 
@@ -47,7 +47,7 @@ Never edit it by hand, since the manifest hashes those files, and never ask abou
    Use the actual delivered package or message reference, never a placeholder.
    Completion verifies the package manifest, current required approvals and delivery reference.
    If verification fails, keep the job recoverable and repair only the named problem.
-   Say "Production complete. Ready for you to post."
+   Say "All done. See where each post stands on the board."
 5. **Provide the production usage receipt** through `campaign-report.js` and one bounded `sync-events.js` at the turn boundary.
    Missing provider usage or offline sync stays explicitly incomplete and does not reopen production.
    `close-job.js {brand} {job-id} --rating 1-5` can record optional feedback later.
@@ -58,7 +58,7 @@ Never edit it by hand, since the manifest hashes those files, and never ask abou
 2. Never edit a caption, a hashtag or a media file while packaging. If it is wrong, it goes back to the draft and through the gate again.
 3. Every file in the package is hashed in the manifest. A file that reached the package without an approval covering it is a defect.
 4. The disclosure line travels with the post, not in a side note. A generated video carries its AI-made label on the platform per `platform-rules/{platform}.md`.
-5. Never claim something was published. v1 delivers a package; the human publishes.
+5. Never claim something was published unless a send or the person recorded it.
 6. TikTok and Instagram captions are not clickable: the checklist tells the human where the link actually goes.
 
 ## Output contract

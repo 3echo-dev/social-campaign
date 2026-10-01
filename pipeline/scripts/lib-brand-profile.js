@@ -458,6 +458,8 @@ function buildProfileRecord(prepared, existing, revision, completedAt, options =
     updatedAt: completedAt,
   }, existing, prepared.fields);
   const provenance = withCompetitorsStillListed(options.acknowledgeSuggestions ? withoutSuggestions(built) : built, prepared.competitors);
+  // The Metricool brand choice is a connection setting, not a declared field: a profile save keeps it.
+  const publishing = existing && existing.publishing && typeof existing.publishing === 'object' ? { publishing: clone(existing.publishing) } : {};
   return {
     version: 1,
     kind: 'declared_profile',
@@ -486,6 +488,7 @@ function buildProfileRecord(prepared, existing, revision, completedAt, options =
       skipAccountDiscovery: CHANNELS.filter(name => prepared.channels[name].status === 'unavailable'),
       discoverCompetitors: !prepared.competitors.length,
     },
+    ...publishing,
   };
 }
 

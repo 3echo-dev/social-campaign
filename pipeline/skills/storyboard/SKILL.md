@@ -17,7 +17,7 @@ user-invocable: false
 
 ## Steps
 
-1. Aspect ratio from the brief, never inferred. If silent, `aspect_ratio: unconfirmed`, raised first.
+1. Aspect ratio from the brief or the deliverable's post type (a Reel, a Story and a TikTok video are 9:16), never inferred any other way. If silent, `aspect_ratio: unconfirmed`, raised first.
 2. Panel count follows the script's editorial beats. A panel may carry a shorter edited beat, but every generated provider clip is 4 to 15 s; group adjacent short beats when the manifest needs one provider clip.
 3. Front matter `style` preamble: treatment, light, colour, casting, setting. Every prompt opens with it and repeats the Continuity block verbatim: 3 to 6 attributes per subject, setting and light. The product's (cap, finish, colour, label placement) are read off its photo, never from memory.
 4. One row per panel on `templates/storyboard.md`; the Frame cell carries first-frame contents, hook text and subtitle positions.

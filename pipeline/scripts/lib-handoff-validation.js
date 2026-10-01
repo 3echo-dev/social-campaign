@@ -294,6 +294,103 @@ function recordDelivery(jobDir, input = {}) {
   return saved;
 }
 
+// ---- Posts the person says they made themselves ("I'll post it myself") ---------------------
+//
+// The posting kit's "Mark as posted" is the person's word, never a platform's. Each mark is kept in
+// publish/posted.json (post id to { source: 'person', at, link? }), with the rest of the publishing state,
+// because build-handoff.js clears and rebuilds handoff/ whenever it runs. Once the hand-off is built the
+// marks are copied into handoff/delivery.json under `posts`, together with the delivery record that names
+// the kit (the same reference for every job), so the job can be completed with it.
+const SELF_DELIVERY_REF = 'operation:posting-kit:self';
+const POSTED_REL = 'publish/posted.json';
+const PERSON_LINK_LIMIT = 500;
+const POST_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+
+// An https address of at most 500 characters with a host and nothing a person could not click, or null.
+function validPersonLink(value) {
+  if (typeof value !== 'string') return null;
+  const link = value.trim();
+  if (!link || link.length > PERSON_LINK_LIMIT || /[\u0000-\u0020\u007f]/.test(link)) return null;
+  let url;
+  try { url = new URL(link); } catch { return null; }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return null;
+  return link;
+}
+
+// One post's mark as the record keeps it, or null when it is not a well-formed person mark.
+function validPersonPost(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry) || entry.source !== 'person') return null;
+  const at = String(entry.at || '');
+  if (!Number.isFinite(Date.parse(at)) || !/(?:Z|[+-]\d\d:\d\d)$/.test(at)) return null;
+  const clean = { source: 'person', at: new Date(at).toISOString() };
+  if (entry.link !== undefined && entry.link !== null) {
+    const link = validPersonLink(entry.link);
+    if (!link) return null;
+    clean.link = link;
+  }
+  if (typeof entry.requestId === 'string' && entry.requestId) clean.requestId = entry.requestId.slice(0, 200);
+  return clean;
+}
+
+function validMarks(value) {
+  const marks = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return marks;
+  for (const [id, entry] of Object.entries(value)) {
+    const clean = POST_ID.test(id) ? validPersonPost(entry) : null;
+    if (clean) marks[id] = clean;
+  }
+  return marks;
+}
+
+// The valid person marks in publish/posted.json, by post id. A missing or unreadable file has none.
+function readPersonPosts(jobDir) {
+  return validMarks(readJson(path.join(jobDir, ...POSTED_REL.split('/'))));
+}
+
+// Record that the person posted one post, in publish/posted.json, written atomically. The caller holds the job's send lock
+// (server/pipeline/board.mjs does). Throws a plain sentence when the mark is not valid. Marking a post again changes nothing:
+// the first mark stays, and the answer says so (`already`). Returns { marks, already }.
+function recordPersonPost(jobDir, input = {}) {
+  const postId = String(input.postId || '');
+  if (!POST_ID.test(postId)) throw new Error('Say which post this is.');
+  const given = input.link !== undefined && input.link !== null && input.link !== '';
+  const link = given ? validPersonLink(input.link) : null;
+  if (given && !link) throw new Error('The link has to be a full https address of at most ' + PERSON_LINK_LIMIT + ' characters.');
+  const at = input.at ? String(input.at) : new Date().toISOString();
+  const entry = validPersonPost({ source: 'person', at, ...(link ? { link } : {}), ...(input.requestId ? { requestId: input.requestId } : {}) });
+  if (!entry) throw new Error('The time this was posted is not valid.');
+  let already = false;
+  durable.update(path.join(jobDir, ...POSTED_REL.split('/')), raw => {
+    let current = {};
+    try { current = raw.trim() ? JSON.parse(raw) : {}; } catch { throw new Error('The record of posted posts could not be read, so nothing was marked.'); }
+    const marks = validMarks(current);
+    if (marks[postId]) { already = true; return JSON.stringify(marks, null, 2) + '\n'; }
+    return JSON.stringify({ ...marks, [postId]: entry }, null, 2) + '\n';
+  });
+  return { marks: readPersonPosts(jobDir), already };
+}
+
+// Write the delivery record for a job whose posts are all out (sent through Metricool) or marked by the person, and copy the
+// person's marks into it. Done after the hand-off package is built each time the job is closed, since a rebuild clears handoff/
+// (and this record with it). `deliveryRef` is the reference the job is completed with (the posting kit's own, or the Metricool
+// one that names every post). The first delivery is the earliest mark, else `at`, else now. Throws a plain sentence when it
+// cannot be recorded (the package has to be built and still match its approvals). Returns the delivery record.
+function recordPublishedDelivery(jobDir, input = {}) {
+  const marks = readPersonPosts(jobDir);
+  // The first delivery is the earliest of the marks and `at` (the earliest send), else now.
+  const first = [...Object.values(marks).map(mark => mark.at), input.at].filter(at => Number.isFinite(Date.parse(at))).map(at => new Date(at).toISOString()).sort()[0] || new Date().toISOString();
+  const ref = input.deliveryRef || SELF_DELIVERY_REF;
+  const delivery = recordDelivery(jobDir, { brand: input.brand, jobId: input.jobId, deliveryRef: ref, recordedBy: input.by || 'The board', recordedAt: first });
+  if (delivery.reference !== ref) throw new Error('This job was delivered another way, so it cannot be closed here.');
+  let saved = delivery;
+  durable.update(path.join(jobDir, DELIVERY_REL), raw => {
+    const current = raw.trim() ? JSON.parse(raw) : delivery;
+    saved = Object.keys(marks).length ? { ...current, posts: { ...validMarks(current.posts), ...marks } } : current;
+    return JSON.stringify(saved, null, 2) + '\n';
+  });
+  return saved;
+}
+
 function validateHandoff(jobDir, options = {}) {
   const brand = options.brand || (readJson(path.join(jobDir, 'job.json')) || {}).brand || null;
   const jobId = options.jobId || (readJson(path.join(jobDir, 'job.json')) || {}).jobId || path.basename(jobDir);
@@ -372,5 +469,5 @@ module.exports = {
   MANIFEST_REL, DELIVERY_REL, ACTIVE_APPROVAL_GATES, DELIVERY_STATES,
   safeRelative, requiredGates, validateApproval, validateManifest, validateDeliveryReference,
   readDelivery, recordDelivery, validateHandoff, isVerifiedDelivered, manifestHash, assertAvailableJob,
-  deliveryRecordMatches,
+  deliveryRecordMatches, SELF_DELIVERY_REF, POSTED_REL, PERSON_LINK_LIMIT, validPersonLink, validPersonPost, readPersonPosts, recordPersonPost, recordPublishedDelivery,
 };

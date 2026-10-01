@@ -13,6 +13,7 @@ const rules = require(join(SCRIPTS, 'lib-recipe.js'));
 const brandVoice = require(join(SCRIPTS, 'lib-brand-voice.js'));
 const profiles = require(join(SCRIPTS, 'lib-brand-profile.js'));
 const capabilities = require(join(SCRIPTS, 'lib-research-capabilities.js'));
+const deliverableRules = require(join(SCRIPTS, 'lib-deliverable.js'));
 
 export const FIELDS = rules.FIELDS;
 export const OPTIONS_FILE = rules.OPTIONS_FILE;
@@ -219,6 +220,13 @@ function writtenLabel(field, payload) {
   return payload.tags.length ? payload.tags.join(' ') : 'No hashtags';
 }
 
+// The deliverable the way the person sees it ("the Instagram Reel"), never its id.
+function nameOf(context) {
+  const spec = deliverableRules.withDerivedPlacements(context.job);
+  const match = Array.isArray(spec?.deliverables) ? spec.deliverables.find(item => item && item.id === context.deliverable) : null;
+  return match ? deliverableRules.describe(spec, match) : 'this post';
+}
+
 function validationContext(context) {
   const profile = profiles.read(context.brand.path);
   return { ...context, profile, pillars: brandPillars(profile), families: rules.hookFamilies() };
@@ -282,19 +290,19 @@ export function saveRecipeOptions({ root, brand, jobId, deliverable, options, re
   const base = jobContext({ root, brand, jobId, deliverable });
   const voice = assertVoice(base);
   const context = validationContext(base);
-  if (!plain(options)) throw invalid(`Give the options for ${context.deliverable} as one list per field: ${FIELDS.join(', ')}.`);
+  if (!plain(options)) throw invalid(`Give the options for ${nameOf(context)} as one list per field: ${FIELDS.join(', ')}.`);
   const unknown = Object.keys(options).filter(key => !FIELDS.includes(key));
   const problems = unknown.map(key => `"${key}" is not a recipe field; the fields are ${FIELDS.join(', ')}.`);
   const fields = {};
   for (const field of FIELDS) fields[field] = validateField(field, options[field], context, problems);
   if (problems.length) {
-    throw invalid(`The recipe options for ${context.deliverable} need fixing. ${[...new Set(problems)].join(' ')}`, { problems: [...new Set(problems)] });
+    throw invalid(`The recipe options for ${nameOf(context)} need fixing. ${[...new Set(problems)].join(' ')}`, { problems: [...new Set(problems)] });
   }
   const optionsFile = join(context.draftDir, OPTIONS_FILE);
   const recipeFile = join(context.draftDir, RECIPE_FILE);
   const existingRecipe = readJson(recipeFile);
   if (existingRecipe && replace !== true) {
-    throw new UserFacingError(`A recipe is already chosen for ${context.deliverable}. Offer new options only when the person wants to choose again, and pass replace.`, { code: 'recipe_already_chosen' });
+    throw new UserFacingError(`A recipe is already chosen for ${nameOf(context)}. Offer new options only when the person wants to choose again, and pass replace.`, { code: 'recipe_already_chosen' });
   }
   const previous = readJson(optionsFile);
   const record = {
@@ -374,9 +382,9 @@ export function checkRecipePicks({ root, brand, jobId, deliverable, picks }) {
   const context = validationContext(base);
   const optionsRecord = readJson(join(context.draftDir, OPTIONS_FILE));
   if (!optionsRecord) {
-    throw new UserFacingError(`There are no recipe options for ${context.deliverable} yet. Offer the options before asking for a choice.`, { code: 'recipe_options_missing' });
+    throw new UserFacingError(`There are no recipe options for ${nameOf(context)} yet. Offer the options before asking for a choice.`, { code: 'recipe_options_missing' });
   }
-  if (!plain(picks) || !Object.keys(picks).length) throw invalid(`Say what was chosen for ${context.deliverable}.`);
+  if (!plain(picks) || !Object.keys(picks).length) throw invalid(`Say what was chosen for ${nameOf(context)}.`);
   const existing = readJson(join(context.draftDir, RECIPE_FILE));
   const current = existing && existing.optionsRevision === optionsRecord.revision ? existing : null;
   const problems = Object.keys(picks).filter(key => !FIELDS.includes(key)).map(key => `"${key}" is not a recipe field; the fields are ${FIELDS.join(', ')}.`);
@@ -388,11 +396,11 @@ export function checkRecipePicks({ root, brand, jobId, deliverable, picks }) {
     } else if (current?.fields?.[field]) {
       fields[field] = current.fields[field];
     } else {
-      problems.push(`Pick the ${words(field)} for ${context.deliverable}.`);
+      problems.push(`Pick the ${words(field)} for ${nameOf(context)}.`);
     }
   }
   if (problems.length) {
-    throw invalid(`The recipe choice for ${context.deliverable} needs fixing. ${[...new Set(problems)].join(' ')}`, { problems: [...new Set(problems)] });
+    throw invalid(`The recipe choice for ${nameOf(context)} needs fixing. ${[...new Set(problems)].join(' ')}`, { problems: [...new Set(problems)] });
   }
   return { context, optionsRecord, current, fields };
 }

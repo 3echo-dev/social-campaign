@@ -145,6 +145,17 @@
               "text_only"
             ]
           },
+          "placement": {
+            "enum": [
+              "post",
+              "reel",
+              "story",
+              "carousel",
+              "video",
+              "photo"
+            ],
+            "description": "The fixed post type for this deliverable, chosen at the start of the job: instagram post | reel | story | carousel; facebook post | reel | story; tiktok video | photo. The enum is the union; route-job.js rejects a type that does not belong to the deliverable's platform and asks for it when a publishable deliverable has none."
+          },
           "ugcSource": {
             "enum": [
               "ai",
@@ -304,6 +315,15 @@
       "items": {
         "type": "string"
       }
+    },
+    "publishRoute": {
+      "enum": [
+        "metricool_schedule",
+        "metricool_draft",
+        "metricool_now",
+        "self"
+      ],
+      "description": "How this job's posts go out, chosen at the posting decision: schedule or save as a draft in Metricool, post now, or the person posts it themselves. Saved by the plugin, never by intake; absent means the default for the brand."
     },
     "schedule": {
       "type": [

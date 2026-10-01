@@ -13,7 +13,7 @@
       "description": "The reviews.id of the resolved final gate."
     },
     "outcome": { "enum": ["pending", "scheduled", "published", "accepted", "unclear", "exported", "failed"] },
-    "provider": { "type": ["string", "null"], "examples": ["blotato", "postiz", "buffer"] },
+    "provider": { "type": ["string", "null"], "examples": ["metricool"] },
     "posts": {
       "type": "array",
       "items": {

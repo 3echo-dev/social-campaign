@@ -35,6 +35,9 @@ import { recipeTools } from './recipe.mjs';
 import { reviewCopiesTools } from './review-copies.mjs';
 import { studioWorkspaceTools } from './studio-workspace.mjs';
 import { questionTools } from './questions.mjs';
+import { mediaHostTools } from './media-host.mjs';
+import { publishingConnectTools } from './publishing-connect.mjs';
+import { publishTools } from './publish.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -63,6 +66,9 @@ export const ALL_TOOL_MODULES = [
   reviewCopiesTools,
   studioWorkspaceTools,
   questionTools,
+  mediaHostTools,
+  publishingConnectTools,
+  publishTools,
 ];
 
 /**

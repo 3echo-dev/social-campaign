@@ -19,7 +19,7 @@
  * @property {string} name
  * @property {string} purpose
  * @property {string} provider the MVP implementation, in user facing words.
- * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'social'} resolver
+ * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'metricool'|'social'} resolver
  * @property {'none'|'low'|'medium'|'high'|'external'} risk
  */
 
@@ -64,6 +64,8 @@ export const CAPABILITIES = [
   { name: 'generation.subtitle', purpose: 'Subtitle timing and files', provider: 'Transcripts or the approved script, plus the local subtitle writer', resolver: 'ffmpeg', risk: 'medium' },
   { name: 'generation.remotion', purpose: 'Final edit and composition', provider: 'Local renderer', resolver: 'ffmpeg', risk: 'medium' },
 
+  { name: 'scheduling.metricool', purpose: 'Schedule posts to Facebook, Instagram and TikTok', provider: 'Metricool', resolver: 'metricool', risk: 'external' },
+
   { name: 'review.strategy', purpose: 'Human strategy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
   { name: 'review.concept', purpose: 'Human concept and copy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
   { name: 'review.cost', purpose: 'Human spend approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
@@ -87,12 +89,19 @@ export const RESOLVER_PROVIDER_KEY = {
   claude: null,
   threeecho: 'threeecho_studio',
   elevenlabs: 'elevenlabs',
+  metricool: 'metricool',
   social: null,
 };
 
 /**
+ * Providers that are only ever recorded by a real read-only probe (integration_probe), never by
+ * integration_mark_connected, because their record also holds what the probe's session read.
+ */
+export const PROBE_ONLY_PROVIDERS = Object.freeze(['metricool']);
+
+/**
  * The connection rows the doctor shows, in user facing language.
- * @type {Array<{key: string, label: string, provider: string, capabilities: string[]}>}
+ * @type {Array<{key: string, label: string, provider: string, capabilities: string[], optional?: boolean}>}
  */
 export const CONNECTION_ROWS = [
   {
@@ -106,5 +115,12 @@ export const CONNECTION_ROWS = [
     label: 'Voice & Audio',
     provider: 'ElevenLabs',
     capabilities: ['generation.voice', 'generation.audio'],
+  },
+  {
+    key: 'metricool',
+    label: 'Publishing',
+    provider: 'Metricool',
+    capabilities: ['scheduling.metricool'],
+    optional: true,
   },
 ];

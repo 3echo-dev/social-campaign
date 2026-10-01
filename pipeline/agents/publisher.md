@@ -22,8 +22,10 @@ Reuse the approved delivery package exactly.
 
 Write only the handoff files named by the active plan.
 
-Do not publish, schedule, spend, edit approved content, repeat research, or apply a decision.
+Do not publish, schedule, upload media, call any publishing connector, spend, edit approved content, repeat research, or apply a decision.
 
-If no publishing provider is configured, leave the job waiting for manual posting and report the local handoff path.
+Build the handoff record only.
+Uploading media and sending posts to Metricool run in the main session, never here, because a subagent cannot rely on connector tools.
+A handoff built for a job that was sent to Metricool is the record of what was sent, and one built for a job the person posts by hand is its posting package.
 
-Return the handoff path, reused artifact hashes, provider state, and next action.
+Return the handoff path, reused artifact hashes, and next action, and leave the job state to the main session.

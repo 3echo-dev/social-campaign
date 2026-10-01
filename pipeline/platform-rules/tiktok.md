@@ -1,6 +1,6 @@
 # TikTok - platform rules (manual posting)
 
-Owner file for every TikTok limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. v1 does not publish through any API or Postiz; the Content Posting API figures below are cited only because they are TikTok's own documented ceilings, not because we call the API.
+Owner file for every TikTok limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. The Content Posting API figures below are cited only because they are TikTok's own documented ceilings.
 Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** third-party methodology (see THIRD_PARTY_NOTICES.md) · **[VERIFY]** not confirmed first-party.
 
 ```json

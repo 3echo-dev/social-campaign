@@ -20,6 +20,10 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"" }]
       },
       {
+        "matcher": "^mcp__.+__(createScheduledPost|updateScheduledPost|createScheduledPostForReview|sendScheduledPostForReview)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-pre.mjs\"", "timeout": 30 }]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"" }]
       }
@@ -28,6 +32,10 @@
       {
         "matcher": "^mcp__.+__(create_image_job|create_video_job|wait_for_job|get_job_result|get_asset|estimate_video_job|creative_generate_speech|creative_transcribe_audio|creative_design_voice|creative_get_flow_run_status|creative_show_flow_results)$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-post.mjs\"" }]
+      },
+      {
+        "matcher": "^mcp__.+__(createScheduledPost|getScheduledPosts|get_asset|complete_asset_upload|list_assets)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
       },
       {
         "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_inputs_import|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare)$",
@@ -40,6 +48,12 @@
       {
         "matcher": "^Artifact$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/artifact-assets.mjs\"" }]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^mcp__.+__(createScheduledPost)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
       }
     ],
     "Stop": [

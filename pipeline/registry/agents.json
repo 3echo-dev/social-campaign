@@ -59,7 +59,7 @@
       "forbiddenActions": ["change_objective", "change_brand_profile", "spawn_agent", "write_approval", "publish", "paid_generation", "run_unapproved_command", "edit_artifact", "self_approve", "cross_brand_read", "read_credentials", "unapproved_provider_call"],
       "deniedSideEffects": ["external_write", "paid_spend", "credential_read"], "ownerForKinds": [], "maxTurns": 30 },
     { "agentId": "publisher", "role": "publisher", "discipline": "handoff", "status": "active", "model": "sonnet",
-      "description": "After the final approval, builds the local handoff package from the approved delivery files. Never publishes, schedules, spends or changes an approval; with no publishing provider the job waits for manual posting.",
+      "description": "After the final approval, builds the local handoff package from the approved delivery files, as the record of what was approved. Never publishes, schedules, uploads media, spends or changes an approval; sending to Metricool runs in the main session.",
       "accepts": ["job.json", "approved drafts", "media/", "approvals/"], "produces": ["handoff/"],
       "allowedSkillIds": ["publish"],
       "allowedCapabilities": ["read_assigned_inputs", "write_task_output", "hash_artifact"],

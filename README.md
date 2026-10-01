@@ -1,16 +1,17 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.7.7.
+Current version: 0.8.0.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
 Claude researches the audience and the competitors, proposes an idea, writes the script and the storyboard, prices any images and video, makes them, checks them, and writes the captions.
 It **stops for you** at the idea, at the price, at the sample image, at the final post and at where and when it goes out.
-It does not post for you: a job ends in a hand-off package that a person publishes.
+With Metricool connected, it can then schedule the posts, save them as drafts or post them now, exactly as you approved them.
+Without Metricool, or if you prefer, it gives you a posting kit to post yourself.
 
 Nothing paid runs before you approve the price on the board.
-Nothing is posted.
+Nothing is sent to Metricool before you approve the posting plan.
 Every research claim carries its source, and what could not be checked is said plainly.
 
 ---
@@ -28,7 +29,8 @@ A producer walks the job through its stages, handing each one to a specialist.
    +--------------------------+
    |  SETUP  (once)           |  pick a working folder
    |                          |  publish the private board
-   |                          |  connect 3echo Studio, ElevenLabs (or skip)
+   |                          |  connect 3echo Studio, ElevenLabs,
+   |                          |  Metricool (or skip)
    +------------+-------------+
                 v
    +--------------------------+
@@ -83,7 +85,7 @@ Each specialist gets only the tools its stage needs.
 
 | Role | What it owns | Skills it uses | Model |
 |---|---|---|---|
-| `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off | all of them, as the plan names them | sonnet |
+| `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off, and sending the posts to Metricool | all of them, as the plan names them | sonnet |
 | `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | sonnet |
 | `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | **opus** |
 | `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | sonnet, run on **opus** for the script and storyboard step |
@@ -91,7 +93,7 @@ Each specialist gets only the tools its stage needs.
 | `media-buyer` | Paid campaigns only: ad requirements, campaign proposal, activation checklist | write-cta, platform-format | sonnet |
 | `videographer` | Watching and breaking down source video, and checking rendered clips | watch-video, analyze-video, source-validation, write-report | sonnet |
 | `editor` | Check-only review: facts, brand, policy, platform rules | fact-check, brand-check, policy-check, platform-format, source-validation | sonnet |
-| `publisher` | The hand-off package after final approval | publish | sonnet |
+| `publisher` | The hand-off record after the posting approval. It never sends a post | publish | sonnet |
 
 The strategist keeps Opus because the brief is the file every later stage reads.
 A weak angle is copied faithfully into the concepts, the script and the copy, where no gate will catch it.
@@ -120,7 +122,7 @@ Three are for you to type.
 | `fact-check`, `brand-check`, `policy-check`, `source-validation` | No | The editor's checks, and the label and logo check on every image and video |
 | `watch-video`, `analyze-video`, `write-report` | No | Frames, transcript and breakdown of a video, and the written report |
 | `review` | No | Presenting a decision and landing the answer |
-| `publish` | No | The hand-off after final approval |
+| `publish` | No | After the posting approval: uploading media to 3echo, sending to Metricool, the posting kit and the hand-off |
 
 ---
 
@@ -157,10 +159,12 @@ Images and clips play on the board from small review copies.
 Captions and ad copy per platform, a platform-rules check, an editor review, and a label and logo check on every image and video, including footage you supplied.
 You can accept a flagged item as it is.
 
-**A hand-off package.**
-Copy, media, schedule and a per-platform checklist, with a manifest.
+**Posting, your way.**
+Each post has its post type fixed when the job is planned, for example an Instagram Reel.
+At the end you choose to schedule it with Metricool, save it as a draft there, post it now, or post it yourself from a posting kit.
 Each posting time carries its time zone: the one set for the job, else the brand's, which follows its target market.
-When no zone is known, the package says so instead of guessing.
+When no zone is known, the plan says so instead of guessing.
+A hand-off package with the copy, media, schedule and a per-platform checklist is kept as the record, with a manifest.
 For paid work, a campaign proposal and an activation checklist to set up in Ads Manager.
 
 **Reports for three more kinds of work.**
@@ -190,7 +194,8 @@ Only media generation spends anything else.
 | A video clip | Priced per clip by 3echo Studio before it is made |
 | A voice line | Priced by ElevenLabs before it is made, through your own ElevenLabs connector |
 | A regenerated image, clip or line | Priced again, and shown again |
-| Hand-off | No credits, and nothing is posted |
+| Posting through Metricool, or the posting kit | No credits |
+| Hand-off record | No credits |
 
 A clip is 4 to 15 seconds.
 Its price moves with the length, the resolution and whether sound is generated.
@@ -268,19 +273,23 @@ It needs Python 3.10 or later, and it installs itself in the background once you
 Nothing else waits for it.
 `/social-campaign:doctor` reports on it and offers a repair.
 
-### 4. Connect 3echo Studio and ElevenLabs
+### 4. Connect 3echo Studio, ElevenLabs and Metricool
 
-Both connect through your own claude.ai connectors.
+They connect through your own claude.ai connectors.
 Add them in claude.ai under Settings > Connectors.
 The plugin has no sign-in of its own and stores no keys.
 
-- 3echo Studio makes images and video.
+- 3echo Studio makes images and video, and hosts the media of a post so Metricool can fetch it.
 - ElevenLabs makes voice lines.
+- Metricool schedules, saves as drafts and posts to Facebook, Instagram and TikTok. It is optional: without it, you get a posting kit and post yourself.
 
 Setup detects a connector you already added and shows it as Connected.
-It asks about the ones that are missing, each with Connect or Skip for now.
+It asks about 3echo Studio and ElevenLabs when they are missing, each with Connect or Skip for now.
 A skipped connector is asked about again only when a stage needs it.
-Text-only jobs and all research jobs need neither.
+Metricool never holds setup up: its card stays on the board, and you can connect it any time.
+With one Metricool brand, your brand uses it.
+With several, Claude asks which one each of your brands posts through.
+Text-only jobs and all research jobs need none of them.
 
 ### 5. Pick a working folder
 
@@ -344,10 +353,33 @@ Each stage shows in plain words, and the current decision shows on the job.
 - **Approve the price.** The total and each item are shown.
 - **Approve the sample image**, before the rest is made.
 - **Approve the final post.** Any label or logo item found is shown with Accept as is.
-- **Confirm where and when it goes out.**
+- **Confirm where and when to post.** See below.
 - **Approve the report**, for the three report kinds.
 
 Ask for changes on any of them and the job goes back to that stage with your note.
+
+### Where and when it goes out
+
+At **Confirm where and when to post** you pick one:
+
+- **Schedule with Metricool**, the default. Each post goes out at its planned time.
+- **Save as a draft in Metricool.** You publish it from Metricool.
+- **Post now.** Each post goes out within a few minutes of your approval, and the approval is good for 24 hours.
+- **I'll post it myself.** A posting kit: a 3echo download link for each file, Copy caption, Copy first comment, a checklist and Mark as posted.
+
+Checks run before you can Approve: the channel is linked, the media fits the post type, the caption and title rules, a time in the future and the file size.
+Approve covers exactly the plan you see.
+If a post changes afterwards, you approve again.
+
+After Approve, Claude uploads the media to your 3echo Studio workspace and sends each post to Metricool.
+A guard lets through only calls that exactly match the approved plan.
+The board shows each post as Scheduled, Posted with View post, Failed, Late, Waiting for you in the Metricool app, or Check in Metricool.
+When Claude cannot tell whether a post reached Metricool, it asks you, and only your answer "It is not in Metricool" allows a resend.
+
+Nothing is changed after the first send.
+You change or cancel a scheduled post in Metricool itself.
+An approved plan can be reopened only while nothing was sent or marked as posted.
+Jobs planned before 0.8 get the posting kit only.
 
 ### Resume
 
@@ -376,6 +408,7 @@ While a chat is open Claude picks them up as they arrive.
 If a chat was closed, the next session sweeps what was saved.
 
 Your source files and local file paths stay on your computer.
+Only after you approve a posting plan are the files of its posts uploaded to your own 3echo Studio workspace.
 Small review copies of images and clips are uploaded to your private board so you can view them there.
 They are removed after the final approval, or when the job is cancelled.
 
@@ -386,4 +419,4 @@ Its local overrides are in [pipeline/LOCAL-ADAPTER.md](pipeline/LOCAL-ADAPTER.md
 
 ## Requirements
 
-Claude Code with subagents and claude.ai artifacts · Node 22.13+ · a 3echo Studio connector for images and video · an ElevenLabs connector for voice · FFmpeg and yt-dlp recommended · Python 3.10+ optional.
+Claude Code with subagents and claude.ai artifacts · Node 22.13+ · a 3echo Studio connector for images, video and post media · an ElevenLabs connector for voice · a Metricool connector to schedule posts (optional) · FFmpeg and yt-dlp recommended · Python 3.10+ optional.

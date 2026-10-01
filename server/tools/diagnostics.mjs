@@ -298,16 +298,20 @@ async function runChecks(workspace) {
   const legacyKeys = legacyPublishingCredentialsCheck(root);
   if (legacyKeys) checks.push(legacyKeys);
 
-  const { capabilities } = await resolveCapabilities(workspace);
+  const { capabilities, details } = await resolveCapabilities(workspace);
   for (const row of CONNECTION_ROWS) {
     const state = capabilities[row.capabilities[0]];
+    // An optional connector that was never connected is only information. One that is degraded or failed
+    // still warns, and shows what went wrong.
+    const informational = row.optional === true && state === 'not_connected';
+    const failure = row.optional === true && state !== 'ready' && !informational ? details[row.capabilities[0]]?.detail : null;
     checks.push({
       id: `connection_${row.key}`,
       name: `${row.label} (${row.provider})`,
-      status: state === 'ready' ? 'ok' : 'warn',
-      detail: state === 'ready' ? 'Connected.' : 'Not connected.',
+      status: state === 'ready' || informational ? 'ok' : 'warn',
+      detail: state === 'ready' ? 'Connected.' : informational ? 'Optional, not connected.' : failure ? `Not working: ${failure}` : 'Not connected.',
       fix:
-        state === 'ready'
+        state === 'ready' || informational
           ? null
           : `Ask Claude to connect ${row.provider}. Only needed when a job reaches the ${row.label.toLowerCase()} step.`,
       repairable: false,

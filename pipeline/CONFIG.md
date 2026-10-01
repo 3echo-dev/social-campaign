@@ -42,7 +42,6 @@ do it at all, and Instruction means it is a rule the model follows.
 # Routing
 route_confidence_threshold: 0.8            # below this the job is NEEDS_CLARIFICATION
 max_intake_rounds: 2                       # job-intake may ask for missing fields this many times
-merge_publish_into_content_gate: true      # one gate when schedule and account are visible at content review
 platforms_v1: [facebook, instagram, tiktok]
 
 # Delegation
@@ -66,7 +65,7 @@ verbose: false
 | Setting | Meaning | Enforcement |
 |---|---|---|
 | `route_confidence_threshold` | `route-job.js` sets `NEEDS_CLARIFICATION` below it. The producer can add risk flags, never raise confidence. | **Mechanical.** The script is the only confidence source. |
-| `merge_publish_into_content_gate` | When `job.schedule` and the account are present, the content gate also authorises the hand-off. Otherwise a separate publish gate. | **Mechanical.** `route-job.js` rule 14. |
+| The publish gate is always its own approval | This used to be the setting `merge_publish_into_content_gate`, which let a job with a schedule skip the posting decision. It is gone: from 0.8 every job that publishes asks for the posting decision on its own, whatever the schedule says and including "I'll post it myself". That approval covers the exact posting plan (where each post goes, when, and which files), and it is what lets Claude upload the job's media to your 3echo workspace, so it cannot be folded into the content approval. Leaving the old setting in a copy of this file changes nothing. | **Mechanical.** `route-job.js` rule 14 never removes the publish gate. |
 | `max_agent_depth: 1` | Only `producer` spawns. | **Structural.** Every specialist sets `disallowedTools: Agent`. |
 | `collect_artifacts_after_each_batch` | An agent reporting success is not evidence. `collect-artifacts.js` must exit 0 before a stage advances. | Instruction, with the script's exit code. |
 | `max_machine_revisions_per_stage` | The editor may raise the same reason code for the same stage twice. The third time the job goes `ESCALATED`. | Instruction, counted in `revisions/`. |

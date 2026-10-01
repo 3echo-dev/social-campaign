@@ -771,7 +771,10 @@ export class Workspace {
       integrationsPath(root),
       (current) => {
         const providers = current.providers && typeof current.providers === 'object' ? { ...current.providers } : {};
-        providers[provider] = { state, detail: detail ?? null, updated_at: nowIso() };
+        // A connection note replaces the state, never the brands saved from Metricool.
+        const previous = providers[provider] && typeof providers[provider] === 'object' ? providers[provider] : {};
+        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : {};
+        providers[provider] = { state, detail: detail ?? null, updated_at: nowIso(), ...kept };
         return { ...current, providers };
       },
       /** @type {Record<string, unknown>} */ ({ providers: {} }),
@@ -954,7 +957,10 @@ export class CapturedWorkspace {
       integrationsPath(root),
       (current) => {
         const providers = current.providers && typeof current.providers === 'object' ? { ...current.providers } : {};
-        providers[provider] = { state, detail: detail ?? null, updated_at: nowIso() };
+        // A connection note replaces the state, never the brands saved from Metricool.
+        const previous = providers[provider] && typeof providers[provider] === 'object' ? providers[provider] : {};
+        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : {};
+        providers[provider] = { state, detail: detail ?? null, updated_at: nowIso(), ...kept };
         return { ...current, providers };
       },
       /** @type {Record<string, unknown>} */ ({ providers: {} }),

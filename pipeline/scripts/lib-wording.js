@@ -50,7 +50,7 @@ const SENTENCES = {
   AWAITING_ACTIVATION_APPROVAL: 'Approve going live, or say what to change.',
   ACTIVATION_APPROVED: 'Approved to go live, and everything is being put together for you.',
 
-  HANDOFF_READY: 'Everything is ready for you to post.',
+  HANDOFF_READY: 'Claude is closing this job.',
   // These sentences are retained for historical records. They must not invite a new
   // performance-review action when an old status is shown in a list or history view.
   HANDED_OFF: 'An old job, kept for your records.',
@@ -61,7 +61,7 @@ const SENTENCES = {
   CHANGES_REQUESTED: 'Making the changes you asked for.',
   BLOCKED: 'Waiting on something before I can carry on.',
   ESCALATED: 'Stuck, and it needs you.',
-  COMPLETE: 'Production complete. Ready for you to post.',
+  COMPLETE: 'All done. See where each post stands on the board.',
   CANCELLED: 'Stopped.',
 };
 
@@ -97,7 +97,7 @@ const BRIEF_QUESTIONS = Object.freeze({
   objective: 'What is the main goal?',
   distribution: 'Should this run as organic posts, paid ads, or both?',
   platforms: 'Which social platforms is this for?',
-  deliverables: 'Which formats do you need, and how many of each?',
+  deliverables: 'Which posts do you need: the platform, the post type (Reel, post or Story, or a TikTok video or photo post), and how many?',
   audience: 'Who is this for?',
   budget: 'What is the most you want to spend?',
   landingPageUrl: 'Which web page should people go to?',
@@ -170,7 +170,7 @@ const ANNOUNCEMENTS = Object.freeze({
   PROPOSAL_APPROVED: 'Claude is writing the steps to set up the campaign.',
   AWAITING_ACTIVATION_APPROVAL: 'The campaign is ready for you to send live.',
   ACTIVATION_APPROVED: TOGETHER,
-  HANDOFF_READY: 'All done. Everything is ready for you to post.',
+  HANDOFF_READY: 'Claude is closing this job.',
   HANDED_OFF: OLD_JOB,
   METRICS_PENDING: OLD_JOB,
   REPORT_DRAFTED: OLD_JOB,
@@ -178,7 +178,7 @@ const ANNOUNCEMENTS = Object.freeze({
   CHANGES_REQUESTED: 'Claude is making the changes you asked for.',
   BLOCKED: 'Claude is held up. Check the chat to see what it needs.',
   ESCALATED: 'Claude is stuck and needs your help in chat.',
-  COMPLETE: 'All done. Everything is ready for you to post.',
+  COMPLETE: 'All done. See where each post stands on the board.',
   CANCELLED: 'This job was stopped.',
 });
 const GATHERING = Object.freeze({

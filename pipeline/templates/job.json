@@ -63,11 +63,17 @@
       "motion_graphic",
       "text_only"
     ],
+    "placement": {
+      "instagram": ["post", "reel", "story", "carousel"],
+      "facebook": ["post", "reel", "story"],
+      "tiktok": ["video", "photo"]
+    },
     "deliverable": {
       "id": "D1",
       "platform": "tiktok",
       "count": 3,
       "creativeDiscipline": "ugc",
+      "placement": "video",
       "aspectRatios": [
         "9:16"
       ],

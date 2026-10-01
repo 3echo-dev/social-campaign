@@ -78,3 +78,15 @@ A provider check belongs to the active task that needs the provider, and the sam
 
 The local runtime keeps jobs unbound when no verified Studio owner exists.
 The outbound sync layer may reject or retain unbound events without blocking local work.
+
+## Publishing
+
+The posting decision has its own approval, which covers the posting plan.
+The publisher role builds the hand-off record only.
+Metricool is the only publishing connector, and the person chooses the route at the posting decision: schedule, save as a draft, post now, or post it themselves.
+The route arrives as a `choose_publish_route` board request, or through `pipeline_publish_route_choose` for chat.
+A post with no post type (an older job) gets one through a `choose_post_type` board request, or through `pipeline_post_type_choose` for chat, only at the posting decision before approval.
+Uploading media to 3echo and sending the posts run in the main session, never in a publisher dispatch, because subagents cannot rely on connector tools.
+A guard lets through only Metricool calls that exactly match the approved posting plan.
+A post whose result is not known is settled by the person, through a `resolve_post` request, and a post the person made themselves is closed by a `mark_posted` request.
+`skills/publish/SKILL.md` is the full contract.

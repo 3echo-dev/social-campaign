@@ -71,7 +71,7 @@ const ELEVENLABS_CONNECT_COPY = {
 
 /** Which items need which connection. */
 const PROVIDER_FOR_KIND = { image: 'threeecho_studio', video: 'threeecho_studio', voice: 'elevenlabs', audio: 'elevenlabs' };
-const PROBE_PROVIDERS = ['threeecho_studio', 'elevenlabs'];
+const PROBE_PROVIDERS = ['threeecho_studio', 'elevenlabs', 'metricool'];
 
 /**
  * @param {unknown} value
@@ -926,13 +926,13 @@ export const generationTools = [
     name: 'integration_probe',
     description:
       'Report whether a call to a connected provider actually worked, so the rest of Social Campaign knows ' +
-      'what is really available. Call it after the first real call to 3echo Studio or ElevenLabs in a ' +
+      'what is really available. Call it after the first real call to 3echo Studio, ElevenLabs or Metricool in a ' +
       'session and include the namespace that answered when one is available. A failed check in another ' +
       'namespace does not discard an already connected provider.',
     inputSchema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: PROBE_PROVIDERS, description: 'threeecho_studio or elevenlabs.' },
+        provider: { type: 'string', enum: PROBE_PROVIDERS, description: 'threeecho_studio, elevenlabs or metricool.' },
         ok: { type: 'boolean' },
         namespace: { type: 'string', description: 'The tool namespace that answered, when available.' },
         detail: { type: 'string', description: 'One plain sentence about what happened.' },

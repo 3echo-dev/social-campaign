@@ -1,6 +1,7 @@
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
-import { chooseStudioWorkspace, getStudioWorkspace, saveStudioWorkspaceList } from '../pipeline/studio-workspace.mjs';
+import { getStudioWorkspace, saveStudioWorkspaceList } from '../pipeline/studio-workspace.mjs';
+import { chooseStudioWorkspaceForJobs } from '../pipeline/board.mjs';
 
 const string = { type: 'string' };
 
@@ -51,7 +52,7 @@ export const studioWorkspaceTools = [
       required: ['brand', 'workspaceId'],
       additionalProperties: false,
     },
-    handler: (args, { workspace }) => chooseStudioWorkspace({ ...args, root: local(workspace) }),
+    handler: (args, { workspace }) => chooseStudioWorkspaceForJobs({ ...args, root: local(workspace) }),
   }),
   defineTool({
     name: 'pipeline_studio_workspace_get',

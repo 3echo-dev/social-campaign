@@ -122,7 +122,7 @@ Claude invokes these itself. Five are for you.
 | `make-video` | Clips through 3echo, quoted and confirmed, QC'd, stitched |
 | `watch-video` | Probe, frames, transcript, and an honest report of what was not analysed |
 | `analyze-video` | Classifying a video into hook, pillar, angle, proof, funnel stage |
-| `publish` | The hand-off package, and the contract a backend would implement |
+| `publish` | The hand-off record, and the contract a backend would implement |
 | `/social-pipeline` | The entry point. What is in progress and where to go next |
 | `/onboard-brand` | Drafting the four brand files from whatever you have |
 | `/new-job` | Starting a job and running to the first gate |

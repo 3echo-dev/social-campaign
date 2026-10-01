@@ -95,6 +95,8 @@ small,.muted{color:var(--faint)}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;background:rgba(20,41,90,.76);border:1px solid var(--line2);border-radius:var(--radius);color:var(--dim);flex-wrap:wrap}
 .notice>span:first-child{overflow-wrap:anywhere}
 .notice-actions{display:flex;align-items:center;gap:8px;flex:none}
+.notice-actions button.quiet{border-color:var(--line2);color:var(--paper)}
+.notice-actions button.quiet:hover{border-color:var(--dim)}
 .notice.error{border-color:rgba(255,138,133,.45);color:var(--hold)}
 .slate-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
 .slate-head .toolbar{margin-left:auto;flex-wrap:wrap}
@@ -113,6 +115,20 @@ small,.muted{color:var(--faint)}
 .brand-chip-name small{color:var(--faint)}
 .brand-chip-voice{flex-basis:100%;margin:0;font-size:11px;line-height:1.35}
 .brand-chip-workspace{flex-basis:100%;margin:0;font-size:11px;line-height:1.35}
+.brand-chip-publish{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:5px;min-width:0}
+.brand-chip-publish>p{flex-basis:100%;margin:0;font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.brand-chip-publish>p.metricool-warning{color:var(--tape)}
+.brand-chip-publish>p strong{color:var(--paper)}
+.metricool-chips{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.brand-chip-publish .pill{min-height:20px;padding:2px 7px;font-size:12px;white-space:nowrap;line-height:1.2}
+.brand-chip-publish>p>button{display:inline;vertical-align:baseline;margin-left:4px}
+.brand-chip .brand-chip-publish button{font-size:12px}
+.brand-chip-publish label{flex-basis:100%;font-size:12px;line-height:1.35}
+.metricool-pick{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0;max-width:100%}
+.metricool-pick select{flex:1 1 220px;width:auto;min-width:0;max-width:360px}
+.metricool-pick button,.brand-chip .metricool-pick button.primary{min-height:28px;padding:4px 10px;color:inherit}
+.brand-chip .metricool-pick button.primary{color:var(--ink)}
+.metricool-error{color:var(--hold);flex-basis:100%}
 .brand-chip button{min-height:0;border:0;padding:0;color:var(--dim);font-size:11px}
 .brand-chip button:hover{background:transparent;color:var(--paper)}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--gap)}
@@ -226,10 +242,12 @@ small,.muted{color:var(--faint)}
 .connectors-grid{display:flex;flex-direction:column;gap:var(--gap)}
 .connector-card{display:flex;align-items:center;justify-content:space-between;gap:var(--gap);flex-wrap:wrap;width:100%;min-width:0;padding:var(--pad);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);transition:border-color 150ms ease,background-color 150ms ease}
 .connector-card:hover{border-color:var(--line2);background:var(--panel2)}
-.connector-card-main{display:flex;align-items:center;gap:12px;min-width:0}
+.connector-card-main{display:flex;align-items:flex-start;gap:12px;min-width:0}
 .connector-card-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
 .connector-card-copy h3{margin:0}
 .connector-guidance{font-size:12px}
+.connector-card-copy h3{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.pill.connector-optional{color:var(--faint);font-weight:600}
 .connector-card-actions{display:flex;align-items:center;gap:8px;flex:none}
 .pill.connected{color:var(--go);background:rgba(137,230,165,.06);border-color:var(--go-dim)}
 .pill.skipped{color:var(--faint)}
@@ -342,10 +360,12 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .intake-check:has(input:checked){border-color:var(--tape);background:rgba(255,198,41,.08)}
 .intake-check:has(input:focus-visible){outline:2px solid var(--tape);outline-offset:2px}
 .deliv-list{display:flex;flex-direction:column;gap:calc(var(--gap) / 2)}
-.deliv-head,.deliv-row{display:grid;grid-template-columns:minmax(96px,160px) minmax(0,1fr) 104px;gap:calc(var(--gap) / 2) var(--gap);align-items:center}
+.deliv-head,.deliv-row{display:grid;grid-template-columns:minmax(96px,160px) minmax(0,1fr) minmax(0,1fr) 104px;gap:calc(var(--gap) / 2) var(--gap);align-items:center}
 .deliv-head span{color:var(--faint);font-size:11px;font-weight:700}
 .deliv-platform{font-weight:700}
-.deliv-row .field-error{grid-column:2/-1}
+.deliv-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.deliv-cell-label{display:none;color:var(--faint);font-size:11px;font-weight:700}
+.deliv-row .field-error,.deliv-row .field-hint{grid-column:2/-1}
 .budget-row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:calc(var(--gap) / 2)}
 /* Product photo: a fixed 160 x 160 tile (New job form, and Finish the brief's
    own photo field when the router blocks on one), the same dashed-upload and
@@ -525,15 +545,15 @@ button.sb-cell-body:active{transform:none}
 .qc-actions{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex:none}
 .qc-clear{color:var(--go);font-size:13px}
 .price{display:flex;flex-direction:column;gap:var(--gap)}
-.price-table,.posting-table,.md table{width:100%;border-collapse:collapse}
-.price-table th,.price-table td,.posting-table th,.posting-table td,.md th,.md td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13px;color:var(--dim)}
-.price-table thead th,.posting-table thead th,.md thead th{color:var(--faint);font-size:11px;font-weight:700}
+.price-table,.md table{width:100%;border-collapse:collapse}
+.price-table th,.price-table td,.md th,.md td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13px;color:var(--dim)}
+.price-table thead th,.md thead th{color:var(--faint);font-size:11px;font-weight:700}
 .price-table td small{display:block;margin-top:2px;color:var(--faint);font-size:11px}
 .price-table .num{text-align:right;color:var(--paper);white-space:nowrap;font-variant-numeric:tabular-nums}
 .price-table thead th.num{color:var(--faint)}
 /* Table text lines up with the panel's own text edge: no inset on the outer columns. */
-.price-table :is(th,td):first-child,.posting-table :is(th,td):first-child,.md :is(th,td):first-child{padding-left:0}
-.price-table :is(th,td):last-child,.posting-table :is(th,td):last-child,.md :is(th,td):last-child{padding-right:0}
+.price-table :is(th,td):first-child,.md :is(th,td):first-child{padding-left:0}
+.price-table :is(th,td):last-child,.md :is(th,td):last-child{padding-right:0}
 .price-table tfoot td{border-bottom:0;color:var(--paper);font-weight:800}
 .price-facts{display:flex;flex-wrap:wrap;gap:calc(var(--gap) / 2) calc(var(--gap) * 2);margin:0}
 .price-facts dt{color:var(--faint);font-size:11px;font-weight:700}
@@ -550,10 +570,6 @@ button.sb-cell-body:active{transform:none}
 .usage-credits{margin-top:12px;padding:0 6px}
 @media(max-width:520px){.usage-credits{padding:0 4px}}
 .md-table{overflow-x:auto}
-.posting-table td{color:var(--paper);overflow-wrap:anywhere}
-.posting-table td.posting-destination{white-space:nowrap}
-@media(max-width:520px){.posting-table td{overflow-wrap:normal}}
-.posting-table tbody tr:last-child td{border-bottom:0}
 /* Research and strategy: collapsed by default, a readable column when open. */
 .doc-panel summary{display:flex;align-items:center;justify-content:space-between;gap:var(--gap);list-style:none}
 .doc-panel summary::-webkit-details-marker{display:none}
@@ -598,7 +614,7 @@ button.sb-cell-body:active{transform:none}
 .still-ref{vertical-align:1px;color:var(--paper)}
 .md :is(th,td){overflow-wrap:break-word;min-width:64px}
 @media(max-width:720px){.report-downloads{width:100%;justify-content:flex-start}.report-downloads button{flex:1 1 auto;min-height:36px}.report-save-note{text-align:left}}
-@media(max-width:720px){.intake-grid{grid-template-columns:1fr}.intake-wide{grid-column:auto}.deliv-head{display:none}.deliv-row{grid-template-columns:minmax(0,1fr) 88px}.deliv-platform{grid-column:1/-1}.deliv-row .field-error{grid-column:1/-1}.intake-foot,.review-actions{justify-content:stretch}.intake-foot button,.review-buttons,.review-buttons button{flex:1}.review-buttons{margin-left:0}.review-line{flex-basis:100%}.concept-grid,.post-list,.recipe-grid,.recipe-own-grid{grid-template-columns:1fr}.recipe-own-wide{grid-column:auto}.sb-slot,.sample-view{grid-template-columns:1fr}.sb-slot-frame,.sample-view .sample-frame{width:min(220px,100%);justify-self:center}.sb-slot-frame.is-empty:not(.is-omitted){display:none}.sb-slot-actions button{flex:1}.review-buttons button,.sb-slot-actions button{white-space:nowrap}.media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.media-grid>.media-tile{width:auto}.media-grid>.media-tile:only-child,.media-grid>.media-tile.media-video{grid-column:1/-1;width:min(240px,100%)}.qc-flag{flex-wrap:wrap}.qc-flag p{flex-basis:calc(100% - 54px - var(--gap))}.qc-actions{width:100%;justify-content:flex-end}.drawer-facts>div{grid-template-columns:96px minmax(0,1fr)}}
+@media(max-width:720px){.intake-grid{grid-template-columns:1fr}.intake-wide{grid-column:auto}.deliv-head{display:none}.deliv-cell-label{display:block}.deliv-row{grid-template-columns:minmax(0,1fr) 88px}.deliv-platform,.deliv-type{grid-column:1/-1}.deliv-row .field-error,.deliv-row .field-hint{grid-column:1/-1}.intake-foot,.review-actions{justify-content:stretch}.intake-foot button,.review-buttons,.review-buttons button{flex:1}.review-buttons{margin-left:0}.review-line{flex-basis:100%}.concept-grid,.post-list,.recipe-grid,.recipe-own-grid{grid-template-columns:1fr}.recipe-own-wide{grid-column:auto}.sb-slot,.sample-view{grid-template-columns:1fr}.sb-slot-frame,.sample-view .sample-frame{width:min(220px,100%);justify-self:center}.sb-slot-frame.is-empty:not(.is-omitted){display:none}.sb-slot-actions button{flex:1}.review-buttons button,.sb-slot-actions button{white-space:nowrap}.media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.media-grid>.media-tile{width:auto}.media-grid>.media-tile:only-child,.media-grid>.media-tile.media-video{grid-column:1/-1;width:min(240px,100%)}.qc-flag{flex-wrap:wrap}.qc-flag p{flex-basis:calc(100% - 54px - var(--gap))}.qc-actions{width:100%;justify-content:flex-end}.drawer-facts>div{grid-template-columns:96px minmax(0,1fr)}}
 .inbox-panel{display:flex;flex-direction:column;gap:calc(var(--gap) * .75)}
 .inbox-panel .section-head{align-items:center;margin:0}
 .inbox-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:calc(var(--gap) / 2)}
@@ -623,8 +639,9 @@ button.sb-cell-body:active{transform:none}
 .inbox-answer,.inbox-fields{display:flex;flex-direction:column;gap:10px;min-width:0}
 .inbox-answer textarea,.inbox-fields textarea{min-height:76px}
 .inbox-fields .deliv-head{display:none}
+.inbox-fields .deliv-cell-label{display:block}
 .inbox-fields .deliv-row{grid-template-columns:minmax(0,1fr) 72px}
-.inbox-fields .deliv-platform,.inbox-fields .deliv-row .field-error{grid-column:1/-1}
+.inbox-fields .deliv-platform,.inbox-fields .deliv-type,.inbox-fields .deliv-row .field-error,.inbox-fields .deliv-row .field-hint{grid-column:1/-1}
 .inbox [aria-invalid="true"]{border-color:var(--hold)}
 .inbox [aria-invalid="true"]:focus-visible{outline-color:var(--hold)}
 .inbox-item .notice{padding:8px 10px;gap:8px;font-size:12px}
@@ -636,6 +653,160 @@ button.sb-cell-body:active{transform:none}
 .panel[tabindex="-1"]:focus{outline:none}
 .panel[tabindex="-1"]:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+/* A pill beside a button in a connector card's actions (Connected or Skipped, then Check again or Connect) keeps the pill left and the button right at phone width. */
+@media(max-width:720px){.connector-card-actions .pill{margin-right:auto}.connector-card-actions .pill+button{flex:none;min-width:128px}}
+/* Phone header: the status keeps a comfortable width, or the actions drop to their own right-aligned row. */
+@media(max-width:520px){.connection{flex:1 1 300px;min-width:min(300px,100%)}.connection small{text-wrap:balance}}
+/* Narrow cards: the avatar lines up with the title, not the middle of a tall card. */
+@media(max-width:520px){.brand-chip{align-items:flex-start}.brand-chip>.avatar{margin-top:1px}}
+/* The publish gate: the route radios, where posts go, one card per post, and the plain safety line. */
+.publish-card{display:flex;flex-direction:column;gap:var(--gap)}
+.publish-routes{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);min-width:0;margin:0;padding:0;border:0}
+.publish-routes legend{margin:0 0 calc(var(--gap) / 2);padding:0;color:var(--dim);font-size:12px;font-weight:700}
+.route-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(var(--gap) / 1.5)}
+.route-card{display:flex;min-width:0;cursor:pointer}
+.route-body{display:flex;align-items:flex-start;gap:calc(var(--gap) / 1.5);width:100%;padding:12px 14px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius);transition:border-color 150ms ease,box-shadow 150ms ease,background-color 150ms ease,opacity 150ms ease}
+.route-card:hover .route-body{border-color:var(--dim)}
+.route-card input:checked+.route-body{border-color:var(--tape);box-shadow:0 0 0 1px var(--tape);background:rgba(255,198,41,.05)}
+.route-card input:focus-visible+.route-body{outline:2px solid var(--tape);outline-offset:2px}
+.route-card input:disabled+.route-body{cursor:not-allowed}
+.route-off{cursor:not-allowed}
+.route-off .route-body{border-style:dashed;opacity:.7}
+.route-off:hover .route-body{border-color:var(--line2)}
+.publish-routes[aria-busy="true"] .route-body{opacity:.75}
+.route-radio{flex:none;width:16px;height:16px;margin-top:2px;border:1.5px solid var(--line2);border-radius:50%;transition:border-color 150ms ease,box-shadow 150ms ease}
+.route-card input:checked+.route-body .route-radio{border-color:var(--tape);box-shadow:inset 0 0 0 3px var(--ink),inset 0 0 0 8px var(--tape)}
+.route-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.route-text strong{font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.route-reason{margin:0;color:var(--dim);font-size:12px;line-height:1.4}
+.publish-route-note{margin:0;color:var(--dim);font-size:12px}
+.route-card input[aria-disabled="true"]+.route-body{cursor:progress}
+.publish-busy{margin:0;color:var(--dim);font-size:12px}
+.publish-destination{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;color:var(--dim);font-size:13px}
+.publish-destination li{overflow-wrap:anywhere}
+.publish-destination strong{color:var(--paper)}
+.publish-posts{display:flex;flex-direction:column;gap:calc(var(--gap) / 1.5)}
+.publish-post{display:grid;grid-template-columns:minmax(0,1fr);gap:calc(var(--gap) * .75) var(--gap);min-width:0;padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
+.publish-post.has-preview{grid-template-columns:auto minmax(0,1fr);align-items:start}
+.publish-post-media{display:flex;flex-direction:column;gap:calc(var(--gap) / 2)}
+.publish-post-media .media-tile,.publish-post-media .media-tile.media-video{width:132px}
+.publish-post-body{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);min-width:0}
+@media(max-width:720px){.publish-post.has-preview{grid-template-columns:minmax(0,1fr)}.publish-post-media{flex-direction:row;flex-wrap:wrap}.publish-post-media .media-tile,.publish-post-media .media-tile.media-video{width:150px}}
+.publish-post-head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px var(--gap)}
+.publish-post-head h4{margin:0;color:#fff;font-size:15px;font-weight:800;line-height:1.3}
+.publish-account{color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+.publish-facts{display:flex;flex-wrap:wrap;gap:calc(var(--gap) / 2) calc(var(--gap) * 1.75);margin:0}
+.publish-facts>div{flex:0 1 auto;min-width:0;max-width:100%}
+.publish-facts dt{color:var(--faint);font-size:11px;font-weight:700}
+.publish-facts dd{margin:2px 0 0;color:var(--paper);overflow-wrap:anywhere}
+.publish-facts .publish-wide{flex:1 1 100%}
+.publish-text-plain{margin:0;overflow-wrap:anywhere}
+.publish-text{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+/* Two lines at most, then the last line fades out (no ellipsis that could cut a word): the toggle shows the rest. */
+.publish-text-preview{margin:0;max-width:100%;white-space:pre-line;overflow-wrap:anywhere;line-height:1.5;max-height:3em;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 1.5em),rgba(0,0,0,.2));mask-image:linear-gradient(to bottom,#000 calc(100% - 1.5em),rgba(0,0,0,.2))}
+.publish-text.is-open .publish-text-preview,.publish-text-short .publish-text-preview{max-height:none;-webkit-mask-image:none;mask-image:none}
+button.publish-toggle{min-height:28px;padding:2px 0;border:0;color:var(--wait);font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+button.publish-toggle:hover{border:0;background:none;color:var(--paper)}
+.publish-note{margin:0;font-size:13px}
+.publish-check-list{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);padding-top:calc(var(--gap) * .75);border-top:1px solid var(--line)}
+.publish-mark{display:inline-flex;flex:none;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:10px;font-weight:800;line-height:1}
+.publish-mark-ok{color:var(--go);background:rgba(137,230,165,.14)}
+.publish-mark-ok::before{content:"\2713"}
+.publish-mark-bad{color:var(--ink);background:var(--hold)}
+.publish-mark-bad::before{content:"!"}
+.publish-ready{margin:0;color:var(--go);font-size:13px;font-weight:700}
+details.publish-ready>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;width:fit-content}
+details.publish-ready>summary::-webkit-details-marker{display:none}
+p.publish-ready{display:flex;align-items:center;gap:8px}
+.publish-ready ul{margin:8px 0 0;padding:0 0 0 24px;color:var(--dim);font-size:12px;font-weight:400;list-style:disc}
+.publish-passed>summary{color:var(--faint);font-weight:700;font-size:12px}
+details.publish-ready>summary::after{content:"";width:6px;height:6px;margin-left:2px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+details.publish-ready[open]>summary::after{transform:rotate(225deg)}
+.publish-problems{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);margin:0;padding:0;list-style:none}
+.publish-problems li{display:flex;align-items:flex-start;gap:8px;color:var(--paper);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.publish-problems .publish-mark{margin-top:2px}
+.publish-type{display:flex;flex-direction:column;gap:6px;min-width:0}
+.publish-type label{color:var(--faint);font-size:11px;font-weight:700}
+.publish-type-row{display:flex;gap:8px;align-items:stretch;min-width:0}
+.publish-type-row select{flex:0 1 240px;width:auto;min-width:0;min-height:38px}
+.publish-type-row button{flex:none;min-height:38px;padding-inline:16px;white-space:nowrap}
+.publish-type select[aria-invalid=true]{border-color:var(--hold)}
+.publish-type .notice{padding:8px 10px;font-size:12px}
+@media(max-width:620px){.publish-type-row select{flex:1 1 auto}}
+.review-notes{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 280px}
+.review-notes .review-line{margin:0}
+.review-notes .review-line:not(.review-safety){color:var(--paper);font-weight:700}
+.review-panel-publish .review-buttons button{white-space:nowrap}
+@media(max-width:620px){.route-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:520px){.review-panel-publish .review-notes{flex:none}.review-panel-publish .review-actions{flex-direction:column;align-items:stretch}.review-panel-publish .review-buttons{flex-direction:column-reverse;align-items:stretch;width:100%;margin-left:0}.review-panel-publish .review-buttons button{width:100%}}
+@media(max-width:360px){.review-panel-publish .review-buttons button{padding-inline:8px;font-size:13px}}
+
+/* After the posting plan is approved: where each post stands (sent through Metricool), and the posting kit. */
+.post-status-panel .section-head,.posting-kit .section-head{margin:0 0 calc(var(--gap) / 2)}
+.post-status-list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
+.post-status-row{display:flex;flex-direction:column;gap:6px;min-width:0;padding:12px 0;border-top:1px solid var(--line)}
+.post-status-row:first-child{border-top:0;padding-top:4px}
+.post-status-row:last-child{padding-bottom:0}
+.post-status-main{display:flex;align-items:center;justify-content:space-between;gap:6px var(--gap);min-width:0}
+.post-status-head{display:flex;flex-direction:column;gap:1px;min-width:0}
+.post-status-label{color:#fff;font-size:14px;font-weight:800;line-height:1.35}
+.post-status-when{color:var(--dim);font-size:12.5px;line-height:1.4;overflow-wrap:anywhere}
+.pill.post-chip{flex:none;max-width:60%;min-height:24px;padding:4px 10px;font-size:12px;line-height:1.25;white-space:normal;text-align:center}
+.post-chip-go{color:var(--go);background:rgba(137,230,165,.06);border-color:var(--go-dim)}
+.post-chip-wait{color:var(--wait);background:rgba(132,168,255,.08);border-color:var(--wait-dim)}
+.post-chip-tape{color:var(--tape);background:rgba(255,198,41,.08);border-color:rgba(255,198,41,.45)}
+.post-chip-hold{color:var(--hold);background:rgba(255,138,133,.07);border-color:#7a2d2a}
+.post-chip-dim{color:var(--dim)}
+.post-status-reason{margin:0;color:var(--hold);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.post-status-note{margin:0;color:var(--dim);font-size:12.5px}
+.post-status-links{display:flex;flex-wrap:wrap;gap:4px var(--gap);margin:0}
+a.post-link{color:var(--wait);font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+a.post-link:hover{color:var(--paper)}
+a.post-link:focus-visible{outline:2px solid var(--tape);outline-offset:2px;border-radius:2px}
+.post-check{display:flex;flex-direction:column;gap:8px;min-width:0;margin-top:2px;padding:12px 14px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius)}
+.post-check-q{margin:0;color:#fff;font-size:14px;font-weight:800}
+.post-check-help{margin:0;font-size:12.5px;line-height:1.45}
+.post-check-actions{display:flex;flex-wrap:wrap;gap:8px}
+.post-check-actions button{min-height:36px;padding-inline:14px}
+.post-check-wait{margin:0;color:var(--tape);font-size:12.5px}
+.post-check .notice{padding:8px 10px;font-size:12px}
+.posting-kit .kit-intro{margin:0 0 var(--gap);font-size:13px}
+.kit-post{gap:calc(var(--gap) * .85)}
+.kit-section{display:flex;flex-direction:column;gap:6px;min-width:0}
+.kit-section h5{margin:0;color:var(--faint);font-size:11px;font-weight:700}
+.kit-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px var(--gap)}
+.kit-copy{min-height:30px;padding:4px 11px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.kit-copy.is-copied{color:var(--go);border-color:var(--go-dim)}
+.kit-files{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.kit-file-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px var(--gap);min-width:0}
+.kit-file-name{color:var(--paper);overflow-wrap:anywhere}
+.kit-file-wait{font-size:13px}
+a.kit-download{font-size:13px}
+.kit-checklist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0 0 0 20px;color:var(--paper);font-size:13px;line-height:1.45}
+.kit-checklist li{padding-left:2px;overflow-wrap:anywhere}
+.kit-checklist li::marker{color:var(--faint);font-weight:700}
+.kit-ai{color:var(--tape)}
+.kit-fallback{display:flex;flex-direction:column;gap:6px;min-width:0}
+.kit-fallback textarea{min-height:96px;font-size:13px;line-height:1.45}
+.kit-fallback-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px}
+.kit-mark{display:flex;flex-direction:column;gap:6px;min-width:0;padding-top:calc(var(--gap) * .75);border-top:1px solid var(--line)}
+.kit-mark label{color:var(--faint);font-size:11px;font-weight:700}
+.kit-mark-row{display:flex;gap:8px;align-items:stretch;min-width:0}
+.kit-mark-row input{flex:1 1 auto;min-width:0}
+.kit-mark-row button{flex:none;min-height:38px;padding-inline:16px;white-space:nowrap}
+.kit-mark input[aria-invalid=true]{border-color:var(--hold)}
+.kit-marked{gap:4px}
+.kit-marked-line{display:flex;align-items:center;gap:8px;margin:0;color:var(--go);font-weight:700;font-size:13px}
+.kit-marked-line .muted{font-weight:400;font-size:12.5px}
+.kit-post.is-marked{border-color:var(--go-dim)}
+@media(max-width:520px){.post-status-main{flex-direction:column;align-items:flex-start}.pill.post-chip{max-width:100%}.kit-mark-row{flex-direction:column}.kit-mark-row button{width:100%}.post-check-actions button{flex:1 1 100%}}
+.kit-fallback-status{margin:0;color:var(--tape);font-size:12.5px}
+
+/* The state badge shows the plain label of the state, which can be a few words: it wraps instead of running off the card. */
+.page-head>.pill,.card-art>.pill{white-space:normal;text-align:center;line-height:1.25}
+.page-head>.pill{flex:0 1 auto;max-width:min(44%,300px)}
+.card-art>.pill{max-width:72%}
+@media(max-width:720px){.page-head>.pill{max-width:100%;text-align:left}}
 
 </style>
 </head>
@@ -1533,7 +1704,7 @@ export function brandVoiceLine(brand) {
   return reasons.length ? `<p class="muted brand-chip-voice">${esc(reasons.join(' '))}</p>` : '';
 }
 
-export function brandChip(brand) {
+export function brandChip(brand, metricool = {}) {
   const ready = brandReady(brand);
   const researching = brandResearchPhase(brand) === 'running';
   const state = ready ? 'ready' : 'onboarding';
@@ -1542,7 +1713,58 @@ export function brandChip(brand) {
     ? '<button class="quiet" type="button" disabled>Researching...</button>'
     : `<button class="quiet" data-onboard="${esc(brand.slug)}">${ready ? 'Update' : 'Continue'}</button>`;
   const pillars = researching ? '' : brandPillarsPill(brand);
-  return `<div class="brand-chip"><span class="avatar">${esc((brand.name || 'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready ? 'Ready for jobs' : 'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
+  return `<div class="brand-chip"><span class="avatar">${esc((brand.name || 'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready ? 'Ready for jobs' : 'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}${brandMetricoolLine(brand, metricool)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
+}
+
+// Where this brand's posts go: the Metricool brand it posts through, with one chip per
+// platform saying whether Metricool's account matches the channel the brand card lists, and a
+// Change control (at the end of the chips row, or of the warning when the saved brand is gone)
+// when there is another Metricool brand to move to, or when the saved one is gone. A brand with no choice shows nothing (the Inbox asks for up to six brands)
+// unless Metricool has more than six: then a picker shows here, since an Inbox question only
+// holds six buttons. Only a ready brand gets a picker. `metricool` carries the saved list and the
+// picker's own state, nothing else.
+const COVERAGE_PLATFORMS = Object.freeze([['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']]);
+// Each chip is short enough to stay on one line at phone width; the full sentence is its title.
+const COVERAGE_WORDS = Object.freeze({
+  linked: ['ready', name => `${name} linked`, name => `${name} in Metricool matches the channel on this brand card.`],
+  not_linked: ['needed', name => `${name} not linked`, name => `${name} is on this brand card but is not linked in Metricool.`],
+  different_handle: ['needed', name => `${name} different handle`, name => `${name} in Metricool is a different account from the one on this brand card.`],
+  unverified: ['needed', name => `${name}: check`, name => `Cannot tell whether ${name} in Metricool is the same account as on this brand card: check it in Metricool.`],
+  only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is linked in Metricool but is not on this brand card.`],
+});
+
+export function metricoolCoverageChips(coverage, trailing = '') {
+  const chips = COVERAGE_PLATFORMS.map(([key, name]) => {
+    const word = COVERAGE_WORDS[coverage?.[key]];
+    return word ? `<span class="pill ${word[0]}" title="${esc(word[2](name))}" aria-label="${esc(word[2](name))}">${esc(word[1](name))}</span>` : '';
+  }).join('');
+  return chips || trailing ? `<span class="metricool-chips">${chips}${trailing}</span>` : '';
+}
+
+export function brandMetricoolLine(brand, { brands = [], open = false, busy = false, selected = '', error = '' } = {}) {
+  const publishing = brand?.publishing;
+  const slug = esc(brand?.slug || '');
+  const ready = brandReady(brand);
+  if (publishing?.unreadable) return '<div class="brand-chip-publish"><p class="muted metricool-warning">Could not read this brand\'s Metricool details</p></div>';
+  const gone = Boolean(publishing) && publishing.found === false;
+  const askHere = !publishing && brands.length > 6 && ready;
+  if (!publishing && !askHere) return '';
+  if (publishing && publishing.connected === false) return '<div class="brand-chip-publish"><p class="muted">Metricool is not connected</p></div>';
+  if ((open || askHere) && ready) {
+    const current = publishing && !gone ? publishing.blogId : '';
+    const chosen = selected || current;
+    const options = [`<option value="" ${chosen ? '' : 'selected'} disabled>Choose a Metricool brand</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.label)}</option>`)].join('');
+    const cancel = publishing ? `<button type="button" class="quiet" data-metricool-cancel="${slug}" ${busy ? 'disabled' : ''}>Cancel</button>` : '';
+    const label = askHere ? 'Which Metricool brand should this brand post through?' : 'Post through this Metricool brand';
+    return `<div class="brand-chip-publish brand-chip-publish-edit"><label class="muted" for="metricool-select-${slug}">${esc(label)}</label><span class="metricool-pick"><select id="metricool-select-${slug}" name="metricool_brand_select" data-metricool-brand="${slug}" ${busy ? 'disabled' : ''}>${options}</select><button type="button" class="primary" data-metricool-save="${slug}" ${busy || !chosen || chosen === current ? 'disabled' : ''}>${busy ? 'Saving...' : 'Use this brand'}</button>${cancel}</span>${error ? `<p class="muted metricool-error" role="alert">${esc(error)}</p>` : ''}</div>`;
+  }
+  // Change sits at the end of the chips row, or at the end of the warning when the saved brand is gone.
+  const canChange = ready && (brands.length > 1 || (gone && brands.length > 0));
+  const change = canChange ? `<button type="button" class="quiet" data-metricool-change="${slug}">Change</button>` : '';
+  if (gone) {
+    return `<div class="brand-chip-publish"><p class="muted metricool-warning">Metricool no longer lists the brand <strong>${esc(publishing.label)}</strong>, so posts have nowhere to go.${change ? ` ${change}` : ''}</p></div>`;
+  }
+  return `<div class="brand-chip-publish"><p class="muted">Posts go out through Metricool, brand <strong>${esc(publishing.label)}</strong></p>${metricoolCoverageChips(publishing.coverage, change)}</div>`;
 }
 
 export function brandStudioWorkspaceLine(brand) {
@@ -1558,18 +1780,28 @@ export function brandStudioWorkspaceLine(brand) {
 // this connector is in flight.
 const CONNECTOR_GUIDANCE = Object.freeze({
   threeecho_studio: 'Add 3Echo Studio in claude.ai: Settings, Connectors, then come back and say done.',
+  metricool: 'Add Metricool in claude.ai: Settings, Connectors, then come back and say done.',
 });
 
 export function connectorCard(connector, { busy = false } = {}) {
   const state = connector.state;
   const mark = esc(String(connector.name || '').slice(0, 2).toUpperCase());
+  const key = esc(connector.key);
+  // Metricool is added in claude.ai and then looked for, so its button is Check again: the same
+  // connect request, which makes Claude look for the connector and read its brands again.
+  const checkAgain = connector.key === 'metricool';
+  // A card that was never connected offers Connect, like the others; Check again only once it is connected or skipped.
+  const connect = (extra = '') => `<button${extra} data-connect="${key}" ${busy ? 'disabled' : ''}>${checkAgain && state !== 'not_connected' ? 'Check again' : 'Connect'}</button>`;
   const actions = state === 'connected'
-    ? `<span class="pill connected">Connected</span>`
+    ? `<span class="pill connected">Connected</span>${checkAgain ? connect() : ''}`
     : state === 'skipped'
-      ? `<span class="pill skipped">Skipped</span><button data-connect="${esc(connector.key)}" ${busy ? 'disabled' : ''}>Connect</button>`
-      : `<button class="primary" data-connect="${esc(connector.key)}" ${busy ? 'disabled' : ''}>Connect</button><button data-skip="${esc(connector.key)}" ${busy ? 'disabled' : ''}>Skip for now</button>`;
+      ? `<span class="pill skipped">Skipped</span>${connect()}`
+      : `${connect(' class="primary"')}<button data-skip="${key}" ${busy ? 'disabled' : ''}>Skip for now</button>`;
   const guidance = state !== 'connected' ? CONNECTOR_GUIDANCE[connector.key] : null;
-  return `<div class="connector-card"><div class="connector-card-main"><span class="avatar" aria-hidden="true">${mark}</span><div class="connector-card-copy"><h3>${esc(connector.name)}</h3><p class="muted">${esc(connector.description)}</p>${guidance ? `<p class="muted connector-guidance">${esc(guidance)}</p>` : ''}</div></div><div class="connector-card-actions">${actions}</div></div>`;
+  const optional = connector.optional ? '<span class="pill connector-optional">Optional</span>' : '';
+  const count = state === 'connected' && Number.isInteger(connector.brandCount)
+    ? `<p class="muted">${connector.brandCount === 1 ? '1 brand' : `${connector.brandCount} brands`} in Metricool</p>` : '';
+  return `<div class="connector-card"><div class="connector-card-main"><span class="avatar" aria-hidden="true">${mark}</span><div class="connector-card-copy"><h3>${esc(connector.name)}${optional}</h3><p class="muted">${esc(connector.description)}</p>${count}${guidance ? `<p class="muted connector-guidance">${esc(guidance)}</p>` : ''}</div></div><div class="connector-card-actions">${actions}</div></div>`;
 }
 
 // The pending-request notice: shown once a board request (for example a
@@ -1939,6 +2171,7 @@ export function intakeValues(intake, draft = {}) {
       for (const item of Array.isArray(value) ? value : []) {
         const index = seen[item.platform] = (seen[item.platform] ?? -1) + 1;
         values[`deliv_${item.platform}_${index}_format`] = item.format || '';
+        values[`deliv_${item.platform}_${index}_placement`] = item.placement || '';
         values[`deliv_${item.platform}_${index}_count`] = String(item.count ?? 1);
       }
     }
@@ -1964,13 +2197,37 @@ export function deliverableRows(field, platforms = [], values = {}) {
     const existing = items.filter(item => item.platform === platform);
     (existing.length ? existing : [null]).forEach((item, index) => {
       const key = `deliv_${platform}_${index}`;
-      rows.push({ key, platform, label: labels.get(platform) || platform, item, format: String(values[`${key}_format`] ?? item?.format ?? ''), count: String(values[`${key}_count`] ?? item?.count ?? 1) });
+      const placements = field?.placements?.[platform] || [];
+      rows.push({ key, platform, label: labels.get(platform) || platform, item, format: String(values[`${key}_format`] ?? item?.format ?? ''), placements, placement: String(values[`${key}_placement`] ?? item?.placement ?? ''), count: String(values[`${key}_count`] ?? item?.count ?? 1) });
     });
   }
   return rows;
 }
 
 const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// What the chosen post type cannot be made from. These are the router's rules in
+// pipeline/scripts/lib-deliverable.js (placementProblems), one for one, so the form refuses what the
+// router would send back, and says it before the person saves. A post type that fills a phone screen
+// is 9:16, so choosing one sets that ratio below rather than failing on a leftover one.
+const VIDEO_FORMATS = ['ugc', 'brand_video', 'motion_graphic'];
+const STORY_FORMATS = ['static_image', 'ugc', 'brand_video', 'motion_graphic'];
+const PHOTO_FORMATS = ['static_image', 'carousel'];
+const VERTICAL_TYPES = ['reel', 'story', 'video'];
+const POST_TYPE_WORDS = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+export const isVerticalPostType = (platform, placement) => VERTICAL_TYPES.includes(placement) && (placement !== 'video' || platform === 'tiktok');
+export function placementIssue(platform, placement, format, ratios = []) {
+  if (!placement) return '';
+  const name = { reel: 'A Reel', story: 'A Story', video: 'A TikTok video' }[placement] || 'This post type';
+  if (format) {
+    if ((placement === 'reel' || (platform === 'tiktok' && placement === 'video')) && !VIDEO_FORMATS.includes(format)) return `${name} needs a video format.`;
+    if (placement === 'story' && !STORY_FORMATS.includes(format)) return 'A Story needs an image or video format.';
+    if (platform === 'tiktok' && placement === 'photo' && !PHOTO_FORMATS.includes(format)) return 'A TikTok photo post needs the Image or Carousel format.';
+    if (platform === 'instagram' && placement === 'post' && format === 'text_only') return 'An Instagram post needs an image or video format.';
+    if (placement === 'carousel' && format !== 'carousel') return 'A carousel needs the Carousel format.';
+  }
+  if (VERTICAL_TYPES.includes(placement) && (placement !== 'video' || platform === 'tiktok') && (ratios || []).some(ratio => ratio !== '9:16')) return `${name} is 9:16.`;
+  return '';
+}
 // The board's own copy of the intake text limit (also enforced server-side by
 // validateIntakePatch/intakeText), used both to cap the textarea's maxlength
 // and to explain a prefilled value that already exceeds it.
@@ -1989,7 +2246,7 @@ function intakeFieldEmpty(field, values) {
     case 'url': return !String(values[field.key] || '').trim();
     case 'checkboxes': return !(values[field.key] || []).length;
     case 'budget': return !String(values.budget_currency || '').trim() && !String(values.budget_amount ?? '').trim();
-    case 'deliverables': return !(Array.isArray(field.value) && field.value.length);
+    case 'deliverables': return !(Array.isArray(field.value) && field.value.length) || field.value.some(item => field.placements?.[item.platform] && !item.placement);
     case 'photo': return true;
     default: return false;
   }
@@ -2052,9 +2309,15 @@ export function intakePatch(intake, draft = {}) {
         const count = Number(row.count);
         if (!formats.includes(row.format)) { errors[`${row.key}_format`] = 'Choose a format.'; rowErrors = true; }
         if (!Number.isInteger(count) || count < 1 || count > 100) { errors[`${row.key}_count`] = 'Enter a whole number from 1 to 100.'; rowErrors = true; }
-        out.push({ ...(row.item?.extra || {}), id: row.item?.id || `D${next++}`, platform: row.platform, count, creativeDiscipline: row.format, ...(row.format === 'ugc' ? { ugcSource: 'ai' } : {}) });
+        const extra = { ...(row.item?.extra || {}) };
+        if (row.placements.length && isVerticalPostType(row.platform, row.placement)) extra.aspectRatios = ['9:16'];
+        if (row.placements.length) {
+          if (!row.placements.some(option => option.value === row.placement)) { errors[`${row.key}_placement`] = 'Choose a post type.'; rowErrors = true; }
+          else if (placementIssue(row.platform, row.placement, row.format, extra.aspectRatios)) { errors[`${row.key}_placement`] = placementIssue(row.platform, row.placement, row.format, extra.aspectRatios); rowErrors = true; }
+        }
+        out.push({ ...extra, id: row.item?.id || `D${next++}`, platform: row.platform, count, creativeDiscipline: row.format, ...(row.placements.length ? { placement: row.placement } : {}), ...(row.format === 'ugc' ? { ugcSource: 'ai' } : {}) });
       }
-      const rowNames = rows.flatMap(row => [`${row.key}_format`, `${row.key}_count`]);
+      const rowNames = rows.flatMap(row => [`${row.key}_format`, `${row.key}_count`, `${row.key}_placement`]);
       if (!rowErrors && (field.missing || changed(rowNames) || rows.length !== items.length)) patch.deliverables = out;
     }
   }
@@ -2116,6 +2379,71 @@ function photoTile(id, photo, { removeAction = null, character = false, saved = 
   return `<div class="photo-field">${body}${photo?.error ? `<p class="field-error" role="alert">${esc(photo.error)}</p>` : ''}${!photo?.error && photo?.message ? `<p class="muted">${esc(photo.message)}</p>` : ''}</div>`;
 }
 
+// One cell of a deliverable row: the control and a compact label, which only a narrow screen shows
+// (the column heads cover the wide one).
+const delivCell = (label, control, extra = '') => `<label class="deliv-cell${extra}"><span class="deliv-cell-label">${label}</span>${control}</label>`;
+
+// The post type of one deliverable, as the cell between its platform and its format: Instagram Reel,
+// TikTok video. Fixed from the start of the job, so it is chosen here and never again at publish time.
+// Only the post types this format can be made into are offered ("post or Story" for an image), judged
+// the way the router judges them. With no format chosen yet, or none that fits, every one is offered
+// and saving explains what to change.
+export function placementOptionList(options, platform, format, ratios = []) {
+  const fits = format ? options.filter(option => !placementIssue(platform, option.value, format, isVerticalPostType(platform, option.value) ? ['9:16'] : ratios)) : [];
+  return fits.length ? fits : options;
+}
+export function placementOptionsHtml(list, selected = '') {
+  return `<option value="">Choose a post type</option>${list.map(option => `<option value="${esc(option.value)}" ${selected === option.value ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}`;
+}
+// The question under each deliverable row, worked out again from what the rows say now, in the router's
+// words and from the same valid set as the choices: "Which post type is the Instagram image: post or
+// Story?". A row whose chosen post type already fits has none (null); one that can only be one thing says
+// so; one that nothing fits says what to change (a rule to fix, so it is a conflict, not a hint).
+const POST_NOUNS = { reel: 'Reel', story: 'Story', post: 'post', carousel: 'carousel', video: 'video', photo: 'photo post' };
+const FORMAT_MEDIA = { static_image: 'image', carousel: 'carousel', brand_video: 'video', ugc: 'video', motion_graphic: 'video', text_only: 'text post' };
+const PLATFORM_NEEDS = { instagram: 'a picture or a video', tiktok: 'a video, a picture or a set of pictures', facebook: 'a picture, a video or words' };
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
+const choicesOf = nouns => nouns.join(', ').replace(/, ([^,]*)$/, ' or $1');
+export function placementAsks(rows) {
+  const fits = row => (row.format ? row.options.filter(option => !placementIssue(row.platform, option.value, row.format, isVerticalPostType(row.platform, option.value) ? ['9:16'] : row.ratios || [])) : row.options);
+  const names = rows.map(row => {
+    const chosen = row.placement && row.options.some(option => option.value === row.placement) && !placementIssue(row.platform, row.placement, row.format, isVerticalPostType(row.platform, row.placement) ? ['9:16'] : row.ratios || []);
+    return `${POST_ASK_PLATFORMS[row.platform] || row.platform} ${chosen ? POST_NOUNS[row.placement] : FORMAT_MEDIA[row.format] || 'post'}`;
+  });
+  return rows.map((row, index) => {
+    if (row.placement && row.options.some(option => option.value === row.placement) && !placementIssue(row.platform, row.placement, row.format, isVerticalPostType(row.platform, row.placement) ? ['9:16'] : row.ratios || [])) return null;
+    const same = names.map((name, at) => (name === names[index] ? at : -1)).filter(at => at >= 0);
+    const who = `the ${same.length > 1 ? `${ORDINALS[same.indexOf(index)] || 'next'} ` : ''}${names[index]}`;
+    const valid = fits(row);
+    const sentence = text => text[0].toUpperCase() + text.slice(1);
+    if (!valid.length) return { kind: 'conflict', text: sentence(`${who} needs ${PLATFORM_NEEDS[row.platform] || 'a different format'}; change the format.`) };
+    if (valid.length === 1) return { kind: 'ask', text: sentence(`${who} can only be ${/^[aeiou]/i.test(POST_NOUNS[valid[0].value]) ? 'an' : 'a'} ${POST_NOUNS[valid[0].value]}.`) };
+    return { kind: 'ask', text: sentence(`which post type is ${who}: ${choicesOf(valid.map(option => POST_NOUNS[option.value]))}?`) };
+  });
+}
+const POST_ASK_PLATFORMS = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+function placementCellHtml(row, errors, prefix) {
+  const name = `${row.key}_placement`;
+  if (!row.placements.length) return '<span></span>';
+  const ratios = row.item?.extra?.aspectRatios || [];
+  const list = placementOptionList(row.placements, row.platform, row.format, ratios);
+  // The data attributes let a format change redraw just these options, in place, without redrawing the form.
+  const data = `data-platform="${esc(row.platform)}" data-options="${esc(JSON.stringify(row.placements))}" data-ratios="${esc(JSON.stringify(ratios))}"`;
+  return delivCell('Post type', `<select name="${name}" aria-label="${esc(row.label)} post type" ${data} ${invalid(errors, name, prefix)}>${placementOptionsHtml(list, row.placement)}</select>`, ' deliv-type');
+}
+
+// One deliverable: platform, post type, format and quantity in a row, then what the router said about
+// its post type, if anything, under it.
+function delivRowHtml(field, row, errors, prefix) {
+  const formats = (field.options || []).map(option => `<option value="${esc(option.value)}" ${row.format === option.value ? 'selected' : ''}>${esc(option.label)}</option>`).join('');
+  const format = delivCell('Format', `<select name="${row.key}_format" aria-label="${esc(row.label)} format" ${invalid(errors, `${row.key}_format`, prefix)}><option value="">Choose a format</option>${formats}</select>`);
+  const count = delivCell('Quantity', `<input type="number" name="${row.key}_count" min="1" max="100" step="1" inputmode="numeric" aria-label="${esc(row.label)} quantity" value="${esc(row.count)}" ${invalid(errors, `${row.key}_count`, prefix)}>`, ' deliv-count');
+  // A question about a missing post type is a quiet hint; red is for a rule the choice breaks.
+  const said = field.notes?.[row.item?.ref];
+  const note = said ? `<p class="${said.kind === 'conflict' ? 'field-error' : 'field-hint'} deliv-note"${said.kind === 'ask' ? ' data-ask' : ''}>${esc(said.text)}</p>` : '';
+  return `<div class="deliv-row" data-deliv-row><span class="deliv-platform">${esc(row.label)}</span>${placementCellHtml(row, errors, prefix)}${format}${count}${fieldError(errors, `${row.key}_placement`, prefix)}${fieldError(errors, `${row.key}_format`, prefix)}${fieldError(errors, `${row.key}_count`, prefix)}${note}</div>`;
+}
+
 function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'intake', needed = true, labelled = true } = {}) {
   const id = `${prefix}-${field.key}`;
   const head = (tag, forId = id) => `<div class="intake-label${labelled ? '' : ' visually-hidden'}">${tag === 'legend' ? `<span class="intake-label-text" id="${id}-label">${esc(field.label)}</span>` : `<label for="${forId}">${esc(field.label)}</label>`}${needed ? neededTag(field, values) : ''}</div>`;
@@ -2128,7 +2456,7 @@ function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'in
   if (field.input === 'deliverables') {
     const rows = deliverableRows(field, platforms, values);
     const body = rows.length
-      ? `<div class="deliv-head" aria-hidden="true"><span>Platform</span><span>Format</span><span>Quantity</span></div>${rows.map(row => `<div class="deliv-row"><span class="deliv-platform">${esc(row.label)}</span><select name="${row.key}_format" aria-label="${esc(row.label)} format" ${invalid(errors, `${row.key}_format`, prefix)}><option value="">Choose a format</option>${(field.options || []).map(option => `<option value="${esc(option.value)}" ${row.format === option.value ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select><input type="number" name="${row.key}_count" min="1" max="100" step="1" inputmode="numeric" aria-label="${esc(row.label)} quantity" value="${esc(row.count)}" ${invalid(errors, `${row.key}_count`, prefix)}>${fieldError(errors, `${row.key}_format`, prefix)}${fieldError(errors, `${row.key}_count`, prefix)}</div>`).join('')}`
+      ? `<div class="deliv-head" aria-hidden="true"><span>Platform</span><span>${rows.some(row => row.placements.length) ? 'Post type' : ''}</span><span>Format</span><span>Quantity</span></div>${rows.map(row => delivRowHtml(field, row, errors, prefix)).join('')}`
       : '<p class="muted">Choose a platform first.</p>';
     return `<div class="intake-field intake-wide" role="group" aria-labelledby="${id}-label">${head('legend')}<div class="deliv-list">${body}</div>${fieldError(errors, field.key, prefix)}</div>`;
   }
@@ -2833,28 +3161,398 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false } = {
   return `<div class="price-workspace price-workspace-edit"><label for="studio-workspace-select">${esc(label)}</label><select id="studio-workspace-select" name="studio_workspace_select" ${locked ? 'disabled' : ''}>${options}</select>${brandOption}${error}${notice}<div class="review-buttons"><button type="button" class="primary" data-workspace-action="save" ${locked ? 'disabled' : ''}>${busy ? 'Saving...' : submitted ? 'Waiting for Claude' : 'Set workspace'}</button>${cancel}</div></div>`;
 }
 
-function postingPlan(posts = [], schedule = null) {
-  const rows = posts.flatMap(post => (post.publishPlan?.length ? post.publishPlan : [{}]).map(plan => ({
-    platform: plan.platform || (post.platform ? platformName(post.platform) : ''),
-    account: plan.account || schedule?.account || '',
-    publishAt: plan.publishAt || [schedule?.publishAt, schedule?.timezone].filter(Boolean).join(' ') || '',
-    destination: plan.destination || '',
-  })));
-  if (!rows.length) return '';
-  const cell = value => value ? esc(value) : '<span class="muted">Not set</span>';
-  return `<div class="md-table"><table class="posting-table"><thead><tr><th>Platform</th><th>Account</th><th>When</th><th>Destination</th></tr></thead><tbody>${rows.map(row => `<tr><td>${cell(row.platform)}</td><td>${cell(row.account)}</td><td>${cell(row.publishAt)}</td><td class="posting-destination">${cell(shortDestination(row.destination))}</td></tr>`).join('')}</tbody></table></div>`;
+// The publish gate. Everything shown comes from `review.publish`, the projection the server builds from the
+// posting plan the approval covers: the route and the routes on offer, where posts go, and one row per post.
+// Ids never reach the page as words, only the text the projection carries.
+export const PUBLISH_APPROVE_LABELS = Object.freeze({
+  metricool_schedule: count => `Approve and schedule ${count} ${count === 1 ? 'post' : 'posts'}`,
+  metricool_draft: count => `Approve and save ${count} ${count === 1 ? 'draft' : 'drafts'}`,
+  metricool_now: () => 'Approve and post now',
+  self: () => 'Approve and get the posting kit',
+});
+export const PUBLISH_SAFETY_LINES = Object.freeze({
+  metricool_schedule: 'Nothing goes out until you approve. You can cancel a scheduled post in Metricool until it goes out.',
+  metricool_draft: 'Nothing goes out until you approve. Drafts are saved in Metricool and stay there until you publish them.',
+  metricool_now: 'Nothing goes out until you approve. After that, each post goes out within a few minutes.',
+  self: 'Nothing is posted for you. After you approve, the posting kit has each file, caption and step.',
+});
+export const PUBLISH_ROUTE_WORDS = Object.freeze({
+  metricool_schedule: 'Schedule with Metricool',
+  metricool_draft: 'Save as a draft in Metricool',
+  metricool_now: 'Post now (goes out within a few minutes)',
+  self: "I'll post it myself",
+});
+export const PUBLISH_OUTDATED_LINE = 'Something changed since this plan was made, so it is being rebuilt.';
+export const PUBLISH_CHANGED_LINE = 'The plan changed after it was prepared; it is being rebuilt.';
+export const PUBLISH_SAVING_LINE = 'Saving your choice...';
+export const PUBLISH_ROUTE_WAITING_LINE = 'Still waiting for Claude to save this choice.';
+export const PUBLISH_ROUTE_SAVED_LINE = 'Claude saved this choice, but the updated plan has not reached the board yet.';
+/** The pause after an arrow key before the route it landed on is saved. */
+export const PUBLISH_ROUTE_KEY_PAUSE_MS = 700;
+
+/** The request a route choice sends: exactly these four fields (the transport adds the workspace). */
+export function publishRouteArgs({ project, route, requestId }) {
+  return { requestId, brand: project.brand, jobId: project.jobId, route };
 }
-function shortDestination(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  try {
-    const url = new URL(text);
-    const host = url.hostname.replace(/^www\./i, '');
-    const rest = `${url.pathname}${url.search}`;
-    return truncateText(`${host}${rest === '/' ? '' : rest}`, 36);
-  } catch {
-    return truncateText(text, 36);
+
+export const POST_TYPE_SAVING_LINE = 'Saving your choice...';
+export const POST_TYPE_WAITING_LINE = 'Still waiting for Claude to save this choice.';
+export const POST_TYPE_SAVED_LINE = 'Claude saved this choice, but the updated plan has not reached the board yet.';
+export const POST_TYPE_NEEDED_LINE = 'Choose a post type first.';
+
+/** The request a post type choice sends: exactly these five fields (the transport adds the workspace). */
+export function postTypeArgs({ project, deliverable, placement, requestId }) {
+  return { requestId, brand: project.brand, jobId: project.jobId, deliverable, placement };
+}
+
+export function publishApproveLabel(route, count) {
+  const make = PUBLISH_APPROVE_LABELS[route] || PUBLISH_APPROVE_LABELS.self;
+  return make(count).replace(/ 0 (posts|drafts)$/, ' $1');
+}
+
+/** The route the person picked that the projection has not caught up with yet, or null. */
+export function publishRoutePending(publish, routeState = {}) {
+  const wanted = routeState?.pending;
+  if (!wanted || !publish || publish.route === wanted) return null;
+  return wanted;
+}
+
+const publishFailing = post => (Array.isArray(post?.checks) ? post.checks : []).filter(item => item && item.ok === false);
+
+function publishRoutes(publish, routeState, { locked = false, signal = {}, now = Date.now() } = {}) {
+  const routes = Array.isArray(publish.routes) ? publish.routes : [];
+  // With only one way to go (a job planned before 0.8) there is nothing to choose, so no group is drawn.
+  if (routes.length < 2) return '';
+  const pending = publishRoutePending(publish, routeState);
+  const selected = pending || routeState?.draft || publish.route;
+  const reasons = [...new Set(routes.filter(item => item.available === false && item.reason).map(item => item.reason))];
+  const held = locked || Boolean(pending);
+  // A route that cannot be used is truly disabled. While a choice is saving the radios only say so with aria-disabled,
+  // so keyboard focus stays on the group.
+  const cards = routes.map(item => {
+    const off = item.available === false;
+    const attrs = [selected === item.id ? 'checked' : '', off ? 'disabled' : '', held && !off ? 'aria-disabled="true"' : '', off && reasons.length ? 'aria-describedby="publish-route-reason"' : ''].filter(Boolean).join(' ');
+    return `<label class="route-card${off ? ' route-off' : ''}"><input type="radio" class="visually-hidden" name="publish_route" value="${esc(item.id)}" ${attrs}><span class="route-body"><span class="route-radio" aria-hidden="true"></span><span class="route-text"><strong>${esc(item.label)}</strong></span></span></label>`;
+  }).join('');
+  const why = reasons.length ? `<p class="route-reason" id="publish-route-reason">${reasons.map(esc).join(' ')}</p>` : '';
+  let status = '';
+  // A choice nobody has picked up for a while gets the same soft notice as a decision, with Notify Claude and Remind Claude.
+  const waitedSince = routeState?.submittedAt;
+  // The same wait covers a choice Claude has not picked up and one it saved whose updated plan has not arrived.
+  const waiting = pending && Boolean(routeState.requestId) && Number.isFinite(waitedSince) && now - waitedSince >= REMIND_DELAY_MS;
+  if (waiting) status = notifyClaudeNotice({ ...routeState, message: routeState.applied ? PUBLISH_ROUTE_SAVED_LINE : PUBLISH_ROUTE_WAITING_LINE }, signal, now);
+  else if (pending) status = `<p class="publish-busy" role="status">${esc(PUBLISH_SAVING_LINE)}</p>`;
+  else if (routeState?.error) status = `<p class="notice error inline-error" role="alert">${esc(routeState.error)}</p>`;
+  else if (routeState?.notice) status = `<p class="publish-route-note" role="status">${esc(routeState.notice)}</p>`;
+  return `<fieldset class="publish-routes"${pending ? ' aria-busy="true"' : ''}><legend>How should these posts go out?</legend><div class="route-grid">${cards}</div>${why}${status}</fieldset>`;
+}
+
+function publishDestination(publish) {
+  const lines = [];
+  if (publish.metricool?.label) lines.push(`Posts go to Metricool brand <strong>${esc(publish.metricool.label)}</strong>`);
+  if (publish.studioWorkspace?.name) lines.push(`Media is uploaded to your 3echo workspace <strong>${esc(publish.studioWorkspace.name)}</strong>`);
+  return lines.length ? `<ul class="publish-destination">${lines.map(line => `<li>${line}</li>`).join('')}</ul>` : '';
+}
+
+function publishChecks(post, key = '', openKeys = new Set()) {
+  const checks = Array.isArray(post?.checks) ? post.checks.filter(item => item && typeof item.text === 'string') : [];
+  const failing = checks.filter(item => item.ok === false);
+  const passed = checks.filter(item => item.ok !== false);
+  const passedList = passed.map(item => `<li>${esc(item.text)}</li>`).join('');
+  const open = `data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}`;
+  // A post still waiting for its post type is not ready, whatever else passed.
+  const needsType = Array.isArray(post?.typeChoices) && post.typeChoices.length > 0;
+  if (!failing.length && needsType) return passed.length ? `<details class="publish-ready publish-passed" ${open}><summary>${passed.length === 1 ? '1 check passed' : `${passed.length} checks passed`}</summary><ul>${passedList}</ul></details>` : '';
+  if (!failing.length) {
+    const tick = '<span class="publish-mark publish-mark-ok" aria-hidden="true"></span>';
+    return passed.length
+      ? `<details class="publish-ready" ${open}><summary>${tick}Ready</summary><ul>${passedList}</ul></details>`
+      : `<p class="publish-ready">${tick}Ready</p>`;
   }
+  const problems = `<ul class="publish-problems">${failing.map(item => `<li><span class="publish-mark publish-mark-bad" aria-hidden="true"></span><span><span class="visually-hidden">Needs attention: </span>${esc(item.text)}</span></li>`).join('')}</ul>`;
+  const rest = passed.length ? `<details class="publish-ready publish-passed" ${open}><summary>${passed.length === 1 ? '1 other check passed' : `${passed.length} other checks passed`}</summary><ul>${passedList}</ul></details>` : '';
+  return problems + rest;
+}
+
+// The text that goes out, exactly as it will post: line breaks kept, collapsed or opened. Text that is short and on one
+// line is plain. Anything longer gets two lines (the browser cuts it with an ellipsis) and its own button; the button,
+// not the text, is what a screen reader reads as the control. A draw that finds the text fits drops the button.
+function publishText(value, key, what, openKeys) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.length <= 110 && !/\n/.test(text)) return `<p class="publish-text-plain">${esc(text)}</p>`;
+  const open = openKeys.has(key);
+  return `<div class="publish-text${open ? ' is-open' : ''}"><p class="publish-text-preview">${esc(text)}</p><button type="button" class="quiet publish-toggle" data-publish-toggle="${esc(key)}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Show less' : 'Show all'} of the ${what}">${open ? 'Show less' : 'Show all'}</button></div>`;
+}
+
+// The media tiles for one planned post, the same players and thumbnails the deliverable cards use. A planned post names
+// its deliverable and the job-relative path of each file; the file is looked up among that deliverable's media first and
+// then by path among all of them. A file with no card shows nothing.
+export function publishPreviews(review, post, used = new Set()) {
+  const wanted = (Array.isArray(post?.media) ? post.media : []).map(item => item?.path).filter(path => typeof path === 'string' && path);
+  if (!wanted.length) return '';
+  const own = (review?.posts || []).filter(item => post?.deliverable && item?.deliverable === post.deliverable).flatMap(item => item.media || []);
+  const all = [...(review?.posts || []).flatMap(item => item.media || []), ...(review?.media || [])];
+  return wanted.map(path => {
+    const ref = own.find(item => item?.path === path) || all.find(item => item?.path === path);
+    if (!ref) return '';
+    used.add(ref.path);
+    return mediaTile(ref);
+  }).filter(Boolean).join('');
+}
+
+const POST_TYPE_LINES = { saving: POST_TYPE_SAVING_LINE, waiting: POST_TYPE_WAITING_LINE, saved: POST_TYPE_SAVED_LINE };
+
+// A post planned before post types existed has none, and nothing else lets the person choose one: a compact select of
+// only the types its media can be, with a Save button (a select changes as an arrow key passes over it, so nothing is sent
+// until Save). The request follows the route choice's pattern: pending, never timing out, "Still waiting for Claude"
+// after the remind delay, and the decline said in place.
+function postTypeBlock(post, state, ctx) {
+  const kinds = (Array.isArray(post?.typeChoices) ? post.typeChoices : []).filter(item => item && typeof item.value === 'string' && typeof item.label === 'string');
+  if (!kinds.length) return '';
+  const id = post.id ?? '';
+  const request = postRequestLine(state, POST_TYPE_LINES, ctx);
+  const held = request.held || Boolean(ctx.locked);
+  const picked = kinds.some(item => item.value === state?.typePick) ? state.typePick : '';
+  const field = `publish-type-${esc(id)}`;
+  const problem = state?.typeError ? `<p class="field-error" id="${field}-error" role="alert">${esc(state.typeError)}</p>` : '';
+  return `<div class="publish-type"${request.held ? ' aria-busy="true"' : ''}><label for="${field}">Post type</label><div class="publish-type-row"><select id="${field}" name="publish_type:${esc(id)}" data-post-type="${esc(id)}" ${held ? 'disabled' : ''}${state?.typeError ? ` aria-invalid="true" aria-describedby="${field}-error"` : ''}>${placementOptionsHtml(kinds, picked)}</select><button type="button" data-post-type-save="${esc(id)}" ${held ? 'disabled' : ''}>Save</button></div>${problem}${request.html}</div>`;
+}
+
+function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ctx = {}) {
+  const ref = `${jobId}:${post.id ?? ''}`;
+  const caption = publishText(post.text ?? post.caption, `publish-text:${ref}`, 'caption', openKeys);
+  const first = publishText(post.firstComment, `publish-first:${ref}`, 'first comment', openKeys);
+  const titleText = publishText(post.title, `publish-title:${ref}`, 'TikTok title', openKeys);
+  const title = titleText ? `<div class="publish-wide"><dt>TikTok title</dt><dd>${titleText}</dd></div>` : '';
+  const media = (Array.isArray(post.media) ? post.media : []).map(item => item?.name).filter(Boolean);
+  const when = post.when?.text || '';
+  return `<article class="publish-post${preview ? ' has-preview' : ''}" role="listitem">${preview ? `<div class="publish-post-media">${preview}</div>` : ''}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div><dl class="publish-facts"><div><dt>When</dt><dd>${when ? esc(when) : '<span class="muted">Not set</span>'}</dd></div><div><dt>Media</dt><dd>${media.length ? esc(media.join(', ')) : '<span class="muted">None</span>'}</dd></div>${post.aiLabel ? `<div><dt>AI label</dt><dd>${esc(post.aiLabel)}</dd></div>` : ''}${title}${caption ? `<div class="publish-wide"><dt>Caption</dt><dd>${caption}</dd></div>` : ''}${first ? `<div class="publish-wide"><dt>First comment</dt><dd>${first}</dd></div>` : ''}</dl><div class="publish-check-list">${postTypeBlock(post, ctx.state, ctx)}${publishChecks(post, `publish-checks:${ref}`, openKeys)}</div></div></article>`;
+}
+
+// A job planned before posting through Metricool says plainly that it ends with the hand-off package.
+export const publishNoteLine = note => (typeof note === 'string' && note.trim() ? `<p class="publish-note muted">${esc(note.trim())}</p>` : '');
+
+export function publishCard(publish, routeState = {}, { disabled = false, openKeys = new Set(), note = '', jobId = '', signal = {}, now = Date.now(), previews = null, postStates = {} } = {}) {
+  if (!publish || typeof publish !== 'object') return '';
+  const posts = Array.isArray(publish.posts) ? publish.posts : [];
+  const rows = posts.length ? `<div class="publish-posts" role="list">${posts.map(post => publishPostRow(post, jobId, openKeys, typeof previews === 'function' ? previews(post) : '', { state: postStates?.[post.id], signal, now, locked: disabled })).join('')}</div>` : '<p class="muted">There are no posts in this plan yet.</p>';
+  return `<div class="publish-card">${publishNoteLine(note)}${publishRoutes(publish, routeState, { locked: disabled, signal, now })}${publishDestination(publish)}${rows}</div>`;
+}
+
+/** The Approve button's wording and, when it cannot be pressed, why. */
+export function publishApproval(publish, routeState = {}) {
+  if (!publish || typeof publish !== 'object') return { disabled: true, label: 'Approve', line: 'Claude is still preparing the posting plan.' };
+  const pending = publishRoutePending(publish, routeState);
+  const posts = Array.isArray(publish.posts) ? publish.posts : [];
+  const label = publishApproveLabel(pending || publish.route, posts.length);
+  const safety = PUBLISH_SAFETY_LINES[pending || publish.route] || PUBLISH_SAFETY_LINES.self;
+  // While a choice is saving, the route group says so; the button is only held.
+  if (pending) return { disabled: true, label, line: '', safety };
+  if (publish.outdated) return { disabled: true, label, line: typeof publish.reason === 'string' && publish.reason.trim() ? publish.reason.trim() : PUBLISH_OUTDATED_LINE, safety };
+  if (publish.changed) return { disabled: true, label, line: PUBLISH_CHANGED_LINE, safety };
+  if (!posts.length) return { disabled: true, label, line: 'There are no posts to approve yet.', safety };
+  if (!publish.ready) {
+    const failing = posts.filter(post => publishFailing(post).length || (Array.isArray(post?.typeChoices) && post.typeChoices.length)).length;
+    return { disabled: true, label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
+  }
+  return { label, line: '', safety };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// After the posting plan is approved: where each post stands (sent through Metricool), or the posting kit (the person
+// posts it themselves). Everything shown comes from the job document's `publishStatus` and `postingKit`; ids only ever
+// travel as control values, never as words.
+// ---------------------------------------------------------------------------------------------------------------
+export const POST_STATUS_WORDS = Object.freeze({
+  not_sent: 'Not sent yet',
+  unconfirmed: 'Sending (unconfirmed)',
+  needs_check: 'Waiting for your answer',
+  handed_over: 'Waiting for you to post it',
+  scheduled: 'Scheduled',
+  draft: 'Saved as a draft in Metricool',
+  waiting_in_app: 'Waiting for you in the Metricool app',
+  posted: 'Posted',
+  failed: 'Failed',
+  late: 'Late',
+  check_in_metricool: 'Check in Metricool',
+  marked: 'Posted by you',
+});
+const POST_STATUS_TONES = Object.freeze({ marked: 'go', handed_over: 'tape', not_sent: 'dim', unconfirmed: 'wait', needs_check: 'tape', scheduled: 'go', draft: 'wait', waiting_in_app: 'tape', posted: 'go', failed: 'hold', late: 'tape', check_in_metricool: 'tape' });
+const POST_STATUS_NOTES = Object.freeze({ late: 'Still pending after its time.' });
+export const POST_CHECK_QUESTION = 'Is this post in Metricool?';
+export const POST_IN_METRICOOL = 'It is in Metricool';
+export const POST_NOT_IN_METRICOOL = 'It is not in Metricool';
+export const POST_ANSWER_SAVING_LINE = 'Saving your answer...';
+export const POST_ANSWER_WAITING_LINE = 'Still waiting for Claude to save this answer.';
+export const POST_ANSWER_SAVED_LINE = 'Claude saved this answer, but the board has not caught up yet.';
+export const POST_MARK_SAVING_LINE = 'Saving...';
+export const POST_MARK_WAITING_LINE = 'Still waiting for Claude to save this.';
+export const POST_MARK_SAVED_LINE = 'Claude saved this, but the board has not caught up yet.';
+export const KIT_LINK_LIMIT = 500;
+export const KIT_COPIED_MS = 2000;
+export const KIT_DOWNLOAD_WAITING = 'Claude is preparing the download link';
+export const KIT_PARTIAL_DONE = 'Every post here is marked as posted.';
+export const KIT_PARTIAL_INTRO = 'These posts did not go out through Metricool. Post each one yourself, then mark it as posted.';
+export const KIT_INTRO = 'Nothing is posted for you. For each post, download the file, copy the caption, post it yourself, then mark it as posted.';
+
+/** The request an answer to "Is this post in Metricool?" sends: exactly these six fields (the transport adds the workspace). `lid` is the attempt the answer is for, as the status row carries it. */
+export function resolvePostArgs({ project, postId, answer, requestId, lid }) {
+  return { requestId, brand: project.brand, jobId: project.jobId, postId, answer, lid };
+}
+
+/** The request "Mark as posted" sends: exactly these fields, with the link only when there is one (the transport adds the workspace). */
+export function markPostedArgs({ project, postId, link, requestId }) {
+  const clean = typeof link === 'string' ? link.trim() : '';
+  return { requestId, brand: project.brand, jobId: project.jobId, postId, ...(clean ? { link: clean } : {}) };
+}
+
+/** Why a link cannot be sent, in plain words, or '' when it is empty or fine. Only a full https address of at most 500 characters passes. */
+export function markLinkProblem(value) {
+  const link = typeof value === 'string' ? value.trim() : '';
+  if (!link) return '';
+  if (link.length > KIT_LINK_LIMIT) return `The link is too long. Use at most ${KIT_LINK_LIMIT} characters.`;
+  let url = null;
+  try { url = new URL(link); } catch { url = null; }
+  if (!url || url.protocol !== 'https:' || !url.hostname || /\s/.test(link) || url.username || url.password) return 'Paste the full link, starting with https://.';
+  return '';
+}
+
+/** A link that is safe to open from the page: a full https address with no sign-in details, or null. */
+export function safeHttpsLink(value) {
+  if (typeof value !== 'string' || !value || /[\s\u0000-\u001f\u007f]/.test(value)) return null;
+  try { const url = new URL(value); return url.protocol === 'https:' && url.hostname && !url.username && !url.password ? url.href : null; } catch { return null; }
+}
+
+/** "Cmd+C" on a Mac, "Ctrl+C" elsewhere, from the browser's own platform text. */
+export const copyShortcut = platform => (/mac|iphone|ipad|ipod/i.test(String(platform || '')) ? 'Cmd+C' : 'Ctrl+C');
+/** How to copy by hand from the box: press and hold on a touch screen, else the keyboard shortcut. */
+export const copyHint = (platform, touch = false) => (touch ? 'Press and hold to copy' : `Press ${copyShortcut(platform)} to copy`);
+export const KIT_COPY_REFUSED = "Copy wasn't allowed. Copy the text below.";
+
+const externalLink = (href, text, className = 'post-link') => `<a class="${className}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
+
+// The request a post's own buttons sent, in the shape the route choice uses: nothing times out, the notice names the wait
+// after the remind delay, and a decline or an error is said where the buttons are. `held` is true while a request is out.
+function postRequestLine(state, lines, { signal = {}, now = Date.now() } = {}) {
+  const pending = Boolean(state?.pending);
+  const waitedSince = state?.submittedAt;
+  const waiting = pending && Boolean(state.requestId) && Number.isFinite(waitedSince) && now - waitedSince >= REMIND_DELAY_MS;
+  let html = '';
+  if (waiting) html = notifyClaudeNotice({ ...state, message: state.applied ? lines.saved : lines.waiting }, signal, now);
+  else if (pending) html = `<p class="publish-busy" role="status">${esc(lines.saving)}</p>`;
+  else if (state?.error) html = `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>`;
+  else if (state?.notice) html = `<p class="publish-route-note" role="status">${esc(state.notice)}</p>`;
+  return { html, held: pending };
+}
+
+const ANSWER_LINES = { saving: POST_ANSWER_SAVING_LINE, waiting: POST_ANSWER_WAITING_LINE, saved: POST_ANSWER_SAVED_LINE };
+const MARK_LINES = { saving: POST_MARK_SAVING_LINE, waiting: POST_MARK_WAITING_LINE, saved: POST_MARK_SAVED_LINE };
+
+// "Is this post in Metricool?": the two answers. "It is not in Metricool" waits until the server says it is time
+// (`checkAfter`); the server still checks when it is asked.
+function postQuestion(post, state, ctx) {
+  const id = post.id ?? '';
+  const after = post.checkAfter && typeof post.checkAfter === 'object' ? post.checkAfter : null;
+  const at = after ? Date.parse(after.at) : NaN;
+  const early = Boolean(after) && (!Number.isFinite(at) || ctx.now < at);
+  const request = postRequestLine(state, ANSWER_LINES, ctx);
+  const held = request.held;
+  const note = early ? `<p class="post-check-wait" id="post-check-wait-${esc(id)}">Check again after ${esc(after.text || 'a few minutes')}</p>` : '';
+  return `<div class="post-check" role="group" aria-labelledby="post-check-q-${esc(id)}"${held ? ' aria-busy="true"' : ''}><p class="post-check-q" id="post-check-q-${esc(id)}">${esc(POST_CHECK_QUESTION)}</p><p class="post-check-help muted">Claude could not tell whether this one went out. Look in Metricool, then tell it which is true.</p><div class="post-check-actions"><button type="button" data-post-answer="in_metricool" data-post-id="${esc(id)}" ${held ? 'aria-disabled="true" disabled' : ''}>${esc(POST_IN_METRICOOL)}</button><button type="button" data-post-answer="not_in_metricool" data-post-id="${esc(id)}" ${held || early ? 'disabled' : ''}${early ? ` aria-describedby="post-check-wait-${esc(id)}"` : ''}>${esc(POST_NOT_IN_METRICOOL)}</button></div>${note}${request.html}</div>`;
+}
+
+function postStatusRow(post, state, ctx) {
+  const status = Object.hasOwn(POST_STATUS_WORDS, post?.status) ? post.status : 'check_in_metricool';
+  const tone = POST_STATUS_TONES[status] || 'dim';
+  const chip = `<span class="pill post-chip post-chip-${tone}">${esc(POST_STATUS_WORDS[status])}</span>`;
+  const when = typeof post.when === 'string' && post.when ? `<span class="post-status-when">${esc(post.when)}</span>` : '';
+  const reason = status === 'failed' && post.reason ? `<p class="post-status-reason">${esc(post.reason)}</p>` : '';
+  const note = POST_STATUS_NOTES[status] ? `<p class="post-status-note">${esc(POST_STATUS_NOTES[status])}</p>` : '';
+  const view = (status === 'posted' || status === 'marked') && safeHttpsLink(post.publicUrl) ? externalLink(safeHttpsLink(post.publicUrl), 'View post') : '';
+  const planner = safeHttpsLink(post.plannerUrl) ? externalLink(safeHttpsLink(post.plannerUrl), 'Open in Metricool') : '';
+  const links = view || planner ? `<p class="post-status-links">${view}${planner}</p>` : '';
+  const question = status === 'needs_check' ? postQuestion(post, state, ctx) : '';
+  return `<li class="post-status-row" role="listitem" data-post-id="${esc(post.id ?? '')}"><div class="post-status-main"><div class="post-status-head"><strong class="post-status-label">${esc(post.label || 'Post')}</strong>${when}</div>${chip}</div>${reason}${note}${links}${question}</li>`;
+}
+
+/**
+ * The compact list that replaces the posting decision once something was sent through Metricool: one row per post with its
+ * label, time and a status chip, a link to the post when it is live, "Open in Metricool" when the planner link is known,
+ * and, for a post whose result is not known, the question the person answers. '' when nothing was sent.
+ */
+export function publishStatusPanel(status, postStates = {}, { signal = {}, now = Date.now() } = {}) {
+  const posts = Array.isArray(status?.posts) ? status.posts.filter(post => post && typeof post === 'object') : [];
+  if (!posts.length) return '';
+  const rows = posts.map(post => postStatusRow(post, postStates?.[post.id] || {}, { signal, now })).join('');
+  return `<section class="panel post-status-panel" aria-labelledby="post-status-title"><div class="section-head"><h2 id="post-status-title">Where your posts stand</h2></div><ul class="post-status-list" role="list">${rows}</ul></section>`;
+}
+
+function kitFiles(post) {
+  const media = Array.isArray(post.media) ? post.media.filter(item => item && typeof item === 'object') : [];
+  if (!media.length) return '';
+  const items = media.map(item => {
+    const href = safeHttpsLink(item.appUrl);
+    const name = item.name ? `<span class="kit-file-name">${esc(item.name)}</span>` : '';
+    return `<li class="kit-file-row">${name}${href ? externalLink(href, 'Download', 'post-link kit-download') : `<span class="muted kit-file-wait">${esc(KIT_DOWNLOAD_WAITING)}</span>`}</li>`;
+  }).join('');
+  return `<div class="kit-section"><h5>Files</h5><ul class="kit-files">${items}</ul></div>`;
+}
+
+function kitCopyBlock(post, field, label, state, { openKeys, jobId, hint }) {
+  const value = field === 'caption' ? post.text : post.firstComment;
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const ref = `${jobId}:${post.id ?? ''}`;
+  const shown = state?.copied === field;
+  const text = publishText(value, `kit-text:${field}:${ref}`, label.toLowerCase(), openKeys);
+  const button = `<button type="button" class="kit-copy${shown ? ' is-copied' : ''}" data-kit-copy="${esc(`${post.id ?? ''}:${field}`)}" aria-label="Copy ${esc(label.toLowerCase())}">${shown ? 'Copied' : `Copy ${esc(label.toLowerCase())}`}</button>`;
+  const fallback = state?.fallback === field
+    ? `<div class="kit-fallback"><p class="kit-fallback-status" role="status">${esc(KIT_COPY_REFUSED)}</p><label class="visually-hidden" for="kit-fallback-${esc(post.id ?? '')}-${field}">${esc(label)}</label><textarea id="kit-fallback-${esc(post.id ?? '')}-${field}" name="kit-fallback:${esc(post.id ?? '')}:${field}" readonly rows="5" aria-describedby="kit-fallback-hint-${esc(post.id ?? '')}-${field}" data-kit-fallback="${esc(`${post.id ?? ''}:${field}`)}">${esc(value)}</textarea><div class="kit-fallback-foot"><span class="muted" id="kit-fallback-hint-${esc(post.id ?? '')}-${field}">${esc(hint)}</span><button type="button" class="quiet" data-kit-fallback-close="${esc(`${post.id ?? ''}:${field}`)}">Done</button></div></div>`
+    : '';
+  return `<div class="kit-section kit-copy-section"><div class="kit-section-head"><h5>${esc(label)}</h5>${button}</div>${text}${shown ? `<span class="visually-hidden" role="status">${esc(label)} copied</span>` : ''}${fallback}</div>`;
+}
+
+function kitMarkBlock(post, state, ctx) {
+  const id = post.id ?? '';
+  if (post.marked) {
+    const link = safeHttpsLink(post.marked.link);
+    const when = typeof post.marked.text === 'string' && post.marked.text ? ` ${esc(post.marked.text)}` : '';
+    return `<div class="kit-mark kit-marked"><p class="kit-marked-line"><span class="publish-mark publish-mark-ok" aria-hidden="true"></span><span>Marked as posted${when ? ` <span class="muted">${when.trim()}</span>` : ''}</span></p>${link ? `<p class="post-status-links">${externalLink(link, 'View post')}</p>` : ''}</div>`;
+  }
+  const request = postRequestLine(state, MARK_LINES, ctx);
+  const field = `kit-link-${esc(id)}`;
+  const problem = state?.linkError ? `<p class="field-error" id="${field}-error" role="alert">${esc(state.linkError)}</p>` : '';
+  const describedBy = problem ? ` aria-describedby="${field}-error" aria-invalid="true"` : '';
+  return `<div class="kit-mark"><label for="${field}">Link to the post <span class="muted">(optional)</span></label><div class="kit-mark-row"><input id="${field}" type="url" inputmode="url" autocomplete="off" spellcheck="false" maxlength="${KIT_LINK_LIMIT}" name="kit-link:${esc(id)}" data-kit-link="${esc(id)}" placeholder="https://" value="${esc(state?.link || '')}" ${request.held ? 'disabled' : ''}${describedBy}><button type="button" class="primary" data-kit-mark="${esc(id)}" ${request.held ? 'disabled' : ''}>Mark as posted</button></div>${problem}${request.html}</div>`;
+}
+
+function kitPost(post, state, ctx) {
+  const checklist = (Array.isArray(post.checklist) ? post.checklist : []).filter(line => typeof line === 'string' && line.trim());
+  // The AI label comes before the last line, which hands over to Mark as posted.
+  const lines = checklist.map(line => `<li>${esc(line)}</li>`);
+  if (post.aiLabel) lines.splice(Math.max(0, lines.length - 1), 0, `<li class="kit-ai"><strong>${esc(post.aiLabel)}.</strong></li>`);
+  const items = lines.join('');
+  const when = typeof post.when === 'string' && post.when ? `<dl class="publish-facts"><div><dt>When</dt><dd>${esc(post.when)}</dd></div></dl>` : '';
+  return `<article class="publish-post kit-post${post.marked ? ' is-marked' : ''}" role="listitem"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</article>`;
+}
+
+/**
+ * The posting kit for "I'll post it myself": per post its time and account, a download link for each file, the caption
+ * and first comment with Copy buttons (a read-only box to copy by hand when the clipboard is not allowed), a short
+ * checklist with the AI label, and Mark as posted with an optional link. '' when the plan has no kit.
+ */
+export function postingKitPanel(kit, postStates = {}, { signal = {}, now = Date.now(), jobId = '', openKeys = new Set(), platform = '', touch = false } = {}) {
+  const posts = Array.isArray(kit?.posts) ? kit.posts.filter(post => post && typeof post === 'object') : [];
+  if (!posts.length) return '';
+  const ctx = { signal, now, jobId, openKeys, hint: copyHint(platform, touch) };
+  const marked = posts.filter(post => post.marked).length;
+  const done = marked === posts.length;
+  // "Finished" is said only once the job is complete; until then Claude is closing it.
+  const finished = done && kit.settled !== false && kit.closed === true;
+  const closing = done && kit.settled === true && kit.closed !== true;
+  const count = finished ? 'All posted' : `${marked} of ${posts.length} posted`;
+  const intro = finished ? 'Every post is marked as posted. This job is finished.' : closing ? 'Claude is closing this job.' : kit.route === 'partial' ? (done ? KIT_PARTIAL_DONE : KIT_PARTIAL_INTRO) : KIT_INTRO;
+  return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p><div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
 }
 
 function reviewFilesHtml(doc, paths) {
@@ -2869,7 +3567,7 @@ function reviewFilesHtml(doc, paths) {
   }).join('');
 }
 
-function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {} } = {}) {
+function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), signal = {} } = {}) {
   const review = doc.review;
   const gate = review.gate;
   const parts = [];
@@ -2893,12 +3591,18 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     parts.push(priceTable(review.quote, { used: project?.usage?.generation }));
     parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked }));
   }
-  if (gate === 'publish') parts.push(postingPlan(review.posts || [], review.schedule));
-  if (review.posts?.length) parts.push(`<div class="post-list">${review.posts.map(post => postPreview(post)).join('')}</div>`);
-  if (review.media?.length) parts.push(`<div class="media-grid">${review.media.map(ref => mediaTile(ref)).join('')}</div>`);
+  const used = new Set();
+  const planned = gate === 'publish' && review.publish;
+  if (gate === 'publish') parts.push(publishCard(review.publish, routeState, { disabled: locked, openKeys, postStates, note: doc.publishNote, jobId: project?.jobId || doc.jobId || '', signal, previews: planned ? post => publishPreviews(review, post, used) : null }));
+  // The deliverable cards repeat the text in another split, so the publish gate leaves them out once it has the plan.
+  if (review.posts?.length && !planned) parts.push(`<div class="post-list">${review.posts.map(post => postPreview(post)).join('')}</div>`);
+  const looseMedia = (review.media || []).filter(ref => !used.has(ref.path));
+  if (looseMedia.length) parts.push(`<div class="media-grid">${looseMedia.map(ref => mediaTile(ref)).join('')}</div>`);
+  if (gate === 'content' && doc.publishNote) parts.unshift(publishNoteLine(doc.publishNote));
   if (gate === 'content') parts.push(labelCheckSection(review.labelCheck, state.accepted || {}, { disabled: locked }));
   const covered = new Set([review.concepts?.path, ...(review.storyboards || []).map(item => item.path), ...(review.posts || []).map(item => item.path), review.quote?.path, review.sample?.path, ...(review.media || []).map(item => item.path)].filter(Boolean));
-  const rest = (review.paths || []).filter(path => !covered.has(path) && !/\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)$/i.test(path));
+  // The posting plan (publish/intent.json and the rest of publish/) is shown by the publish card, never as a file panel.
+  const rest = (review.paths || []).filter(path => !covered.has(path) && !/^publish\//i.test(path) && !/\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)$/i.test(path));
   if (rest.length) parts.push(reviewFilesHtml(doc, rest));
   return parts.join('');
 }
@@ -2930,7 +3634,7 @@ function unviewableMedia(doc) {
  * The approve arguments' shown amount and label for the review, or why it
  * cannot be approved yet.
  */
-function approval(gate, doc, state, recipeState = {}) {
+function approval(gate, doc, state, recipeState = {}, routeState = {}) {
   const unviewable = COPY_GATES.has(gate) ? unviewableMedia(doc) : [];
   if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : 'Approve', line: copiesWaiting(unviewable) };
   if (gate === 'concept') {
@@ -2974,6 +3678,7 @@ function approval(gate, doc, state, recipeState = {}) {
     if (open) return { disabled: true, label: 'Approve', line: open === 1 ? 'Accept the item from the label check as is, or ask for changes.' : `Accept the ${open} items from the label check as is, or ask for changes.` };
     return { label: 'Approve', line: '' };
   }
+  if (gate === 'publish') return publishApproval(doc?.review?.publish, routeState);
   if (gate === 'findings') return { label: 'Approve report', line: 'Approving finishes this job.' };
   return { label: 'Approve', line: '' };
 }
@@ -3041,16 +3746,16 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
  * concept cards, storyboard panels, the itemised price, the final post with its
  * media, or the posting plan, with Approve and Ask for changes.
  */
-export function reviewPanel(project, doc, state = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, downloads = null } = {}) {
+export function reviewPanel(project, doc, state = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), downloads = null } = {}) {
   const review = pendingReview(project);
   if (!review) return '';
   const gate = review.gate || review.reviewId;
   const status = reviewStatus(project, doc, docState);
   const ready = status === 'ready';
-  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState }) : `<p class="muted">${esc(REVIEW_WAITING[status])}</p>`;
+  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal }) : `<p class="muted">${esc(REVIEW_WAITING[status])}</p>`;
   const headExtra = ready && gate === 'findings' ? reportDownloads(downloads) : '';
   const decided = state.busy || state.submitted || state.needsReconciliation;
-  const plan = ready ? approval(gate, doc, state, recipeState) : { disabled: true, label: 'Approve', line: '' };
+  const plan = ready ? approval(gate, doc, state, recipeState, routeState) : { disabled: true, label: 'Approve', line: '' };
   const approveLabel = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? 'Waiting for Claude' : plan.label;
   const notice = state.declined
     ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
@@ -3058,15 +3763,15 @@ export function reviewPanel(project, doc, state = {}, { docState = 'loaded', sig
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const actions = state.commentOpen
     ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: make the hook shorter and show the product sooner.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? 'Waiting for Claude' : 'Send changes'}</button></div></div></div>`
-    : `<div class="review-actions">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button><button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : approveLabel)}</button></div></div>`;
+    : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button><button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : approveLabel)}</button></div></div>`;
   const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : GATE_TITLES[gate] || humanize(gate);
-  return `<section class="panel review-panel" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
+  return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
 }
 
 export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
-const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'jobstart']);
+const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'jobstart', 'post']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
@@ -3094,7 +3799,7 @@ function legacyJobInbox(project) {
 export function jobInbox(project, doc = null) {
   const inbox = doc?.inbox && typeof doc.inbox === 'object' ? doc.inbox : null;
   const announcement = trimmed(inbox?.announcement) || trimmed(project?.nextAction) || humanize(project?.state);
-  if (inbox && Array.isArray(inbox.items)) return { items: inboxItemsOf(inbox.items), announcement };
+  if (inbox && Array.isArray(inbox.items)) return { items: inboxItemsOf(inbox.items).filter(item => !postHandled(item)), announcement };
   return { items: legacyJobInbox(project), announcement };
 }
 
@@ -3386,6 +4091,7 @@ const INBOX_TEXT_FALLBACK = Object.freeze({ decision: 'A decision is waiting for
 export function inboxKey(item) {
   if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}`;
   if (item?.kind === 'jobstart') return `jobstart-${item.need || ''}`;
+  if (item?.kind === 'post') return `post-${item.jobId || ''}-${item.target || ''}`;
   return item?.kind === 'question' ? `question-${item.questionId}` : [item?.kind || 'item', item?.jobId || '', item?.field || ''].filter(Boolean).join('-');
 }
 
@@ -3402,12 +4108,49 @@ function onboardingCard(item) {
   return `<div class="inbox-actions"><button type="button" class="primary" data-onboard="${esc(item.brand)}">Open brand profile</button></div>`;
 }
 
+// A post that needs the person: what it is, and a button that scrolls to the row or the kit on the job page.
+const POST_JUMP = /^(kit|post:[A-Za-z0-9][A-Za-z0-9_-]{0,79})$/;
+export const postJump = item => (item?.kind === 'post' && POST_JUMP.test(String(item.target || '')) ? { target: item.target, label: item.target === 'kit' ? 'Open the posting kit' : 'Show the post' } : null);
+// A failure that reached Metricool stays on the page until the person says they handled it. That is a per-viewer convenience kept
+// in the browser (never anything Claude or other viewers see), so every read and write of it is guarded.
+const HANDLED_POSTS_KEY = 'socialCampaign.handledPosts';
+const handledPosts = new Set();
+let handledPostsLoaded = false;
+function loadHandledPosts() {
+  if (handledPostsLoaded) return;
+  handledPostsLoaded = true;
+  try {
+    const list = JSON.parse(globalThis.localStorage?.getItem(HANDLED_POSTS_KEY) || '[]');
+    if (Array.isArray(list)) for (const key of list.slice(-500)) if (typeof key === 'string') handledPosts.add(key);
+  } catch { /* No storage: the item simply shows until the job moves on. */ }
+}
+// The key names the failing line too, so a later failure of the same post shows again.
+export const postDismissKey = item => `${item?.jobId || ''}:${item?.target || ''}:${item?.lid || ''}`;
+export function markPostHandled(key) {
+  loadHandledPosts();
+  if (typeof key !== 'string' || !key) return;
+  handledPosts.add(key);
+  try { globalThis.localStorage?.setItem(HANDLED_POSTS_KEY, JSON.stringify([...handledPosts].slice(-500))); } catch { /* Kept for this visit only. */ }
+}
+const postHandled = item => item?.kind === 'post' && item.dismissible === true && (loadHandledPosts(), handledPosts.has(postDismissKey(item)));
+
+function postCard(item) {
+  const jump = item.closing ? null : postJump(item);
+  const summary = trimmed(item.summary) ? `<p class="inbox-summary">${esc(trimmed(item.summary))}</p>` : '';
+  const planner = safeHttpsLink(item.plannerUrl) ? `<a class="post-link" href="${esc(safeHttpsLink(item.plannerUrl))}" target="_blank" rel="noopener noreferrer">Open in Metricool</a>` : '';
+  const dismiss = item.dismissible === true && item.jobId ? `<button type="button" class="quiet" data-post-dismiss="${esc(postDismissKey(item))}">Done, I've handled it</button>` : '';
+  const show = jump && item.jobId ? `<button type="button" class="primary" data-inbox-jump="${esc(item.jobId)}" data-inbox-target="${esc(jump.target)}">${esc(jump.label)}</button>` : '';
+  const actions = show || planner || dismiss ? `<div class="inbox-actions">${show}${planner}${dismiss}</div>` : '';
+  return `${summary}${actions}`;
+}
+
 export function inboxCard(item, ctx = {}) {
   const index = Number.isInteger(ctx.index) ? ctx.index : 0;
   const text = inboxItemText(item);
   const onboarding = item.kind === 'onboarding' || item.kind === 'jobstart';
   const body = item.kind === 'jobstart' ? jobStartCard(item)
     : onboarding ? onboardingCard(item)
+    : item.kind === 'post' ? postCard(item)
     : item.kind === 'question' ? questionCard(item, ctx.question || {}, ctx.signal || {}, index)
       : item.kind === 'decision' ? decisionCard(item, ctx)
         : briefCard(item, ctx, index);
@@ -3418,7 +4161,7 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
   const list = inboxItemsOf(items);
   const contexts = list.map(item => context(item) || {});
   const answered = list.filter((item, at) => item.kind === 'question' && (contexts[at].question?.submitted || contexts[at].question?.answered)).length;
-  const needs = Math.max(0, Math.max(Number.isSafeInteger(count) ? count : 0, list.filter(item => (item.kind !== 'onboarding' && item.kind !== 'jobstart') || item.needsYou).length) - answered);
+  const needs = Math.max(0, Math.max(Number.isSafeInteger(count) ? count : 0, list.filter(item => (item.kind !== 'onboarding' && item.kind !== 'jobstart' && !item.closing) || item.needsYou).length) - answered);
   const tag = needs ? `<span class="pill needed">${needs} ${needs === 1 ? 'needs' : 'need'} you</span>` : '';
   const empty = trimmed(announcement) || (workspace ? INBOX_EMPTY : '');
   const briefs = list.filter(item => item.kind === 'brief' && item.inline && item.field);
@@ -3451,6 +4194,7 @@ const RAIL_JUMPS = Object.freeze({ decision: ['review', 'Review'], brief: ['brie
 const RAIL_TEXT = Object.freeze({
   notStarted: 'Not started yet',
   finished: 'Finished',
+  posting: 'Posting',
   lastStep: 'This is the last step.',
   allDone: 'All steps are done.',
   idle: 'Nothing right now, Claude is working.',
@@ -3459,6 +4203,7 @@ const RAIL_TEXT = Object.freeze({
 });
 
 function railJump(item) {
+  if (item?.kind === 'post') return item.closing ? null : postJump(item);
   const jump = item ? RAIL_JUMPS[item.kind] : null;
   if (!jump || (item.kind === 'decision' && trimmed(item.summary) === REVIEW_NOT_READY)) return null;
   return { target: jump[0], label: jump[1] };
@@ -3475,10 +4220,12 @@ export function stepRailParts(project, doc = null) {
   let hereIndex = stages.findIndex(stage => !RAIL_SETTLED.has(stage.status));
   if (hereIndex < 0 && lastDone >= 0) hereIndex = stages.findIndex((stage, index) => index > lastDone && stage.status === 'pending');
   const finished = !heldHere && hereIndex < 0 && lastDone >= 0;
-  const here = heldHere || (hereIndex >= 0 ? stages[hereIndex].label : finished ? RAIL_TEXT.finished : RAIL_TEXT.notStarted);
+  // The last step is the posts going out (or being posted by the person) once the plan is approved.
+  const posting = !heldHere && hereIndex === stages.length - 1 && Boolean(doc?.publishStatus?.posts?.length || doc?.postingKit?.posts?.length);
+  const here = heldHere || (posting ? RAIL_TEXT.posting : hereIndex >= 0 ? stages[hereIndex].label : finished ? RAIL_TEXT.finished : RAIL_TEXT.notStarted);
   const next = heldHere ? null : stages.slice(hereIndex + 1).find(stage => RAIL_UPCOMING.has(stage.status))?.label || (finished ? RAIL_TEXT.allDone : RAIL_TEXT.lastStep);
   const item = jobInbox(project, doc).items[0] || null;
-  const need = item ? inboxItemText(item)
+  const need = item ? trimmed(item.need) || inboxItemText(item)
     : RAIL_NEEDS_HELP.has(project?.state) ? trimmed(project?.blockedReason) || trimmed(project?.nextAction) || RAIL_TEXT.held
       : finished ? RAIL_TEXT.done : RAIL_TEXT.idle;
   return { here, next, need, jump: railJump(item) };
@@ -3736,6 +4483,16 @@ function requestComment(operation, args = {}) {
       return `Connect ${args?.providerName || 'this connector'}.`;
     case 'choose_recipe':
       return `Copy choices saved${quotedTitle(args?.title)} (${args?.deliverable || 'this post'}).`;
+    case 'choose_metricool_brand':
+      return `Metricool brand for ${args?.brandName || 'this brand'} set to ${args?.label || 'a different brand'}.`;
+    case 'choose_publish_route':
+      return `Posts will go out this way: ${PUBLISH_ROUTE_WORDS[args?.route] || 'a different route'}.`;
+    case 'choose_post_type':
+      return `Post type saved: ${POST_NOUNS[args?.placement] || 'a different one'}.`;
+    case 'resolve_post':
+      return args?.answer === 'in_metricool' ? 'This post is in Metricool.' : 'This post is not in Metricool.';
+    case 'mark_posted':
+      return args?.link ? `Marked a post as posted, with its link.` : 'Marked a post as posted.';
     case 'choose_studio_workspace':
       return `Studio workspace${quotedTitle(args?.title)} set to ${args?.workspaceName || 'a different workspace'}.`;
     case 'answer_question': {
@@ -3988,6 +4745,9 @@ if (typeof document !== 'undefined') {
   let downloadsApi;
   const openKeys = new Set();
   const connectorPending = new Set();
+  // The Metricool brand picker on a brand card: which cards have it open, which are saving, and
+  // the pick and last error per brand.
+  const metricoolUi = { open: new Set(), busy: new Set(), picks: new Map(), errors: new Map() };
   // Per-job page state: the intake draft and the review choice, comment and
   // request status, kept across re-renders and reset when the job moves on.
   const jobUi = new Map();
@@ -4006,7 +4766,7 @@ if (typeof document !== 'undefined') {
   const selected = () => (data.projects || []).find(p => p.jobId === selectedId());
   const current = () => { const project = selected(); return project ? jobView(project, docFor(project)) : undefined; };
   const readyBrands = () => (data.brands || []).filter(brandReady);
-  const pill = state => `<span class="pill ${esc(String(state || 'pending').toLowerCase().split('_')[0])}">${esc(humanize(state))}</span>`;
+  const pill = (state, label) => `<span class="pill ${esc(String(state || 'pending').toLowerCase().split('_')[0])}">${esc(trimmed(label) || humanize(state))}</span>`;
   function notify(message) { document.getElementById('notice').textContent = message; setTimeout(() => { document.getElementById('notice').textContent = ''; }, 6500); }
   const artifactMode = () => transport?.mode === 'artifact';
   function captureInlineValues() {
@@ -4051,7 +4811,8 @@ if (typeof document !== 'undefined') {
   function connectorsPanel(forced) {
     const connectors = data.connectors || [];
     const back = forced ? '' : '<div class="toolbar"><button class="quiet" data-action="connectors-close">&larr; Back</button></div>';
-    const intro = '<p class="muted">Connect the tools Claude uses to make images, video and voice. You can skip and connect later from Connectors at the top.</p>';
+    const optional = connectors.some(connector => connector.optional) ? ' Metricool is optional: it schedules your posts, and setup does not wait for it.' : '';
+    const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional} You can skip and connect later from Connectors at the top.</p>`;
     return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key) })).join('')}</section>`;
   }
   async function submitConnectorAction(operation, provider) {
@@ -4119,7 +4880,7 @@ if (typeof document !== 'undefined') {
     const { done, total } = stageProgress(project);
     const progress = total ? Math.round(done / total * 100) : 0;
     const mark = project.brand === NO_BRAND ? REPORT_MARK : esc(brand.slice(0,2).toUpperCase());
-    return `<button class="project-card" data-project="${esc(project.jobId)}"><div class="card-art"><span class="avatar" aria-hidden="true">${mark}</span>${pill(project.state)}</div><div class="card-body"><span class="eyebrow">${esc(`${kindLabelOf(project)} · ${brand}`)}</span><h3>${esc(project.title || 'Untitled job')}</h3><p class="muted">${esc(project.nextAction || humanize(project.state))}</p><div class="progress"><span style="width:${progress}%"></span></div><div class="card-meta"><span>${esc(`${total || 0} ${total === 1 ? 'stage' : 'stages'} in this plan`)}</span><span>${esc(project.ownershipStatus === 'unbound' ? 'Local draft' : 'Resume job')}</span></div></div></button>`;
+    return `<button class="project-card" data-project="${esc(project.jobId)}"><div class="card-art"><span class="avatar" aria-hidden="true">${mark}</span>${pill(project.state, project.stateLabel)}</div><div class="card-body"><span class="eyebrow">${esc(`${kindLabelOf(project)} · ${brand}`)}</span><h3>${esc(project.title || 'Untitled job')}</h3><p class="muted">${esc(project.nextAction || humanize(project.state))}</p><div class="progress"><span style="width:${progress}%"></span></div><div class="card-meta"><span>${esc(`${total || 0} ${total === 1 ? 'stage' : 'stages'} in this plan`)}</span><span>${esc(project.ownershipStatus === 'unbound' ? 'Local draft' : 'Resume job')}</span></div></div></button>`;
   }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
@@ -4178,7 +4939,7 @@ if (typeof document !== 'undefined') {
   function uiFor(project) {
     let ui = jobUi.get(project.jobId);
     if (!ui) {
-      ui = { revision: project.revision, intake: { values: {} }, review: { choice: null, comment: '', commentOpen: false }, recipe: {}, recipeStatus: {}, workspace: {} };
+      ui = { revision: project.revision, intake: { values: {} }, review: { choice: null, comment: '', commentOpen: false }, recipe: {}, recipeStatus: {}, workspace: {}, route: {}, posts: {} };
       jobUi.set(project.jobId, ui);
     }
     if (ui.revision !== project.revision) {
@@ -4192,6 +4953,8 @@ if (typeof document !== 'undefined') {
       stopJobRequestWatch(project.jobId + ':intake');
       stopJobRequestWatch(project.jobId + ':review');
       stopJobRequestWatch(project.jobId + ':workspace');
+      // A route choice stays pending across the new revision until the plan on the board shows it; so does a post's own
+      // answer or mark, until the status list or the kit shows it.
     }
     return ui;
   }
@@ -4217,6 +4980,29 @@ if (typeof document !== 'undefined') {
       queueMicrotask(render);
     });
   }
+  // A route request's watch only has the job id and the state; the state is the job's route state. A route that Claude
+  // applied stays pending until the plan shows it (the plan drops it); a decline or a failure ends it here.
+  function routeApplied(state) {
+    clearTimeout(state.reminderTimer);
+    Object.assign(state, { applied: true, requestId: state.sentRequestId, submittedAt: state.sentAt });
+    scheduleReminderWake(state);
+  }
+  function routeEnded(jobId, state, field, text) {
+    dropRoute(jobId, state);
+    state[field] = text;
+    state.shownRoute = jobDocs.get(jobId)?.review?.publish?.route ?? null;
+  }
+  // A post's own request (an answer, or Mark as posted) is followed the same way, one watch per post. What the person
+  // typed and the copy feedback belong to the post, not to the request, so ending a request keeps them.
+  function dropPost(jobId, postId, state) {
+    clearTimeout(state.reminderTimer);
+    Object.assign(state, { pending: null, kind: undefined, busy: false, submitted: false, applied: false, requestId: null, sentRequestId: null, sentAt: null, submittedAt: null, lastReminderAt: null, reminding: false, reminderTimer: null, operation: null, args: null });
+    stopJobRequestWatch(jobId + ':post:' + postId);
+  }
+  function postEnded(jobId, postId, state, field, text) {
+    dropPost(jobId, postId, state);
+    state[field] = text;
+  }
   function stopJobRequestWatch(key) {
     const unsubscribe = jobRequestWatches.get(key);
     if (typeof unsubscribe === 'function') unsubscribe();
@@ -4235,14 +5021,19 @@ if (typeof document !== 'undefined') {
       if (status === 'applied') {
         stopJobRequestWatch(key);
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null, ...(part === 'answer' ? { answered: true } : {}) });
-        notify(part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'answer' ? 'Claude has your answer.' : 'Claude applied your decision.');
+        if (part === 'route' || part.startsWith('post:')) routeApplied(state);
+        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? 'Claude has your answer.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was changed.', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null });
+        if (part === 'route') routeEnded(jobId, state, 'notice', state.message);
+        else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'notice', state.message);
         render();
       } else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: true, error: acknowledgement.message || receipt.message || 'Claude could not apply this. It needs checking before another try.', submittedAt: null, lastReminderAt: null, reminding: false });
+        if (part === 'route') routeEnded(jobId, state, 'error', state.error);
+        else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'error', state.error);
         render();
       }
     }, () => {}));
@@ -4300,15 +5091,36 @@ if (typeof document !== 'undefined') {
     const docState = jobDocStates.get(project.jobId) || 'loading';
     const brandLabel = project.brandName || 'Unassigned brand';
     const nextLine = project.nextAction || humanize(project.state);
-    const headOf = line => `<div class="breadcrumb"><a href="#/">Projects</a><span>/</span><span>${esc(brandLabel)}</span></div><div class="page-head"><div><div class="eyebrow">${esc(`${kindLabelOf(project)} · ${brandLabel}`)}</div><h1>${esc(project.title || 'Untitled job')}</h1>${line ? `<p>${esc(line)}</p>` : ''}</div>${pill(project.state)}</div>`;
+    const headOf = line => `<div class="breadcrumb"><a href="#/">Projects</a><span>/</span><span>${esc(brandLabel)}</span></div><div class="page-head"><div><div class="eyebrow">${esc(`${kindLabelOf(project)} · ${brandLabel}`)}</div><h1>${esc(project.title || 'Untitled job')}</h1>${line ? `<p>${esc(line)}</p>` : ''}</div>${pill(project.state, project.stateLabel)}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const railParts = stepRailParts(project, doc);
     const rail = stepRail(project, doc);
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
     const downloads = downloadView(ui);
-    const review = reviewPanel(project, doc, ui.review, { docState, signal: signalInfo(), recipeState: ui.recipe, workspaceState: ui.workspace, downloads });
+    const shown = doc?.review?.publish;
+    if (ui.route && shown) {
+      // The plan moved off the route it had when the choice was made (the choice landed, or someone changed it in chat):
+      // the pending choice is over, and a message about an earlier try goes with it.
+      if (ui.route.pending && shown.route !== ui.route.fromRoute) dropRoute(project.jobId, ui.route);
+      if ((ui.route.error || ui.route.notice) && ui.route.shownRoute !== undefined && shown.route !== ui.route.shownRoute) Object.assign(ui.route, { error: '', notice: '', shownRoute: undefined });
+    }
     const pendingGate = pendingReview(project)?.gate || pendingReview(project)?.reviewId || null;
+    const sent = Array.isArray(doc?.publishStatus?.posts) && doc.publishStatus.posts.length ? doc.publishStatus : null;
+    // A post's answer or mark that the board now shows is no longer pending.
+    for (const [postId, state] of Object.entries(ui.posts || {})) {
+      if (!state.pending) continue;
+      const row = (sent?.posts || []).find(item => item?.id === postId);
+      const kitRow = (doc?.postingKit?.posts || []).find(item => item?.id === postId);
+      // A post type the plan now shows (the post has none to choose any more) is no longer pending.
+      const planPost = (doc?.review?.publish?.posts || []).find(item => item?.id === postId);
+      const typeShown = state.kind === 'type' && Boolean(doc?.review?.publish) && !(planPost?.typeChoices?.length);
+      if ((state.kind === 'resolve' && row && row.status !== 'needs_check') || (state.kind === 'mark' && kitRow?.marked) || typeShown) dropPost(project.jobId, postId, state);
+    }
+    // Once something was sent the plan is frozen, so the status list stands where the posting decision was.
+    const review = sent && pendingGate === 'publish' ? '' : reviewPanel(project, doc, ui.review, { docState, signal: signalInfo(), recipeState: ui.recipe, workspaceState: ui.workspace, routeState: ui.route, postStates: ui.posts, openKeys, downloads });
+    const sentPanel = publishStatusPanel(sent, ui.posts, { signal: signalInfo() });
+    const kitPanel = postingKitPanel(doc?.postingKit, ui.posts, { signal: signalInfo(), jobId: project.jobId, openKeys, platform: typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent, touch: Boolean(globalThis.matchMedia?.('(pointer: coarse)')?.matches) });
     const report = pendingGate === 'findings' ? '' : reportPanel(doc, { downloads, jobTitle: project.title });
     const reportJob = isReportJob(project);
     const recipeStandalone = doc && pendingGate !== 'concept' ? recipePanel(doc, ui.recipe, ui.recipeStatus) : '';
@@ -4316,12 +5128,36 @@ if (typeof document !== 'undefined') {
     const omitted = project.artifactsOmitted || 0;
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
     const inbox = inboxAside(jobInbox(project, doc), { project });
-    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="layout"><div>${rail}${intakePanel}${report}${review}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}<section class="panel"><div class="section-head"><h2>Job flow</h2><span class="count">${project.stages?.length || 0} ${(project.stages?.length || 0) === 1 ? 'stage' : 'stages'}</span></div>${(project.stages || []).map(jobFlowStage).join('') || '<p class="muted">The stages appear when the brief is routed. Ask Claude to complete the missing brief details.</p>'}</section><section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section></div>${inbox}</div>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="layout"><div>${rail}${intakePanel}${report}${review}${sentPanel}${kitPanel}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}<section class="panel"><div class="section-head"><h2>Job flow</h2><span class="count">${project.stages?.length || 0} ${(project.stages?.length || 0) === 1 ? 'stage' : 'stages'}</span></div>${(project.stages || []).map(jobFlowStage).join('') || '<p class="muted">The stages appear when the brief is routed. Ask Claude to complete the missing brief details.</p>'}</section><section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section></div>${inbox}</div>`;
+  }
+  function metricoolFor(brand) {
+    return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
+  }
+  async function submitMetricoolBrand(slug) {
+    const brand = (data.brands || []).find(item => item.slug === slug);
+    const blogId = metricoolUi.picks.get(slug) || brand?.publishing?.blogId || '';
+    const chosen = (data.metricoolBrands || []).find(item => item.id === blogId);
+    if (!transport || !brand || !chosen || metricoolUi.busy.has(slug)) return;
+    metricoolUi.busy.add(slug);
+    metricoolUi.errors.delete(slug);
+    render();
+    try {
+      const result = await transport.call('choose_metricool_brand', { requestId: randomId(globalThis), brand: slug, blogId, brandName: brand.name, label: chosen.label });
+      metricoolUi.open.delete(slug);
+      metricoolUi.picks.delete(slug);
+      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      await refresh();
+    } catch (e) {
+      metricoolUi.errors.set(slug, e.message);
+    } finally {
+      metricoolUi.busy.delete(slug);
+      render();
+    }
   }
   function brandStrip() {
     const brands = data.brands || [];
     if (!brands.length) return '';
-    return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand)).join('')}</div></section>`;
+    return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div></section>`;
   }
   function overview() {
     const showConnectors = Array.isArray(data.connectors) && data.connectors.length && (data.setupStep === 'connectors' || connectorsView);
@@ -4426,7 +5262,13 @@ if (typeof document !== 'undefined') {
     if (inline) inline.kitFocus = null;
     app.querySelectorAll('.sb-strip').forEach((strip, index) => { if (stripScroll[index]) strip.scrollLeft = stripScroll[index]; });
     restoreJobFocus(jobFocus);
+    // A caption that fits in its two lines has nothing to open, so it shows no Show all control.
+    app.querySelectorAll('.publish-text:not(.is-open)').forEach(item => {
+      const preview = item.querySelector('.publish-text-preview');
+      if (preview && preview.scrollHeight <= preview.clientHeight + 1) { item.classList.add('publish-text-short'); item.querySelector('.publish-toggle')?.remove(); }
+    });
     scheduleResearchWake();
+    schedulePostWake(project);
     const landed = jumped && document.activeElement === document.body ? app.querySelector(jumped) : null;
     if (landed) { landed.setAttribute('tabindex', '-1'); landed.focus({ preventScroll: true }); }
     if (pendingJump && project) {
@@ -4446,7 +5288,8 @@ if (typeof document !== 'undefined') {
     return true;
   }
   function jumpFromInbox(jobId, target) {
-    const selector = JUMP_TARGETS[target] || JUMP_TARGETS.review;
+    const post = /^post:([A-Za-z0-9][A-Za-z0-9_-]{0,79})$/.exec(String(target || ''));
+    const selector = post ? `li.post-status-row[data-post-id="${CSS.escape(post[1])}"]` : target === 'kit' ? 'section.posting-kit' : JUMP_TARGETS[target] || JUMP_TARGETS.review;
     if (!jobId || current()?.jobId === jobId) { jumpTo(selector); return; }
     pendingJump = { jobId, selector };
     location.hash = '#/project/' + encodeURIComponent(jobId);
@@ -4750,6 +5593,19 @@ if (typeof document !== 'undefined') {
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
     const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-kit-action],[data-photo-action],[data-recipe-save]');if(!target)return;
+    if(target.dataset.publishToggle!==undefined){
+      const key=target.dataset.publishToggle;
+      if(openKeys.has(key))openKeys.delete(key);else openKeys.add(key);
+      render();
+      app.querySelector(`[data-publish-toggle="${CSS.escape(key)}"]`)?.focus({preventScroll:true});
+      return;
+    }
+    if(target.dataset.postDismiss!==undefined){markPostHandled(target.dataset.postDismiss);render();return;}
+    if(target.dataset.postTypeSave!==undefined){const shown=current();if(shown)void submitPostType(shown,target.dataset.postTypeSave);return;}
+    if(target.dataset.postAnswer!==undefined){const shown=current();if(shown)void submitResolvePost(shown,target.dataset.postId,target.dataset.postAnswer);return;}
+    if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
+    if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
+    if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
     if(target.dataset.photoAction==='remove-photo'){
       captureInlineValues();
       inline.photo = null;
@@ -4817,6 +5673,9 @@ if (typeof document !== 'undefined') {
     if(target.dataset.inboxCancel!==undefined){closeAnswerBox(target.dataset.inboxCancel);return;}
     if(target.dataset.inboxApprove!==undefined){approveFromInbox(target.dataset.inboxApprove);return;}
     if(target.dataset.inboxJump!==undefined){jumpFromInbox(target.dataset.inboxJump, target.dataset.inboxTarget);return;}
+    if(target.dataset.metricoolChange!==undefined){metricoolUi.open.add(target.dataset.metricoolChange);metricoolUi.errors.delete(target.dataset.metricoolChange);render();app.querySelector(`[data-metricool-brand="${CSS.escape(target.dataset.metricoolChange)}"]`)?.focus();return;}
+    if(target.dataset.metricoolCancel!==undefined){metricoolUi.open.delete(target.dataset.metricoolCancel);metricoolUi.picks.delete(target.dataset.metricoolCancel);metricoolUi.errors.delete(target.dataset.metricoolCancel);render();return;}
+    if(target.dataset.metricoolSave!==undefined){void submitMetricoolBrand(target.dataset.metricoolSave);return;}
     if(target.dataset.connect){void submitConnectorAction('connect_provider', target.dataset.connect);return;}
     if(target.dataset.skip){void submitConnectorAction('skip_provider', target.dataset.skip);return;}
     if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
@@ -5004,6 +5863,8 @@ if (typeof document !== 'undefined') {
     for (const ui of jobUi.values()) {
       if (ui?.intake?.requestId === requestId) return ui.intake;
       if (ui?.review?.requestId === requestId) return ui.review;
+      if (ui?.route?.requestId === requestId) return ui.route;
+      for (const post of Object.values(ui?.posts || {})) { if (post?.requestId === requestId) return post; }
     }
     for (const state of questionUi.values()) { if (state.requestId === requestId) return state; }
     return null;
@@ -5194,6 +6055,171 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
+  // A route choice in flight: what was picked, the request, and the route the plan had when it was made. It follows the
+  // decision pattern: the watch stays on until a receipt, and a soft notice with Notify Claude shows after the remind
+  // delay. Further choices are held while one is pending, so a retry never queues behind it.
+  function routeStateOf(project) {
+    const ui = uiFor(project);
+    return (ui.route ||= {});
+  }
+  function dropRoute(jobId, state) {
+    clearTimeout(state.reminderTimer);
+    Object.assign(state, { pending: null, busy: false, submitted: false, applied: false, requestId: null, sentRequestId: null, sentAt: null, fromRoute: undefined, submittedAt: null, lastReminderAt: null, reminding: false, reminderTimer: null, operation: null, args: null });
+    stopJobRequestWatch(jobId + ':route');
+  }
+  async function submitPublishRoute(project, route) {
+    const state = routeStateOf(project);
+    clearTimeout(state.keyTimer);
+    state.draft = null;
+    const plan = docFor(project)?.review?.publish;
+    if (!transport || !plan || state.pending) return;
+    if (route === plan.route || (plan.routes || []).some(item => item.id === route && item.available === false)) { render(); return; }
+    const requestId = randomId(globalThis);
+    const args = publishRouteArgs({ project, route, requestId });
+    Object.assign(state, { requestId, sentRequestId: requestId, pending: route, fromRoute: plan.route, busy: true, applied: false, error: '', notice: '', declined: false, shownRoute: undefined, operation: 'choose_publish_route', args });
+    render();
+    try {
+      const result = await transport.call('choose_publish_route', publishRouteArgs({ project, route, requestId }));
+      if (state.requestId !== requestId) return;
+      state.busy = false;
+      if (artifactMode()) {
+        Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });
+        state.sentAt = state.submittedAt;
+        watchJobRequest(project.jobId, 'route', state);
+        scheduleReminderWake(state);
+      } else {
+        dropRoute(project.jobId, state);
+        await refresh();
+      }
+      render();
+    } catch (e) {
+      if (state.requestId !== requestId) return;
+      routeEnded(project.jobId, state, 'error', e.message);
+      render();
+    }
+  }
+  // A radio moved with an arrow key is saved after a short pause, so passing over a route on the way to another
+  // does not send it. A pointer click, Space and Enter save at once.
+  function publishRouteChange(project, field) {
+    const state = routeStateOf(project);
+    if (state.pending || field.getAttribute('aria-disabled') === 'true') { state.arrowMove = false; setTimeout(render, 0); return; }
+    clearTimeout(state.keyTimer);
+    if (state.arrowMove) {
+      state.arrowMove = false;
+      state.draft = field.value;
+      state.keyTimer = setTimeout(() => { void submitPublishRoute(project, field.value); }, PUBLISH_ROUTE_KEY_PAUSE_MS);
+      return;
+    }
+    void submitPublishRoute(project, field.value);
+  }
+  function postStateOf(project, postId) {
+    const ui = uiFor(project);
+    return ((ui.posts ||= {})[postId] ||= {});
+  }
+  // Send one post's request (the answer to "Is this post in Metricool?", or Mark as posted) and follow it to its receipt,
+  // like a route choice: it stays pending until the board shows the result, never times out, and a decline is said in place.
+  async function sendPostRequest(project, postId, kind, operation, args) {
+    const state = postStateOf(project, postId);
+    if (!transport || state.pending) return;
+    const requestId = randomId(globalThis);
+    const sent = { ...args, requestId };
+    Object.assign(state, { kind, requestId, sentRequestId: requestId, pending: kind, busy: true, applied: false, error: '', notice: '', declined: false, operation, args: sent });
+    render();
+    try {
+      const result = await transport.call(operation, sent);
+      if (state.requestId !== requestId) return;
+      state.busy = false;
+      if (artifactMode()) {
+        Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });
+        state.sentAt = state.submittedAt;
+        watchJobRequest(project.jobId, 'post:' + postId, state);
+        scheduleReminderWake(state);
+      } else {
+        dropPost(project.jobId, postId, state);
+        await refresh();
+      }
+      render();
+    } catch (e) {
+      if (state.requestId !== requestId) return;
+      postEnded(project.jobId, postId, state, 'error', e.message);
+      render();
+    }
+  }
+  async function submitResolvePost(project, postId, answer) {
+    if (answer !== 'in_metricool' && answer !== 'not_in_metricool') return;
+    const row = (docFor(project)?.publishStatus?.posts || []).find(item => item?.id === postId);
+    if (!row || row.status !== 'needs_check' || typeof row.lid !== 'string' || !row.lid) return;
+    await sendPostRequest(project, postId, 'resolve', 'resolve_post', resolvePostArgs({ project, postId, answer, requestId: '', lid: row.lid }));
+  }
+  // The post type of a post planned before post types existed. Nothing is sent without a choice from the list the plan shows.
+  async function submitPostType(project, postId) {
+    const state = postStateOf(project, postId);
+    const field = app.querySelector(`[data-post-type="${CSS.escape(postId)}"]`);
+    if (field) state.typePick = field.value;
+    const post = (docFor(project)?.review?.publish?.posts || []).find(item => item?.id === postId);
+    const kinds = Array.isArray(post?.typeChoices) ? post.typeChoices : [];
+    if (!post || typeof post.deliverable !== 'string' || !post.deliverable || !kinds.length) return;
+    if (!kinds.some(item => item?.value === state.typePick)) { state.typeError = POST_TYPE_NEEDED_LINE; render(); focusQuietly(`[data-post-type="${CSS.escape(postId)}"]`); return; }
+    state.typeError = '';
+    await sendPostRequest(project, postId, 'type', 'choose_post_type', postTypeArgs({ project, deliverable: post.deliverable, placement: state.typePick, requestId: '' }));
+  }
+  async function submitMarkPosted(project, postId) {
+    const state = postStateOf(project, postId);
+    const field = app.querySelector(`[data-kit-link="${CSS.escape(postId)}"]`);
+    if (field) state.link = field.value;
+    const problem = markLinkProblem(state.link);
+    if (problem) { state.linkError = problem; render(); focusQuietly(`[data-kit-link="${CSS.escape(postId)}"]`); return; }
+    state.linkError = '';
+    if (!(docFor(project)?.postingKit?.posts || []).some(item => item?.id === postId && !item.marked)) return;
+    await sendPostRequest(project, postId, 'mark', 'mark_posted', markPostedArgs({ project, postId, link: state.link, requestId: '' }));
+  }
+  // Copy a kit text. The clipboard may not be allowed inside the artifact, so a refusal (or no clipboard at all) opens a
+  // read-only box with the text already selected, for the person to copy by hand.
+  async function copyKitText(project, postId, field) {
+    const post = (docFor(project)?.postingKit?.posts || []).find(item => item?.id === postId);
+    const text = field === 'caption' ? post?.text : field === 'comment' ? post?.firstComment : '';
+    if (!post || typeof text !== 'string' || !text) return;
+    const state = postStateOf(project, postId);
+    clearTimeout(state.copyTimer);
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') { await navigator.clipboard.writeText(text); copied = true; }
+    } catch { copied = false; }
+    if (copied) {
+      Object.assign(state, { copied: field, fallback: null });
+      // Focus goes back to the button only when it was on it, or had fallen to the page: never when the person moved on.
+      state.copyTimer = setTimeout(() => {
+        const button = `[data-kit-copy="${CSS.escape(postId + ':' + field)}"]`;
+        const active = document.activeElement;
+        const keep = !active || active === document.body || Boolean(active.matches?.(button));
+        state.copied = null;
+        state.copyTimer = null;
+        render();
+        if (keep) focusQuietly(button);
+      }, KIT_COPIED_MS);
+    } else {
+      Object.assign(state, { copied: null, fallback: field });
+    }
+    render();
+    if (copied) { focusQuietly(`[data-kit-copy="${CSS.escape(postId + ':' + field)}"]`); return; }
+    const box = app.querySelector(`[data-kit-fallback="${CSS.escape(postId + ':' + field)}"]`);
+    if (box) { box.focus({ preventScroll: true }); box.select(); }
+  }
+  function closeKitFallback(project, postId, field) {
+    const state = postStateOf(project, postId);
+    if (state.fallback === field) state.fallback = null;
+    render();
+    focusQuietly(`[data-kit-copy="${CSS.escape(postId + ':' + field)}"]`);
+  }
+  let postWake = null;
+  // "It is not in Metricool" opens at checkAfter, so the page is drawn again then.
+  function schedulePostWake(project) {
+    clearTimeout(postWake);
+    postWake = null;
+    const doc = project ? docFor(project) : null;
+    const times = (doc?.publishStatus?.posts || []).map(post => Date.parse(post?.checkAfter?.at || '')).filter(at => Number.isFinite(at) && at > Date.now());
+    if (times.length) postWake = setTimeout(() => { postWake = null; render(); }, Math.max(50, Math.min(...times) - Date.now() + 50));
+  }
   function workspaceAction(action) {
     const project = current();
     if (!project) return;
@@ -5356,6 +6382,25 @@ if (typeof document !== 'undefined') {
     }
     return { form, project, state };
   }
+  // The question under each row follows the choices: rebuilt from the rows as they stand now, removed once a
+  // post type that fits is chosen. A red rule from the router stays until the answer is saved.
+  function refreshPlacementAsks(form) {
+    const rows = [...(form?.querySelectorAll('[data-deliv-row]') || [])];
+    const read = rowElement => {
+      const select = rowElement.querySelector('select[name$="_placement"]');
+      const format = rowElement.querySelector('select[name$="_format"]');
+      if (!select || !format) return null;
+      return { element: rowElement, platform: select.dataset.platform, options: JSON.parse(select.dataset.options || '[]'), ratios: JSON.parse(select.dataset.ratios || '[]'), format: format.value, placement: select.value };
+    };
+    const read1 = rows.map(read).filter(Boolean);
+    placementAsks(read1).forEach((ask, index) => {
+      const note = read1[index].element.querySelector('.deliv-note[data-ask]');
+      if (!note) return;
+      if (!ask) { note.remove(); return; }
+      note.textContent = ask.text;
+      note.className = `${ask.kind === 'conflict' ? 'field-error' : 'field-hint'} deliv-note`;
+    });
+  }
   app.addEventListener('input', event => {
     const field = event.target;
     const answerForm = field.closest?.('[data-inbox-form]');
@@ -5373,10 +6418,36 @@ if (typeof document !== 'undefined') {
     }
     const project = current();
     if (!project) return;
+    if (field.dataset?.kitLink !== undefined) { const state = postStateOf(project, field.dataset.kitLink); state.link = field.value; if (state.linkError) { state.linkError = ''; field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); field.closest('.kit-mark')?.querySelector('.field-error')?.remove(); } return; }
     if (field.id === 'review-comment') { uiFor(project).review.comment = field.value; return; }
     if (field.id === 'sb-note') { uiFor(project).review.panelDraft = field.value; return; }
     const recipeName = recipeFieldFromName(field.name);
     if (recipeName?.own) recipeFieldState(uiFor(project).recipe, recipeName.deliverableId, recipeName.field).own[recipeName.subkey] = field.value;
+  });
+  app.addEventListener('keydown', event => {
+    const field = event.target;
+    if (field instanceof HTMLInputElement && field.dataset.kitLink !== undefined && event.key === 'Enter') {
+      event.preventDefault();
+      const shown = current();
+      if (shown) void submitMarkPosted(shown, field.dataset.kitLink);
+      return;
+    }
+    if (!(field instanceof HTMLInputElement) || field.name !== 'publish_route') return;
+    const project = current();
+    if (!project) return;
+    const state = routeStateOf(project);
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown') { state.arrowMove = true; return; }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (state.pending || field.disabled || field.getAttribute('aria-disabled') === 'true') return;
+      state.arrowMove = false;
+      void submitPublishRoute(project, field.value);
+    }
+  });
+  app.addEventListener('pointerdown', event => {
+    if (!event.target.closest?.('.route-card')) return;
+    const project = current();
+    if (project) routeStateOf(project).arrowMove = false;
   });
   app.addEventListener('change', event => {
     const field = event.target;
@@ -5388,8 +6459,25 @@ if (typeof document !== 'undefined') {
       if (shown) void handleIntakePhotoFile(shown, field.files?.[0] || null);
       return;
     }
+    // A format change changes which post types fit it. Their options are rebuilt where they stand, keeping
+    // the chosen one when it still fits, so the form is not redrawn and focus and typed text stay put.
+    if (/^deliv_.+_format$/.test(field.name) && field.closest?.('#intake-form,[data-inbox-intake]')) {
+      for (const select of app.querySelectorAll(`select[name="${CSS.escape(field.name.replace(/_format$/, '_placement'))}"]`)) {
+        const list = placementOptionList(JSON.parse(select.dataset.options || '[]'), select.dataset.platform, field.value, JSON.parse(select.dataset.ratios || '[]'));
+        const kept = list.some(option => option.value === select.value) ? select.value : '';
+        select.innerHTML = placementOptionsHtml(list, kept);
+        select.value = kept;
+      }
+      refreshPlacementAsks(field.closest('#intake-form,[data-inbox-intake]'));
+    }
+    if (/^deliv_.+_placement$/.test(field.name)) refreshPlacementAsks(field.closest?.('#intake-form,[data-inbox-intake]'));
     if (intakeEdit(field)) {
       if (field.name === 'platforms') setTimeout(render, 0);
+      return;
+    }
+    if (field.name === 'metricool_brand_select') {
+      metricoolUi.picks.set(field.dataset.metricoolBrand, field.value);
+      setTimeout(render, 0);
       return;
     }
     const project = current();
@@ -5399,6 +6487,16 @@ if (typeof document !== 'undefined') {
       state.choice = field.value;
       state.error = '';
       setTimeout(render, 0);
+      return;
+    }
+    if (field.name === 'publish_route') {
+      publishRouteChange(project, field);
+      return;
+    }
+    if (field.name.startsWith('publish_type:')) {
+      const picked = postStateOf(project, field.dataset.postType);
+      picked.typePick = field.value;
+      if (picked.typeError) { picked.typeError = ''; setTimeout(render, 0); }
       return;
     }
     if (field.name === 'studio_workspace_select') {
@@ -5429,18 +6527,19 @@ if (typeof document !== 'undefined') {
   });
   function captureJobFocus() {
     const element = document.activeElement;
-    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item') : null;
+    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit') : null;
     if (!scope) return null;
     const box = element.type === 'checkbox' || element.type === 'radio';
     let start = null;
     let end = null;
     try { start = typeof element.selectionStart === 'number' ? element.selectionStart : null; end = typeof element.selectionEnd === 'number' ? element.selectionEnd : null; } catch { start = end = null; }
-    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name]';
+    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name]';
     return { within, name: element.name, value: box ? element.value : null, start, end };
   }
   function restoreJobFocus(focus) {
     if (!focus || (document.activeElement && document.activeElement !== document.body)) return;
-    const element = [...app.querySelectorAll(focus.within)].find(item => item.name === focus.name && (focus.value === null || item.value === focus.value));
+    const group = [...app.querySelectorAll(focus.within)].filter(item => item.name === focus.name);
+    const element = group.find(item => focus.value === null || item.value === focus.value) || (focus.name === 'publish_route' ? group.find(item => item.checked) : null);
     if (!element) return;
     element.focus({ preventScroll: true });
     if (focus.start !== null && typeof element.setSelectionRange === 'function') {

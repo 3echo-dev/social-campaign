@@ -46,7 +46,7 @@ One row per job, in plain words. Never ask a question this answers.
 
 ### 2. Say what this is, in one line
 
-> Request in, approved content out. You decide at every gate, and you post it.
+> Request in, approved content out. You decide at every gate, including where and when it posts.
 
 Only for someone with no brands yet. With a job on disk, show what `list-jobs.js` printed, in its words.
 

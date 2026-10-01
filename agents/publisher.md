@@ -23,10 +23,11 @@ Reuse the approved delivery package exactly.
 
 Do not repeat research, probe unrelated providers, edit approved content, or create a new package.
 
-Publishing remains a separate human action.
+Build the handoff record only.
+Never upload media, send or schedule a post, or call a publishing connector: publishing runs in the main session, because a subagent cannot rely on connector tools.
 
-If no publishing provider is configured, write the handoff package for manual posting and leave the local job state explicit.
+Write the handoff package as the record of what was approved, and leave the local job state explicit.
 
 Never publish without a current final approval.
 
-Return the handoff path, reused artifact hashes, provider state, and next action.
+Return the handoff path, reused artifact hashes, and next action.

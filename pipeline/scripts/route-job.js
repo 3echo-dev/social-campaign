@@ -13,6 +13,7 @@ const research = require('./lib-brand-research.js');
 const execution = require('./lib-execution-availability.js');
 const brandProfile = require('./lib-brand-profile.js');
 const kinds = require('./lib-kinds.js');
+const deliverable = require('./lib-deliverable.js');
 
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -69,7 +70,6 @@ if (!availability.available) {
 }
 const cfg = readConfig(cfgPath);
 const threshold = typeof cfg.route_confidence_threshold === 'number' ? cfg.route_confidence_threshold : 0.8;
-const mergePublish = cfg.merge_publish_into_content_gate !== false;
 const platformsV1 = Array.isArray(cfg.platforms_v1) ? cfg.platforms_v1 : ['facebook', 'instagram', 'tiktok'];
 
 const R = {
@@ -110,6 +110,22 @@ if (producesContent) {
 // validate-schema.js understands, and the answer decides which stages run, so rule 1 asks for it.
 for (const d of Array.isArray(job.deliverables) ? job.deliverables : []) {
   if (d && d.creativeDiscipline === 'ugc' && !d.ugcSource) missing('deliverables.' + (d.id || '?') + '.ugcSource');
+}
+// Rule 1c: every deliverable that becomes a post carries one fixed post type, chosen at the start
+// of the job (an Instagram reel, a TikTok video). The schema's enum is the union of all of them, so
+// the platform it belongs to, the media it needs and the missing case are asked here. A post type
+// that cannot be what the deliverable is, or no post type at all, goes back to the person as a
+// question about the deliverable; publishing never offers another one. An older job's post type
+// that can only be one thing (a TikTok video) is read as that, the same way the board reads it,
+// so only the ones that could be several are asked.
+const seenJob = deliverable.withDerivedPlacements(job);
+for (const d of Array.isArray(seenJob.deliverables) ? seenJob.deliverables : []) {
+  if (!d || typeof d !== 'object') continue;
+  if (d.placement === undefined || d.placement === null) {
+    if (deliverable.publishable(seenJob, d)) missing(deliverable.missingPlacementLabel(d, seenJob));
+    continue;
+  }
+  for (const reason of deliverable.placementProblems(d, seenJob)) missing(deliverable.placementProblemLabel(d, reason, seenJob));
 }
 // Rule 1b: audience is optional on the job; it only narrows the brand's own audience for this
 // brief. A job with none of its own falls back to the brand profile, so the router asks for
@@ -408,10 +424,10 @@ if (wf && wf.status === 'active') {
   if (!R.requiredDisciplines.includes('ugc')) gates = gates.filter(g => g !== 'concept');
   if (!needsMedia) gates = gates.filter(g => g !== 'storyboard');
   if (!R.requiredDisciplines.includes('ads')) gates = gates.filter(g => !g.startsWith('campaign_'));
-  if (gates.includes('publish') && mergePublish && job.schedule && job.schedule.publishAt) {
-    gates = gates.filter(g => g !== 'publish');
-    say('Rule 14: publish merged into the content gate because a schedule is present (account presence is checked at hand-off)');
-  }
+  // The publish gate is never merged into the content gate, even when a schedule is present and even when the
+  // person posts it themselves: its approval covers the exact posting plan (publish/intent.json), and that
+  // approval is what lets Claude upload the job's media to the person's 3echo workspace.
+  if (gates.includes('publish')) say('Rule 14: the publish gate stays its own approval, whether or not a schedule is present');
   R.gates = gates;
   say('Rule 14: gates ' + (gates.join(', ') || 'none'));
 }
@@ -437,7 +453,10 @@ if (args.includes('--human')) {
   } else if (R.status === 'BLOCKED') {
     console.log('I need ' + R.blockers.join(', and ') + ' before I can make this.');
   } else if (R.status === 'NEEDS_CLARIFICATION') {
-    console.log('I need a bit more before I start: ' + R.missingFields.join(', ') + '.');
+    // A post type entry carries a path the board maps back to its form; the person reads its words only.
+    const asks = R.missingFields.map(deliverable.placementEntryWords).filter(Boolean);
+    const rest = R.missingFields.filter(f => !deliverable.placementEntryWords(f));
+    console.log([rest.length ? 'I need a bit more before I start: ' + rest.join(', ') + '.' : '', ...asks.map(a => (/[?.]$/.test(a) ? a : a + '.'))].filter(Boolean).join(' '));
   } else {
     console.log('I cannot make this: ' + R.unsupported.join('; ') + '.');
   }

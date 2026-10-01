@@ -8,6 +8,7 @@ import { UserFacingError } from '../lib/errors.mjs';
 import { probeFile, run } from '../media/probe.mjs';
 
 const require = createRequire(import.meta.url);
+const deliverableRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-deliverable.js'));
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
 const postReader = require(join(SCRIPTS, 'lib-post.js'));
 const frontmatter = require(join(SCRIPTS, 'lib-frontmatter.js'));
@@ -157,7 +158,20 @@ function isProductAsset(ref, value) {
 function plainMediaRef(ref, file) {
   if (!file || typeof file.path !== 'string') return 'this file';
   if (file.role === 'supplied') return isProductAsset(ref, file.path) ? suppliedNoun(readJson(join(ref.dir, 'job.json'))) : `a supplied ${mediaNoun(file.kind)}`;
-  return `the ${file.deliverable ? `${file.deliverable} ` : 'finished '}${mediaNoun(file.kind)}`;
+  return deliverableName(ref, file) || `the finished ${mediaNoun(file.kind)}`;
+}
+
+// The deliverable the way the person sees it ("the Instagram Reel", "the second Instagram post"), from the
+// job's own post types, never its id. A picture of a Reel or a TikTok video is its cover. Null when the
+// job does not say, so the caller falls back to plain words about the file.
+function deliverableName(ref, file) {
+  if (!file.deliverable) return null;
+  let spec;
+  try { spec = deliverableRules.withDerivedPlacements(readJson(join(ref.dir, 'job.json'))); } catch { return null; }
+  const match = Array.isArray(spec?.deliverables) ? spec.deliverables.find(item => item && item.id === file.deliverable) : null;
+  if (!match) return null;
+  const filmed = ['reel', 'video'].includes(match.placement);
+  return deliverableRules.describe(spec, match) + (file.kind !== 'video' && filmed ? ' cover' : '');
 }
 
 function capitalize(text) {

@@ -65,6 +65,7 @@ const stagesRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-stages.js'));
 const statesRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-states.js'));
 const brandProfileRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-profile.js'));
 const brandKitRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-kit.js'));
+const deliverableRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-deliverable.js'));
 const brandVoiceRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-voice.js'));
 const durableLock = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 const onboardingRunRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
@@ -1105,7 +1106,7 @@ function defaultJobInput(options, jobId, brand) {
   const arrayFields = ['deliverables', 'requiredClaims', 'prohibitedClaims'];
   for (const field of arrayFields) {
     const value = supplied[field] ?? options[field];
-    if (Array.isArray(value)) job[field] = value;
+    if (Array.isArray(value)) job[field] = field === 'deliverables' ? deliverableRuntime.withImpliedRatios(value) : value;
   }
   const platformValues = supplied.platforms ?? options.platforms;
   if (Array.isArray(platformValues)) {
@@ -1644,6 +1645,8 @@ function applyIntakePatch(current, patch) {
       if (!Array.isArray(value)) throw new TypeError(`Intake field ${rawKey} must be an array or null.`);
       next[field] = jsonClone(value);
       if (field === 'platforms') next[field] = value.map((item) => toText(item).trim().toLowerCase()).filter(Boolean);
+      // A Reel, Story or TikTok video with no ratio is written as the 9:16 it is.
+      if (field === 'deliverables') next[field] = deliverableRuntime.withImpliedRatios(next[field]);
       continue;
     }
     if (INTAKE_PATCH_OBJECTS.has(field)) {
@@ -2295,7 +2298,10 @@ function inputSnapshot(root, brand, jobId, job) {
 export function readJobSnapshot(options = {}) {
   const { root } = assertLocalWorkspace(options.root);
   const { brand, jobId, dir } = resolveJobRef(root, options);
-  const job = readJson(join(dir, 'job.json'), {});
+  // A job made before post types existed shows the one it can only be (a TikTok video, a 9:16
+  // Instagram video as a reel) and nothing else: any other stays unanswered for the publish step
+  // to ask. The job file on disk is left as it was.
+  const job = deliverableRuntime.withDerivedPlacements(readJson(join(dir, 'job.json'), {}));
   const route = readJson(join(dir, 'route.json'), null);
   const plan = existsSync(join(dir, 'plan.md')) ? readFileSync(join(dir, 'plan.md'), 'utf8') : null;
   const status = readStatus(dir);

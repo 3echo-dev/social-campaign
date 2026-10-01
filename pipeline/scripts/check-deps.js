@@ -84,8 +84,8 @@ const GETTING_STARTED = [
   '  2. /social-pipeline:new-job {brand}         asks a few things, then works up to the first decision and stops',
   '  3. /social-pipeline:review {job} approve    or "change ..." or "start over", at any decision point',
   '',
-  'Nothing costs credits until a concept is approved and a quote is shown. Nothing is posted:',
-  'the pipeline hands back a package the person posts. Do not announce this unprompted if they',
+  'Nothing costs credits until a concept is approved and a quote is shown. Nothing is posted',
+  'until the person approves where and when it goes out. Do not announce this unprompted if they',
   'have already asked for something else.',
 ].join('\n');
 

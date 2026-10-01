@@ -9,7 +9,7 @@
 import { defineTool } from '../mcp/registry.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { defaultWorkspaceRoot } from '../lib/paths.mjs';
-import { RESOLVER_PROVIDER_KEY } from '../capabilities/registry.mjs';
+import { PROBE_ONLY_PROVIDERS, RESOLVER_PROVIDER_KEY } from '../capabilities/registry.mjs';
 import { recordBoot } from '../workspace/version.mjs';
 import { listKnownWorkspaces, removeKnownWorkspace } from '../workspace/index.mjs';
 import { startInstallIfNeeded } from '../setup/research-helper.mjs';
@@ -18,7 +18,7 @@ import { startInstallIfNeeded } from '../setup/research-helper.mjs';
  * The providers a user signs in to, read by the capability resolver. Social and ad
  * research have no connection: their coverage is measured by social_backends_status.
  */
-export const CONNECTABLE_PROVIDERS = [...new Set(Object.values(RESOLVER_PROVIDER_KEY).filter((key) => typeof key === 'string'))];
+export const CONNECTABLE_PROVIDERS = [...new Set(Object.values(RESOLVER_PROVIDER_KEY).filter((key) => typeof key === 'string' && !PROBE_ONLY_PROVIDERS.includes(key)))];
 
 /** The states integration_mark_connected records. */
 export const CONNECTION_STATES = ['connected', 'not_connected', 'degraded', 'unavailable'];
@@ -168,7 +168,7 @@ export const workspaceTools = [
     handler: (args, { workspace }) => {
       if (!CONNECTABLE_PROVIDERS.includes(String(args.provider))) {
         throw new InvalidInputError(`"${args.provider}" is not something Social Campaign connects to.`, {
-          fix: `Use one of ${CONNECTABLE_PROVIDERS.join(', ')}. Social and ad research need no connection; their coverage is checked automatically.`,
+          fix: `Use one of ${CONNECTABLE_PROVIDERS.join(', ')}. Social and ad research need no connection; their coverage is checked automatically. Metricool is recorded only by integration_probe.`,
         });
       }
       if (!CONNECTION_STATES.includes(String(args.state))) {

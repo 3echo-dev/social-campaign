@@ -85,4 +85,4 @@ if (moved.status !== 0) {
 const result = { ok: true, state: 'COMPLETE', previousState: current, revision: revision + 1, delivery,
   manifestHash: verified.manifestHash, externalPublication: 'unreported' };
 if (json) console.log(JSON.stringify(result, null, 2));
-else { console.log('Production complete. Ready for you to post.'); process.stdout.write(moved.stdout || ''); }
+else { console.log('Production complete. See where each post stands on the board.'); process.stdout.write(moved.stdout || ''); }

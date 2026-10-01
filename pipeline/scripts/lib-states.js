@@ -55,7 +55,9 @@ const STATES = [
   // Publish gate
   { id: 'AWAITING_PUBLISH_APPROVAL', label: 'Confirm where and when to post', gate: 'publish', rollback: 'AWAITING_CONTENT_APPROVAL',
     next: ['PUBLISH_APPROVED', 'AWAITING_CONTENT_APPROVAL', 'CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
-  { id: 'PUBLISH_APPROVED', label: 'Confirmed, packaging it up',         next: ['HANDOFF_READY', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
+  // AWAITING_PUBLISH_APPROVAL again is the way back when an approved plan is reopened while nothing has been sent
+  // (server/pipeline/board.mjs reopenPublishPlan checks that; the table only makes the one step legal).
+  { id: 'PUBLISH_APPROVED', label: 'Posting',                          next: ['HANDOFF_READY', 'AWAITING_PUBLISH_APPROVAL', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
 
   // Paid
   { id: 'PROPOSAL_DRAFTED', label: 'Campaign plan ready to show you',    next: ['AWAITING_PROPOSAL_APPROVAL', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
@@ -69,7 +71,7 @@ const STATES = [
   // Hand-off and after
   // Completion is a guarded producer transition. It records that the approved package was
   // delivered and says nothing about external publication or platform results.
-  { id: 'HANDOFF_READY',    label: 'Ready for you to post',              next: ['COMPLETE', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
+  { id: 'HANDOFF_READY',    label: 'Delivered',                          next: ['COMPLETE', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
   // These rows are retained as historical-only states for old jobs. Compatibility migration
   // may close them after validating the original handoff evidence and delivery reference.
   { id: 'HANDED_OFF',       label: 'Posted, waiting on the numbers', historicalOnly: true, retired: true,

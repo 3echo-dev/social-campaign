@@ -1,6 +1,6 @@
 # Instagram - platform rules (manual posting)
 
-Owner file for every Instagram limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. v1 does not publish through any API or Postiz.
+Owner file for every Instagram limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02.
 Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** third-party methodology (see THIRD_PARTY_NOTICES.md) · **[VERIFY]** not confirmed first-party.
 
 ```json

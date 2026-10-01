@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, realpathSync, statSync, renameSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, realpathSync, statSync, renameSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -7,14 +7,18 @@ import * as runtime from './runtime.mjs';
 import { projectJobMetrics } from '../studio/metrics.mjs';
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
-import { buildJobDocument, parseConcepts, parseStoryboard } from './job-document.mjs';
+import { buildJobDocument, parseConcepts, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
 import { assertContentQc } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, checkRecipePicks, chooseRecipe, readJobRecipes } from './recipe.mjs';
-import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceList, studioWorkspaceInfo } from './studio-workspace.mjs';
+import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceList, studioWorkspaceReach, studioWorkspaceInfo } from './studio-workspace.mjs';
+import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
+import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
+import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
+import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostType, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
 const campaignReport = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-campaign-report.js'));
@@ -24,11 +28,26 @@ const pipelineEvents = createRequire(import.meta.url)(join(runtime.runtimeConsta
 const kinds = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-kinds.js'));
 const stagesLib = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-stages.js'));
 const wording = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-wording.js'));
+const deliverableRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-deliverable.js'));
+const handoffRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-handoff-validation.js'));
 const REQUEST_ID = /^[a-zA-Z0-9_-]{8,100}$/;
 const KIND_LABELS = Object.freeze({ research: 'Research', creative_analysis: 'Analysis', video_breakdown: 'Video breakdown' });
 const POST_OR_CAMPAIGN = 'Post or campaign';
 const LINK_LIMIT = 20;
 const NEEDS_A_BRAND = 'A post or campaign needs a brand. Choose one, or onboard a new one.';
+
+// The words on a job's state badge: the label lib-states gives the state ("Posting", "Delivered"), except the two that speak in the first
+// person ("before I can carry on"), which read as the board's own plain words, and the few that are a whole sentence, which are shortened. An unknown state has none, and the board shows its name.
+const BADGE_OVERRIDES = Object.freeze({
+  UNSUPPORTED: 'Not supported yet', BLOCKED: 'Held up',
+  // Labels of a whole sentence are shortened so the badge stays one line.
+  INTAKE_PENDING: 'Waiting for details', RESEARCH_RUNNING: 'Researching', CONCEPT_APPROVED: 'Concept picked', STORYBOARD_APPROVED: 'Storyboard approved',
+  AWAITING_PUBLISH_APPROVAL: 'Confirm posting', AWAITING_REPORT_REVIEW: 'Review the report', PROPOSAL_APPROVED: 'Plan approved', ACTIVATION_APPROVED: 'Approved to go live',
+});
+export function badgeLabel(state) {
+  if (BADGE_OVERRIDES[state]) return BADGE_OVERRIDES[state];
+  return states.exists(state) ? states.label(state) : '';
+}
 
 export function kindLabel(kind) {
   const id = runtime.jobKindOf(kind);
@@ -150,6 +169,18 @@ export const INTAKE_OPTIONS = Object.freeze({
   distribution: Object.freeze([['organic', 'Organic'], ['paid', 'Paid'], ['both', 'Organic and paid']].map(option)),
   format: Object.freeze([['static_image', 'Image'], ['carousel', 'Carousel'], ['brand_video', 'Brand video'], ['ugc', 'UGC video'], ['motion_graphic', 'Motion graphic'], ['text_only', 'Text only']].map(option)),
 });
+// The post types each platform offers, as the board's per-deliverable choice. The rules live in
+// lib-deliverable.js so the router, the read path and this form agree on them. A carousel is left
+// out while its discipline cannot be made; it appears here on its own once the registry says so.
+export function intakePlacements() {
+  return Object.fromEntries(deliverableRules.placementPlatforms().map(platform => [
+    platform,
+    deliverableRules.offeredPlacementsFor(platform).map(value => {
+      const noun = deliverableRules.PLACEMENT_NOUNS[value];
+      return option([value, noun[0].toUpperCase() + noun.slice(1)]);
+    }),
+  ]));
+}
 const INTAKE_FIELD_SPECS = Object.freeze({
   request: { label: 'What to make', input: 'textarea', placeholder: 'What should Claude make, and what should it say?' },
   kind: { label: 'Type of content', input: 'select' },
@@ -195,6 +226,9 @@ const SOURCE_QUESTIONS = Object.freeze({
 });
 const sourceQuestion = raw => (typeof raw === 'string' ? SOURCE_QUESTIONS[raw.trim()] || null : null);
 
+// route-job.js rule 1c: a deliverable with no post type, or a post type it cannot be. The words in
+// the brackets are already plain; the path in front is what maps it back to the deliverables question.
+const placementSentence = words => (/[?.]$/.test(words) ? words : `${words}.`);
 const PLAIN_NEEDS = Object.freeze([
   [/^platform:\s*([a-z]+)/i, hit => `${PLATFORM_LABELS[hit[1].toLowerCase()] || 'That platform'} is not supported yet. Choose Facebook, Instagram or TikTok.`],
   [/^(?:creativeDiscipline|discipline):/i, () => 'One of the formats is not supported yet. Choose a different format.'],
@@ -202,6 +236,7 @@ const PLAIN_NEEDS = Object.freeze([
   [/^the product photo at .+, which is not there$/i, () => 'The product photo could not be found. Add it again.'],
   [/^the character picture at .+, which is not there$/i, () => 'The character picture could not be found. Add it again.'],
   [/^the file .+, which is not there$/i, () => 'A file named in the brief could not be found. Add it again.'],
+  [deliverableRules.PLACEMENT_ENTRY, hit => placementSentence(deliverableRules.placementEntryWords(hit[0]))],
 ]);
 
 export function plainNeed(raw) {
@@ -248,7 +283,7 @@ function channelPlatforms(profile) {
 }
 
 function intakeDeliverables(job) {
-  return (Array.isArray(job.deliverables) ? job.deliverables : []).filter(plainObject).filter(item => PLATFORMS_V1.includes(item.platform)).slice(0, 20).map(item => {
+  return (Array.isArray(job.deliverables) ? job.deliverables : []).map((item, index) => [item, index]).filter(([item]) => plainObject(item)).filter(([item]) => PLATFORMS_V1.includes(item.platform)).slice(0, 20).map(([item, index]) => {
     const extra = {};
     if (Array.isArray(item.aspectRatios)) extra.aspectRatios = item.aspectRatios.filter(ratio => ASPECT_RATIOS.has(ratio));
     if (item.durationSeconds === null || plainObject(item.durationSeconds)) extra.durationSeconds = item.durationSeconds;
@@ -256,9 +291,13 @@ function intakeDeliverables(job) {
     if (typeof item.talkingCharacter === 'boolean') extra.talkingCharacter = item.talkingCharacter;
     return {
       id: typeof item.id === 'string' && /^D\d+$/.test(item.id) ? item.id : null,
+      // How the router's post type entries point at this one: its id, or its position when it has none.
+      ref: typeof item.id === 'string' && item.id ? item.id : `[${index}]`,
       platform: item.platform,
       count: Number.isInteger(item.count) && item.count >= 1 ? item.count : 1,
       format: INTAKE_OPTIONS.format.some(entry => entry.value === item.creativeDiscipline) ? item.creativeDiscipline : '',
+      // The post type this deliverable already has, or the one an older job can only be.
+      placement: deliverableRules.derivePlacement(item) || '',
       extra,
     };
   });
@@ -312,17 +351,29 @@ export function projectIntake(snapshot, profile = null) {
   const missing = new Set();
   const other = [];
   let source = null;
+  let deliverablesOtherwise = false;
   for (const item of [...(route.missingFields || []), ...(route.missing || [])]) {
     const text = typeof item === 'string' ? item : JSON.stringify(item);
     if (sourceQuestion(text)) { source = sourceQuestion(text); missing.add('links'); continue; }
     const head = text.replace(/\s*\(.*\)\s*$/, '').split(/[.[]/)[0].trim();
     if (INTAKE_NEVER_ASKED.has(head)) continue;
     const key = intakeFieldKey(item);
+    if (key === 'deliverables' && !deliverableRules.placementEntryRef(item)) deliverablesOtherwise = true;
     if (key) missing.add(key);
     else if (plainNeed(item)) other.push(plainNeed(item));
   }
   const knownPlatforms = (Array.isArray(job.platforms) ? job.platforms : []).filter(name => PLATFORMS_V1.includes(name));
   if (missing.has('deliverables') && !knownPlatforms.length) missing.add('platforms');
+  // What the router said about each deliverable's post type, in words, to show under that row.
+  const placementNotes = {};
+  for (const item of [...(route.missingFields || []), ...(route.missing || [])]) {
+    const ref = deliverableRules.placementEntryRef(item);
+    // A question about a missing post type is a hint; anything else is a rule the choice breaks.
+    if (ref) {
+      const words = deliverableRules.placementEntryWords(item);
+      placementNotes[ref] = { text: placementSentence(words), kind: words.endsWith('?') ? 'ask' : 'conflict' };
+    }
+  }
   const blockedOn = BLOCKED_STATES.has(snapshot.project?.state) ? null : snapshot.status?.blockedOn;
   for (const item of [...(route.blockers || []), ...(route.unsupported || []), blockedOn]) {
     if (!item || ['nothing', 'you'].includes(String(item).trim().toLowerCase())) continue;
@@ -347,6 +398,13 @@ export function projectIntake(snapshot, profile = null) {
     if (spec.input === 'checkboxes') field.options = PLATFORMS_V1.map(value => ({ value, label: PLATFORM_LABELS[value] }));
     if (spec.input === 'deliverables') {
       field.options = INTAKE_OPTIONS.format;
+      // Paid-only work has its own placements, so it is asked for no post type: no choices, no mark.
+      if (deliverableRules.asksForPlacement(job)) field.placements = intakePlacements();
+      if (Object.keys(placementNotes).length) {
+        field.notes = placementNotes;
+        // When only the post type is missing, that is all the Inbox asks about.
+        if (!deliverablesOtherwise) field.question = Object.values(placementNotes).map(note => note.text).join(' ');
+      }
       field.platforms = PLATFORMS_V1.map(value => ({ value, label: PLATFORM_LABELS[value] }));
     }
     return field;
@@ -403,13 +461,14 @@ export function validateIntakePatch(patch) {
       if (!Array.isArray(value) || !value.length || value.length > 20) throw new TypeError('Add between one and 20 formats.');
       const ids = new Set();
       for (const item of value) {
-        onlyKeys(item, ['id', 'platform', 'count', 'creativeDiscipline', 'ugcSource', 'talkingCharacter', 'aspectRatios', 'durationSeconds', 'locale'], 'deliverables');
+        onlyKeys(item, ['id', 'platform', 'count', 'creativeDiscipline', 'placement', 'ugcSource', 'talkingCharacter', 'aspectRatios', 'durationSeconds', 'locale'], 'deliverables');
         if (typeof item.id !== 'string' || !/^D\d+$/.test(item.id) || ids.has(item.id)) throw new TypeError('Each format needs a distinct id such as D1.');
         ids.add(item.id);
         if (!PLATFORMS_V1.includes(item.platform)) throw new TypeError(`Each format needs a platform from ${PLATFORMS_V1.join(', ')}.`);
         if (!Number.isInteger(item.count) || item.count < 1 || item.count > 100) throw new TypeError('Each quantity must be a whole number from 1 to 100.');
         if (!INTAKE_OPTIONS.format.some(entry => entry.value === item.creativeDiscipline)) throw new TypeError('Each format must be a supported format.');
         if (item.creativeDiscipline === 'ugc' ? item.ugcSource !== 'ai' : item.ugcSource !== undefined) throw new TypeError('UGC formats are AI generated; only a UGC format carries ugcSource ai.');
+        if (item.placement !== undefined && !deliverableRules.placementBelongs(item.platform, item.placement)) throw new TypeError(`Choose a post type that ${PLATFORM_LABELS[item.platform] || item.platform} has: ${deliverableRules.placementChoices(item.platform)}.`);
         if (item.talkingCharacter !== undefined && typeof item.talkingCharacter !== 'boolean') throw new TypeError('A talking character must be true or false.');
         if (item.aspectRatios !== undefined && (!Array.isArray(item.aspectRatios) || item.aspectRatios.some(ratio => !ASPECT_RATIOS.has(ratio)))) throw new TypeError('Aspect ratios must be supported ratios.');
         if (item.durationSeconds !== undefined && item.durationSeconds !== null && (!plainObject(item.durationSeconds) || Object.entries(item.durationSeconds).some(([name, seconds]) => !['min', 'max'].includes(name) || !nonNegative(seconds)))) throw new TypeError('A duration must be a min and max in seconds.');
@@ -613,6 +672,8 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     return profiles.get(slug);
   };
   const questionsByJob = openQuestionsByJob(root);
+  const metricoolBrands = readMetricoolBrands(root);
+  const metricoolOn = metricoolConnected(root);
   return runtime.listJobs({ root }).filter(job => !jobIds || jobIds.includes(job.jobId)).map(job => {
     const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
@@ -620,7 +681,15 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     const studioWorkspace = gate === PRICE_GATE ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
     const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot) });
     const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path }));
-    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace });
+    const brandDir = brandDirBySlug.get(job.brand) || null;
+    const publish = gate === 'publish' ? publishContext({ root, brandDir, jobDir: job.path, jobRoute: snapshot.job?.publishRoute, channels: profileOf(job.brand)?.channels, brands: metricoolBrands, connected: metricoolOn }) : null;
+    // The card is ready only when approval would accept it: the same fresh build and live checks decide both.
+    if (publish) {
+      publish.handoffOnly = plannedBeforeMetricool(snapshot);
+      try { publish.evaluation = evaluatePublishPlan({ root, brand: job.brand, jobId: job.jobId, measure: 'display' }); }
+      catch { publish.evaluation = { ready: false, changed: false, reason: REVIEW_NOT_READY, checks: null }; }
+    }
+    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot) });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
   });
 }
@@ -738,7 +807,7 @@ function reviewSummary(dir, gate, paths) {
     const posts = paths.filter(item => /(^|\/)post\.md$/i.test(item)).length;
     return posts ? `${plural(posts, 'post')} to check.` : 'The final post is ready to check.';
   }
-  if (gate === 'publish') return 'Nothing is posted until you confirm.';
+  if (gate === 'publish') return 'Nothing goes out until you approve.';
   if (gate === 'campaign_proposal') return 'The campaign plan is ready to read.';
   if (gate === 'campaign_activation') return 'Nothing goes live until you approve.';
   if (gate === FINDINGS_GATE) return 'The report is ready to read.';
@@ -778,7 +847,7 @@ function plainNeedForInbox(text) {
   return typeof text === 'string' && text.trim() && !plainWordsProblem(text) ? text.trim() : wording.NEEDS_YOU_IN_CHAT;
 }
 
-function briefItems({ intake, place, revision, at }) {
+export function briefItems({ intake, place, revision, at }) {
   if (!intake) return [];
   const missing = (Array.isArray(intake.fields) ? intake.fields : []).filter(field => field.missing);
   const other = [...new Set((Array.isArray(intake.other) ? intake.other : []).map(plainNeedForInbox))];
@@ -787,7 +856,7 @@ function briefItems({ intake, place, revision, at }) {
   const base = { kind: 'brief', ...place };
   const ask = field => {
     const inline = SHORT_BRIEF_FIELDS.has(field.key);
-    const item = { ...base, text: wording.briefQuestion(field.key, field.need), inline, field: field.key, input: field.input, revision, at };
+    const item = { ...base, text: field.question || wording.briefQuestion(field.key, field.need), inline, field: field.key, input: field.input, revision, at };
     if (inline && Array.isArray(field.options)) item.choices = field.options.map(({ value, label }) => ({ value, label }));
     return item;
   };
@@ -797,18 +866,38 @@ function briefItems({ intake, place, revision, at }) {
   return [{ ...base, text: wording.FINISH_BRIEF, inline: false, summary: `${plural(total, 'thing')} still needed.`, at }];
 }
 
+// What the posts of a job say about it, read from the status list and the posting kit: the Inbox items the person is needed
+// for, and the line that heads the job while the posts are out. The lines only apply once the plan is approved; a finished job
+// says so (COMPLETE only) instead of "ready for you to post". Never throws.
+function postingState(dir, state, jobId, place, at) {
+  const none = { items: [], line: null };
+  if (!dir) return none;
+  try {
+    const status = publishStatusSection(dir, Date.now());
+    const kit = postingKitSection(dir, null, Date.now(), state);
+    const closed = state === 'COMPLETE';
+    const items = postInboxItems({ status, kit, jobId, closed }).map(item => ({ ...item, ...place, at }));
+    const line = postingLine({ status, kit, state, marked: Object.keys(handoffRules.readPersonPosts(dir)).length > 0 });
+    return { items, line };
+  } catch {
+    return none;
+  }
+}
+
 function jobInbox({ root, snapshot, gate, review, intake, questions, dir }) {
   const place = { jobId: snapshot.project.jobId, jobTitle: snapshot.project.title || null, brandName: snapshot.brand?.name || null };
   const at = inboxAt(snapshot.status?.updatedAt, snapshot.job?.createdAt);
+  const posting = postingState(dir, snapshot.project.state, snapshot.project.jobId, place, at);
   const items = [
     ...(questions || []).map(question => questionItem(question, place)),
     ...(gate ? [decisionItem({ root, snapshot, gate, review, place, dir })] : []),
     ...briefItems({ intake, place, revision: snapshot.project.revision, at }),
+    ...posting.items,
   ].sort(newestFirst);
   const state = snapshot.project.state;
   const pricedJob = state === 'STORYBOARD_APPROVED' ? facts.jobAt(root, snapshot.project.brand, snapshot.project.jobId) : null;
   const priceApproved = Boolean(pricedJob && facts.currentPriceApproval(pricedJob));
-  const announcement = blockedReason(snapshot) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
+  const announcement = blockedReason(snapshot) || posting.line || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
   return { items, announcement };
 }
 
@@ -869,7 +958,8 @@ export function personWaiting(root, job, { questions = null } = {}) {
   const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
   const open = (questions || openQuestionsForWaiting(root)).get(job.jobId);
   const inbox = jobInbox({ root, snapshot, gate, review, intake: projectIntake(snapshot, null), questions: open, dir: job.dir || job.path });
-  const item = inbox.items[0];
+  // A post waiting for the person (the kit to post, an answer to give) keeps the stop hook waiting; a job Claude is closing does not.
+  const item = inbox.items.find(entry => !entry.closing);
   if (item) return { kind: item.kind, gate: item.gate || null, reason: item.text };
   const blocker = blockedReason(snapshot);
   if (blocker) return { kind: 'blocker', gate: null, reason: blocker };
@@ -916,10 +1006,11 @@ export function boardSummary(snapshot) {
   };
 }
 
-/** The two connectors offered on the board's Connectors setup step, in setupStep order. */
+/** The connectors offered on the board's Connectors setup step, in setupStep order. An optional one never holds the setup step back. */
 export const CONNECTORS = [
   { key: 'threeecho_studio', name: '3Echo Studio', description: 'Makes the images and videos.' },
   { key: 'elevenlabs', name: 'ElevenLabs', description: 'Makes the voice-over.' },
+  { key: 'metricool', name: 'Metricool', description: 'Schedules your posts to Facebook, Instagram and TikTok.', optional: true },
 ];
 const CONNECTOR_KEYS = CONNECTORS.map(connector => connector.key);
 
@@ -987,12 +1078,15 @@ function connectorsSnapshot(root) {
   const file = readIntegrationsFile(root);
   const providers = integrationProviders(file);
   const skips = integrationConnectorSkips(file);
-  return CONNECTORS.map(({ key, name, description }) => {
+  return CONNECTORS.map(({ key, name, description, optional }) => {
     const record = providers[key];
     const connected = Boolean(record && typeof record === 'object' && record.state === 'connected');
     const skip = skips[key];
     const skipped = !connected && Boolean(skip && typeof skip === 'object' && skip.skipped);
-    return { key, name, description, state: connected ? 'connected' : skipped ? 'skipped' : 'not_connected' };
+    const card = { key, name, description, state: connected ? 'connected' : skipped ? 'skipped' : 'not_connected' };
+    if (optional) card.optional = true;
+    if (key === 'metricool') card.brandCount = readMetricoolBrands(root).length;
+    return card;
   });
 }
 
@@ -1003,6 +1097,8 @@ export function boardSnapshot({ root } = {}) {
   // which channels exist), never projected as a whole.
   const rawProfiles = new Map();
   const studioWorkspaces = readStudioWorkspaceList(root);
+  const metricoolBrands = readMetricoolBrands(root);
+  const metricoolOn = metricoolConnected(root);
   const rawBrandEntries = runtime.listBrands({ root });
   const brands = rawBrandEntries.map(brand => {
     let raw = null;
@@ -1017,10 +1113,11 @@ export function boardSnapshot({ root } = {}) {
     const studioWorkspace = brandChoice.workspaceId
       ? { workspaceId: brandChoice.workspaceId, name: studioWorkspaces.find(item => item.id === brandChoice.workspaceId)?.name || brandChoice.name }
       : null;
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace};
+    const publishing = brandPublishingInfo({ brandDir: brand.path, channels: raw?.channels, brands: metricoolBrands, connected: metricoolOn });
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing};
   });
   const connectors = connectorsSnapshot(root);
-  const setupStep = connectors.some(connector => connector.state !== 'connected' && connector.state !== 'skipped')
+  const setupStep = connectors.some(connector => !connector.optional && connector.state !== 'connected' && connector.state !== 'skipped')
     ? 'connectors'
     : brands.some(brand => brand.readyForJobs)
       ? 'ready'
@@ -1044,6 +1141,7 @@ export function boardSnapshot({ root } = {}) {
       kind,
       kindLabel:kindLabel(kind),
       state:snapshot.project.state,
+      stateLabel:badgeLabel(snapshot.project.state),
       revision:snapshot.project.revision,
       nextAction:jobLine(inbox),
       blockerCount:jobBlockers(snapshot).length,
@@ -1068,7 +1166,7 @@ export function boardSnapshot({ root } = {}) {
   const localEventCount = projectEntries.reduce((sum,entry) => sum + entry.rawEventCount,0);
   const brandNames = new Map(runtime.listBrands({ root, includeGeneral: true }).map(brand => [brand.slug, brand.name]));
   const inbox = workspaceInbox(projectEntries.flatMap(entry => entry.inboxItems), questionsByJob.get(null) || [], brandNames);
-  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
+  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolBrands:metricoolBrands.map(({id,label,timezone})=>({id,label,timezone})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   return applyProjectionBudget(projection);
 }
 
@@ -1114,8 +1212,13 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','answer_question'].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','resolve_post','mark_posted','answer_question'].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
+  if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
+  if (operation === 'choose_publish_route') validatePublishRoute(root, args);
+  if (operation === 'choose_post_type') validatePostType(root, args);
+  if (operation === 'resolve_post') checkResolvePost(root, args);
+  if (operation === 'mark_posted') checkMarkPosted(root, args);
   if (operation === 'create_job') createJobFields(args || {});
   if (operation === 'answer_question') validateBoardAnswer(root, args);
   const record = {requestId,operation,args:{...args,requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
@@ -1128,6 +1231,330 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
     return prior;
   }
   return {...record,message:'Request saved locally. The running Claude session will validate and apply it.'};
+}
+
+// The deliverable the way the person sees it ("the Instagram Reel"), never its id.
+function deliverableNameOf(root,args) {
+  try {
+    const spec = deliverableRules.withDerivedPlacements(runtime.readJobSnapshot({root,brand:args.brand,jobId:args.jobId}).job);
+    const match = (spec.deliverables||[]).find(item=>item && item.id===args.deliverable);
+    return match ? deliverableRules.describe(spec,match) : 'this post';
+  } catch { return 'this post'; }
+}
+
+function validateMetricoolChoice(root, args) {
+  if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
+  if (!runtime.listBrands({ root }).some(item => item.slug === args.brand.trim())) throw new Error('This brand could not be found.');
+  if (!metricoolBrandReady(root, args.brand)) throw new Error('Finish this brand\'s profile before choosing where its posts go.');
+  if (typeof args.blogId !== 'string' || !readMetricoolBrands(root).some(item => item.id === args.blogId.trim())) throw new Error('Choose one of the Metricool brands shown.');
+}
+
+// The board adds the workspace it belongs to to every request; that and the route choice are all a request may carry.
+const PUBLISH_ROUTE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'route', 'workspaceId']);
+
+function validatePublishRoute(root, args) {
+  if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
+  if (Object.keys(args).some(key => !PUBLISH_ROUTE_FIELDS.has(key))) throw new Error('This request carries more than a route choice, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
+  checkPublishRoute({ root, brand: args.brand.trim(), jobId: args.jobId.trim(), route: args.route });
+}
+
+// The kind of post for a deliverable that never had one: exactly these fields and the workspace the board belongs to.
+const POST_TYPE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'deliverable', 'placement', 'workspaceId']);
+
+function validatePostType(root, args) {
+  if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
+  if (Object.keys(args).some(key => !POST_TYPE_FIELDS.has(key))) throw new Error('This request carries more than a post type choice, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
+  checkPostType({ root, brand: args.brand.trim(), jobId: args.jobId.trim(), deliverable: args.deliverable, placement: args.placement });
+}
+
+// A post's own request from the status list or the posting kit. Like a route choice it carries exactly its own fields
+// and the workspace the board belongs to, nothing else.
+const POST_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+const RESOLVE_POST_FIELDS = new Set(['requestId', 'brand', 'jobId', 'postId', 'answer', 'lid', 'workspaceId']);
+const MARK_POSTED_FIELDS = new Set(['requestId', 'brand', 'jobId', 'postId', 'link', 'workspaceId']);
+const MARK_POSTED_LINK_WORDS = `The link has to be a full https address of at most ${handoffRules.PERSON_LINK_LIMIT} characters.`;
+const SELF_BY = 'The board';
+
+function validatePostRequest(root, args, fields, what) {
+  if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
+  if (Object.keys(args).some(key => !fields.has(key))) throw new Error(`This request carries more than ${what}, so it was not accepted.`);
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
+  if (typeof args.postId !== 'string' || !POST_ID.test(args.postId)) throw new Error('Say which post this is for.');
+  const brand = args.brand.trim();
+  const jobId = args.jobId.trim();
+  return { brand, jobId, dir: jobDirectory(root, brand, jobId) };
+}
+
+/**
+ * The answer to "Is this post in Metricool?" checked against the log as it is now, before anything is claimed or saved:
+ * the post has to be waiting for the answer, and "It is not in Metricool" is only taken once the wait has passed (the
+ * same rule resolveAmbiguous applies when it records it). An answer already recorded for this request passes, so a
+ * replay is answered the way the first try was.
+ */
+function checkResolvePost(root, args, now = Date.now()) {
+  const { dir } = validatePostRequest(root, args, RESOLVE_POST_FIELDS, 'an answer about one post');
+  if (args.answer !== 'in_metricool' && args.answer !== 'not_in_metricool') throw new Error('Say whether the post is in Metricool.');
+  if (typeof args.lid !== 'string' || !args.lid || args.lid.length > 200) throw new Error('Say which attempt this answer is for.');
+  const requestId = typeof args.requestId === 'string' ? args.requestId.slice(0, 200) : '';
+  if (requestId && readAttempts(dir).some(entry => entry.post === args.postId && entry.source === 'person' && entry.requestId === requestId)) return;
+  const intent = readPublishIntent(dir);
+  const row = intent ? projectPublishStatus({ jobDir: dir, intent, now })?.posts.find(post => post.id === args.postId) : null;
+  if (!row || row.status !== 'needs_check') throw new Error('This post is not waiting for your answer.');
+  if (row.lid !== args.lid) throw new Error('This post changed after you were asked. Look at the board again and answer for what it shows now.');
+  if (args.answer === 'not_in_metricool' && row.checkAfter) throw new Error(`Metricool may still be saving this post. Check again after ${row.checkAfter.text}.`);
+}
+
+// Why a post of a Metricool plan is not the person's to post, or null when Claude handed it over and nothing for it is open or sent.
+function notHandedOver(state) {
+  if (state.pending) return 'An earlier send for this post has no known result, so it may already be in Metricool.';
+  if (state.sent) return 'This post already went to Metricool, so it is changed there.';
+  if (!state.handedOver) return 'This post is not waiting for you to post it.';
+  return null;
+}
+
+/**
+ * "Mark as posted" checked before it is saved: the post is in the approved plan, the link (when there is one) is a plain https
+ * address, and the post is one the person posts: any post of an "I'll post it myself" plan, or, on a Metricool plan, a post Claude
+ * handed over (a post that went out is changed in Metricool, and one Claude may still send is not the person's yet).
+ */
+function checkMarkPosted(root, args) {
+  const { dir } = validatePostRequest(root, args, MARK_POSTED_FIELDS, 'a post marked as posted');
+  if (args.link !== undefined && (typeof args.link !== 'string' || (args.link.trim() && !handoffRules.validPersonLink(args.link)))) throw new Error(MARK_POSTED_LINK_WORDS);
+  const approved = readApprovedIntent(dir);
+  if (!approved.ok) throw new Error(approved.reason);
+  const intent = approved.document;
+  if (!(intent.posts || []).some(post => post?.id === args.postId)) throw new Error('This post is not part of the approved posting plan.');
+  if (intent.route !== 'self' && !handoffRules.readPersonPosts(dir)[args.postId]) {
+    const problem = notHandedOver(attemptState(readAttempts(dir), args.postId));
+    if (problem) throw new Error(problem);
+  }
+  return { dir, intent };
+}
+
+/**
+ * The person says they posted one post from the posting kit. The mark is recorded in publish/posted.json (source 'person',
+ * when, and the link they gave) under the job's send lock, the file that freezes the plan, and it stays there however often
+ * the hand-off package is rebuilt. When that settles every post (each one sent through Metricool or marked) the job is closed
+ * with closePublishedJob. A mark is kept even when closing fails; the answer then says the job was not closed, and marking
+ * again, or pipeline_publish_close, finishes it.
+ */
+export function markPostedOnBoard({ root, brand, jobId, postId, link, requestId = null }) {
+  root = rootOf(root);
+  const { dir } = checkMarkPosted(root, { brand, jobId, postId, ...(link !== undefined ? { link } : {}) });
+  const job = facts.jobAt(root, brand.trim(), jobId.trim());
+  if (!job) throw new Error('Job not found in this workspace.');
+  const state = facts.readJobState(dir).state;
+  if (!['PUBLISH_APPROVED', 'HANDOFF_READY', 'COMPLETE'].includes(state)) throw new Error('The posting plan has to be approved before a post can be marked as posted.');
+  withSendLock(root, job.brand, job.jobId, () => {
+    if (handoffRules.readPersonPosts(dir)[postId]) return;
+    // Read again under the lock: a post of a Metricool plan is the person's only while it is handed over and nothing is open or sent.
+    if (readApprovedIntent(dir).document?.route !== 'self') {
+      const problem = notHandedOver(attemptState(readAttempts(dir, { strict: true }), postId));
+      if (problem) throw new Error(problem);
+    }
+    handoffRules.recordPersonPost(dir, { postId, link, requestId });
+  });
+  const closing = closePublishedJob({ root, brand: job.brand, jobId: job.jobId });
+  const after = handoffRules.readPersonPosts(dir);
+  return { brand: job.brand, jobId: job.jobId, postId, marked: Object.keys(after).length, total: closing.total, allMarked: closing.settled, closed: closing.closed };
+}
+
+/**
+ * Close a job whose posts are all out: each one sent through Metricool or marked as posted by the person. One idempotent
+ * step, safe to call again after a failure part-way through, under the job's send lock: the hand-off package is (re)built when
+ * it is missing or does not validate, the job moves to HANDOFF_READY when it is at PUBLISH_APPROVED, the delivery record is
+ * written with the Metricool references and the person's marks, and complete-job.js completes the job. Returns
+ * `{ closed, settled, total, state, reference?, reason? }`; `closed` is false (with a plain `reason`) while any post is
+ * neither sent nor marked, or when a step could not be done. Never throws for either.
+ */
+export function closePublishedJob({ root, brand, jobId }) {
+  root = rootOf(root);
+  const job = facts.jobAt(root, String(brand || '').trim(), String(jobId || '').trim());
+  if (!job) throw new Error('This job could not be found.');
+  const dir = job.dir;
+  const stateNow = () => facts.readJobState(dir).state;
+  let plan = { total: 0, settled: false };
+  let entered = false;
+  const report = extra => ({ closed: false, settled: plan.settled, total: plan.total, state: stateNow(), ...extra });
+  // What the plan and the logs say right now, read under the send lock: whether every post is out, and the reference to complete with.
+  const look = () => withSendLock(root, job.brand, job.jobId, () => {
+    const approved = readApprovedIntent(dir);
+    if (!approved.ok) return { reason: approved.reason };
+    const intent = approved.document;
+    const posts = Array.isArray(intent.posts) ? intent.posts : [];
+    const marks = handoffRules.readPersonPosts(dir);
+    const entries = readAttempts(dir);
+    const open = posts.filter(post => !marks[post.id] && !attemptState(entries, post.id).sent);
+    plan = { total: posts.length, settled: posts.length > 0 && !open.length };
+    if (!posts.length) return { reason: 'This plan has no posts.' };
+    if (open.length) return { reason: `${open.length === 1 ? '1 post is' : `${open.length} posts are`} not sent or marked as posted yet.` };
+    const reference = intent.route === 'self' ? handoffRules.SELF_DELIVERY_REF : deliveryReference({ jobDir: dir, intent, marks });
+    if (!reference) return { reason: 'A post has no record of being sent.' };
+    // The first delivery is the earliest of the sends and the marks.
+    const times = [...Object.values(marks).map(mark => mark.at), ...posts.map(post => attemptState(entries, post.id).sent?.at)].filter(at => Number.isFinite(Date.parse(at))).sort();
+    return { reference, at: times[0] || null };
+  });
+  const script = name => join(runtime.runtimeConstants.pipelineRoot, 'scripts', name);
+  const run = (name, args) => spawnSync(process.execPath, [script(name), job.brand, job.jobId, ...args, '--root', root], { cwd: root, encoding: 'utf8', windowsHide: true, shell: false, timeout: 60000, env: { ...process.env, SOCIAL_PIPELINE_ROOT: root } });
+  try {
+    // One close at a time. The build and the completion run under the close lock alone: the send lock is held only for the checks and the delivery write.
+    return withCloseLock(root, job.brand, job.jobId, () => {
+      entered = true;
+      const first = look();
+      if (first.reason) return report({ reason: first.reason });
+      if (stateNow() === 'COMPLETE') return report({ closed: true, already: true });
+      if (!['PUBLISH_APPROVED', 'HANDOFF_READY'].includes(stateNow())) return report({ reason: 'This job is not at the step where it can be closed.' });
+      try {
+        const valid = () => handoffRules.validateHandoff(dir, { brand: job.brand, jobId: job.jobId }).ok;
+        if (!valid() && (run('build-handoff.js', []).status !== 0 || !valid())) return report({ reason: 'The hand-off package could not be built.' });
+        if (stateNow() === 'PUBLISH_APPROVED' && !facts.moveJobTo(job, 'HANDOFF_READY', { by: SELF_BY }).ok) return report({ reason: 'The job could not be moved on.' });
+        // Read again before the delivery is written: a send or a mark may have landed while the package was built. A delivery
+        // record left by an earlier try may name another reference, so while the job is open it is written again.
+        const last = look();
+        if (last.reason) return report({ reason: last.reason });
+        withSendLock(root, job.brand, job.jobId, () => {
+          rmSync(join(dir, ...handoffRules.DELIVERY_REL.split('/')), { force: true });
+          handoffRules.recordPublishedDelivery(dir, { brand: job.brand, jobId: job.jobId, by: SELF_BY, deliveryRef: last.reference, at: last.at });
+        });
+        const done = run('complete-job.js', ['--delivery-ref', last.reference, '--by', SELF_BY]);
+        // A completion that reported a failure but did finish (the state moved) is a close.
+        if (done.status !== 0 && stateNow() !== 'COMPLETE') return report({ reason: 'The job could not be completed.', reference: last.reference });
+        return report({ closed: stateNow() === 'COMPLETE', reference: last.reference });
+      } catch (error) {
+        return report({ reason: String(error.message || 'The job could not be closed.').slice(0, 300) });
+      }
+    });
+  } catch (error) {
+    // Only a close lock that cannot be taken means another close is running; anything else is said as it is.
+    return report({ reason: entered ? String(error.message || 'The job could not be closed.').slice(0, 300) : 'Another close of this job is running. Try again in a moment.' });
+  }
+}
+
+/**
+ * When a job is waiting on the posting decision, register that decision again so it holds the plan as it is now:
+ * the person then approves exactly the plan they see. An earlier approval of the old plan stays stale.
+ */
+function representPublishGate(root, brand, jobId) {
+  const waiting = states.gateOf(runtime.readJobSnapshot({ root, brand, jobId }).project.state) === 'publish';
+  const record = waiting ? readReviewRecord(root, brand, jobId, 'publish') : null;
+  const paths = Array.isArray(record?.artifacts) ? record.artifacts.map(item => item?.path).filter(path => typeof path === 'string') : [];
+  if (paths.length) registerBoardReview({ root, brand, jobId, paths });
+  return paths.length > 0;
+}
+
+/**
+ * Choose how a job's posts go out (Metricool schedule, draft or post now, or the person posts it) and rebuild the
+ * posting plan for it, presenting the decision again when it is open. Only while nothing is approved or sent.
+ */
+export function choosePublishRouteOnBoard({ root, brand, jobId, route }) {
+  root = rootOf(root);
+  const result = choosePublishRoute({ root, brand, jobId, route });
+  return { ...result, presented: representPublishGate(root, result.brand, result.jobId) };
+}
+
+/**
+ * Save the post type of a deliverable that never had one (a job planned before 0.8) and rebuild the posting plan with it,
+ * presenting the posting decision again when it is open, so the person approves exactly the plan they see. Only at the
+ * posting decision with nothing approved or sent, only where the stored type is missing, and only to a type the
+ * deliverable can be made into. The board request and the chat tool both use this function.
+ */
+export function choosePostType({ root, brand, jobId, deliverable, placement }) {
+  root = rootOf(root);
+  const result = savePostType({ root, brand, jobId, deliverable, placement });
+  return { ...result, presented: representPublishGate(root, result.brand, result.jobId) };
+}
+
+/**
+ * Bring one job's posting plan up to date after something it is built from changed (a workspace, a Metricool brand):
+ * when it has a plan and no approval is in force the plan is rebuilt, and an open posting decision is presented again
+ * with it, so the person approves exactly the plan they see. A job with an approval in force is left alone. Never
+ * throws: the plan is rebuilt when it is next presented.
+ */
+function refreshPlan(root, job) {
+  if (!existsSync(join(job.path, ...PUBLISH_INTENT_FILE.split('/'))) || hasPublishApproval(job.path)) return;
+  try {
+    buildPublishIntent({ root, brand: job.brand, jobId: job.jobId });
+    representPublishGate(root, job.brand, job.jobId);
+  } catch { /* The plan is rebuilt when it is next presented. */ }
+}
+
+/** Refresh the plan of every job of a brand (see refreshPlan). */
+export function refreshPlansForBrand(root, brand) {
+  root = rootOf(root);
+  for (const job of runtime.listJobs({ root, brand })) refreshPlan(root, job);
+}
+
+/**
+ * Choose the 3echo workspace for a job, or as the brand default, and then bring the posting plans it reaches up to
+ * date. The board request, the chat tool and every other caller use this one function. The choice is saved first.
+ */
+export function chooseStudioWorkspaceForJobs({ root, brand, jobId = null, workspaceId }) {
+  root = rootOf(root);
+  const result = chooseStudioWorkspace({ root, brand, jobId, workspaceId });
+  for (const job of studioWorkspaceReach({ root, brand, jobId })) refreshPlan(root, job);
+  return result;
+}
+
+/**
+ * Choose the Metricool brand a plugin brand posts through, and then bring the posting plans of that brand's jobs up
+ * to date, so a plan never names a Metricool brand that is no longer the choice. The board request and the chat tool
+ * both use this function.
+ */
+export function chooseMetricoolBrandForJobs({ root, brand, blogId }) {
+  root = rootOf(root);
+  const result = chooseMetricoolBrand({ root, brand, blogId });
+  refreshPlansForBrand(root, result.brand);
+  return result;
+}
+
+const SENT_FROZEN = "Some posts already went to Metricool, so this plan can't change. A post Claude cannot send is handed over to you in the posting kit on the board, and the ones that went out are changed in Metricool.";
+const MARKED_FROZEN = "Some posts are already marked as posted, so this plan can't change. Post the rest from the posting kit.";
+
+/**
+ * Take an approved posting plan back to the posting decision, only while nothing was sent: the job must be at
+ * PUBLISH_APPROVED and the send log empty in both the job and its copy. The approval stays recorded but is
+ * withdrawn by a later decision of its own, so it no longer counts for uploads or sends. Then the plan is rebuilt and
+ * presented again. Once anything went to Metricool it refuses in plain words.
+ */
+export function reopenPublishPlan({ root, brand, jobId }) {
+  root = rootOf(root);
+  const id = String(jobId || '').trim();
+  const job = runtime.listJobs({ root, brand }).find(item => item.jobId === id);
+  if (!job) throw new Error('This job could not be found.');
+  // The check, the withdrawal and the move back run under the lock every reservation takes, so a send cannot be reserved
+  // between the check that nothing was sent and the state move. The rebuild and the presenting happen after it.
+  withSendLock(root, job.brand, job.jobId, () => {
+  if (anythingSent(job.path)) throw new Error(readPublishIntent(job.path)?.route === 'self' ? MARKED_FROZEN : SENT_FROZEN);
+  const state = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId }).project.state;
+  if (state === 'AWAITING_PUBLISH_APPROVAL') throw new Error('This posting plan is already open for changes.');
+  const approval = latestPublishApproval(job.path);
+  if (state !== 'PUBLISH_APPROVED' || approval?.decision !== 'approved') throw new Error('Only a posting plan that was approved and not yet sent can be reopened.');
+
+  const dir = join(job.path, 'approvals');
+  const rounds = readdirSync(dir).filter(name => /^publish-\d+\.json$/.test(name)).map(name => Number(name.slice('publish-'.length, -'.json'.length)));
+  const round = Math.max(0, ...rounds) + 1;
+  const file = join(dir, `publish-${round}.json`);
+  const withdrawn = {
+    schemaVersion: '1.0', approvalId: `publish-${round}`, jobId: job.jobId, brand: job.brand, gate: 'publish', round,
+    decision: 'changes_requested', edited: false,
+    artifacts: Array.isArray(approval.artifacts) && approval.artifacts.length ? approval.artifacts : [],
+    decidedBy: 'pipeline_publish_reopen', decidedAt: new Date().toISOString(), channel: 'file',
+    comment: 'The posting plan was reopened before anything was sent.', supersedes: approval.approvalId || null,
+  };
+  writeJsonAtomic(file, withdrawn);
+  const moved = facts.moveJobTo(facts.jobAt(root, job.brand, job.jobId), 'AWAITING_PUBLISH_APPROVAL', { by: 'pipeline_publish_reopen' });
+  if (!moved.ok) {
+    rmSync(file, { force: true });
+    throw new Error('The job could not be taken back to the posting decision.');
+  }
+  });
+  buildPublishIntent({ root, brand: job.brand, jobId: job.jobId });
+  return { brand: job.brand, jobId: job.jobId, reopened: true, presented: representPublishGate(root, job.brand, job.jobId) };
 }
 
 function validateBoardAnswer(root, args) {
@@ -1224,12 +1651,14 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
       kit: args.kit,
     });
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
+    reconcileMetricoolChoicesQuietly({root});
     return result;
   }
   if(operation==='create_brand') return runtime.createBrand({root,name:args.name,requestId:args.requestId});
   if(operation==='complete_onboarding') {
     const result = runtime.completeBrandOnboarding({root,brand:args.brand,profile:args.profile});
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
+    reconcileMetricoolChoicesQuietly({root});
     return result;
   }
   if(operation==='create_job') {
@@ -1278,14 +1707,38 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
   }
   if(operation==='choose_recipe') {
     const result = chooseRecipe({root,brand:args.brand,jobId:args.jobId,deliverable:args.deliverable,picks:args.picks,chosenBy:'The board',via:'board',requestId:args.requestId,note:args.note});
-    return {...result,message:`Copy choices saved for ${args.deliverable}.`};
+    return {...result,message:`Copy choices saved for ${deliverableNameOf(root,args)}.`};
   }
   if(operation==='choose_studio_workspace') {
     if(!['job','brand'].includes(args.scope)) throw new Error('Say whether this workspace choice is for the job or the brand.');
     const job = runtime.listJobs({root}).find(item=>item.jobId===args.jobId);
     if(!job) throw new Error('Job not found in this workspace.');
-    const result = chooseStudioWorkspace({root,brand:job.brand,jobId:args.scope==='job' ? args.jobId : null,workspaceId:args.workspaceId});
+    const result = chooseStudioWorkspaceForJobs({root,brand:job.brand,jobId:args.scope==='job' ? args.jobId : null,workspaceId:args.workspaceId});
     return {...result,message:`Studio workspace set to ${result.name || 'the chosen workspace'}.`};
+  }
+  if(operation==='choose_metricool_brand') {
+    validateMetricoolChoice(root,args);
+    const result = chooseMetricoolBrandForJobs({root,brand:args.brand.trim(),blogId:args.blogId.trim()});
+    return {...result,message:`Posts for ${result.brandName} now go out through Metricool, brand ${result.label}.`};
+  }
+  if(operation==='choose_publish_route') {
+    validatePublishRoute(root,args);
+    const result = choosePublishRouteOnBoard({root,brand:args.brand.trim(),jobId:args.jobId.trim(),route:args.route});
+    return {...result,message:`Posts for this job: ${result.label}.`};
+  }
+  if(operation==='choose_post_type') {
+    validatePostType(root,args);
+    const result = choosePostType({root,brand:args.brand.trim(),jobId:args.jobId.trim(),deliverable:args.deliverable,placement:args.placement});
+    return {...result,message:`Post type saved: ${result.label}.`};
+  }
+  if(operation==='resolve_post') {
+    checkResolvePost(root,args);
+    const result = resolveAmbiguous({root,brand:args.brand.trim(),jobId:args.jobId.trim(),postId:args.postId,answer:args.answer,requestId:args.requestId,lid:args.lid});
+    return {...result,jobId:args.jobId.trim(),postId:args.postId,message:result.outcome==='sent' ? 'Saved: this post is in Metricool.' : 'Saved: this post is not in Metricool, so it can be sent again.'};
+  }
+  if(operation==='mark_posted') {
+    const result = markPostedOnBoard({root,brand:args.brand,jobId:args.jobId,postId:args.postId,...(typeof args.link==='string' && args.link.trim() ? {link:args.link.trim()} : {}),requestId:args.requestId});
+    return {...result,message:result.allMarked ? (result.closed ? 'Every post is marked as posted, so this job is finished.' : 'Every post is marked as posted. Claude will finish closing the job.') : 'Marked as posted.'};
   }
   if(operation==='submit_decision') {
     validateDecision({...args,root});
@@ -1319,6 +1772,11 @@ function safeAppliedResult(operation, result) {
   }
   if (operation === 'choose_recipe') return result.deliverable ? { deliverable: result.deliverable } : null;
   if (operation === 'choose_studio_workspace') return result.workspaceId ? { workspaceId: result.workspaceId, scope: result.scope } : null;
+  if (operation === 'choose_metricool_brand') return result.blogId ? { brand: result.brand, blogId: result.blogId } : null;
+  if (operation === 'choose_publish_route') return result.route ? { jobId: result.jobId, route: result.route } : null;
+  if (operation === 'choose_post_type') return result.deliverable ? { jobId: result.jobId, deliverable: result.deliverable, placement: result.placement } : null;
+  if (operation === 'resolve_post') return result.postId ? { jobId: result.jobId, postId: result.postId, outcome: result.outcome } : null;
+  if (operation === 'mark_posted') return result.postId ? { jobId: result.jobId, postId: result.postId, allMarked: result.allMarked, closed: result.closed } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
 }
@@ -1422,6 +1880,11 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
   if(note!==undefined && (typeof note!=='string' || note.length>4000)) throw new Error('The review note must be text of at most 4000 characters.');
   if(reviewId==='concept' && decision==='approve') validateConceptRecipe(root,brand,jobId,recipe);
   validateAcceptedFlags(reviewId,acceptedFlagIds);
+  // The posting plan is approved only while a fresh look at everything still passes and still matches the plan shown.
+  if(reviewId==='publish' && decision==='approve') {
+    const verdict=evaluatePublishPlan({root,brand:snapshot.brand?.slug || brand,jobId});
+    if(!verdict.ready) throw new Error(verdict.reason || 'Fix the items on the posting card first.');
+  }
   if(panels!==undefined && reviewId!=='storyboard') throw new Error('Only the storyboard takes a decision per panel.');
   if(reviewId===SAMPLE_GATE && decision==='request_changes' && !(typeof note==='string' && note.trim())) throw new Error('Say what should change in the sample.');
   if(!Array.isArray(artifacts) || !artifacts.length) throw new Error('No review files are registered. Ask Claude to prepare the review.');
@@ -1520,6 +1983,10 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(aimed && !current) assertReviewFits(aimed,workflowId);
     if(aimed===FINDINGS_GATE && (!current || current===FINDINGS_GATE)) paths=reportReviewPaths(jobDirectory(root,brand,jobId));
     if(!Array.isArray(paths) || !paths.length || new Set(paths).size!==paths.length) throw new Error('Provide the complete, unique list of files for this review.');
+    // The person's approval of the posting decision covers the posting plan by its hash, so the plan is built from
+    // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
+    // built before the job moves, so a plan that cannot be built leaves the job where it was.
+    if(aimed==='publish') paths=withPublishIntent({root,brand,jobId,paths});
     ({gate,snapshot,moved}=moveToReview(root,brand,jobId,snapshot,requested ?? null,paths));
   }
   const dir=jobDirectory(root,brand,jobId);
@@ -1541,6 +2008,17 @@ function claimBoardRequest(file) {
   }
 }
 
+// A board answer is saved as given. When it answers the Metricool brand question, the brand it
+// picked is applied to that plugin brand right away; a failure there never undoes the answer, and
+// the next pipeline_metricool_brands_save applies it again.
+function answeredQuestion(root,record) {
+  const question=answerQuestion({root,questionId:record.args.questionId,choice:record.args.choice,text:record.args.text,via:'board',requestId:record.requestId});
+  if(isMetricoolQuestion(question)) {
+    try { reconcileMetricoolChoices({root}); if(question.brand) refreshPlansForBrand(root,question.brand); } catch { /* Applied on the next save of the Metricool brands. */ }
+  }
+  return question;
+}
+
 export function applyBoardRequest({root,requestId,confirmedBy}) {
   root=rootOf(root);
   if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error('Confirm the requester before applying this artifact request.');
@@ -1553,13 +2031,17 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   if(record.operation==='update_intake') validateIntakeUpdate({root,brand:record.args?.brand,jobId:record.args?.jobId,expectedRevision:record.args?.expectedRevision,patch:record.args?.patch});
   if(record.operation==='create_job') createJobFields(record.args || {});
   if(record.operation==='answer_question') validateBoardAnswer(root,record.args);
+  // A post answer or mark that cannot be taken yet (the wait has not passed, the post is not waiting) is checked before the
+  // claim, so the request stays unclaimed and can be declined with the reason.
+  if(record.operation==='resolve_post') checkResolvePost(root,record.args);
+  if(record.operation==='mark_posted') checkMarkPosted(root,record.args);
   const claimed=claimBoardRequest(file);
   if(claimed) return claimed;
   let result;
   try { result=record.operation==='continue_job'
     ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
     : record.operation==='answer_question'
-      ? answerQuestion({root,questionId:record.args.questionId,choice:record.args.choice,text:record.args.text,via:'board',requestId:record.requestId})
+      ? answeredQuestion(root,record)
       : boardOperation({root,operation:record.operation,args:record.args,source:'local'}); }
   catch(error) {
     const next = {

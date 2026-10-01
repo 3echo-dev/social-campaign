@@ -24,9 +24,16 @@ import { fileURLToPath } from 'node:url';
 import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords } from './facts.mjs';
 import { labelCheckStatus, readLabelCheck } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, readJobRecipes } from './recipe.mjs';
+import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, validZone, whenText } from './publish-preflight.mjs';
+import { attemptState, projectPublishStatus, readAttempts } from './publish-attempts.mjs';
+import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
 
 const require = createRequire(import.meta.url);
 const recipeRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-recipe.js'));
+const deliverableRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-deliverable.js'));
+const handoffRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-handoff-validation.js'));
+const frontmatter = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-frontmatter.js'));
+const PLATFORM_RULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'platform-rules');
 
 export const JOB_DOCUMENT_COLLECTION = 'jobDocs';
 export const JOB_DOCUMENT_BUDGET_BYTES = 204800; // 200 KiB, the artifact database per-document budget
@@ -47,6 +54,9 @@ const MAX_QUOTE_ROWS = 80;
 const MAX_STILLS = 40;
 const MAX_REVIEW_URLS = 200;
 const SCALE_ABOVE_CHARS = 4096;
+const PUBLISH_INTENT_PATH = 'publish/intent.json';
+const PUBLISH_HOSTED_PATH = 'publish/hosted-media.json';
+const HANDOFF_ONLY_NOTE = HANDOFF_ONLY_TEXT;
 const REPORT_PATH = 'report/report.md';
 const STILLS_PREFIX = 'report/stills/';
 const REPORT_TRIMMED_TEXT = 4000;
@@ -141,6 +151,215 @@ function recipeCatalog() {
   return { hookFamilies: families, ctaStyles };
 }
 const RECIPE_CATALOG = recipeCatalog();
+
+/**
+ * Where each Metricool post of the job stands (scheduled, posted with its link, failed with the reason, late, waiting
+ * in the app, check in Metricool), projected from publish/metricool.jsonl against the posting plan. A post the person marked
+ * as posted themselves reads 'marked', with the link they gave. Null when the job has no Metricool plan or nothing was
+ * sent yet; never throws.
+ */
+export function publishStatusSection(dir, now) {
+  try {
+    const intent = JSON.parse(readFileSync(join(dir, 'publish', 'intent.json'), 'utf8'));
+    const status = projectPublishStatus({ jobDir: dir, intent, now });
+    if (!status) return null;
+    const marks = handoffRules.readPersonPosts(dir);
+    return {
+      ...status,
+      posts: status.posts.map(post => {
+        const mark = marks[post.id];
+        if (!mark) return post;
+        return { ...post, status: 'marked', publicUrl: mark.link || null, plannerUrl: post.plannerUrl, reason: null, checkAfter: null, lid: null };
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The posting kit ("I'll post it myself")
+// ---------------------------------------------------------------------------
+
+const KIT_CHECKLIST_MAX = 5;
+const KIT_APP_URL = /^https:\/\/agentc\.3echo\.ai\/assets\/([A-Za-z0-9_-]{1,128})\?workspaceId=([A-Za-z0-9_-]{1,128})$/;
+const KIT_TOKEN = /^[A-Za-z0-9_-]{1,128}$/;
+// Lines of a platform's manual posting checklist that the kit says another way: the caption already holds the hashtags,
+// the AI label has its own line, and a person posting one post does not need the account, partnership or analytics steps.
+const KIT_SKIP = /^confirm\b|paid partnership|branded content|ai-generated|ai info|ai disclosure|insights|analytics|hashtags|^(?:share|post|publish)\b/i;
+// What a person starts on the platform for each post type: Reel and Story are the products' own names.
+const KIT_NEW = Object.freeze({ post: 'post', reel: 'Reel', story: 'Story', carousel: 'carousel post', video: 'video', photo: 'photo post' });
+
+const platformChecklists = new Map();
+function rulesChecklist(platform) {
+  if (!/^[a-z]{2,20}$/.test(String(platform))) return [];
+  if (!platformChecklists.has(platform)) {
+    let lines = [];
+    try {
+      const rules = frontmatter.jsonBlock(join(PLATFORM_RULES_DIR, `${platform}.md`));
+      if (Array.isArray(rules?.manual_posting_checklist)) lines = rules.manual_posting_checklist.filter(item => typeof item === 'string');
+    } catch { lines = []; }
+    platformChecklists.set(platform, lines);
+  }
+  return platformChecklists.get(platform);
+}
+
+function kitLine(line, placement) {
+  const noun = KIT_NEW[placement] || 'post';
+  return line
+    .replace(/\s+(?:from|named in|in) the hand-off package/gi, '')
+    .replace('start a new post, reel, or story matching the media kind', `start a new ${noun}`)
+    .replace('upload the exact video or photo-carousel files', placement === 'photo' ? 'upload the exact photos' : 'upload the exact video')
+    .replace(/the exact (?:image, carousel, or video|image, video, or multi-photo) files/, 'the exact files')
+    .split(/;|, then /)[0]
+    .replace(/\.$/, '')
+    .trim();
+}
+
+/**
+ * The short list a person follows to post one post by hand, from that platform's manual posting checklist in
+ * pipeline/platform-rules: the steps that apply to one post of this type, in plain words, and a last line that
+ * hands over to Mark as posted. At most five lines.
+ */
+export function kitChecklist(platform, placement) {
+  const lines = rulesChecklist(platform).filter(line => !KIT_SKIP.test(line)).map(line => kitLine(line, placement)).filter(Boolean);
+  const kept = lines.slice(0, KIT_CHECKLIST_MAX - 1).map(line => `${line}.`);
+  return [...kept, 'Post it, then press Mark as posted below.'];
+}
+
+// "Thu 1 Oct, 6:30 pm, Singapore time": when the person said they posted it, in the plan's own zone, or '' when the plan has none.
+function markedText(at, zone) {
+  const instant = Date.parse(at);
+  if (!Number.isFinite(instant) || !validZone(zone)) return '';
+  return whenText({ dateTime: localDateTime(instant, zone), timezone: zone }) || '';
+}
+
+// The 3echo page for a file that is in the plan's own workspace, or null. The link is the one saved when the file was
+// hosted, or built from the asset and workspace of a file made there, and only ever the 3echo app address.
+function kitAppUrl(dir, item, planWorkspace) {
+  if (!planWorkspace || typeof item?.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(item.sha256)) return null;
+  const found = hostedAssetBySha(dir, item.sha256.toLowerCase(), planWorkspace);
+  if (!found || !KIT_TOKEN.test(String(found.assetId || ''))) return null;
+  const link = typeof found.appUrl === 'string' && found.appUrl ? found.appUrl : found.workspaceId === planWorkspace ? `${APP_ORIGIN}/assets/${found.assetId}?workspaceId=${planWorkspace}` : null;
+  const hit = link ? KIT_APP_URL.exec(link) : null;
+  return hit && hit[1] === found.assetId && hit[2] === planWorkspace ? link : null;
+}
+
+// What the person has to do about the AI label when they post by hand.
+const kitAiLabel = post => (post.aiGenerated ? (post.platform === 'tiktok' ? 'Turn on the AI-generated label when you post' : 'Mark it as made with AI when you post') : null);
+
+/**
+ * The posting kit: the posts the person posts themselves, from the approved posting plan (readApprovedIntent: the latest
+ * publish approval must cover the plan as it is on disk). For an "I'll post it myself" plan that is every post. For a Metricool
+ * plan it is only the posts Claude handed over (it could not send them), plus any the person already marked: never a refusal
+ * Claude is still fixing, and never a post it may still send. Each entry has the type, time with its zone, account, caption with hashtags, first comment,
+ * the checklist and the AI-label line, the 3echo page of each file when it is hosted, and whether it was marked posted.
+ * `settled` is true when every post of the plan is either sent through Metricool or marked, which is when the job closes, and
+ * `closed` when it has (`state` is COMPLETE). Null for any other job, and when the approval no longer covers the plan; never throws.
+ */
+export function postingKitSection(dir, publish, now, state = null) {
+  try {
+    const approved = readApprovedIntent(dir);
+    if (!approved.ok || !Array.isArray(approved.document?.posts) || !approved.document.posts.length) return null;
+    const intent = approved.document;
+    const marks = handoffRules.readPersonPosts(dir);
+    const entries = readAttempts(dir);
+    const settled = intent.posts.every(post => marks[post.id] || attemptState(entries, post.id).sent);
+    let list = intent.posts;
+    if (intent.route !== 'self') {
+      if (!String(intent.route).startsWith('metricool_')) return null;
+      list = intent.posts.filter(post => marks[post.id] || (attemptState(entries, post.id).handedOver && !attemptState(entries, post.id).sent));
+    }
+    if (!list.length) return null;
+    const projected = projectPublish(intent, { ...(publish || {}), now });
+    const planWorkspace = typeof intent.studioWorkspace?.id === 'string' ? intent.studioWorkspace.id : null;
+    const posts = list.slice(0, MAX_POSTS).map(post => {
+      const row = projected?.posts?.[intent.posts.indexOf(post)] || {};
+      const mark = marks[post.id] || null;
+      const zone = post.publicationDate?.timezone;
+      return {
+        id: post.id,
+        label: row.label || deliverableRules.placementWords(post.platform, post.placement) || 'Post',
+        when: row.when?.text || '',
+        account: row.account || null,
+        text: typeof post.text === 'string' ? post.text : '',
+        firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
+        aiLabel: kitAiLabel(post),
+        checklist: kitChecklist(post.platform, post.placement),
+        media: (Array.isArray(post.media) ? post.media : []).slice(0, 10).map(item => ({
+          name: basename(String(item?.path || '')),
+          kind: item?.kind || null,
+          appUrl: kitAppUrl(dir, item, planWorkspace),
+        })),
+        marked: mark ? { at: mark.at, ...(markedText(mark.at, zone) ? { text: markedText(mark.at, zone) } : {}), ...(mark.link ? { link: mark.link } : {}) } : null,
+      };
+    });
+    const markedCount = posts.filter(post => post.marked).length;
+    return { route: intent.route === 'self' ? 'self' : 'partial', posts, markedCount, allMarked: markedCount === posts.length, settled, closed: state === 'COMPLETE' };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the person has to do about posts that are already out or ready, as Inbox items for the job page, from the projected
+ * status list and posting kit: a post waiting for their answer ("Is this post in Metricool?"), a post that failed after it
+ * reached Metricool (fixed there, and kept until they say they handled it, even once the job is closed; not one that was
+ * refused before anything was saved, which Claude fixes and sends again), and the posts still to post themselves. When every post is out and only the closing is left, the item says
+ * Claude is closing the job (`closing`: it does not need the person). `need` is the same thing as the step rail says it,
+ * `target` is what the item scrolls to on the page ('post:<id>' for one row of the status list, 'kit' for the posting kit).
+ */
+export function postInboxItems({ status = null, kit = null, jobId = null, closed = false } = {}) {
+  const items = [];
+  for (const post of Array.isArray(status?.posts) ? status.posts : []) {
+    if (!post || typeof post.id !== 'string') continue;
+    if (post.status === 'needs_check') {
+      items.push({ kind: 'post', jobId, text: 'Tell Claude whether a post is in Metricool', summary: clip(post.label || 'This post', 120), target: `post:${post.id}` });
+    } else if (post.status === 'failed' && post.sentOut !== false) {
+      // It reached Metricool and failed there: one instruction, to fix it in Metricool, which stays until the person says they
+      // handled it (even after the job is complete). Never the posting kit: it may be live or half made.
+      items.push({
+        kind: 'post', jobId, text: 'A post failed in Metricool', need: 'Fix it in Metricool', dismissible: true, lid: typeof post.lid === 'string' ? post.lid : null,
+        summary: clip(`${post.label || 'This post'}: ${post.reason || 'Metricool could not publish it.'}`, 240), target: `post:${post.id}`,
+        ...(typeof post.plannerUrl === 'string' && post.plannerUrl ? { plannerUrl: post.plannerUrl } : {}),
+      });
+    }
+  }
+  const posts = Array.isArray(kit?.posts) ? kit.posts : [];
+  const left = posts.filter(post => !post?.marked).length;
+  if (posts.length && left && !closed) {
+    items.push({
+      kind: 'post', jobId, text: `Post it yourself: ${posts.length - left} of ${posts.length} posted`,
+      need: left === 1 ? 'Post it yourself, then mark it as posted' : `Post ${left} posts yourself, then mark each as posted`, target: 'kit',
+    });
+  } else if (posts.length && !left && kit?.settled && !closed) {
+    items.push({ kind: 'post', jobId, text: `Post it yourself: ${posts.length} of ${posts.length} posted`, summary: 'Claude is closing this job.', need: 'Claude is closing this job', target: 'kit', closing: true });
+  }
+  return items;
+}
+
+/**
+ * The line that heads a job whose posts are out or ready, from the projected status list and posting kit, or null when the
+ * usual line stands. "Finished" is only ever said at COMPLETE; before that, with every post out, Claude is closing the job.
+ * `marked` is whether the person marked any post as posted.
+ */
+export function postingLine({ status = null, kit = null, state = null, marked = false } = {}) {
+  if (state === 'COMPLETE') {
+    const rows = Array.isArray(status?.posts) ? status.posts : [];
+    // A failure that reached Metricool is still the person's to fix there, so the job is done but not "all done".
+    const failed = rows.filter(post => post?.status === 'failed' && post.sentOut !== false).length;
+    if (failed) return failed === 1 ? 'Done, but one post failed in Metricool. Fix it there.' : `Done, but ${failed} posts failed in Metricool. Fix them there.`;
+    const sentOnes = rows.some(post => post?.status !== 'marked');
+    if (marked && sentOnes) return 'All done. Your posts are with Metricool, and the rest are marked as posted.';
+    return marked ? 'All done. Every post is marked as posted.' : status ? 'All done. Your posts are with Metricool.' : null;
+  }
+  if (state !== 'PUBLISH_APPROVED' && state !== 'HANDOFF_READY') return null;
+  const left = (Array.isArray(kit?.posts) ? kit.posts : []).filter(post => !post?.marked).length;
+  if (kit?.settled || (status?.allSent && !kit)) return 'Claude is closing this job.';
+  if (left && state === 'PUBLISH_APPROVED') return 'Your posting kit is ready. Post each one, then mark it as posted.';
+  if ((Array.isArray(status?.posts) ? status.posts : []).some(post => post?.status === 'needs_check')) return 'Tell Claude whether a post is in Metricool.';
+  return null;
+}
 
 function recipesSection(root, brand, jobId) {
   if (!root || !brand || !jobId) return null;
@@ -404,17 +623,17 @@ function cleanNote(value) {
 // words a person would use, never the "D1" code alone.
 const PLATFORM_LABELS = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', youtube: 'YouTube' };
 const DELIVERABLE_FORMATS = {
-  facebook: { '9:16': 'Story', '1:1': 'Post', '4:5': 'Post', '3:4': 'Post', '16:9': 'Video', '4:3': 'Video' },
-  instagram: { '9:16': 'Reel', '1:1': 'Post', '4:5': 'Post', '3:4': 'Post', '16:9': 'Video', '4:3': 'Video' },
-  tiktok: { '9:16': 'Video', '1:1': 'Video', '4:5': 'Video', '16:9': 'Video' },
-  youtube: { '9:16': 'Short', '16:9': 'Video' },
-  linkedin: { '16:9': 'Video', '1:1': 'Post', '4:5': 'Post' },
-  x: { '16:9': 'Video', '1:1': 'Post' },
-  threads: { '1:1': 'Post', '4:5': 'Post', '9:16': 'Story' },
+  facebook: { '9:16': 'Story', '1:1': 'post', '4:5': 'post', '3:4': 'post', '16:9': 'video', '4:3': 'video' },
+  instagram: { '9:16': 'Reel', '1:1': 'post', '4:5': 'post', '3:4': 'post', '16:9': 'video', '4:3': 'video' },
+  tiktok: { '9:16': 'video', '1:1': 'video', '4:5': 'video', '16:9': 'video' },
+  youtube: { '9:16': 'Short', '16:9': 'video' },
+  linkedin: { '16:9': 'video', '1:1': 'post', '4:5': 'post' },
+  x: { '16:9': 'video', '1:1': 'post' },
+  threads: { '1:1': 'post', '4:5': 'post', '9:16': 'Story' },
 };
 function deliverableFormat(platform, aspectRatio) {
   const key = String(platform ?? '').toLowerCase();
-  return (key && DELIVERABLE_FORMATS[key]?.[aspectRatio]) || (aspectRatio ? 'Video' : null);
+  return (key && DELIVERABLE_FORMATS[key]?.[aspectRatio]) || (aspectRatio ? 'video' : null);
 }
 function deliverablePlatformLabel(platform) {
   const key = String(platform ?? '').toLowerCase();
@@ -839,6 +1058,16 @@ function panelFrames(generation, manifests, shaOf) {
   return frames;
 }
 
+// The deliverable's post type in a person's words ("Instagram reel"), from the job's own
+// deliverable, or null when the job has none for this ref or its post type is not known yet.
+// A job made before post types existed gets the one it can only be, never a guess.
+function placementLabel(job, ref) {
+  const deliverables = Array.isArray(job?.deliverables) ? job.deliverables : [];
+  const match = ref ? deliverables.find(item => item && item.id === ref) : null;
+  if (!match) return null;
+  return deliverableRules.placementWords(match.platform, deliverableRules.derivePlacement(match));
+}
+
 function briefSeconds(job, ref) {
   const deliverables = Array.isArray(job?.deliverables) ? job.deliverables : [];
   const match = deliverables.find(item => item && item.id === ref) || (deliverables.length === 1 ? deliverables[0] : null);
@@ -852,10 +1081,22 @@ function briefSeconds(job, ref) {
 
 const FLAG_SUBJECTS = Object.freeze({ video: ['Your footage', 'video'], image: ['Your photo', 'image'] });
 
-export function flagSentence(flag, fileKind) {
+// Which deliverable a flag is about, the way the person sees it ("The Instagram Reel", "The second
+// Instagram post"), or null when the job does not say. A picture of a Reel or a video post is its cover.
+function flagDeliverable(job, flag, fileKind) {
+  if (!flag.deliverable || !Array.isArray(job?.deliverables)) return null;
+  const spec = deliverableRules.withDerivedPlacements(job);
+  const match = spec.deliverables.find(item => item && item.id === flag.deliverable);
+  if (!match) return null;
+  const name = deliverableRules.describe(spec, match);
+  const filmed = ['reel', 'video'].includes(match.placement);
+  return name[0].toUpperCase() + name.slice(1) + (fileKind !== 'video' && filmed ? ' cover' : '');
+}
+
+export function flagSentence(flag, fileKind, job = null) {
   const video = fileKind === 'video';
   const [supplied, word] = FLAG_SUBJECTS[video ? 'video' : 'image'];
-  const subject = flag.role === 'supplied' ? supplied : `The ${flag.deliverable ? `${flag.deliverable} ` : ''}${word}`;
+  const subject = flag.role === 'supplied' ? supplied : flagDeliverable(job, flag, fileKind) || `The ${word}`;
   const at = video && flag.at ? ` at ${flag.at}` : '';
   const seen = clip(String(flag.seen || '').replace(/'/g, '’'), 120);
   const expected = flag.expected ? clip(String(flag.expected).replace(/'/g, '’'), 120) : '';
@@ -864,7 +1105,7 @@ export function flagSentence(flag, fileKind) {
   return `${subject}${at} shows '${seen}', which is not in the approved copy.`;
 }
 
-function labelCheckSection(root, project, dir, still) {
+function labelCheckSection(root, project, dir, still, job = null) {
   if (!root || !project?.brand || !project?.jobId) return null;
   let status;
   let record;
@@ -878,7 +1119,7 @@ function labelCheckSection(root, project, dir, still) {
   const kindOf = new Map((status.files || []).map(file => [file.path, file.kind]));
   const frameOf = new Map((record?.frames || []).map(frame => [frame.frameId, frame]));
   const flags = status.state === 'current' ? (status.flags || []).map(flag => {
-    const entry = { id: flag.id, text: flagSentence(flag, kindOf.get(flag.file)) };
+    const entry = { id: flag.id, text: flagSentence(flag, kindOf.get(flag.file), job) };
     const image = frameOf.get(flag.frameId)?.image;
     if (typeof image === 'string' && image) {
       const rel = relative(dir, resolve(root, image)).split(sep).join('/');
@@ -930,10 +1171,26 @@ function jobDetails(details, rank) {
   };
 }
 
-function outputTitle(platform, kind, index, count) {
+function outputTitle(platform, kind, index, count, label = null) {
   const word = kind === 'video' ? 'video' : kind === 'audio' ? 'voice-over' : 'image';
-  const base = platform ? `${deliverablePlatformLabel(platform)} ${word}` : word[0].toUpperCase() + word.slice(1);
+  // A deliverable with a post type is named by it: "Instagram Reel", not "Instagram video".
+  const base = label && kind !== 'audio' ? label : platform ? `${deliverablePlatformLabel(platform)} ${word}` : word[0].toUpperCase() + word.slice(1);
   return count > 1 ? `${base} ${index + 1}` : base;
+}
+
+// A Reel or TikTok video that also has a picture shows it as the cover; other pictures and clips
+// of a post with a post type are numbered among their own kind, so a Reel's cover is never
+// "Instagram Reel 2".
+function postOutputTitles(post, label, media) {
+  const kinds = media.map(path => mediaKind(path));
+  const filmed = Boolean(label) && /(Reel|video)$/.test(label);
+  return media.map((path, index) => {
+    const kind = kinds[index];
+    if (!label) return outputTitle(post.platform, kind, index, media.length, null);
+    if (filmed && kind === 'image') return `${label} cover`;
+    const same = kinds.map((other, at) => (other === kind ? at : -1)).filter(at => at >= 0);
+    return outputTitle(post.platform, kind, same.indexOf(index), same.length, label);
+  });
 }
 
 /**
@@ -948,9 +1205,14 @@ function outputTitle(platform, kind, index, count) {
  * @param {string|null} options.gate the review the job is waiting on, if any
  * @param {object|null} options.review the registered review record for that gate, if any
  * @param {string|null} [options.thumbDir] where scaled thumbnails are cached, keyed by content hash
+ * @param {object|null} [options.publish] what the Metricool connection says about this brand (publishContext in
+ *   publish-intent.mjs): connected, found, label, networks, coverage. Only read for the posting decision.
+ * @param {boolean} [options.handoffOnly] a job routed before 0.8, whose posting decision was folded into the final
+ *   approval: it ends with the hand-off package, and the document says so
+ * @param {number} [options.now] the clock the publish status is projected at (ms since 1970)
  * @param {number} [options.budgetBytes]
  */
-export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
+export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, publish = null, handoffOnly = false, now = Date.now(), budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
   const artifacts = Array.isArray(project?.artifacts) ? project.artifacts : [];
   const shaOf = new Map(artifacts.map(item => [item.path, item.sha256]));
   const kindOf = new Map(artifacts.map(item => [item.path, item.kind || null]));
@@ -971,6 +1233,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     brand: project.brand,
     revision: project.revision,
     state: project.state,
+    ...(handoffOnly ? { publishNote: HANDOFF_ONLY_NOTE } : {}),
     review: gate ? { gate, revision: currentReview ? review.revision : project.revision, current: currentReview, paths: [...reviewPaths] } : null,
     inbox: jobInbox(inbox),
     research,
@@ -990,6 +1253,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.details = shared;
     if (shared.artifactsOmitted) document.truncated = true;
   }
+  const sent = publishStatusSection(dir, now);
+  if (sent) document.publishStatus = sent;
+  const kit = postingKitSection(dir, publish, now, project.state);
+  if (kit) document.postingKit = kit;
   const recipes = recipesSection(root, project.brand, project.jobId);
   if (recipes) { document.recipes = recipes; document.recipeCatalog = RECIPE_CATALOG; }
 
@@ -1171,7 +1438,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       }
       return { ...panel, frame };
     });
-    return { path, ...parsed, ref: parsed.ref || deliverable || null, ...(brief ? { briefSeconds: brief } : {}), panels };
+    const label = placementLabel(job, parsed.ref || deliverable);
+    return { path, ...parsed, ...(label ? { label } : {}), ref: parsed.ref || deliverable || null, ...(brief ? { briefSeconds: brief } : {}), panels };
   };
 
   if (currentReview) {
@@ -1215,13 +1483,14 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
           return shaOf.has(clean) ? clean : base + clean;
         }).filter(item => shaOf.has(item));
         mediaPaths.forEach(item => shownMedia.add(item));
-        return { path, sha256: registered.get(path), changed: changedSince(path), ...post, media: mediaPaths.map(item => mediaRef(item)) };
+        const label = placementLabel(job, postDeliverable(path, post));
+        return { path, sha256: registered.get(path), changed: changedSince(path), ...post, ...(label ? { label } : {}), media: mediaPaths.map(item => mediaRef(item)) };
       });
     }
     // Media registered for the review that no post already shows.
     document.review.media = gate === 'sample' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
     if (gate === 'content') {
-      const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }));
+      const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job);
       if (labelCheck) document.review.labelCheck = labelCheck;
     }
     if (gate === 'publish' || gate === 'content') {
@@ -1233,6 +1502,30 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
         account: account ? clip(account, 120) : null,
         platforms: Array.isArray(job?.platforms) ? job.platforms.filter(item => typeof item === 'string').slice(0, 10) : [],
       };
+    }
+    if (gate === 'publish') {
+      // The posting plan the approval covers, with its checks run again now (a time that has passed shows).
+      const intent = json(PUBLISH_INTENT_PATH);
+      // Files already in the plan's own workspace (uploaded there, or made there for this job) are not held to the upload size.
+      const hosted = new Set();
+      const planWorkspace = intent && typeof intent.studioWorkspace === 'object' && intent.studioWorkspace ? intent.studioWorkspace.id : null;
+      if (planWorkspace) {
+        for (const [sha, entry] of Object.entries(json(PUBLISH_HOSTED_PATH) || {})) if (entry && entry.workspaceId === planWorkspace) hosted.add(sha);
+        const madeIn = new Map();
+        for (const record of readRecords({ dir })) {
+          const where = record.workspaceId || record.inputs?.workspaceId;
+          if (record.type === 'create' && record.providerJobId && typeof where === 'string') madeIn.set(record.providerJobId, where.trim());
+        }
+        for (const entry of readLanded({ dir })) {
+          if (entry.type !== 'landed' || entry.provider !== 'threeEcho' || entry.converted || madeIn.get(entry.providerJobId) !== planWorkspace) continue;
+          for (const sha of [entry.sha256, entry.promotedSha256]) if (typeof sha === 'string') hosted.add(sha);
+        }
+      }
+      // `changed`: the plan on disk is no longer the one this decision was registered with.
+      const changed = registered.has(PUBLISH_INTENT_PATH) ? changedSince(PUBLISH_INTENT_PATH) : false;
+      // A post whose deliverable has no post type (a job planned before 0.8) carries the types it can still be.
+      const typeChoices = postTypeChoices(intent?.posts, job?.deliverables);
+      document.review.publish = projectPublish(intent && typeof intent === 'object' ? intent : { posts: [] }, { ...(publish || {}), now, changed, hosted, typeChoices });
     }
   }
 
@@ -1255,9 +1548,11 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       const clean = item.replace(/^\.\//, '');
       return shaOf.has(clean) ? clean : base + clean;
     }).filter(path => shaOf.has(path) && mediaKind(path) && !pinnedPaths.has(path));
+    const ref = postDeliverable(postPath, post);
+    const titles = postOutputTitles(post, placementLabel(job, ref), media);
     media.forEach((path, index) => {
       pinnedPaths.add(path);
-      pinned.push({ path, deliverable: postDeliverable(postPath, post), title: outputTitle(post.platform, mediaKind(path), index, media.length) });
+      pinned.push({ path, deliverable: ref, title: titles[index] });
     });
   }
   for (const manifest of manifests) {
@@ -1357,7 +1652,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.report.stills.forEach(still => { delete still.thumb; });
   }
   if (byteSize(document) > budgetBytes && document.review) {
-    for (const key of ['studioWorkspace', 'posts', 'storyboards', 'concepts', 'quote', 'media', 'sample', 'labelCheck']) {
+    for (const key of ['studioWorkspace', 'posts', 'storyboards', 'concepts', 'quote', 'media', 'sample', 'labelCheck', 'publish']) {
       delete document.review[key];
       if (byteSize(document) <= budgetBytes) break;
     }
@@ -1376,6 +1671,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.truncated = true;
     delete document.recipes;
     delete document.recipeCatalog;
+  }
+  if (byteSize(document) > budgetBytes && document.postingKit) {
+    document.truncated = true;
+    delete document.postingKit;
   }
   if (byteSize(document) > budgetBytes) document.files = [];
   if (byteSize(document) > budgetBytes && document.details?.artifacts.length) {

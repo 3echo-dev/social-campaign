@@ -73,6 +73,7 @@ function recordThreeEchoCreate(ctx) {
     quotedCredits: finite(usage.quotedCostCreds),
     billingStatus: usage.billingStatus ?? null,
     prompt: text(ctx.input.prompt),
+    workspaceId: text(ctx.input.workspaceId),
     inputs: pick(ctx.input, THREE_ECHO_INPUTS),
     inputAssetIds: Array.isArray(created.inputAssetIds) ? created.inputAssetIds : [],
     priceKey: priceKey(ctx.base, ctx.input),
