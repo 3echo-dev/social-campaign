@@ -72,6 +72,9 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
 - Every `researcher` spawn goes in one message, at most `max_parallel_agents`. Owner rows wait for their support rows.
 - The stage row sets research depth, skills and model; state the turn budget in the spawn prompt, 40 for stage 3 and 25 for stage 3b. Never add a workstream the plan omits.
 - Spawn prompts carry the job folder, exact output path, brand, brief, deliverable IDs/platforms, live `status.md` Notes, revision directive, and a 15-line summary cap. Quote every path.
+- Every `researcher` spawn prompt also carries the target market.
+  Read `targetMarket` from `brand/profile.json`.
+  Blank means Singapore, and so does a job with no brand.
 
 ## Editor and revisions
 

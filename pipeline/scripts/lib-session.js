@@ -81,4 +81,42 @@ function sessionFile(id, argv) {
   return id ? file(id, argv) : null;
 }
 
-module.exports = { sessionId, read, bind, file: sessionFile };
+// Read-only listing of every saved binding: the hashed session key it is stored under (the
+// base name of file(id)), the job, when it was last selected and when it was last confirmed. Used to tell whose job is whose.
+function list(argv) {
+  const dir = path.dirname(file('x', argv));
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  const out = [];
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    try {
+      const value = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+      if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.brand !== 'string' || typeof value.jobId !== 'string' || !value.brand || !value.jobId) continue;
+      out.push({ key: name.slice(0, -'.json'.length), brand: value.brand, jobId: value.jobId, selectedAt: typeof value.selectedAt === 'string' ? value.selectedAt : null, touchedAt: typeof value.touchedAt === 'string' ? value.touchedAt : null });
+    } catch { /* an unreadable binding is skipped */ }
+  }
+  return out;
+}
+
+// Records that this session is still on the job it already has, without changing the job, the
+// revision or when it was selected. Skipped when it was confirmed in the last minute.
+const TOUCH_EVERY_MS = 60 * 1000;
+function touch(id, argv) {
+  if (!id) return false;
+  const target = file(id, argv);
+  if (!fs.existsSync(target)) return false;
+  let changed = false;
+  durable.update(target, current => {
+    let value;
+    try { value = JSON.parse(current); } catch { return undefined; }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const last = Date.parse(value.touchedAt || value.selectedAt || '');
+    if (Number.isFinite(last) && Math.abs(Date.now() - last) < TOUCH_EVERY_MS) return undefined;
+    changed = true;
+    return JSON.stringify({ ...value, touchedAt: new Date().toISOString() }, null, 2) + '\n';
+  });
+  return changed;
+}
+
+module.exports = { sessionId, read, bind, touch, list, file: sessionFile };

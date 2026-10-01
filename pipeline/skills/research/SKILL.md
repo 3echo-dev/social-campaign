@@ -33,7 +33,7 @@ The upstream source and fetch rules below describe the accepted evidence contrac
 A `research` or `creative_analysis` job makes no content, so its route never carries a research decision.
 Run its Sources, Research, or Read the posts task straight from the workflow table the moment the active plan names it; never wait for a research decision that a report job will never get.
 Its task writes its own artifact path from the workflow table, `research/sources.md`, `research/{topic}.md`, or `research/posts.md`, not one of the workstream files below.
-The Hard limits below still apply in full: at most 3 searches per question, at most 3 competitors, and the Singapore market for any competitor work.
+The Hard limits below still apply in full: at most 3 searches per question, at most 3 competitors, and the target market for any competitor work.
 
 ## Required reads
 
@@ -56,6 +56,13 @@ Platform conventions are not a workstream. `platform-rules/facebook.md`, `instag
 | competitors, `research/competitors.md` | per competitor from Meta Ad Library and TikTok Creative Center: hooks verbatim with dates, offers, formats, CTAs, cadence |
 | product-evidence, `research/product-evidence.md` | every claim we could make, with its source |
 | customer, `research/customer.md` | jobs, pains, triggers, switching language from reviews and comments |
+
+## Target market
+
+The target market comes from the spawn prompt.
+When the spawn prompt carries none, read `targetMarket` in `brand/profile.json`.
+It is Singapore when both are blank or the job has no brand.
+Use it for the competitors and for any market-specific evidence, and never fill it in.
 
 ## Hard limits
 

@@ -228,23 +228,6 @@ function readJobRecord(brand, jobId) {
   return { jobFile, job: JSON.parse(readFileSync(jobFile, 'utf8')) };
 }
 
-/**
- * The extra provenance attachProductPhoto's own source enum has no room for: this photo
- * came from the brand's official website, not an upload, so it is recorded the way
- * pipeline/scripts/land-photo.js records where a fetched picture came from, a direct
- * read, patch and write of the job file, no re-route needed since neither field the
- * router reads (productAsset.path, ownedByBrand in sourceRefs) changes here.
- */
-function recordOfficialSource(brand, jobId, sourceUrl) {
-  const { jobFile, job } = readJobRecord(brand, jobId);
-  if (job.productAsset && typeof job.productAsset === 'object') {
-    job.productAsset.source = 'official-website';
-    job.productAsset.sourceUrl = sourceUrl;
-    job.productAsset.ownedByBrand = true;
-  }
-  writeFileSync(jobFile, JSON.stringify(job, null, 2) + '\n');
-}
-
 export const productPhotoTools = [
   tool(
     'web_product_photo_find',
@@ -323,8 +306,9 @@ export const productPhotoTools = [
       try {
         const tmpFile = join(tmpDir, `photo.${EXT_FOR_MIME[info.mimeType]}`);
         writeFileSync(tmpFile, fetched.buffer);
-        runtime.attachProductPhoto({ root, brand: brand.slug, jobId, path: tmpFile, source: 'uploaded' });
-        recordOfficialSource(brand, jobId, imageUrl);
+        // The photo is the brand's own, from its own site: attach it as that, so the licence text and
+        // the route's rights flags are worked out together rather than patched after the re-route.
+        runtime.attachOfficialProductPhoto({ root, brand: brand.slug, jobId, path: tmpFile }, imageUrl);
         return { status: 'attached', sourceUrl: imageUrl };
       } finally {
         try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort cleanup */ }

@@ -444,7 +444,7 @@ access at all, which is the route to use while the repository is private.
 
 Cowork parses frontmatter with a **strict** YAML parser where Claude Code is lenient. One description
 containing `": "` as a bare scalar fails the entire plugin load with `Unknown command`, not just that
-one file. `scripts/test/frontmatter.smoke.js` catches exactly that shape, and it is why every
+one file. A frontmatter check in the build catches exactly that shape, and it is why every
 description here is a folded block scalar.
 
 ### Updating

@@ -44,6 +44,6 @@ im.convert("RGB").save(out, "PNG")
 print("  wrote %s  %dx%d  (from %s, %d bytes)" % (out.replace(os.sep, "/"), w, h, src_fmt, len(data)))
 if w == h:
     print("  NOTE: square. The thumbnail variant centre-crops, so a 9:16 frame loses its top and bottom.")
-if w < 1500:
-    print("  NOTE: %dpx wide. Fine for review, never for hand-off." % w)
+if min(w, h) < 1080:
+    print("  NOTE: %dpx on the short side; hand-off wants 1080px. Fine for review only." % min(w, h))
     print("        Fetch the media variant where egress allows, or resume in Claude Code.")

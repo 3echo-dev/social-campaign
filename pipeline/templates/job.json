@@ -84,8 +84,7 @@
       "suppliedBy": "user | research"
     },
     "schedule": {
-      "publishAt": "2026-09-05T09:00:00+08:00",
-      "timezone": "Asia/Manila"
+      "publishAt": "2026-09-05T09:00:00+08:00"
     },
     "budget": {
       "currency": "USD",

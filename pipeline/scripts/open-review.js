@@ -128,7 +128,7 @@ function clipItems(dir, alreadyShown) {
   const shown = alreadyShown || new Set();
   const items = [];
   for (const d of listDir(path.join(dir, 'media')).filter(n => /^D\d+$/.test(n))) {
-    for (const f of listDir(path.join(dir, 'media', d)).filter(n => /\.(mp4|mov|webm)$/i.test(n))) {
+    for (const f of listDir(path.join(dir, 'media', d)).filter(n => !n.startsWith('.') && /\.(mp4|mov|webm)$/i.test(n))) {
       const file = path.join(dir, 'media', d, f);
       if (shown.has(path.resolve(file))) continue;
       items.push({

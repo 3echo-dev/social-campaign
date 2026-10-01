@@ -151,7 +151,7 @@ Read the brands in pipeline_status before creating a job.
 A brand with onboardingStatus complete may be selected for a new job.
 
 When a brand is chosen for a new job, call `pipeline_brand_tidy_check` once for that brand.
-Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 3 to 5 short content pillars) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
+Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 1 to 8 short content pillars of 60 characters or fewer) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
 A brand with onboardingStatus required must go through onboard-brand before a job is created.

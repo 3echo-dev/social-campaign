@@ -38,10 +38,10 @@ for f in files:
         with Image.open(p) as im:
             if min(im.size) < 200:
                 bad.append((f, "too small: %dx%d" % im.size)); continue
-            # A hand-off image wants full resolution. A 480px thumbnail
-            # is review quality only.
-            if im.width < 1500:
-                soft.append((f, im.width))
+            # A hand-off image wants full resolution: 1080 px on the short side, which
+            # a 1080x1920 vertical frame meets. A 480px thumbnail is review quality only.
+            if min(im.size) < 1080:
+                soft.append((f, min(im.size)))
             good.append((f, im.convert("RGB").copy()))
     except Exception as e:
         bad.append((f, "not a readable image (%s)" % type(e).__name__))
@@ -49,7 +49,7 @@ for f in files:
 for f, why in bad:
     print("EXCLUDED: %s - %s" % (f, why), file=sys.stderr)
 for f, w in soft:
-    print("LOW-RES:  %s - %dpx wide; hand-off wants full resolution. Fine for review only."
+    print("LOW-RES:  %s - %dpx on the short side; hand-off wants 1080px. Fine for review only."
           % (f, w), file=sys.stderr)
 if not good:
     sys.exit("no valid frames; nothing to compose")

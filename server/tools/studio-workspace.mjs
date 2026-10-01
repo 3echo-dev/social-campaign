@@ -51,7 +51,7 @@ export const studioWorkspaceTools = [
       required: ['brand', 'workspaceId'],
       additionalProperties: false,
     },
-    handler: (args, { workspace }) => chooseStudioWorkspace({ root: local(workspace), ...args }),
+    handler: (args, { workspace }) => chooseStudioWorkspace({ ...args, root: local(workspace) }),
   }),
   defineTool({
     name: 'pipeline_studio_workspace_get',
@@ -65,6 +65,6 @@ export const studioWorkspaceTools = [
       required: ['brand'],
       additionalProperties: false,
     },
-    handler: (args, { workspace }) => getStudioWorkspace({ root: local(workspace), ...args }),
+    handler: (args, { workspace }) => getStudioWorkspace({ ...args, root: local(workspace) }),
   }),
 ];

@@ -219,8 +219,10 @@ function requiredFalseGaps(gaps) {
 
 const FILL_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 300 });
 const SUGGESTIBLE_FIELDS = Object.freeze(['audience']);
-const CONTENT_PILLARS_MIN = 1;
-const CONTENT_PILLARS_MAX = 5;
+// One set of pillar limits for a typed save, the board and a research fill.
+const CONTENT_PILLARS_MIN = brandProfile.CONTENT_PILLAR_MIN;
+const CONTENT_PILLARS_MAX = brandProfile.CONTENT_PILLAR_MAX;
+const CONTENT_PILLAR_ITEM_MAX = brandProfile.CONTENT_PILLAR_ITEM_MAX;
 const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'budget']);
 const RESEARCH_KEYS = Object.freeze(['scope', 'sources', 'evidenceMatrix', 'competitorDetails', 'findings', 'gaps', 'competitors']);
 const RESEARCH_LISTS = Object.freeze(['sources', 'evidenceMatrix', 'competitorDetails', 'gaps', 'competitors']);
@@ -277,6 +279,10 @@ function fillProblems(fills, problems) {
     const count = fills.contentPillars.length;
     if (count < CONTENT_PILLARS_MIN || count > CONTENT_PILLARS_MAX) {
       problems.push({ field: 'fills.contentPillars', problem: `contentPillars must list ${CONTENT_PILLARS_MIN} to ${CONTENT_PILLARS_MAX} items (has ${count}).` });
+    }
+    const longest = Math.max(...fills.contentPillars.map((item) => (typeof item === 'string' ? item.trim().length : 0)));
+    if (longest > CONTENT_PILLAR_ITEM_MAX) {
+      problems.push({ field: 'fills.contentPillars', problem: `each content pillar must be at most ${CONTENT_PILLAR_ITEM_MAX} characters (the longest has ${longest}).` });
     }
   }
   if (Array.isArray(fills.competitors) && fills.competitors.length > brandProfile.MAX_COMPETITORS) {

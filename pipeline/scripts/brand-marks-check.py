@@ -4,7 +4,7 @@
     python brand-marks-check.py <brand> <job-id> [--tolerance 40] [--root <dir>]
     python brand-marks-check.py path/to/workspaces/<brand>/jobs/<job-id>/job.json
 
-Reads `## Brand marks` from workspaces/<brand>/brand/brand-voice.md and every PNG or JPG
+Reads `## Brand marks` from workspaces/<brand>/brand/brand-voice.md and every PNG, JPG or WebP
 under media/D*/ plus any sampled frames watch-video.py left under media/D*/frames/.
 Writes validation/brand-marks.json and raises R-VISUAL.
 
@@ -40,7 +40,7 @@ LOGO_MATCH = 0.55        # normalised cross-correlation that counts as a hit
 DEFAULT_MIN_LOGO_H = 96  # 5% of 1920, used only when the brand left min_logo_height_px unknown
 PALETTE = 16             # palette size for the quantise; smaller merges an accent into its neighbour
 COLOUR_SHARE = 0.01      # a quantised colour under 1% of the pixels is not a dominant colour
-IMAGES = (".png", ".jpg", ".jpeg")
+IMAGES = (".png", ".jpg", ".jpeg", ".webp")
 
 
 # ---------------------------------------------------------------- workspace
@@ -319,7 +319,7 @@ def main():
                 if os.path.splitext(f)[1].lower() in IMAGES and os.path.isfile(f):
                     files.append(f)
     if not files:
-        print("No media to check. Nothing under %s/media/D*/ is a PNG or JPG, so the frames "
+        print("No media to check. Nothing under %s/media/D*/ is a PNG, JPG or WebP, so the frames "
               "were never generated or never landed." % job_dir.replace(os.sep, "/"),
               file=sys.stderr)
         return 3

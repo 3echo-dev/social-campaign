@@ -1,6 +1,16 @@
 # Shared rules
 
-Current user-facing documents follow `docs/PRESENTATION.md` for headings, tables, evidence callouts and usage labels.
+Current user-facing documents follow these presentation rules for headings, tables, evidence callouts and usage labels.
+Start with a specific title, a one-sentence purpose and compact job, brand and version metadata.
+Present the decision or deliverable before background details.
+Use short sections, consistent heading levels, and tables only for genuinely comparable fields.
+Use callouts for required user actions, missing evidence or cost coverage.
+Keep Decision sections reserved for the approval recorder, and keep schema-required front matter and persisted field names as they are.
+Show source, scope and confidence where they affect a claim, and show unknown values as unknown, with coverage and assumptions beside any estimate.
+Put units and date or time-zone context beside values, and keep production charges and advertising spend separate.
+Keep unknown, pending, failed and complete states distinguishable in text, not only by color.
+Use clear labels, including usage labels, so a reader knows what each figure counts.
+Do not hide material limitations in hover-only text.
 The hosted and embedded renderers apply the approved Social Campaign visual style.
 
 Five rules that every agent and every skill in this plugin follows.
@@ -258,7 +268,6 @@ Routing already runs it when rule 6c refuses, so a second call is only for a res
 The answer comes back as `product-photo` with a web address under `product-photo file`.
 `land-photo.js` fetches it, puts it under `<root>/inputs/{brand}/` and records who owns it: an uploaded photo is the person's own, one found online is not and is recorded as not owned so the licence rules still bite.
 Never spend a credit making one without an explicit yes to a quote: the spend guard refuses it, and with the flag off the rule stands on its own (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`).
-`docs/PRODUCT-PHOTO.md` has the whole of it.
 
 ### A question can carry a picture
 

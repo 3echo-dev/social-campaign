@@ -379,7 +379,7 @@ function ensureBrand(root, row, options, migrationId) {
     brand: row.slug,
     name: row.name,
     status: row.status === 'archived' ? 'archived' : 'active',
-    timezone: 'Asia/Manila',
+    timezone: null,
     approver: null,
     ownerUserId: owner.userId,
     ownerEmail: owner.email,

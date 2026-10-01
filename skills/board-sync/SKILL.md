@@ -336,4 +336,4 @@ When several workspaces exist and the job has no choice yet, the price panel ask
 Use Claude's authenticated native connectors from the running session for supported generation and asset tools.
 Keep their actual workspace and generation job IDs with the local execution record.
 Do not infer a pipeline ingestion API from the presence of generation tools.
-Owner binding for future Studio ingestion must be refreshed from authenticated membership, as described in `docs/STUDIO-API-CONTRACT.md`.
+Owner binding for future Studio ingestion must be refreshed from authenticated membership.

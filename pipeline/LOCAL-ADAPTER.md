@@ -53,3 +53,28 @@ A provider is checked only when the active task requires it and its current capa
 Human approval is saved and applied through the root pipeline tools after revision and artifact hash validation.
 
 This file is the transport and entry override for the vendored execution docs.
+
+## Agent routing
+
+The local route uses the registry in pipeline/registry and the canonical contracts under pipeline/agents.
+Each route role has a root adapter at agents/<role>.md and a canonical contract at pipeline/agents/<role>.md.
+The roles are producer, researcher, strategist, copywriter, scriptwriter, media-buyer, videographer, editor, and publisher.
+The root adapters point those contracts at the installed plugin and the local runtime.
+When a contract refers to CLAUDE_PLUGIN_ROOT, resolve it to the installed plugin's pipeline directory.
+
+The active route in route.json and the rows in plan.md decide which agent is eligible.
+The workflow for a job is the pipeline/workflows file its route names, and pipeline/registry/workflows.json lists them.
+The orchestrator dispatches only the active task and its named owner.
+route-job.js and plan-job.js are the only workflow selectors.
+Do not select a workflow from conversation memory.
+
+Brand-researcher, competitor-researcher, trend-scout, audience-researcher, and brand-onboarding are workstream labels for the researcher contract.
+They are not independent routes when the plan names one researcher workstream.
+A researcher dispatch covers exactly one named workstream and reads the accepted evidence snapshot before searching.
+A strategist reuses current research and raises a named gap instead of redoing research.
+A video specialist reuses the current watch report and probes only changed or missing media.
+A validation specialist reuses cached checks only when artifact and rule hashes match.
+A provider check belongs to the active task that needs the provider, and the same provider is not probed again while the current capability result is still valid.
+
+The local runtime keeps jobs unbound when no verified Studio owner exists.
+The outbound sync layer may reject or retain unbound events without blocking local work.

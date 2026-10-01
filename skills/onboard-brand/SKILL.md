@@ -39,7 +39,7 @@ If a brand with onboardingStatus required matches the user's brand, continue tha
 If a ready brand matches, ask whether the user wants to update it or start a job.
 
 When a brand is opened or chosen this way, call `pipeline_brand_tidy_check` once for that brand.
-Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 3 to 5 short content pillars) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
+Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 1 to 8 short content pillars of 60 characters or fewer) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
 If the artifact board is ready, direct the user to its single inline Brand onboarding form and wait for one `onboard_brand` request.

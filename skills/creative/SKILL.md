@@ -22,7 +22,7 @@ When the person is needed, ask one plain question in their terms, for example "W
 
 Progress updates are one short line in plain words, for example "Researching SK-II's audience and competitors now."
 
-Read workflows/README.md, docs/AGENT-ROUTING.md, pipeline/LOCAL-ADAPTER.md, and the canonical copywriter or scriptwriter contract under pipeline/agents.
+Read pipeline/LOCAL-ADAPTER.md (its Agent routing section applies), the workflow file under pipeline/workflows that the route names, and the canonical copywriter or scriptwriter contract under pipeline/agents.
 
 Reuse a fresh job snapshot supplied by the caller.
 
@@ -50,7 +50,7 @@ A post that goes straight to copy with no concept step gets the same choices fir
    When `complete` is false, the brand voice is not finished: ask one plain question for what its "Still to fill in" section lists, for example "How should SK-II sound in its posts?", save the answer to the brand profile as `onboard-brand` describes for a ready brand (`pipeline_brand_onboard` with the existing brand), and continue once the voice is complete.
    Never write copy while the voice is unfinished.
 2. Build 2 or 3 options per field for each post from the research the job already has: hooks seen in competitor and brand posts, comment mining and customer words, ad library findings, standout posts, and the brand's own hashtags.
-   Only when a field has no evidence at all, look it up within the hard limits: at most 3 searches for that question, at most 3 competitors, Singapore market.
+   Only when a field has no evidence at all, look it up within the hard limits: at most 3 searches for that question, at most 3 competitors, in the brand's target market (Singapore when the profile names none).
    Every option cites where it comes from: a research file in the job (for example `research/competitors.md#hooks`), a brand file, or a public link to the post or ad.
 3. Shape each field:
    - Pillar: only the brand's saved content pillars, spelled as on the profile.
@@ -84,5 +84,3 @@ Reuse the existing board URL after each artifact set and refresh the job snapsho
 Call pipeline_board_open only when no board URL exists for the current workspace.
 
 The local flow does not call the legacy campaign creative tools.
-
-The prior compatibility body is preserved under docs/legacy-skills/creative-SKILL.md.

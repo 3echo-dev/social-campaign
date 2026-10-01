@@ -710,9 +710,9 @@ const inboxAt = (...values) => {
 const newestFirst = (a, b) => inboxTime(b.at) - inboxTime(a.at);
 const plural = (count, word) => `${count} ${count === 1 ? word : `${word}s`}`;
 
-function openQuestionsByJob(root) {
+function openQuestionsByJob(root, { readOnly = false } = {}) {
   const byJob = new Map();
-  for (const question of listQuestions({ root, status: 'open' })) {
+  for (const question of listQuestions({ root, status: 'open', readOnly })) {
     const key = question.jobId || null;
     if (!byJob.has(key)) byJob.set(key, []);
     byJob.get(key).push(question);
@@ -834,6 +834,59 @@ function jobLine(inbox) {
 
 function jobDocumentInbox(inbox) {
   return { items: inbox.items.slice(0, INBOX_LIMIT), announcement: inbox.announcement };
+}
+
+/**
+ * The few files the Inbox helpers read for one job, and nothing else. Unlike readJobSnapshot it
+ * never lists or hashes the job's artifacts, so it stays cheap when a job holds large media.
+ */
+function lightSnapshot(job) {
+  const dir = job.dir || job.path;
+  const readJsonOr = (name, fallback) => {
+    try { return JSON.parse(readFileSync(join(dir, name), 'utf8')); } catch { return fallback; }
+  };
+  let text = '';
+  try { text = readFileSync(join(dir, 'status.md'), 'utf8'); } catch { /* a job with no status file shows no detail */ }
+  const find = name => text.match(new RegExp(`\\*\\*${name}:\\*\\*\\s*\`?([^\`\\r\\n]*)\`?`, 'i'))?.[1]?.trim() || null;
+  const data = readJsonOr('job.json', {});
+  const state = job.state || find('Current state') || 'UNKNOWN';
+  const revision = Number.isSafeInteger(job.revision) ? job.revision : 0;
+  return {
+    project: { jobId: job.jobId, brand: job.brand, title: data.title || job.jobId, state, revision },
+    brand: { name: null },
+    job: plainObject(data) ? data : {},
+    route: readJsonOr('route.json', null),
+    plan: existsSync(join(dir, 'plan.md')) ? {} : null,
+    status: { state, revision, blockedOn: find('Blocked on'), updatedAt: find('Last updated') },
+  };
+}
+
+/** The open questions by job, read without creating anything. Build it once and pass it to every personWaiting call. */
+export function openQuestionsForWaiting(root) {
+  return openQuestionsByJob(rootOf(root), { readOnly: true });
+}
+
+/**
+ * What the person is needed for on this job, worded as the board shows it, or null when
+ * nobody is waiting. Built from the same pieces as the Inbox (reviews and price checks,
+ * open questions, brief fields, blockers), so the stop hook and the board cannot disagree.
+ * Pass the map from openQuestionsForWaiting when asking about several jobs.
+ */
+export function personWaiting(root, job, { questions = null } = {}) {
+  root = rootOf(root);
+  const snapshot = lightSnapshot(job);
+  const state = snapshot.project.state;
+  if (states.isTerminal(state)) return null;
+  const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
+  const open = (questions || openQuestionsForWaiting(root)).get(job.jobId);
+  const inbox = jobInbox({ root, snapshot, gate, review, intake: projectIntake(snapshot, null), questions: open, dir: job.dir || job.path });
+  const item = inbox.items[0];
+  if (item) return { kind: item.kind, gate: item.gate || null, reason: item.text };
+  const blocker = blockedReason(snapshot);
+  if (blocker) return { kind: 'blocker', gate: null, reason: blocker };
+  if (BLOCKED_STATES.has(state) && jobBlockers(snapshot).length) return { kind: 'blocker', gate: null, reason: inbox.announcement };
+  if (state === 'HANDOFF_READY') return { kind: 'handoff', gate: null, reason: inbox.announcement };
+  return null;
 }
 
 function workspaceInbox(jobItems, looseQuestions, brandNames) {
@@ -1237,7 +1290,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     // productAsset path on sight): it is attached right after creation, the
     // same local-file transit the board's other uploads use.
     const withPhoto = args.photo?.dataBase64 !== undefined || args.photo?.path
-      ? runtime.attachProductPhoto({root,brand,jobId:result.jobId,path:args.photo.path,dataBase64:args.photo.dataBase64,source:args.photo.source})
+      ? runtime.attachProductPhoto({root,brand,jobId:result.jobId,path:args.photo.path,dataBase64:args.photo.dataBase64,source:args.photo.source,ownedByBrand:args.photo.ownedByBrand})
       : null;
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand,jobId:result.jobId},source:'local'});
     return {...(withPhoto || result),jobId:result.jobId,brand,message:'Job saved. Your Claude session can now continue intake.'};
@@ -1257,11 +1310,11 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     return {...result,message:'Answers saved. Your Claude session can now continue this job.'};
   }
   if(operation==='attach_product_photo') {
-    const result=runtime.attachProductPhoto({root,brand:args.brand,jobId:args.jobId,expectedRevision:args.expectedRevision,path:args.photo?.path,dataBase64:args.photo?.dataBase64,source:args.photo?.source});
+    const result=runtime.attachProductPhoto({root,brand:args.brand,jobId:args.jobId,expectedRevision:args.expectedRevision,path:args.photo?.path,dataBase64:args.photo?.dataBase64,source:args.photo?.source,ownedByBrand:args.photo?.ownedByBrand});
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {...result,message:`${result.job?.subject==='character'?'Character picture':'Product photo'} saved. Your Claude session can now continue this job.`};
   }
-  if(operation==='import_inputs') return runtime.importLocalInputs({root,brand:args.brand,jobId:args.jobId,sourcePaths:[args.path],ownedByBrand:args.ownedByBrand===true});
+  if(operation==='import_inputs') return runtime.importLocalInputs({root,brand:args.brand,jobId:args.jobId,sourcePaths:[args.path],ownedByBrand:args.ownedByBrand===true,usedInPost:args.usedInPost===true});
   if(operation==='skip_provider') {
     if(!CONNECTOR_KEYS.includes(args.provider)) throw new Error('Unsupported connector.');
     recordConnectorSkip(root,args.provider);

@@ -113,6 +113,12 @@ A person can also attach a product photo file directly, on the New job form or, 
 Both arrive as a local file path already saved to disk (never bytes typed or pasted here): pass it as `photo` on `pipeline_job_create` for a new job, or call `pipeline_product_photo_attach` for an existing one.
 Either way the photo lands under that brand's own inputs and is recorded on the job as `productAsset`; never ask the person for a link when they can just add the picture.
 
+When the picture is of a character, ask once, in plain words, whether the character is theirs, for example "Is Mina your own mascot, or a person you have the rights to use?"
+Ask before the create call when you are passing the picture as `photo`, and after it when the picture arrived from the board.
+If they say yes, attach it with `ownedByBrand` true, as `photo.ownedByBrand` on `pipeline_job_create` or as `ownedByBrand` on `pipeline_product_photo_attach` using the saved file in the job's inputs.
+If they say no or are not sure, leave it out: the picture is then treated as someone else's, and the post carries a disclosure.
+Never ask this for a product photo.
+
 Leave out anything the brief and the profile do not say.
 
 For a board `create_job` request, the same object goes into the request's `args.job` before it lands, as `board-sync` describes, and the apply passes it to the same create.
@@ -230,7 +236,7 @@ Use the stages returned by pipeline_job_read.
 
 Do not assume a fixed stage order.
 
-Read workflows/README.md and docs/AGENT-ROUTING.md before dispatching a stage.
+Read the Agent routing section of pipeline/LOCAL-ADAPTER.md and the workflow file under pipeline/workflows that the route names before dispatching a stage.
 
 Use the canonical pipeline contract named by the active route under pipeline/agents and pipeline/skills.
 

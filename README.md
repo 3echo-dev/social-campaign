@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.7.4.
+Current version: 0.7.5.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -86,7 +86,7 @@ Each specialist gets only the tools its stage needs.
 | `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off | all of them, as the plan names them | sonnet |
 | `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | sonnet |
 | `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | **opus** |
-| `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | sonnet |
+| `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | sonnet, run on **opus** for the script and storyboard step |
 | `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | sonnet |
 | `media-buyer` | Paid campaigns only: ad requirements, campaign proposal, activation checklist | write-cta, platform-format | sonnet |
 | `videographer` | Watching and breaking down source video, and checking rendered clips | watch-video, analyze-video, source-validation, write-report | sonnet |
@@ -159,6 +159,8 @@ You can accept a flagged item as it is.
 
 **A hand-off package.**
 Copy, media, schedule and a per-platform checklist, with a manifest.
+Each posting time carries its time zone: the one set for the job, else the brand's, which follows its target market.
+When no zone is known, the package says so instead of guessing.
 For paid work, a campaign proposal and an activation checklist to set up in Ads Manager.
 
 **Reports for three more kinds of work.**
@@ -203,6 +205,8 @@ A request for changes is re-priced and shown again.
 The concept approval also carries the most you agreed to spend, and the plugin refuses to go past it.
 If a paid call is blocked, the run stops and tells you what it is waiting on.
 It does not work around the block.
+In a Social Campaign workspace, paid images, video and voice are made only inside a job, so every credit is tied to an approved price.
+An item that failed at 3echo can be made again; one that was made needs a redo, priced again.
 
 3echo Studio credits are drawn from a Studio workspace.
 When your account has more than one, the price panel asks which one pays, and you can set it per job or as the brand's default.
@@ -326,6 +330,7 @@ Add links or local files if you have them.
 Claude reads the brief and the brand profile first and fills in every field they already answer.
 It asks only for what is genuinely missing, one plain question at a time.
 Your original files are copied in and left untouched.
+A picture of a character you upload is treated as not yours until you say it is, so the post carries the right disclosure.
 
 For a first run, one organic text-only post is the smallest test.
 

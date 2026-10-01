@@ -3,7 +3,7 @@
   "brand": "{brand}",
   "name": "{Brand Name}",
   "status": "active",
-  "timezone": "Asia/Manila",
+  "timezone": null,
   "approver": "{who approves gates}",
   "created": "YYYY-MM-DD",
   "accounts": {

@@ -5,8 +5,16 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IMAGE_CREDITS_EACH } from '../generation/estimate.mjs';
 import { defaultWorkspaceRoot, expandUserPath, globalConfigDir, globalConfigPath, workspaceConfigPath } from '../lib/paths.mjs';
+import {
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  asObject, isFactFile, toolBase,
+} from './spend-tools.mjs';
 
 export { IMAGE_CREDITS_EACH };
+export {
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  asObject, isFactFile, toolBase,
+};
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -20,14 +28,8 @@ const THREE_ECHO_TOOLS = new Set([
   'list_workspaces', 'get_workspace_capabilities', 'estimate_video_job', 'create_image_job', 'create_video_job',
   'wait_for_job', 'get_job', 'get_job_result', 'get_asset', 'fetch_asset_bytes', 'import_asset_from_url', 'cancel_job',
 ]);
-export const THREE_ECHO_SPENDERS = Object.freeze(['create_image_job', 'create_video_job']);
 export const THREE_ECHO_RESULTS = Object.freeze(['wait_for_job', 'get_job_result', 'get_asset']);
 export const THREE_ECHO_ESTIMATE = 'estimate_video_job';
-export const VOICE_SPENDERS = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio', 'creative_design_voice']);
-export const VOICE_ESTIMABLE = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio']);
-export const ELEVEN_LABS_MEDIA = Object.freeze([
-  'creative_generate_image', 'creative_generate_video', 'creative_edit_image', 'creative_generate_in_flow', 'creative_run_flow_nodes',
-]);
 const VOICE_DEFAULT_GENERATIONS = 4;
 const EPSILON = 1e-6;
 
@@ -36,28 +38,6 @@ export const FACT_FILES = Object.freeze({
   landed: 'generation/landed.jsonl',
   estimates: 'pricing/estimates.jsonl',
   quote: 'pricing/quote.json',
-});
-const FACT_DIRS = new Set(['generation', 'pricing', 'approvals']);
-const RECIPE_FACT_FILES = new Set(['recipe.json', 'recipe-options.json', 'recipe-history.jsonl']);
-
-export const NO_JOB_WARNING = "This paid call isn't linked to a Social Campaign job, so its cost isn't tracked.";
-export const FACT_FILE_DENY = 'These records are kept by Social Campaign itself and cannot be edited by hand.';
-export const SPEND_DENY = Object.freeze({
-  elevenLabsMedia: 'Images and videos for jobs are made with 3Echo Studio.',
-  noApproval: "The price for this job hasn't been approved yet. Show the price and wait for approval before making anything.",
-  noItem: "This call doesn't say which approved item it makes, so it can't be checked against the approved price.",
-  notInQuote: "This item isn't in the approved price. Anything new or redone needs its own price approval first.",
-  mismatch: "This call doesn't match the approved item it names.",
-  sampleLock: 'Show the sample and wait for approval before making the rest.',
-  videoTooEarly: 'Video waits until the storyboard is approved. Only reference pictures can be made until then.',
-  voiceTooEarly: 'Voice waits until the storyboard is approved. Only reference pictures can be made until then.',
-  jobFinished: 'This job is finished, so nothing more can be made for it.',
-  videoNoEstimate: 'Get a price for this clip first.',
-  voiceNoEstimate: 'Get a price for this voice line first.',
-  oneAtATime: 'Make one version at a time unless more were approved.',
-  itemOver: 'This costs more than the price approved for this item. Get the new price approved first.',
-  overBudget: 'This would go over the approved price for this job. Show the new price and get it approved first.',
-  unchecked: "The price check couldn't finish, so nothing was made. Try again in a moment.",
 });
 
 export const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -71,26 +51,6 @@ export function stableStringify(value) {
       .map(key => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
   }
   return JSON.stringify(value === undefined ? null : value);
-}
-
-export function asObject(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-export function toolBase(name) {
-  const value = String(name || '');
-  if (!value.startsWith('mcp__')) return value;
-  const at = value.lastIndexOf('__');
-  return at > 3 ? value.slice(at + 2) : value;
 }
 
 export function providerOf(base) {
@@ -384,7 +344,14 @@ export function readSessionBinding(root, sessionId) {
 export function writeSessionBinding({ root, sessionId, brand, jobId } = {}) {
   if (!root || !sessionId || !safeName(brand) || !safeName(jobId)) return null;
   const current = readSessionBinding(root, sessionId);
-  if (current && current.brand === brand && current.jobId === jobId) return current;
+  if (current && current.brand === brand && current.jobId === jobId) {
+    try {
+      lib('lib-session.js').touch(String(sessionId), rootArgv(root));
+    } catch {
+      // the binding itself is unchanged; only the "still here" time could not be saved
+    }
+    return current;
+  }
   const saved = lib('lib-session.js').bind(String(sessionId), brand, jobId, rootArgv(root));
   return { brand: saved.brand, jobId: saved.jobId };
 }
@@ -394,6 +361,15 @@ export function isFinishedState(state) {
     return Boolean(state) && lib('lib-states.js').isTerminal(state);
   } catch {
     return false;
+  }
+}
+
+// The same test as the legacy guard: a .social-pipeline/config.json at the folder or any parent of it.
+export function inPipelineWorkspace(cwd) {
+  if (!cwd) return false;
+  for (let dir = resolve(String(cwd)); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.social-pipeline', 'config.json'))) return true;
+    if (dirname(dir) === dir) return false;
   }
 }
 
@@ -599,20 +575,6 @@ export function creditsCommitted(job, scope = null) {
     totals[call.provider] += call.final !== null ? call.final : call.released ? 0 : call.reserved || 0;
   }
   return totals;
-}
-
-export function isFactFile(filePath, cwd) {
-  if (!filePath) return false;
-  const parts = resolve(cwd || process.cwd(), String(filePath)).split(/[\\/]+/).map(part => part.toLowerCase());
-  for (let i = 2; i < parts.length - 3; i++) {
-    if (parts[i] !== 'jobs' || parts[i - 2] !== 'workspaces') continue;
-    const inside = parts.slice(i + 2);
-    if (FACT_DIRS.has(inside[0])) return true;
-    if (inside[0] === 'validation' && inside.length === 2 && inside[1] === 'label-check.json') return true;
-    if (inside[0] === 'validation' && inside.length >= 3 && inside[1] === 'qc-frames') return true;
-    if (inside[0] === 'drafts' && inside.length === 3 && /^d\d+$/.test(inside[1]) && RECIPE_FACT_FILES.has(inside[2])) return true;
-  }
-  return false;
 }
 
 const FINGERPRINT_GATES = [...lib('lib-states.js').GATE_IDS, 'report', 'price'];
@@ -996,6 +958,27 @@ function sampleApproved(job, key) {
   return Boolean(latest && latest.sha256 && approval.sha256 === latest.sha256);
 }
 
+// Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key
+// that was made, or is being made, could be billed again. A create that ended released with no outputs
+// (failed or cancelled) made nothing, so its key can be tried again; a redo is a new version with its own price.
+function earlierCreateState(job, key) {
+  const records = readRecords(job);
+  const creates = records.filter(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key);
+  if (!creates.length) return null;
+  const landedKey = readLanded(job).some(entry => entry.type === 'landed' && canonicalJobKey(entry.key) === key);
+  let state = null;
+  for (const create of creates) {
+    const results = records.filter(record => record.type === 'result' && record.providerJobId === create.providerJobId);
+    const result = results.length ? results[results.length - 1] : null;
+    const status = String(result?.status || '').toLowerCase();
+    const outputs = Array.isArray(result?.outputAssetIds) ? result.outputAssetIds : [];
+    if (result && RELEASED_STATUS.has(status) && !outputs.length && !landedKey) continue;
+    if (landedKey || outputs.length || status === 'succeeded') return 'made';
+    state = 'making';
+  }
+  return state;
+}
+
 export function spendDecision(job, toolName, toolInput) {
   const base = toolBase(toolName);
   const input = asObject(toolInput);
@@ -1025,8 +1008,9 @@ export function spendDecision(job, toolName, toolInput) {
   }
   if (item.provider && item.provider !== provider) return deny(SPEND_DENY.mismatch);
   if (provider === THREE_ECHO && item.kind && item.kind !== (base === 'create_image_job' ? 'image' : 'video')) return deny(SPEND_DENY.mismatch);
-  if (provider === THREE_ECHO && readRecords(job).some(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key)) {
-    return { allow: true, cost: 0, key, provider, repeat: true };
+  if (provider === THREE_ECHO) {
+    const earlier = earlierCreateState(job, key);
+    if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider, repeat: true };
   }
   let cost = null;
   if (base === 'create_image_job') cost = IMAGE_CREDITS_EACH;

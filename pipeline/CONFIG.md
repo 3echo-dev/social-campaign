@@ -75,8 +75,7 @@ verbose: false
 | `one_hero_sample_before_batch` | Generate one panel or clip, inspect it, then generate the rest. | **Mechanical (function hook).** The first allowed call per deliverable locks the rest until `wait_for_job` or `get_job_result` comes back for it. |
 | `verbose: false` | Files carry content, not explanations of the system. Chat says what is waiting and what to do. | Instruction. |
 
-File length is no longer a setting. `scripts/test/size.smoke.js` enforces 900 words per agent
-and 700 per skill, and fails the build.
+File length is no longer a setting. Keep each agent under 900 words and each skill under 700.
 
 ## The gate app
 
@@ -125,7 +124,7 @@ What a job cost in tokens is recorded where it can be: the environment decides, 
 In Claude Code the `Stop` and `SubagentStop` hooks in `hooks/hooks.json` run `scripts/hooks/tokens.js` at the end of every turn.
 It reads the session transcript from the offset it last stopped at, sums `usage` per model, and appends one `tokens.observed` line per model to the open job's `events.jsonl`.
 Offsets live in `<job>/.tokens-cursor.json`, keyed by session and agent, so the main session and each subagent are counted once each.
-Read the numbers back with `node scripts/tokens-summary.js <brand> <job-id>`, which prices them from the table in `docs/benchmarks.md`.
+Read the numbers back with `node scripts/tokens-summary.js <brand> <job-id>`, which prices them with the rates it prints, along with their date and source.
 
 Cowork does not fire plugin hooks at all, so no `tokens.observed` event is ever written there and the dashboard shows tokens as "not reported".
 The credit tally in `status.md` is the only cost figure a Cowork run produces.
@@ -157,7 +156,7 @@ Setting `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in the shell before `claude` does 
 
 With the flag on, `hooks/hooks.json` loads `hooks/hooks.mjs` beside the five command hooks, which stay.
 Today that module registers seven events: `session.start`, `tool.call`, `skill.prompt`, `turn.start`, `turn.complete`, `prompt.submit` and `tool.describe`.
-The guards land one at a time, and `docs/FUNCTION-HOOKS-PLAN.md` is the order they land in.
+The guards land one at a time.
 
 ### What the model is told, every turn
 
@@ -194,10 +193,10 @@ On `create_image_job` and `create_video_job` it refuses unless all of this holds
 
 Every refusal is one plain sentence with no path and no state id in it, because the model reads it as its next instruction.
 Anything that throws inside the check is a refusal too: a guard that fails open is not a guard.
-`scripts/test/function-hooks.unit.js` drives every one of those refusals on every commit.
+A test drives every one of those refusals on every commit.
 
 With the flag off, the module is never loaded and the plugin is exactly the plugin that shipped before it.
-That is a test, not an intention: `scripts/test/function-hooks.e2e.js` starts a session without the flag and fails if the module appears.
+That is a test, not an intention: a test starts a session without the flag and fails if the module appears.
 
 ### What refuses a write
 

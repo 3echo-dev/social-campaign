@@ -13,7 +13,7 @@ Post the text files and media exactly as delivered. If anything needs to change,
 
 ## Schedule
 
-See `schedule.csv` (deliverable, platform, account, publish time with zone, destination URL, file).
+See `schedule.csv` (deliverable, platform, account, publish time, time zone, destination URL, file).
 
 ## Posting checklists
 

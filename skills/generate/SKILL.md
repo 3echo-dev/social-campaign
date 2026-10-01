@@ -22,7 +22,7 @@ When the person is needed, ask one plain question in their terms, for example "W
 
 Progress updates are one short line in plain words, for example "Researching SK-II's audience and competitors now."
 
-Read workflows/README.md, docs/AGENT-ROUTING.md, pipeline/LOCAL-ADAPTER.md, pipeline/agents/producer.md, pipeline/skills/make-image/SKILL.md, and pipeline/skills/make-video/SKILL.md.
+Read pipeline/LOCAL-ADAPTER.md (its Agent routing section applies), the workflow file under pipeline/workflows that the route names, pipeline/agents/producer.md, pipeline/skills/make-image/SKILL.md, and pipeline/skills/make-video/SKILL.md.
 
 Reuse a fresh job snapshot supplied by the caller.
 
@@ -79,5 +79,3 @@ After media lands, call pipeline_status and write its `documents`, so the board 
 Call pipeline_board_open only when no board URL exists for the current workspace.
 
 The local flow does not call the legacy campaign generation tools.
-
-The prior compatibility body is preserved under docs/legacy-skills/generate-SKILL.md.

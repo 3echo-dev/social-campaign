@@ -5,7 +5,7 @@
 //   node build-handoff.js <brand> <job-id>
 //
 // Writes handoff/<platform>/<D>.txt (caption + hashtags), copies listed media beside it,
-// handoff/schedule.csv, handoff/README.md (per-platform posting checklist from platform-rules),
+// handoff/schedule.csv (with the posting time zone when the time has none), handoff/README.md (per-platform posting checklist from platform-rules),
 // handoff/campaign/ for paid jobs, and handoff/manifest.json with a hash of every file.
 // Exit 0 ok · 1 an approval is missing or stale · 2 usage
 const fs = require('fs');
@@ -16,6 +16,46 @@ const { hashFile } = require('./hash-artifact.js');
 const ws = require('./lib-workspace.js');
 const del = require('./lib-deliverable.js');
 const execution = require('./lib-execution-availability.js');
+const brandProfile = require('./lib-brand-profile.js');
+const noBrand = require('./lib-no-brand.js');
+
+// A plain local time: a date, or a date with hh:mm and optional seconds, and no zone of its own.
+// Only this gets the job's or the brand's zone written beside it.
+const LOCAL_ISO = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$/;
+// An offset counts only at the end of a full ISO date and time, so "Fri 05-09-2026" and a range
+// like "9:00-10:00" are not read as offsets.
+const ISO_OFFSET = /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:Z|[+-]\d{2}:?\d{2})$/i;
+// A word shaped like an IANA zone, such as Asia/Manila; it counts only when the runtime knows it.
+const ZONE_SHAPED = /[A-Za-z][A-Za-z_+-]*(?:\/[A-Za-z][A-Za-z0-9_+-]*)+/g;
+
+function validTimeZone(zone) {
+  try { new Intl.DateTimeFormat(undefined, { timeZone: zone }); return true; } catch { return false; }
+}
+
+function namesZone(text) {
+  for (const match of text.matchAll(ZONE_SHAPED)) if (validTimeZone(match[0])) return true;
+  return false;
+}
+
+// The zone to write beside a posting time. { zone } is empty when the time already carries one (an
+// offset after hh:mm, or a zone the runtime recognises), when there is no time, and when the text is
+// anything but a plain local time ("2026-09-05 09:00 UTC", "9am Manila time", "TBD"): those are never
+// given another zone, so they cannot contradict themselves.
+// For a plain local time the order is the job's own schedule.timezone, then the brand's zone.
+// \`known\` is false when the time needs a zone and none is known, which the hand-off says plainly.
+function postingZone(publishAt, jobSchedule, brandZone) {
+  const at = String(publishAt || '').trim();
+  if (!at) return { publishAt: '', zone: '', carries: false, known: true };
+  if (ISO_OFFSET.test(at) || namesZone(at)) return { publishAt: at, zone: '', carries: true, known: true };
+  if (!LOCAL_ISO.test(at)) return { publishAt: at, zone: '', carries: false, known: false };
+  const job = jobSchedule && typeof jobSchedule.timezone === 'string' ? jobSchedule.timezone.trim() : '';
+  const brand = typeof brandZone === 'string' ? brandZone.trim() : '';
+  const zone = job || brand;
+  return { publishAt: at, zone, carries: false, known: Boolean(zone) };
+}
+
+module.exports = { postingZone };
+if (require.main !== module) return;
 
 const ROOT = path.join(__dirname, '..');
 const { brand, jobId: job, dir } = ws.resolveJobArgs(process.argv.slice(2), process.argv);
@@ -47,6 +87,11 @@ if (!availability.available) {
 }
 let wsCfg = {};
 try { wsCfg = readJson(path.join(ws.wsDir(brand), 'workspace.json')); } catch {}
+// The brand's zone: one a person set wins, else it follows the target market. Work with no brand has
+// no target market, so it gets none (the same call the runtime's brand record makes).
+let profile = null;
+try { profile = brandProfile.read(ws.wsDir(brand)); } catch {}
+const brandZone = brandProfile.brandTimeZone(wsCfg, noBrand.isGeneral({ slug: brand, config: wsCfg }) ? { targetMarket: 'unknown' } : profile).timeZone;
 
 // 1. Every gate the route names must hold an approval that still matches disk.
 const required = (route.gates || []).filter(g => ['content', 'publish', 'campaign_proposal', 'campaign_activation'].includes(g));
@@ -183,7 +228,7 @@ const out = path.join(jobDir, 'handoff');
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 const files = [];
-const schedule = [['deliverable', 'platform', 'account', 'publish_at', 'destination_url', 'file']];
+const schedule = [['deliverable', 'platform', 'account', 'publish_at', 'timezone', 'destination_url', 'file']];
 const platforms = new Set();
 const posts = [];
 
@@ -213,11 +258,12 @@ for (const D of dels) {
   // Publish plan row (first table row after the heading)
   const plan = (sections['Publish plan'] || '').split('\n').filter(l => l.trim().startsWith('|') && !/^\|\s*-/.test(l) && !/Account/.test(l));
   const cells = plan.length ? plan[0].split('|').slice(1, -1).map(c => c.trim()) : [];
-  const account = cells[0] || (ws.accounts && ws.accounts[platform] && ws.accounts[platform].handle) || '';
+  const account = cells[0] || (wsCfg.accounts && wsCfg.accounts[platform] && wsCfg.accounts[platform].handle) || '';
   const publishAt = cells[2] || (jobSpec.schedule && jobSpec.schedule.publishAt) || '';
   const dest = cells[3] || jobSpec.landingPageUrl || '';
-  schedule.push([D, platform, account, publishAt, dest, platform + '/' + D + '.txt']);
-  posts.push({ D, platform, txt: platform + '/' + D + '.txt', media: copied, disclosure, accessibility: data.accessibility_text || '', hookFamily: data.hook_family || '' });
+  const when = postingZone(publishAt, jobSpec.schedule, brandZone);
+  schedule.push([D, platform, account, publishAt, when.zone, dest, platform + '/' + D + '.txt']);
+  posts.push({ D, platform, when, txt: platform + '/' + D + '.txt', media: copied, disclosure, accessibility: data.accessibility_text || '', hookFamily: data.hook_family || '' });
 }
 
 // 3. Paid artifacts.
@@ -243,6 +289,10 @@ let readme = fs.readFileSync(path.join(ROOT, 'templates', 'handoff-README.md'), 
 let perPost = '';
 for (const p of posts) {
   perPost += '\n### ' + p.D + ' on ' + p.platform + '\n\n- Text: `' + p.txt + '`\n';
+  if (p.when.publishAt) {
+    const zoneNote = p.when.zone ? ' (' + p.when.zone + ')' : (p.when.known ? '' : ', no time zone set; confirm the zone before posting.');
+    perPost += '- Posting time: ' + p.when.publishAt + zoneNote + '\n';
+  }
   if (p.media.length) perPost += '- Media: ' + p.media.map(m => '`' + p.platform + '/' + m + '`').join(', ') + '\n';
   if (p.accessibility) perPost += '- Alt text / on-screen summary: ' + p.accessibility + '\n';
   perPost += '- Disclosure: ' + (p.disclosure || 'None') + '\n';

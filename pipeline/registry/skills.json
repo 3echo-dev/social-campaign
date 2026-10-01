@@ -23,7 +23,7 @@
     { "skillId": "watch-video", "risk": "read_only", "userInvocable": false, "preloadedBy": ["videographer"], "invokedBy": ["producer"], "description": "Probe, sample frames, transcript; report with timestamps and transcript status." },
     { "skillId": "analyze-video", "risk": "read_only", "userInvocable": false, "preloadedBy": ["videographer", "scriptwriter"], "invokedBy": [], "description": "Classify hooks, structure, product moments, CTA, style, proof from a watch report." },
     { "skillId": "platform-format", "risk": "read_only", "userInvocable": false, "preloadedBy": ["copywriter", "scriptwriter", "media-buyer", "editor"], "invokedBy": ["producer"], "description": "Producer runs platform-check.js for the current artifact revision; specialists read its result and apply scoped prose checks." },
-    { "skillId": "publish", "risk": "external_write", "adapterIds": ["handoff"], "userInvocable": false, "preloadedBy": [], "invokedBy": ["producer"], "description": "MCP contract documented; v1 executable path is build-handoff.js.",
+    { "skillId": "publish", "risk": "external_write", "adapterIds": ["handoff"], "userInvocable": false, "preloadedBy": ["publisher"], "invokedBy": ["producer"], "description": "MCP contract documented; v1 executable path is build-handoff.js.",
       "mcpContract": ["job.create", "job.get", "job.transition", "artifact.put", "artifact.get", "artifact.list", "approval.request", "approval.decide", "approval.get", "publish.preflight", "publish.post", "publish.reconcile", "campaign.create_paused", "campaign.activate", "campaign.reconcile", "integration.list", "integration.schema", "media.upload", "post.schedule_or_draft", "post.list", "post.settings"] }
   ]
 }

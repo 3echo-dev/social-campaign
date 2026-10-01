@@ -81,7 +81,7 @@ function normalizeContentPillars(value) {
   }
   for (const v of value) {
     if (v.trim().length > CONTENT_PILLAR_ITEM_MAX) {
-      throw new Error('Keep each content pillar under ' + CONTENT_PILLAR_ITEM_MAX + ' characters.');
+      throw new Error('Keep each content pillar to ' + CONTENT_PILLAR_ITEM_MAX + ' characters or fewer.');
     }
   }
   return [...new Set(value.map(v => v.trim()))];
@@ -203,6 +203,87 @@ function normalizeTargetMarket(value) {
 function targetMarketOf(profile) {
   const value = profile && typeof profile.targetMarket === 'string' ? profile.targetMarket.replace(/\s+/g, ' ').trim() : '';
   return value || DEFAULT_TARGET_MARKET;
+}
+
+// The time zone a target market implies. Only countries that sit in one time zone are listed;
+// a country or region that spans several (US, Australia, Indonesia, "Asia") is listed as null so
+// the person is asked instead of being given a guess. A market that names nothing known gives
+// null too, and so does one that names places in different zones.
+const MARKET_TIME_ZONES = Object.freeze({
+  'singapore': 'Asia/Singapore',
+  'philippines': 'Asia/Manila',
+  'malaysia': 'Asia/Kuala_Lumpur',
+  'thailand': 'Asia/Bangkok',
+  'vietnam': 'Asia/Ho_Chi_Minh',
+  'hong kong': 'Asia/Hong_Kong',
+  'taiwan': 'Asia/Taipei',
+  'china': 'Asia/Shanghai',
+  'japan': 'Asia/Tokyo',
+  'south korea': 'Asia/Seoul',
+  'india': 'Asia/Kolkata',
+  'united arab emirates': 'Asia/Dubai',
+  'uae': 'Asia/Dubai',
+  'saudi arabia': 'Asia/Riyadh',
+  'united kingdom': 'Europe/London',
+  'uk': 'Europe/London',
+  'ireland': 'Europe/Dublin',
+  'germany': 'Europe/Berlin',
+  'france': 'Europe/Paris',
+  'spain': 'Europe/Madrid',
+  'italy': 'Europe/Rome',
+  'netherlands': 'Europe/Amsterdam',
+  'new zealand': 'Pacific/Auckland',
+  'south africa': 'Africa/Johannesburg',
+  'nigeria': 'Africa/Lagos',
+  'kenya': 'Africa/Nairobi',
+  'egypt': 'Africa/Cairo',
+  'turkey': 'Europe/Istanbul',
+  // Several zones, or no single place: ask.
+  'united states': null,
+  'usa': null,
+  'us': null,
+  'canada': null,
+  'australia': null,
+  'indonesia': null,
+  'brazil': null,
+  'mexico': null,
+  'russia': null,
+  'asia': null,
+  'apac': null,
+  'europe': null,
+  'global': null,
+  'worldwide': null,
+  'international': null,
+});
+
+function marketTimeZone(market) {
+  const text = ' ' + String(market || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim() + ' ';
+  const zones = new Set();
+  for (const [name, zone] of Object.entries(MARKET_TIME_ZONES)) {
+    if (text.includes(' ' + name + ' ')) zones.add(zone);
+  }
+  return zones.size === 1 ? [...zones][0] : null;
+}
+
+// Before 0.7.5 every brand was created with Asia/Manila and no tool or board form let a person
+// choose a zone, so a stored Asia/Manila that nothing marks as set is that default, not a choice.
+const LEGACY_DEFAULT_TIME_ZONE = 'Asia/Manila';
+
+function validTimeZone(zone) {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true; } catch { return false; }
+}
+
+// The brand's time zone. One a person set wins: a stored, valid zone that is marked as set
+// (timezoneSource 'set') or is not the old default. Otherwise it follows the target market (a
+// blank market is Singapore). { timeZone: null } means the step that needs one must ask.
+function brandTimeZone(config, profile) {
+  const stored = config && typeof config.timezone === 'string' ? config.timezone.trim() : '';
+  const marked = Boolean(config) && config.timezoneSource === 'set';
+  if (stored && validTimeZone(stored) && (marked || stored !== LEGACY_DEFAULT_TIME_ZONE)) {
+    return { timeZone: stored, source: 'set' };
+  }
+  const zone = marketTimeZone(targetMarketOf(profile));
+  return zone ? { timeZone: zone, source: 'market' } : { timeZone: null, source: null };
 }
 
 function normalizeField(value, name) {
@@ -713,6 +794,8 @@ module.exports = {
   fillBlankContext,
   profileTidyReport,
   targetMarketOf,
+  marketTimeZone,
+  brandTimeZone,
   TARGET_MARKET_MAX,
   DEFAULT_TARGET_MARKET,
 };

@@ -76,7 +76,7 @@ export const recipeTools = [
       required: ['brand', 'jobId', 'deliverable', 'options'],
       additionalProperties: false,
     },
-    handler: (args, { workspace }) => saveRecipeOptions({ root: local(workspace), ...args }),
+    handler: (args, { workspace }) => saveRecipeOptions({ ...args, root: local(workspace) }),
   }),
   defineTool({
     name: 'pipeline_recipe_choose',
@@ -106,6 +106,6 @@ export const recipeTools = [
       required: ['brand', 'jobId', 'deliverable', 'picks', 'chosenBy', 'via'],
       additionalProperties: false,
     },
-    handler: (args, { workspace }) => chooseRecipe({ root: local(workspace), ...args }),
+    handler: (args, { workspace }) => chooseRecipe({ ...args, root: local(workspace) }),
   }),
 ];

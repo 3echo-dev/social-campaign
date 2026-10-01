@@ -14,7 +14,7 @@ user-invocable: false
 
 ## Inputs
 
-The request verbatim, `workspace.json`, `brand/positioning.md`, `<root>/inputs/{brand}/` (beside `workspaces/`, not inside it), and `${CLAUDE_PLUGIN_ROOT}/templates/job.json`.
+The request verbatim, `workspace.json` (account handles), the brand record in the job snapshot (its `timezone`), `brand/positioning.md`, `<root>/inputs/{brand}/` (beside `workspaces/`, not inside it), and `${CLAUDE_PLUGIN_ROOT}/templates/job.json`.
 
 ## Steps
 
@@ -44,10 +44,11 @@ The request verbatim, `workspace.json`, `brand/positioning.md`, `<root>/inputs/{
 
    - `deliverables`, if unclear: "How many, on which platform, and in what format?"
    - `ugcSource`: UGC uses AI-generated media; explicit real-creator requests are unsupported.
-   - `productAsset`, unless text only or `subject` is `character` or `none`: `ask-product-photo.js "{job-id}"`, a card with a drop area, two ways on and a box; never print a folder at them (`docs/PRODUCT-PHOTO.md`).
+   - `productAsset`, unless text only or `subject` is `character` or `none`: `ask-product-photo.js "{job-id}"`, a card with a drop area, two ways on and a box; never print a folder at them.
    - a `character` job with no reference is not blocked and gets no card: the first step after the brief is a small reference-art price and pictures, before the storyboard.
    - `account`, always: "Which account will post this?" Offer the `workspace.json` handles; `unknown` is a real answer.
    - `schedule.publishAt`, always: "When should it go out?" Offer "no date yet".
+   - `schedule.timezone`, whenever the brand record's `timezone` is null or absent and the date question is in this batch: "Which time zone is that posting time in?" It sits next to the date question in this same batch, never a separate round, and "no date yet" makes it moot. When the brief already gives a time with a UTC offset, skip it.
    - `specWork`, if a URL was pasted or the brand is well known: "Your own brand, or spec work on someone else's?"
    - `budget` and `landingPageUrl`, if paid: ceiling, daily amount, landing page
    - `request` or `objective`, if not inferred: what this should say, and whether it is for awareness, engagement, traffic, leads or sales
@@ -56,7 +57,7 @@ The request verbatim, `workspace.json`, `brand/positioning.md`, `<root>/inputs/{
 
 5. **Rewrite `job.json` and re-route.** Twice at most; a third `NEEDS_CLARIFICATION` stops the job with the gaps named.
 
-5b. **On a `BLOCKED` route**, say the router's sentence and stop until what it names arrives. Routing already put the photo card up: make one bounded `wait-answer.js "{job-id}" 0` read, then `land-photo.js` and re-route, or use the way out they picked (`docs/PRODUCT-PHOTO.md`).
+5b. **On a `BLOCKED` route**, say the router's sentence and stop until what it names arrives. Routing already put the photo card up: make one bounded `wait-answer.js "{job-id}" 0` read, then `land-photo.js` and re-route, or use the way out they picked.
 
 6. **On exit 4 (`UNSUPPORTED`)**, say what is unsupported and stop. Never substitute an unrouted discipline.
 
@@ -78,7 +79,8 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 2. The router is the only routing truth. Add a risk flag if you must; never remove one, change the owner or raise confidence.
 3. `platforms` outside facebook, instagram and tiktok make the job `UNSUPPORTED`. Say so; never silently drop one.
 4. Deliverable ids are stable: `D2` stays `D2` if `D1` is cut.
-5. A schedule without a timezone is not a schedule: use the workspace timezone and say so.
+5. A schedule without a timezone is not a schedule: when `publishAt` has no UTC offset, use the brand record's `timezone` and say the zone back in plain words, for example "I'll set that for 9am Singapore time."
+   Ask only through the step 4 time zone question, in that batch and never in a separate round.
 
 ## Output contract
 

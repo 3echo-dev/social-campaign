@@ -16,7 +16,7 @@ user-invocable: false
 
 ## Steps
 
-1. `preflight-generation.js {brand} {job-id} {D}`; exit 0 is the permission to quote. No product photo on a product job: `ask-product-photo.js` (`docs/PRODUCT-PHOTO.md`).
+1. `preflight-generation.js {brand} {job-id} {D}`; exit 0 is the permission to quote. No product photo on a product job: `ask-product-photo.js`.
 A `subject: character` job with no reference picture starts here, before the storyboard: price a small set of `kind: image` reference pictures of the character and make them.
 Key each one `{job-id}-D{n}-R{k}-v1`, with the prefix R and never P, and never mark one `sample: true`; the storyboard hero keeps its own P key and its own sample.
 The guard allows only these R images until the storyboard is approved, in `CHANGES_REQUESTED` too unless the storyboard was approved and not rewound, so video and voice wait.

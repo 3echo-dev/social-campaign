@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../../scripts/build-board.mjs';
 import { factsFingerprint, isFinishedState, landingReport, listJobs } from './facts.mjs';
 
@@ -17,11 +19,39 @@ export const REARM_AFTER_MS = 3 * 60 * 60 * 1000;
 /** The board source changes only when its source contract changes. */
 export const ARTIFACT_SOURCE_VERSION = 'social-campaign-board-v3';
 
+const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
+const requireScript = name => {
+  try {
+    return createRequire(import.meta.url)(join(SCRIPTS, name));
+  } catch {
+    return null;
+  }
+};
+const lifecycle = requireScript('lib-states.js');
+const gateOfState = state => {
+  try {
+    return (state && lifecycle?.gateOf(state)) || null;
+  } catch {
+    return null;
+  }
+};
+
+/** A job another chat picked this recently is that chat's to look after. */
+export const OTHER_SESSION_HOURS = 6;
+
 export const BOARD_TEXT = Object.freeze({
   behind: 'The board is behind the work; sync it before finishing.',
   unsaved: "Some made files aren't saved yet; check them with pipeline_generation_land.",
   copies: 'A review is waiting on the board but its images or video have no viewable copy there yet. For each job below, call pipeline_review_copies_prepare, upload what it returns with the Artifact tool, then write the board again.',
   rearm: "Re-arm the board's wake-up by reading and republishing it before replying.",
+});
+
+/** Shown without blocking when nobody is waiting on the job. */
+export const BOARD_NOTE = Object.freeze({
+  behind: 'The board is a little behind the work.',
+  unsaved: "Some made files aren't saved yet.",
+  copies: "A review's images or video can't be viewed on the board yet.",
+  close: 'Nobody is waiting on this right now, so it can be caught up next time.',
 });
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -308,24 +338,95 @@ export function unsavedOutputs(jobs) {
   return out;
 }
 
-export async function reviewsWithoutCopies(root, jobs = listJobs(root)) {
-  let board;
+async function loadBoard() {
   try {
-    board = await import('./board.mjs');
+    return await import('./board.mjs');
   } catch {
-    return [];
+    return null;
   }
+}
+
+function reviewGaps(board, root, jobs) {
+  if (!board) return [];
   const out = [];
   for (const job of jobs) {
     if (isFinishedState(job.state)) continue;
     try {
       const { gate, missing } = board.reviewCopyGaps({ root, brand: job.brand, jobId: job.jobId });
-      if (missing.length) out.push({ ref: jobRef(job), gate, files: missing.map(item => item.sourceSha) });
+      out.push({ job, gate, missing });
     } catch {
-      continue;
+      out.push({ job, gate: null, missing: [] });
     }
   }
   return out;
+}
+
+const copyEntry = ({ job, gate, missing }) => ({ ref: jobRef(job), gate, files: missing.map(item => item.sourceSha) });
+
+export async function reviewsWithoutCopies(root, jobs = listJobs(root)) {
+  return reviewGaps(await loadBoard(), root, jobs).filter(entry => entry.missing.length).map(copyEntry);
+}
+
+/**
+ * The jobs this chat should look after: every job except the ones another chat picked within
+ * the last few hours. A job this chat picked, a job nobody picked, and a job whose other chat
+ * went quiet long ago all stay in. With no chat id, or no way to read the picks, every job stays in.
+ */
+export function jobsForSession(root, sessionId, jobs = listJobs(root), now = Date.now()) {
+  if (!sessionId) return jobs;
+  const sessions = requireScript('lib-session.js');
+  if (!sessions) return jobs;
+  try {
+    const argv = ['--root', resolve(root)];
+    const own = basename(sessions.file(String(sessionId), argv), '.json');
+    const bindings = sessions.list(argv);
+    const mine = new Set(bindings.filter(entry => entry.key === own).map(entry => `${entry.brand}/${entry.jobId}`));
+    // The later of "picked" and "still here"; a time in the future counts as now.
+    const age = entry => {
+      const at = Math.max(...[entry.selectedAt, entry.touchedAt].map(value => Date.parse(value ?? '')).filter(Number.isFinite));
+      return Number.isFinite(at) ? Math.max(0, now - at) : Infinity;
+    };
+    const theirs = new Set(bindings
+      .filter(entry => entry.key !== own && age(entry) < OTHER_SESSION_HOURS * 60 * 60 * 1000)
+      .map(entry => `${entry.brand}/${entry.jobId}`));
+    return jobs.filter(job => mine.has(jobRef(job)) || !theirs.has(jobRef(job)));
+  } catch {
+    return jobs;
+  }
+}
+
+/** The board's own answer to "is a person needed here", or just the approval gates when it cannot load. */
+function waitingFor(board, root, job, questions) {
+  try {
+    if (board?.personWaiting) return board.personWaiting(root, job, { questions });
+  } catch {
+    // fall through to the gate on the job's state
+  }
+  const gate = gateOfState(job.state);
+  return gate ? { kind: 'decision', gate, reason: null } : null;
+}
+
+/**
+ * What the stop hook looks at for these jobs. Each finding is worked out per job, so it can be
+ * matched to the job that owns it; `waiting` holds the refs of jobs a person is needed on.
+ */
+export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard } = {}) {
+  // A finished job never waits on anyone, so it is left out of everything except the board check:
+  // a board that still shows a cancelled or completed job as open is behind, whoever it was for.
+  const jobs = allJobs.filter(job => !isFinishedState(job.state));
+  const board = await load();
+  let questions = null;
+  try {
+    questions = board?.openQuestionsForWaiting ? board.openQuestionsForWaiting(root) : null;
+  } catch {
+    questions = null;
+  }
+  const waiting = new Set();
+  for (const job of jobs) {
+    if (waitingFor(board, root, job, questions)) waiting.add(jobRef(job));
+  }
+  const copies = reviewGaps(board, root, jobs).filter(entry => entry.missing.length).map(copyEntry);
+  return { behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting };
 }
 
 function sessionMap(value) {

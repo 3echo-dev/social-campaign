@@ -16,7 +16,7 @@ separately rather than claiming a cut exists.
 Exit 4 means captions were requested and none were burned: the cut is written without
 text and the reason is printed.
 """
-import argparse, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
 
 RATIOS = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080),
           "3:4": (1080, 1440), "4:3": (1440, 1080), "21:9": (2520, 1080)}
@@ -221,10 +221,14 @@ def main():
     else:
         out = os.path.join(os.path.dirname(clips[0][1]), "final.mp4")
     out = os.path.abspath(out)
-    os.makedirs(os.path.dirname(out), exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+    except OSError as e:
+        sys.exit("cannot write to %s: %s" % (os.path.dirname(out).replace(os.sep, "/"), e))
 
     print("target %dx%d @ %dfps, h264/yuv420p, aac 48k, ratio %s" % (W, H, FPS, ratio))
     tmp = tempfile.mkdtemp(prefix="stitch-")
+    work = None   # the cut is rendered here, next to `out`; see below
     normalised, total, clip_audio, failed_captions = [], 0.0, [], False
     try:
         for sid, path, item in clips:
@@ -281,6 +285,20 @@ def main():
         if r.returncode != 0:
             sys.exit("concat failed:\n%s" % r.stderr.strip())
 
+        # The cut is rendered into a temp file next to `out` and renamed to `out` only after
+        # every check passes, so a failed check leaves no final.mp4 and never replaces an
+        # earlier good one. It is made here, not earlier, to keep the window in which a hard
+        # kill could strand it as small as possible. mkstemp makes it 0600; give it the
+        # permissions a plain file would get, because the rename carries them to `out`.
+        try:
+            fd, work = tempfile.mkstemp(prefix=".stitch-", suffix=".mp4", dir=os.path.dirname(out))
+            os.close(fd)
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(work, 0o666 & ~umask)
+        except OSError as e:
+            sys.exit("cannot write to %s: %s" % (os.path.dirname(out).replace(os.sep, "/"), e))
+
         burned = False
         source, requested = captions_source(a.captions, stitch, jobdir, root, resolve)
         why = None
@@ -302,17 +320,28 @@ def main():
             else:
                 r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", joined,
                          "-vf", caption_filter(beats, W, H, font, tmp), "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-                         "-c:a", "copy", out], cwd=tmp)
+                         "-c:a", "copy", work], cwd=tmp)
                 if r.returncode == 0 and not re.search(r"drawtext|error", r.stderr, re.I):
                     burned = True
                 else:
                     why = "drawtext failed:\n%s" % r.stderr.strip()[:400]
         if not burned:
-            shutil.copyfile(joined, out)
+            shutil.copyfile(joined, work)
 
-        final = probe(out) or {}
-        if any(clip_audio) and final and not final.get("audio"):
+        final = probe(work) or {}
+        if any(clip_audio) and not final:
+            sys.exit("ffprobe could not read the finished cut, so its audio could not be checked")
+        if any(clip_audio) and not final.get("audio"):
             sys.exit("the cut has no audio track although %d clip(s) carry one" % sum(clip_audio))
+        # On Windows a scanner or thumbnailer can hold the fresh file for a moment.
+        for attempt in range(5):
+            try:
+                os.replace(work, out)
+                break
+            except OSError as e:
+                if attempt == 4:
+                    sys.exit("could not write %s: %s" % (out.replace(os.sep, "/"), e))
+                time.sleep(0.2)
         print("wrote %s  %sx%s  %.2fs  (%d clip(s), sources total %.2fs, clip audio kept from %d, captions %s)" % (
             out.replace(os.sep, "/"), final.get("width"), final.get("height"),
             final.get("duration", 0.0), len(clips), total, sum(clip_audio), "burned" if burned else "none"))
@@ -323,6 +352,11 @@ def main():
             failed_captions = True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        if work:
+            try:
+                os.remove(work)
+            except OSError:
+                pass
     if failed_captions:
         sys.exit(4)
 

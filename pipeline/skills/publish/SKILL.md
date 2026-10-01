@@ -16,7 +16,12 @@ user-invocable: false
 
 ## Inputs
 
-`route.json` (`gates`), `approvals/*.json`, every `drafts/D*/post.md` with its front matter `media` list, the files under `media/`, `campaign/` for paid jobs, `workspace.json` (accounts, timezone), and `platform-rules/{platform}.md` (the `manual_posting_checklist` array in the json block).
+`route.json` (`gates`), `approvals/*.json`, every `drafts/D*/post.md` with its front matter `media` list, the files under `media/`, `campaign/` for paid jobs, `workspace.json` (accounts), and `platform-rules/{platform}.md` (the `manual_posting_checklist` array in the json block).
+
+The schedule was settled at intake, so use `schedule.publishAt` as approved.
+The build in step 2 writes the time zone, in `schedule.csv` and the README, when the time has no UTC offset: the job's zone, else the brand's.
+When neither is known, the README says plainly that the posting time has no time zone.
+Never edit it by hand, since the manifest hashes those files, and never ask about a time zone at this step.
 
 ## Steps
 
@@ -56,12 +61,9 @@ user-invocable: false
 5. Never claim something was published. v1 delivers a package; the human publishes.
 6. TikTok and Instagram captions are not clickable: the checklist tells the human where the link actually goes.
 
-## The MCP tool contract
-
-For backend integration, read `docs/publishing-backend.md`.
-Routine handoff needs no publishing tool.
-
 ## Output contract
+
+For backend integration, read `docs/publishing-backend.md`; routine handoff needs no publishing tool.
 
 `handoff/` contains `README.md`, `manifest.json`, `schedule.csv`, and per-platform copy and media.
 Verified delivery reaches `COMPLETE` and has a production usage receipt.
@@ -76,9 +78,5 @@ Does not approve, does not edit drafts, does not post, does not create or mutate
 | Failure | Fix |
 |---|---|
 | Building the package with a stale approval | `check-approval.js` first; re-send and re-ask |
-| Fixing a typo while packaging | Back to the draft and the gate |
 | Media referenced by a draft but missing on disk | Stop and name it; the script refuses |
-| Leaving the package on disk without sending it | Send `README.md` and the media |
-| Saying the post is published | v1 hands off; the human publishes |
-| Dropping the disclosure from the delivered text | It travels with the post |
 | Recording the publish time without a zone | Every timestamp carries its zone |

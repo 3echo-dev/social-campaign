@@ -15,6 +15,9 @@
 const fs = require('fs');
 const path = require('path');
 
+const profiles = require('./lib-brand-profile.js');
+const noBrand = require('./lib-no-brand.js');
+
 const CONFIG_DIR = '.social-pipeline';
 const CONFIG_FILE = 'config.json';
 
@@ -338,10 +341,21 @@ function createStorage(target, options = {}) {
   };
 }
 
+// The brand's own zone: one a person set, else the one its target market implies. Null when
+// neither gives one (work with no brand, or a market spanning several zones).
+function brandZone(brand, argv) {
+  const config = workspaceConfig(brand, argv) || {};
+  if (noBrand.isGeneral({ slug: brand, config })) return profiles.brandTimeZone(config, { targetMarket: 'unknown' }).timeZone;
+  let profile = null;
+  try { profile = profiles.read(wsDir(brand, argv)); } catch { profile = null; }
+  return profiles.brandTimeZone(config, profile).timeZone;
+}
+
 // Stamps were written in whatever zone the process ran in, so a Manila workspace recorded
-// its approvals in UTC. Format in the workspace's own zone instead.
+// its approvals in UTC. Format in the brand's own zone instead, and in the machine's only when
+// the brand has none.
 function now(brand, argv, date = new Date()) {
-  const tz = (workspaceConfig(brand, argv) || {}).timezone;
+  const tz = brand ? brandZone(brand, argv) : null;
   const pad = n => String(n).padStart(2, '0');
   if (!tz) {
     const off = -date.getTimezoneOffset(), s = off < 0 ? '-' : '+';

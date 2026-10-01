@@ -34,8 +34,9 @@ export function plainWordsProblem(value) {
   return null;
 }
 
-function questionsDirectory(root) {
+function questionsDirectory(root, { create = true } = {}) {
   const dir = join(root, '.social-pipeline', 'board', 'questions');
+  if (!create && !existsSync(dir)) return null;
   mkdirSync(dir, { recursive: true });
   const rel = relative(realpathSync(root), realpathSync(dir));
   if (rel.startsWith('..') || /^[a-z]:/i.test(rel)) throw new Error('Question storage is outside the workspace.');
@@ -70,9 +71,10 @@ export function readQuestion({ root, questionId }) {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch { throw new Error(NOT_FOUND); }
 }
 
-export function listQuestions({ root, jobId = null, status = null } = {}) {
+export function listQuestions({ root, jobId = null, status = null, readOnly = false } = {}) {
   if (status !== null && status !== undefined && !QUESTION_STATUSES.includes(status)) throw new Error('Status must be open, answered or withdrawn.');
-  const dir = questionsDirectory(root);
+  const dir = questionsDirectory(root, { create: !readOnly });
+  if (!dir) return [];
   const questions = [];
   for (const name of readdirSync(dir)) {
     if (!/^q-[0-9a-f]{12}\.json$/.test(name)) continue;

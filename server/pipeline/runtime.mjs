@@ -584,6 +584,10 @@ function brandRecord(root, brandDir) {
   const readyForJobs = onboarding.status === 'complete' && kitStatus !== 'pending';
   const voice = brandVoiceRuntime.voiceComplete(profile);
   const general = isGeneralBrand({ slug, config });
+  // A time zone a person set wins; otherwise it follows the target market. Null means the step
+  // that needs a time zone has to ask: nothing here assumes one.
+  // Work with no brand has no target market to follow.
+  const zone = brandProfileRuntime.brandTimeZone(config, general ? { targetMarket: 'unknown' } : profile);
   return {
     id: config.brandId || config.id || `brand-${shortHash(`${root}:${slug}`)}`,
     brandId: config.brandId || config.id || null,
@@ -591,7 +595,8 @@ function brandRecord(root, brandDir) {
     general,
     name: general ? noBrandRuntime.NAME : config.name || slug,
     status: config.status || 'active',
-    timezone: config.timezone || null,
+    timezone: zone.timeZone,
+    timezoneSource: zone.source,
     ownerUserId: config.ownerUserId || null,
     ownerEmail: config.ownerEmail || null,
     onboardingStatus: onboarding.status,
@@ -662,7 +667,11 @@ function brandTemplate(slug, name, options = {}) {
     status: 'active',
     onboarding: { status: 'required' },
     ownershipStatus: options.ownerUserId ? 'bound' : 'unbound',
-    timezone: options.timezone || 'Asia/Manila',
+    // Stays unset unless a person gives one. The brand's zone follows its target market, which
+    // is not known yet at creation (see brandTimeZone in lib-brand-profile.js).
+    timezone: options.timezone || null,
+    // Marks a zone a person chose, so it is never mistaken for the pre-0.7.5 Asia/Manila default.
+    ...(options.timezone ? { timezoneSource: 'set' } : {}),
     approver: options.approver || null,
     ownerUserId: options.ownerUserId || null,
     ownerEmail: options.ownerEmail || null,
@@ -1169,16 +1178,32 @@ function pipelineScript(name) {
   return join(PIPELINE_ROOT, 'scripts', name);
 }
 
-function runPipelineScript(name, args, root) {
-  const result = spawnSync(process.execPath, [pipelineScript(name), ...args], {
+// A busy or slow machine can take a while to start a script, so the limit is generous.
+const PIPELINE_SCRIPT_TIMEOUT_MS = 120000;
+
+// Scripts safe to run again after a timeout: they only read, or overwrite one deterministic --out file (route-job.js records state unless --no-record, so only that form).
+const REPEATABLE_SCRIPTS = Object.freeze({
+  'new-job-guard.js': () => true,
+  'route-job.js': (args) => args.includes('--no-record'),
+});
+
+// `spawn` is injectable so a test can stand in for the child process.
+export function runPipelineScript(name, args, root, spawn = spawnSync) {
+  const run = () => spawn(process.execPath, [pipelineScript(name), ...args], {
     cwd: root,
     env: { ...process.env, SOCIAL_PIPELINE_ROOT: root },
     encoding: 'utf8',
     shell: false,
     windowsHide: true,
-    timeout: 30000,
+    timeout: PIPELINE_SCRIPT_TIMEOUT_MS,
   });
-  if (result.error) throw new Error(`${name} failed to start: ${result.error.message}`);
+  let result = run();
+  const repeatable = REPEATABLE_SCRIPTS[name]?.(args) === true;
+  if (repeatable && result.error && result.error.code === 'ETIMEDOUT') result = run();
+  if (result.error) {
+    if (result.error.code === 'ETIMEDOUT') throw new Error(`${name} did not finish in time${repeatable ? ', even after a second try' : ''}. The computer may be busy; try again in a moment.`);
+    throw new Error(`${name} failed to start: ${result.error.message}`);
+  }
   return {
     status: result.status,
     stdout: toText(result.stdout),
@@ -1796,10 +1821,25 @@ function stampedPhotoName(extension) {
  * updateJobIntake's does; the plain MCP tool omits it.
  */
 export function attachProductPhoto(options = {}) {
+  return attachPhoto(options, '');
+}
+
+/**
+ * The website finder's own entry: a photo read from the brand's official website is recorded as
+ * such, and is the brand's. It takes the page address as an argument, not an option, and no tool
+ * or board request calls it, so a caller cannot claim it through attachProductPhoto's options.
+ */
+export function attachOfficialProductPhoto(options = {}, officialSourceUrl = '') {
+  const url = toText(officialSourceUrl).trim();
+  if (!url) throw new Error('An official website photo needs the address it was read from.');
+  return attachPhoto(options, url);
+}
+
+function attachPhoto(options, officialSourceUrl) {
   const { root } = assertLocalWorkspace(options.root);
   const { brand, jobId, dir } = resolveJobRef(root, options);
-  const source = toText(options.source).trim() || 'uploaded';
-  if (!PHOTO_SOURCES.has(source)) throw new Error('Say where the photo came from: uploaded, found-online or made.');
+  const source = officialSourceUrl ? 'official-website' : toText(options.source).trim() || 'uploaded';
+  if (!officialSourceUrl && !PHOTO_SOURCES.has(source)) throw new Error('Say where the photo came from: uploaded, found-online or made.');
   const filePath = toText(options.path).trim();
   let buffer;
   if (filePath) {
@@ -1845,7 +1885,23 @@ export function attachProductPhoto(options = {}) {
     const currentJob = readJson(jobFile, null);
     if (!currentJob || typeof currentJob !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
     const nextJob = jsonClone(currentJob);
-    nextJob.productAsset = { path: relativePath, source, ownedByBrand: source !== 'found-online', licence: PHOTO_LICENCE[source] };
+    // A picture of a person or character that someone uploaded is not assumed to be the brand's
+    // to use (C5, as for any import); the person can say it is with ownedByBrand: true. A product
+    // photo the person supplied, or one made for the brand, is the brand's. Found online never is.
+    const uploadedCharacter = source === 'uploaded' && nextJob.subject === 'character';
+    const ownedByBrand = typeof options.ownedByBrand === 'boolean'
+      ? options.ownedByBrand && source !== 'found-online'
+      : source !== 'found-online' && !uploadedCharacter;
+    nextJob.productAsset = {
+      path: relativePath,
+      source,
+      ...(officialSourceUrl ? { sourceUrl: officialSourceUrl } : {}),
+      ownedByBrand,
+      licence: officialSourceUrl ? "from the brand's official website"
+        : uploadedCharacter && !ownedByBrand ? 'supplied for this job, rights not confirmed'
+        : uploadedCharacter ? 'supplied by the brand, rights confirmed by the person'
+        : PHOTO_LICENCE[source],
+    };
     nextJob.updatedAt = now();
     try {
       writeJsonAtomic(jobFile, nextJob);
@@ -1953,7 +2009,7 @@ function stageOfGate(gate, workflowId = null) {
 }
 
 function priceFacts(dir) {
-  const empty = { saved: false, quote: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false };
+  const empty = { saved: false, quote: false, referencePriced: false, referenceApproved: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false };
   if (!dir) return empty;
   const job = { dir };
   const saved = facts.readQuote(job);
@@ -1962,11 +2018,17 @@ function priceFacts(dir) {
   const forQuote = quote ? facts.listPriceApprovals(job).filter((entry) => entry.approval.scope !== facts.TRANSCRIPTION_SCOPE && entry.approval.quoteSha === quote.sha256) : [];
   const last = forQuote.length ? forQuote[forQuote.length - 1] : null;
   const current = last && last.approval.decision === 'approved' ? last : null;
+  // A saved price of reference pictures alone: no shipped media in it, but it was priced and may have been approved.
+  const referenceQuote = !quote && saved && saved.quote.items.some((item) => item && facts.isReferenceItem(item)) ? saved : null;
+  const referenceApprovals = referenceQuote ? facts.listPriceApprovals(job).filter((entry) => entry.approval.scope !== facts.TRANSCRIPTION_SCOPE && entry.approval.quoteSha === referenceQuote.sha256) : [];
+  const referenceLast = referenceApprovals.length ? referenceApprovals[referenceApprovals.length - 1] : null;
   const made = facts.readRecords(job).some((record) => record.type === 'create' && shipped(record));
   const items = made ? facts.landingReport(job).items.filter((item) => !facts.isReferenceItem(item.key)) : [];
   return {
     saved: Boolean(saved),
     quote: Boolean(quote),
+    referencePriced: Boolean(referenceQuote),
+    referenceApproved: Boolean(referenceLast && referenceLast.approval.decision === 'approved'),
     current,
     changesAsked: Boolean(last && !current),
     made,
@@ -2033,23 +2095,42 @@ function namesOf(gates) {
 function deriveStages(stages, state, planRows, { dir = null, decisions = [], workflowId = null } = {}) {
   const referenceOnly = Boolean(dir) && facts.referenceArtOnly({ dir });
   const priced = priceFacts(dir);
-  const price = referenceOnly ? { saved: false, quote: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false } : priced;
+  const price = referenceOnly ? { saved: false, quote: false, referencePriced: false, referenceApproved: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false } : priced;
   const sample = referenceOnly ? { current: null } : sampleFacts(dir);
   const decided = decidedGates(state, decisions, price, sample);
   const gates = planGates(planRows);
   if (statesRuntime.gateOf(state)) gates.add(statesRuntime.gateOf(state));
   const held = new Set(['blocked', 'cancelled']);
   const currentIndex = stages.findIndex((stage) => stage.id === stagesRuntime.forState(state, workflowId)?.stage);
+  const making = stages.find((stage) => stage.id === 'making-the-images-and-video');
+  const pastMaking = Boolean(making) && (making.status === 'complete' || making.status === 'done');
   for (const [index, stage] of stages.entries()) {
     if (!held.has(stage.status)) {
       if (stage.id === 'pricing-the-media' && price.quote) stage.status = price.changesAsked ? 'running' : 'complete';
       if (stage.id === 'your-approval-of-the-price' && price.quote) stage.status = price.current ? 'complete' : price.changesAsked ? 'pending' : 'waiting';
+      // No saved quote means nothing was priced. While the job has not got past the making stage,
+      // a pricing stage the state merely walked by reads pending, not done. Once the job is past
+      // making (or finished) with still no quote, nothing in it needed paying for (supplied media,
+      // a cut-and-stitch job, a migrated job), so the stages are complete and say so.
+      if ((stage.id === 'pricing-the-media' || stage.id === 'your-approval-of-the-price') && !price.quote && (stage.status === 'complete' || stage.status === 'done')) {
+        if (!pastMaking) stage.status = 'pending';
+        else if (priced.referencePriced) {
+          // Only reference pictures were priced: say so, and show whether that price was approved.
+          if (stage.id === 'pricing-the-media') stage.note = 'Only reference pictures were priced.';
+          else {
+            // Approved, or never approved because the job moved on without those pictures (the person
+            // supplied one instead): either way the stage is over, and says which.
+            stage.status = 'complete';
+            if (!priced.referenceApproved) stage.note = 'Reference pictures were not needed.';
+          }
+        } else stage.note = 'Nothing needed pricing.';
+      }
       if (stage.id === 'making-the-images-and-video' && price.made) {
         stage.status = price.landedAll ? 'complete' : price.inFlight || price.current ? 'running' : 'pending';
       }
       if (stage.status === 'done') stage.status = 'complete';
     }
-    if (referenceOnly && stage.id === 'pricing-the-media' && priced.saved && !held.has(stage.status)) stage.note = 'Reference pictures only so far.';
+    if (referenceOnly && !pastMaking && stage.id === 'pricing-the-media' && priced.saved && !held.has(stage.status)) stage.note = 'Reference pictures only so far.';
     const stageGates = stage.id === 'your-approval-of-the-price' ? ['price']
       : stage.id === 'making-the-images-and-video' ? ['sample']
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
@@ -2243,6 +2324,9 @@ export function readJobSnapshot(options = {}) {
       brandId: brand.id,
       slug: brand.slug,
       name: brand.name,
+      // The posting time zone: null means ask the person, never assume one.
+      timezone: brand.timezone,
+      timezoneSource: brand.timezoneSource,
     },
     project: {
       jobId,

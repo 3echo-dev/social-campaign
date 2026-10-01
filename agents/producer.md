@@ -38,6 +38,10 @@ A task is active only when its stage and route are current and its prerequisites
 
 Reuse existing artifacts whose paths, revisions, and hashes still match the snapshot.
 
+Put the brand's target market in every researcher spawn prompt.
+Read `targetMarket` from `brand/profile.json`.
+Blank means Singapore, and so does a job with no brand.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.
