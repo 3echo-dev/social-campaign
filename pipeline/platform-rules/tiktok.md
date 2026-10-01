@@ -1,7 +1,7 @@
 # TikTok - platform rules (manual posting)
 
 Owner file for every TikTok limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. v1 does not publish through any API or Postiz; the Content Posting API figures below are cited only because they are TikTok's own documented ceilings, not because we call the API.
-Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** marketingskills (MIT) · **[VERIFY]** not confirmed first-party.
+Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** third-party methodology (see THIRD_PARTY_NOTICES.md) · **[VERIFY]** not confirmed first-party.
 
 ```json
 {
@@ -27,12 +27,12 @@ Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** marketingsk
   ],
   "sources": {
     "caption.max_chars": "SOURCED: https://developers.tiktok.com/docs/en/content-posting-api-reference-direct-post - \"2200 in UTF-16 runes\" (checked 2026-09-02)",
-    "caption.visible_cutoff_chars": "HOUSE DEFAULT: marketingskills practitioner figure, unverified (checked 2026-09-02) [VERIFY]",
-    "hashtags": "HOUSE DEFAULT: marketingskills practitioner figure, no separate TikTok hashtag-count cap found - bounded by the 2200-char caption field, unverified (checked 2026-09-02) [VERIFY]",
+    "caption.visible_cutoff_chars": "HOUSE DEFAULT: third-party methodology, practitioner figure, unverified (checked 2026-09-02) [VERIFY]",
+    "hashtags": "HOUSE DEFAULT: third-party methodology, practitioner figure, no separate TikTok hashtag-count cap found - bounded by the 2200-char caption field, unverified (checked 2026-09-02) [VERIFY]",
     "media.carousel_max_items": "SOURCED: https://developers.tiktok.com/doc/content-posting-api-reference-photo-post - photo array holds up to 35 items (checked 2026-09-02)",
     "video.max_seconds": "HOUSE DEFAULT: widely reported 60-minute ceiling for pre-recorded uploads (10 minutes for in-app recording), no TikTok help-center page independently fetched, unverified (checked 2026-09-02) [VERIFY]",
-    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: marketingskills short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
-    "video.safe_zone_px": "HOUSE DEFAULT: marketingskills short-form-video-specs (MIT), unverified (checked 2026-09-02)",
+    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: third-party methodology, short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
+    "video.safe_zone_px": "HOUSE DEFAULT: third-party methodology, short-form video specs, unverified (checked 2026-09-02)",
     "image.min_width_px": "HOUSE DEFAULT: 1080x1920 slideshow canvas commonly cited, unverified (checked 2026-09-02) [VERIFY]",
     "disclosure.ai_generated_video_label_required": "SOURCED: https://www.tiktok.com/creator-academy/en/article/ai-generated-content-label - toggle in More options on the post screen (checked 2026-09-02)",
     "disclosure.paid_partnership_label_available": "SOURCED: https://developers.tiktok.com/docs/en/content-posting-api-reference-direct-post - brand_content_toggle / brand_organic_toggle field descriptions confirm the in-app Branded content disclosure exists (checked 2026-09-02)",

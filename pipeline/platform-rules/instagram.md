@@ -1,7 +1,7 @@
 # Instagram - platform rules (manual posting)
 
 Owner file for every Instagram limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. v1 does not publish through any API or Postiz.
-Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** marketingskills (MIT) · **[VERIFY]** not confirmed first-party.
+Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** third-party methodology (see THIRD_PARTY_NOTICES.md) · **[VERIFY]** not confirmed first-party.
 
 ```json
 {
@@ -28,13 +28,13 @@ Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** market
   ],
   "sources": {
     "caption.max_chars": "SOURCED: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/ - \"Maximum 2200 characters, 30 hashtags, and 20 @ tags\" (checked 2026-09-02)",
-    "caption.visible_cutoff_chars": "HOUSE DEFAULT: marketingskills practitioner figure, unverified (checked 2026-09-02) [VERIFY]",
+    "caption.visible_cutoff_chars": "HOUSE DEFAULT: third-party methodology, practitioner figure, unverified (checked 2026-09-02) [VERIFY]",
     "hashtags.max": "SOURCED: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/ - API field cap of 30 (checked 2026-09-02)",
     "hashtags.recommended_min/recommended_max": "SOURCED: Instagram's own @Creators account and Adam Mosseri announced (2025-12-19) that feed posts and reels count only the first 5 hashtags toward reach, extras are ignored; reported via https://www.techbuzz.ai/articles/instagram-caps-hashtags-at-five-to-combat-spam (checked 2026-09-02) [VERIFY primary Instagram post not independently fetched]",
     "media.carousel_max_items": "SOURCED: https://developers.facebook.com/docs/instagram-platform/content-publishing/ - carousels are limited to 10 items (checked 2026-09-02)",
     "video.max_seconds": "HOUSE DEFAULT: widely reported reels ceiling of 180s, no Meta help-center page independently fetched, unverified (checked 2026-09-02) [VERIFY]",
-    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: marketingskills short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
-    "video.safe_zone_px": "HOUSE DEFAULT: marketingskills short-form-video-specs (MIT), unverified (checked 2026-09-02)",
+    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: third-party methodology, short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
+    "video.safe_zone_px": "HOUSE DEFAULT: third-party methodology, short-form video specs, unverified (checked 2026-09-02)",
     "image.min_width_px": "HOUSE DEFAULT: Meta ad-spec baseline commonly cited, unverified (checked 2026-09-02) [VERIFY]",
     "disclosure.ai_generated_video_label_required": "SOURCED: https://transparency.meta.com/governance/tracking-impact/labeling-ai-content (checked 2026-09-02)",
     "disclosure.paid_partnership_label_available": "SOURCED: https://help.instagram.com/1372533836927082 (checked 2026-09-02)",

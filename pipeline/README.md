@@ -461,6 +461,7 @@ Well inside the limits: 200 MB and 5,000 files per package, against 165 files an
 ## Provenance
 
 The skills are adapted from open-source repositories rather than written from nothing.
+The licenses and copyright notices for that material are in `THIRD_PARTY_NOTICES.md` at the plugin root.
 `docs/sources/` records where each number in an instruction came from,
 so a figure that looks wrong can be traced rather than argued about.
 

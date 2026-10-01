@@ -1,7 +1,7 @@
 # Facebook Page - platform rules (manual posting)
 
 Owner file for every Facebook limit and option a human needs when posting by hand from a hand-off package. Checked 2026-09-02. v1 does not publish through any API or Postiz.
-Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** marketingskills (MIT) · **[VERIFY]** not confirmed first-party.
+Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** third-party methodology (see THIRD_PARTY_NOTICES.md) · **[VERIFY]** not confirmed first-party.
 
 ```json
 {
@@ -28,11 +28,11 @@ Legend: **[META]** Meta help centre / developers.facebook.com · **[MS]** market
   "sources": {
     "caption.max_chars": "HOUSE DEFAULT: widely cited legacy Facebook status-box ceiling, no confirming Meta developer page found (checked 2026-09-02) [VERIFY]",
     "caption.visible_cutoff_chars": "HOUSE DEFAULT: third-party character-counter tooling (typecount.com), unverified (checked 2026-09-02) [VERIFY]",
-    "caption.ideal_min_chars/ideal_max_chars": "HOUSE DEFAULT: marketingskills engagement guidance, unverified (checked 2026-09-02)",
-    "hashtags": "HOUSE DEFAULT: marketingskills - Facebook is not a hashtag platform, unverified (checked 2026-09-02) [VERIFY]",
+    "caption.ideal_min_chars/ideal_max_chars": "HOUSE DEFAULT: third-party methodology, engagement guidance, unverified (checked 2026-09-02)",
+    "hashtags": "HOUSE DEFAULT: third-party methodology - Facebook is not a hashtag platform, unverified (checked 2026-09-02) [VERIFY]",
     "media.carousel_max_items": "HOUSE DEFAULT: no documented organic cap found for native multi-photo posts, unverified (checked 2026-09-02) [VERIFY]",
-    "video.safe_zone_px": "HOUSE DEFAULT: marketingskills short-form-video-specs (MIT), unverified (checked 2026-09-02)",
-    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: marketingskills short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
+    "video.safe_zone_px": "HOUSE DEFAULT: third-party methodology, short-form video specs, unverified (checked 2026-09-02)",
+    "video.recommended_min_seconds/recommended_max_seconds": "HOUSE DEFAULT: third-party methodology, short-form engagement guidance, unverified (checked 2026-09-02) [VERIFY]",
     "image.min_width_px": "HOUSE DEFAULT: Meta ad-spec baseline commonly cited, unverified (checked 2026-09-02) [VERIFY]",
     "disclosure.ai_generated_video_label_required": "SOURCED: https://transparency.meta.com/governance/tracking-impact/labeling-ai-content (checked 2026-09-02)",
     "disclosure.paid_partnership_label_available": "SOURCED: https://help.instagram.com/1372533836927082 - branded content rules span Instagram and Facebook (checked 2026-09-02)",

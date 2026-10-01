@@ -21,7 +21,6 @@ supabase/.temp/
 # local only, never pushed
 /AGENTS.md
 /CLAUDE.md
-/THIRD_PARTY_NOTICES.md
 /HANDOFF.md
 /test-output.txt
 /.claude/
