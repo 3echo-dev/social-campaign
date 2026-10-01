@@ -24,7 +24,6 @@ import { parseJson, toJsonColumn } from '../lib/json.mjs';
 import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { registerFile } from '../media/ingest.mjs';
-import { thumbsRoot } from '../media/frames.mjs';
 import { generatedDir } from '../generation/edit.mjs';
 import { attachDerivedAsset, readManifest } from '../generation/manifest.mjs';
 import { resolveTarget } from './media.mjs';
@@ -331,7 +330,7 @@ export const editingTools = [
       required: ['campaign_id', 'edl_id', 'preset'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const db = workspace.requireDb();
       const root = workspace.requireRoot();
       const campaignId = String(args.campaign_id);
@@ -347,7 +346,6 @@ export const editingTools = [
         return { ok: false, blocked: 'attempt_cap', attempt: attempts.total, retries_left: 0, message: ATTEMPT_CAP_MESSAGE };
       }
       const sources = sourcesOrThrow(workspace, edl);
-      if (workspace.root) ui.thumbsRoot = thumbsRoot(workspace.root);
 
       const folder = generatedDir(root, campaignId);
       const name = `edit-v${version}-${preset}-${newId().slice(-6).toLowerCase()}`;

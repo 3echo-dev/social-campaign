@@ -1,10 +1,10 @@
 /**
  * Secrets hygiene.
  *
- * A publishing provider API key, once typed into the pane's connect screen, must
- * never leave the server: not into a tool result Claude reads, not into the pane
- * state file, not into the reviews table, not into an event payload, and not into
- * any log line. This module is the one place that rule is enforced.
+ * A publishing provider API key must never leave the server: not into a tool
+ * result Claude reads, not into a state file, not into the reviews table, not
+ * into an event payload, and not into any log line. This module is the one place
+ * that rule is enforced.
  *
  * redact() is a deep-copying scrubber: any object key on this list, anywhere in a
  * value, however deeply nested, comes back as the string "[redacted]". It is safe

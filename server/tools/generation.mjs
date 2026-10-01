@@ -24,7 +24,6 @@ import { integrationsPath } from '../lib/paths.mjs';
 import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { currentArtifact } from '../artifacts/refs.mjs';
 import { registerFile } from '../media/ingest.mjs';
-import { thumbsRoot } from '../media/frames.mjs';
 import { buildEstimate } from '../generation/estimate.mjs';
 import {
   attachDerivedAsset,
@@ -41,7 +40,6 @@ import {
   toPackage,
 } from '../generation/manifest.mjs';
 import { probeFile } from '../media/probe.mjs';
-import { showConnections, THREEECHO_CONNECTOR_GUIDANCE } from './connections.mjs';
 import { chunkSegments, renderSubtitles, toPackageCues, toSrt, toVtt } from '../generation/subtitles.mjs';
 import {
   applyOperations,
@@ -53,22 +51,22 @@ import {
   PLATFORM_PRESETS,
 } from '../generation/edit.mjs';
 
-/** What the user is shown when 3echo is needed and not connected, registry section 10. */
+/** Plain guidance for adding the 3Echo Studio connector. */
+export const THREEECHO_CONNECTOR_GUIDANCE = 'Add 3Echo Studio in claude.ai: Settings, Connectors, then come back and say done.';
+
+/** Plain guidance for adding the ElevenLabs connector. */
+const ELEVENLABS_CONNECTOR_GUIDANCE = 'Add ElevenLabs in claude.ai: Settings, Connectors, then come back and say done.';
+
+/** What the user is told when 3echo is needed and not connected, registry section 10. */
 const THREEECHO_CONNECT_COPY = {
   provider: 'threeecho_studio',
-  title: 'Image & Video Generation',
-  providerLabel: '3echo Studio',
   reason: '3echo Studio needs to be connected before I can generate the approved creative.',
-  connectLabel: 'Connect 3echo Studio',
 };
 
 /** The same, for voice and audio. */
 const ELEVENLABS_CONNECT_COPY = {
   provider: 'elevenlabs',
-  title: 'Voice & Audio',
-  providerLabel: 'ElevenLabs',
   reason: 'ElevenLabs needs to be connected before I can make the voiceover or audio for this.',
-  connectLabel: 'Connect ElevenLabs',
 };
 
 /** Which items need which connection. */
@@ -152,8 +150,8 @@ function recordIntegrationProbe(workspace, input) {
  * Reconstruct the canonical generation request for an item straight from the media
  * plan that was actually priced, for a caller that passed only a bare `prompt`. The
  * field defaults mirror `estimate.mjs`'s `itemRequestHash` exactly, so the hash this
- * produces is the same hash `cost_estimate` already computed and `review_cost`
- * already approved.
+ * produces is the same hash `cost_estimate` already computed and the cost
+ * approval already covered.
  *
  * Every priced field (everything but the prompt) comes from the plan, not from the
  * caller, on purpose: a bare `prompt` is the legacy, unbound shorthand, so those
@@ -199,19 +197,13 @@ function isConnected(workspace, provider) {
 }
 
 /**
- * Show the canonical Connections page focused on one provider.
- * @param {import('../ui/server.mjs').UiServer} ui
- * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{provider: string, title: string, providerLabel: string, reason: string, connectLabel: string}} copy
+ * Tell the caller which connector is missing and how to add it.
+ * @param {{provider: string, reason: string}} copy
+ * @param {string} guidance
  * @param {string} [reason]
  */
-async function showConnect(ui, workspace, copy, reason) {
-  const focus = copy.provider === 'elevenlabs' ? 'voice_audio' : 'image_video';
-  const screen = await showConnections(ui, workspace, {
-    focus,
-    reason: reason ?? copy.reason,
-  });
-  return { url: ui.url(), screenId: screen.screenId, provider: copy.provider, message: reason ?? copy.reason };
+function connectBlock(copy, guidance, reason) {
+  return { provider: copy.provider, message: `${reason ?? copy.reason} ${guidance}` };
 }
 
 /**
@@ -425,7 +417,7 @@ export const generationTools = [
           description:
             'The exact request about to be submitted: { tool, model?, prompt, reference_asset_ids?, ' +
             'duration_s?, resolution?, ratio?, generate_audio?, count? }. Its hash must match the item that ' +
-            'was priced at cost_estimate and approved at review_cost.',
+            'was priced at cost_estimate and approved: the item must match its priced and approved request.',
         },
         prompt: {
           type: 'string',
@@ -438,7 +430,7 @@ export const generationTools = [
       required: ['campaign_id', 'item_id'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const db = workspace.requireDb();
       const campaignId = String(args.campaign_id);
       const itemId = String(args.item_id);
@@ -447,11 +439,14 @@ export const generationTools = [
 
       const provider = PROVIDER_FOR_KIND[item.kind];
       if (provider && !isConnected(workspace, provider)) {
-        const copy = provider === 'elevenlabs' ? ELEVENLABS_CONNECT_COPY : THREEECHO_CONNECT_COPY;
+        const isVoice = provider === 'elevenlabs';
         return {
           ok: false,
-          blocked: provider === 'elevenlabs' ? 'connect_elevenlabs' : 'connect_threeecho',
-          ...(await showConnect(ui, workspace, copy)),
+          blocked: isVoice ? 'connect_elevenlabs' : 'connect_threeecho',
+          ...connectBlock(
+            isVoice ? ELEVENLABS_CONNECT_COPY : THREEECHO_CONNECT_COPY,
+            isVoice ? ELEVENLABS_CONNECTOR_GUIDANCE : THREEECHO_CONNECTOR_GUIDANCE,
+          ),
         };
       }
 
@@ -542,14 +537,13 @@ export const generationTools = [
       required: ['campaign_id', 'item_id'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const db = workspace.requireDb();
       const root = workspace.requireRoot();
       const campaignId = String(args.campaign_id);
       const itemId = String(args.item_id);
       const manifest = requireManifest(db, campaignId);
       const item = requireItem(manifest, itemId);
-      if (workspace.root) ui.thumbsRoot = thumbsRoot(workspace.root);
 
       const folder = generatedDir(root, campaignId);
       const filePath = optionalString(args.file_path);
@@ -744,7 +738,7 @@ export const generationTools = [
       required: ['campaign_id', 'asset_id'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const db = workspace.requireDb();
       const root = workspace.requireRoot();
       const campaignId = String(args.campaign_id);
@@ -754,7 +748,6 @@ export const generationTools = [
       if (!subtitlePackage) {
         throw new InvalidInputError('This video has no subtitles yet.', { fix: 'Build the subtitles first.' });
       }
-      if (workspace.root) ui.thumbsRoot = thumbsRoot(workspace.root);
 
       const folder = generatedDir(root, campaignId);
       const outPath = derivedPath(folder, asset.path, 'subtitled', '.mp4');
@@ -817,7 +810,7 @@ export const generationTools = [
       required: ['campaign_id', 'asset_id', 'platforms'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const db = workspace.requireDb();
       const root = workspace.requireRoot();
       const campaignId = String(args.campaign_id);
@@ -831,7 +824,6 @@ export const generationTools = [
           });
         }
       }
-      if (workspace.root) ui.thumbsRoot = thumbsRoot(workspace.root);
 
       const operations = /** @type {any} */ (args.operations) ?? {};
       const folder = generatedDir(root, campaignId);
@@ -912,14 +904,22 @@ export const generationTools = [
   defineTool({
     name: 'integration_connect_elevenlabs_open',
     description:
-      'Show the canonical Connections page focused on ElevenLabs when a voiceover, sound or transcript is next ' +
-      'and the provider is not connected. Wait with ui_wait; the action contract is check_again, fix_in_chat, skip or continue_home.',
+      "ElevenLabs connects only through the person's own claude.ai connector, so this opens no sign-in of " +
+      'its own. Call it when a voiceover, sound or transcript is next and ElevenLabs is not present yet; it ' +
+      'returns plain guidance for adding the connector in claude.ai and coming back once it is added.',
     inputSchema: {
       type: 'object',
       properties: { reason: { type: 'string' } },
       additionalProperties: false,
     },
-    handler: async (args, { ui, workspace }) => showConnect(ui, workspace, ELEVENLABS_CONNECT_COPY, optionalString(args.reason) ?? undefined),
+    handler: (args) => {
+      const reason = optionalString(args.reason);
+      return {
+        ok: true,
+        provider: 'elevenlabs',
+        message: reason ? `${reason} ${ELEVENLABS_CONNECTOR_GUIDANCE}` : ELEVENLABS_CONNECTOR_GUIDANCE,
+      };
+    },
   }),
 
   defineTool({

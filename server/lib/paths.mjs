@@ -119,16 +119,6 @@ export function toolFailuresLogPath(root) {
 }
 
 /**
- * Where the pane's current screen and busy state are persisted, so a restarted
- * server can restore the same screen instead of showing "Nothing to show yet".
- * @param {string} root
- * @returns {string}
- */
-export function paneStatePath(root) {
-  return join(workspaceDir(root), 'pane-state.json');
-}
-
-/**
  * Expand the shell style shorthands a user may type into a folder field.
  * Handles a leading tilde and the Windows %USERPROFILE% form. Returns an absolute
  * normalized path.
@@ -152,7 +142,7 @@ export function expandUserPath(input) {
 }
 
 /**
- * Guard against a static file request escaping the ui folder.
+ * Whether a candidate path stays inside a root folder.
  * @param {string} rootDir
  * @param {string} candidate
  * @returns {boolean}

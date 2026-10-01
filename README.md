@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.7.5.
+Current version: 0.7.6.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -364,7 +364,6 @@ An unfinished brief stays a draft under its own job, so continue it rather than 
 |---|---|
 | **Claude Code CLI and Desktop** | `/plugin marketplace add`, then `/plugin install`, or `--plugin-dir` for a checkout |
 | **Board** | A private claude.ai artifact bound to your workspace. It needs the host to offer the Artifact, ArtifactData and comments tools. If it does not, setup stops and says which one is missing |
-| **Local browser board** | Available only when you explicitly ask for it. It is never a fallback inside setup |
 
 ### The board
 

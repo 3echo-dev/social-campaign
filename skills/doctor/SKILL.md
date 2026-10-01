@@ -40,7 +40,6 @@ It returns `checks`, each with an `id`, a `name`, a `status` of ok, warn or fail
 It also returns `repairable`, the list of check ids that can be fixed automatically, and a one line `summary`.
 
 Board problems are handled through `board-setup`.
-The doctor never opens a pane itself.
 
 ### 2. Report it as a checklist
 
@@ -53,7 +52,7 @@ FAIL  Workspace folders   2 folders are missing: campaigns, generated.
       Fix: I can put them back for you.
 WARN  FFmpeg              Not found on this computer.
       Fix: open Terminal and run: winget install Gyan.FFmpeg
-OK    Social Campaign pane
+OK    Board
 ```
 
 Then give the one line `summary` the tool returned.
@@ -74,14 +73,15 @@ What the repairs actually do, in case the user asks:
 - `workspace_folders` creates folders that went missing. Nothing already there is touched.
 - `storage` finishes an interrupted storage update, after copying everything aside first.
 - `storage_integrity` puts back the most recent good copy of the user's work and keeps the damaged one.
-- `pane_port` forgets a saved window number that no longer works.
 - `research_helper` sets up the optional research helper, or finishes a half done one. It returns straight away and carries on in the background, so tell the user it is running and that nothing waits on it, rather than waiting for it yourself.
+- `legacy_publishing_credentials` removes an old publishing key that an earlier version stored on this computer.
+  The key still works at the provider, so tell the person to revoke it there.
 - Pipeline workspace, `board` and `board_requests` are not repaired automatically.
   Each one's `fix` says what to do next: rerun setup, or ask Claude to publish, refresh or reconcile.
 
 Anything not on that list is for the user to do, using the `fix` text.
-FFmpeg, yt-dlp and the provider connections are always in that group.
-The research helper is the one exception: it is repairable, because Social Campaign installs it itself when asked.
+FFmpeg, yt-dlp and connecting a provider are always in that group.
+The research helper and the old publishing key are the exceptions: they are repairable, because Social Campaign installs the helper itself when asked and removes the stored key itself.
 Never install or update them yourself: read the user the one line from `fix` and let them run it.
 
 ### 4. Say what it means for the user
@@ -104,8 +104,6 @@ Translate, do not dump.
 - Board requests waiting on reconciliation mean an earlier board action did not confirm cleanly.
   Nothing is lost while they wait.
   Offer to have Claude reconcile them.
-
-If the user reaches the doctor by pressing "Ask chat to connect it" or "Ask chat to fix it" on the Connectors screen or home, rather than by asking for a check, follow "Ask chat to connect it" in `skills/social-campaign/SKILL.md` instead of running the full checklist here: for a provider it is a narrower, one-item fix, and for the research helper it is exactly step 3's `doctor_repair({ check: "research_helper" })`, run directly rather than after a full report.
 
 ### 5. Offer the next step
 

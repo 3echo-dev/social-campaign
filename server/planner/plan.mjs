@@ -55,10 +55,7 @@ const DEGRADED = 'degraded';
  * How a user would name each family of capabilities, and which connection clears it.
  * `provider` is null when there is nothing to sign in to: social and ad research,
  * transcripts and the local video tools are measured, not connected.
- * `fallback` is set for a family the job can finish without: publishing falls back to a
- * package the user posts by hand (spec 32 and 36), so a missing publisher is a note
- * with an optional connect action, never a blocker.
- * @type {Array<{pattern: RegExp, provider: string|null, label: string, plural: boolean, degraded: string, fallback?: string}>}
+ * @type {Array<{pattern: RegExp, provider: string|null, label: string, plural: boolean, degraded: string}>}
  */
 const CAPABILITY_FAMILIES = [
   {
@@ -74,15 +71,6 @@ const CAPABILITY_FAMILIES = [
     label: 'voice and audio',
     plural: false,
     degraded: 'Voice and audio had a problem on its last try, so each result will be checked before you see it.',
-  },
-  {
-    pattern: /^publishing\./,
-    provider: 'publisher',
-    label: 'publishing',
-    plural: false,
-    degraded: 'Publishing had a problem on its last try, so the finished posts are also saved as a package you can post by hand.',
-    fallback:
-      'No publishing service is connected, so the finished posts will be saved as a ready to post package you can upload yourself. Connect one if you want them scheduled for you.',
   },
   {
     pattern: /^ads\./,
@@ -126,25 +114,23 @@ const CAPABILITY_FAMILIES = [
 /**
  * The family a capability belongs to, or null for one with no user facing family.
  * @param {string} capability
- * @returns {{provider: string|null, label: string, plural: boolean, degraded: string, fallback: string|null}|null}
+ * @returns {{provider: string|null, label: string, plural: boolean, degraded: string}|null}
  */
 export function capabilityFamily(capability) {
   const found = CAPABILITY_FAMILIES.find((family) => family.pattern.test(capability));
   return found
-    ? { provider: found.provider, label: found.label, plural: found.plural, degraded: found.degraded, fallback: found.fallback ?? null }
+    ? { provider: found.provider, label: found.label, plural: found.plural, degraded: found.degraded }
     : null;
 }
 
 /**
  * Whether a capability in this state still lets its stage run: ready, not needed,
- * degraded, or missing with a fallback the job can finish on.
- * @param {string} capability
+ * or degraded.
  * @param {string} state
  * @returns {boolean}
  */
-function runsAnyway(capability, state) {
-  if (FINE_STATES.has(state) || state === DEGRADED) return true;
-  return Boolean(capabilityFamily(capability)?.fallback);
+function runsAnyway(state) {
+  return FINE_STATES.has(state) || state === DEGRADED;
 }
 
 /** Stages that only read supplied creative, used by the "point at it first" rule. */
@@ -229,9 +215,6 @@ export function blockerAction(capability, state) {
   const verb = family && family.plural ? 'are' : 'is';
   if (state === DEGRADED) {
     return { provider, action: family ? family.degraded : 'This part of the job is working with reduced coverage.' };
-  }
-  if (family?.fallback) {
-    return { provider, action: family.fallback };
   }
   if (state === 'unavailable') {
     return { provider, action: `${capitalize(label)} ${verb} not available on this computer yet.` };
@@ -362,15 +345,12 @@ export function buildJobPlan(input) {
     if (stage.status !== 'required') continue;
     const states = raw[index].capabilities.map((name) => [name, capabilities[name] ?? 'ready']);
     for (const [name, state] of states) needed.set(name, state);
-    const missing = states.filter(([name, state]) => !runsAnyway(name, state)).map(([name]) => name);
+    const missing = states.filter(([name, state]) => !runsAnyway(state)).map(([name]) => name);
     const reduced = states.filter(([, state]) => state === DEGRADED).map(([name]) => name);
-    const fallback = states.filter(([name, state]) => !FINE_STATES.has(state) && state !== DEGRADED && runsAnyway(name, state)).map(([name]) => name);
-    for (const name of [...reduced, ...fallback]) degradedStages.set(name, [...(degradedStages.get(name) ?? []), stage.stage]);
+    for (const name of reduced) degradedStages.set(name, [...(degradedStages.get(name) ?? []), stage.stage]);
     if (missing.length > 0) {
       stage.status = 'waiting';
       stage.reason = `Waiting for ${friendlyList(missing)} to be ready.`;
-    } else if (fallback.length > 0) {
-      stage.reason = 'Runs without a publishing service: the finished posts are saved as a package to post by hand.';
     } else if (reduced.length > 0) {
       stage.reason = `Runs with reduced coverage for ${friendlyList(reduced)}; each finding says where it came from and how sure it is.`;
     }
@@ -378,7 +358,7 @@ export function buildJobPlan(input) {
 
   const requiredCapabilities = [...needed.keys()].sort();
   const blockers = requiredCapabilities
-    .filter((name) => !runsAnyway(name, needed.get(name) ?? 'ready'))
+    .filter((name) => !runsAnyway(needed.get(name) ?? 'ready'))
     .map((name) => {
       const state = needed.get(name) ?? 'not_connected';
       const { provider, action } = blockerAction(name, state);

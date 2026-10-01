@@ -23,7 +23,7 @@ Progress updates are one short line in plain words, for example "Researching SK-
 Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/review/SKILL.md.
 
 
-Present the current revision and exact artifact hashes through the local board.
+Present the current revision and exact artifact hashes through the board.
 Call pipeline_review_present with the exact files and write every entry of its returned `documents`, so the board shows the decision from the job document.
 
 Before presenting the final post for its content approval, run the label and brand-mark check exactly as `skills/brand-check/SKILL.md` describes, for every image and video the post names.

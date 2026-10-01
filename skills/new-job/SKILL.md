@@ -22,7 +22,7 @@ Reuse the supplied snapshot and do not call pipeline_job_create for that job.
 
 If the route is pending, show its questions and resolve the same job with pipeline_intake_update using the displayed revision.
 
-If the caller supplied a local board request rather than a snapshot, use pipeline_board_request_apply and continue from its returned snapshot.
+If the caller supplied a board request rather than a snapshot, use pipeline_board_request_apply and continue from its returned snapshot.
 
 ## 1. Confirm the workspace and brand
 
@@ -48,11 +48,10 @@ Do not create a job before the brand gate is complete for a kind that needs one.
 Collect the title and the user's brief.
 
 When the person asked for a job and has not written the brief yet, point them to the board's New job form (the "+ New job" button) and wait for its `create_job` request; never ask for the brief as a question in the Inbox.
-Ask for the title and brief in chat only when no board is available.
 
 Preserve the user's wording in the brief.
 
-Ask for missing information through the board or the current intake screen.
+Ask for missing information through the board.
 
 Accept a text-only brief.
 
@@ -75,7 +74,7 @@ A retry with the same request ID must use the same brand and title.
 
 ### Extract the brief before creating the job
 
-Before calling pipeline_job_create, whichever screen the brief came from, the board's New job form or chat, read the brief and the brand's saved profile and extract every field they state or clearly imply.
+Before calling pipeline_job_create, wherever the brief came from, the board's New job form or chat, read the brief and the brand's saved profile and extract every field they state or clearly imply.
 
 This step runs on its own, with no confirmation question first: do not ask the user whether to go ahead, just fill in what the brief and the brand profile already answer.
 
@@ -208,15 +207,13 @@ Call pipeline_job_read after an import because the import response does not carr
 
 ## 5. Show the job
 
-Call pipeline_board_open in its default artifact mode only when there is no bound board URL for the current workspace.
+Call pipeline_board_open only when there is no bound board URL for the current workspace.
 
 If it returns needs_publication, invoke board-setup before presenting the job.
 
 Open the returned artifact URL through the host artifact view and reuse it while the workspace stays selected.
 
 Use board-sync and artifact requests or comments for continuation and intake actions.
-
-Call pipeline_board_open with mode local and use pipeline_board_wait only when the user explicitly chooses the local browser board.
 
 The board project contains the title, current state, revision, ownershipStatus, stages, artifacts, decisions, metrics, blockers, and nextAction.
 

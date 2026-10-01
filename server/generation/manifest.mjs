@@ -12,7 +12,7 @@
  * through artifact_save, because a plan that has not reached the cost gate yet has
  * no cost_approval_id and the GeneratedMediaPackage contract requires one. That is
  * the point of that contract: a package that cannot name its approval is not a
- * finished package. toPackage() is the projection review_media and artifact_save
+ * finished package. toPackage() is the projection the media approval and artifact_save
  * are handed once the cost gate has passed.
  *
  * The one rule this module exists to enforce:
@@ -25,10 +25,11 @@
  */
 
 import { newId, nowIso } from '../lib/ids.mjs';
-import { parseJson, toJsonColumn } from '../lib/json.mjs';
+import { toJsonColumn } from '../lib/json.mjs';
 import { InvalidInputError, UserFacingError } from '../lib/errors.mjs';
 import { heroFirstCheck, idempotencyKey, ledgerFor, requestHash } from './cost-gate.mjs';
 import { currentArtifact } from '../artifacts/refs.mjs';
+import { approvalStatus } from '../review/approvals.mjs';
 
 /** The artifact kind the working manifest is stored under. */
 export const MANIFEST_KIND = 'GenerationManifest';
@@ -48,8 +49,9 @@ export const NEEDS_COST_APPROVAL_MESSAGE =
   'I need your approval on the cost before I can make this. Nothing has been spent.';
 
 /**
- * The newest approved review of a kind, mirroring the approval_check tool so that
- * generation can guard itself without depending on Claude having called it.
+ * The id of the review that currently authorises a kind, by the same newest-wins
+ * rule as the approval_check tool, so that generation can guard itself without
+ * depending on Claude having called it.
  * @param {any} db
  * @param {string} campaignId
  * @param {string} kind
@@ -61,28 +63,21 @@ export function approvedReviewId(db, campaignId, kind) {
 }
 
 /**
- * The newest approved review of a kind, with the moment it was resolved, so a caller
- * can tell whether the approval predates a later estimate.
+ * The review that currently authorises a kind, with the moment it was resolved, so a
+ * caller can tell whether the approval predates a later estimate. Same rule as
+ * approvalStatus (server/review/approvals.mjs): only the newest resolved review
+ * counts, so a rejection or a request for changes after an approval takes it back,
+ * and an approval whose bound artifacts have moved on no longer holds.
  * @param {any} db
  * @param {string} campaignId
  * @param {string} kind
  * @returns {{id: string, resolved_at: string|null}|null}
  */
 export function approvedReview(db, campaignId, kind) {
-  const rows = db
-    .prepare(
-      "SELECT id, decision, resolved_at FROM reviews WHERE campaign_id = ? AND kind = ? AND status = 'resolved' " +
-        'ORDER BY resolved_at DESC, id DESC',
-    )
-    .all(campaignId, kind);
-  for (const row of rows) {
-    const decision = parseJson(String(row.decision ?? '{}'), {});
-    const action = /** @type {any} */ (decision).action;
-    if (action === 'approve' || action === 'approve_all' || action === 'combine') {
-      return { id: String(row.id), resolved_at: row.resolved_at ? String(row.resolved_at) : null };
-    }
-  }
-  return null;
+  const status = approvalStatus(db, campaignId, kind);
+  if (!status.approved || !status.review_id) return null;
+  const row = db.prepare('SELECT resolved_at FROM reviews WHERE id = ?').get(status.review_id);
+  return { id: status.review_id, resolved_at: row?.resolved_at ? String(row.resolved_at) : null };
 }
 
 /**
@@ -534,7 +529,7 @@ export function setReviewState(db, campaignId, itemId, state) {
  * this, a hero clip approved at review stayed "generated" and the rest of its batch
  * could never begin, and the package kept showing every asset as pending.
  *
- * `approve` and `reject` name one asset by `asset_id` (what the pane sends) or one
+ * `approve` and `reject` name one asset by `asset_id` (what the board sends) or one
  * item by `item_id`; `approve_all` approves every item that has been made. Regenerate
  * and edit prompt change nothing here: generation_regenerate owns that, inside the
  * approved headroom. A decision on media that is not in the plan changes nothing.
@@ -641,7 +636,7 @@ export function summarize(items) {
 
 /**
  * Project the manifest onto the GeneratedMediaPackage contract, which is what
- * review_media is shown and what artifact_save will accept.
+ * the media approval is shown and what artifact_save will accept.
  * @param {any} manifest
  * @returns {any}
  */

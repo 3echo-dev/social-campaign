@@ -11,7 +11,6 @@
 
 import { ToolRegistry } from '../mcp/registry.mjs';
 import { workspaceTools } from './workspace.mjs';
-import { uiTools } from './ui.mjs';
 import { setupTools } from './setup.mjs';
 import { diagnosticsTools } from './diagnostics.mjs';
 import { eventTools } from './events.mjs';
@@ -21,8 +20,6 @@ import { memoryTools } from './memory.mjs';
 import { mediaTools } from './media.mjs';
 import { assetTools } from './assets.mjs';
 import { generationTools } from './generation.mjs';
-import { publishingTools } from './publishing.mjs';
-import { publishingResolutionTools } from './publishing-resolution.mjs';
 import { strategyTools } from './strategy.mjs';
 import { methodTools } from './methods.mjs';
 import { socialTools } from './social.mjs';
@@ -42,7 +39,6 @@ import { questionTools } from './questions.mjs';
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
   workspaceTools,
-  uiTools,
   setupTools,
   diagnosticsTools,
   eventTools,
@@ -52,8 +48,6 @@ export const ALL_TOOL_MODULES = [
   mediaTools,
   assetTools,
   generationTools,
-  publishingTools,
-  publishingResolutionTools,
   strategyTools,
   methodTools,
   socialTools,

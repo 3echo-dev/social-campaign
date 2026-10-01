@@ -28,7 +28,7 @@ Reuse the current workspace status supplied by the entry flow.
 Call `workspace_status` only when that context is missing or the selected workspace changed.
 An artifact URL already known for that workspace is reused as an address, never as proof that its source is current.
 
-For normal setup, call `pipeline_board_open` with its default artifact mode whenever no result from this same turn already carries a `sourceStatus` for that URL, and select exactly one lifecycle mode from its result.
+For normal setup, call `pipeline_board_open` whenever no result from this same turn already carries a `sourceStatus` for that URL, and select exactly one lifecycle mode from its result.
 Before publishing anything, apply social-campaign/SKILL.md's "Check for a finished update before anything else" to the first successful `pipeline_board_open`, `pipeline_status` or `pipeline_board_source` result this session sees, unless the caller already checked one: when it finds the server superseded, deliver its one plain line and publish, refresh and bind nothing with this server.
 A board already existing for this workspace is not the end by itself: its `sourceStatus` decides the mode, not the mere presence of a URL.
 For a `bound` result with `sourceStatus: current`, keep the existing URL and use its returned `documents` for the document write below.
@@ -64,7 +64,6 @@ Tell the user, in one plain sentence, that clicking a button on the board sends 
 Use the final summary from the shared document write, its `setupStep`, `brands` and `jobs`, for the readiness route.
 The board requires brand onboarding before the first job.
 If artifact publishing or database capabilities are unavailable, explain the unavailable host capability and stop the setup flow.
-The explicit local board remains outside this lifecycle and requires a separate user-selected local mode.
 
 The artifact contains a workspace metadata projection.
 Local paths, source file bytes, prompts, and credentials are not included by default.

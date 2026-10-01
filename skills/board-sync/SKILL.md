@@ -12,6 +12,8 @@ Studio database sync is parked and is independent of this relay.
 
 Before any of this, if this session's first successful `pipeline_status`, `pipeline_board_open` or `pipeline_board_source` result found the server superseded under social-campaign/SKILL.md's "Check for a finished update before anything else", stop here: do not read or republish the board with this server, since it would publish an old page. That was already reported to the person; nothing in this skill repeats it.
 
+When the artifact tools are not available, stop and name the missing host tool.
+
 At the start of every new session or resume, and whenever a reminder says to re-arm the board's wake-up, read the bound board with the Artifact tool's `read` action, then republish that same page to the same `url` right away, even when nothing else changed.
 Reading it that way records its long id as the alias automatically; there is no separate call to make for that.
 When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source`, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action, publish the returned `filePath` to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
@@ -212,7 +214,6 @@ Never delete a document marked `requested` or `needs_reconciliation`.
 Never clear a whole collection blindly; list or query first and delete only the documents that match these rules.
 
 Session start above already re-arms the wake-up by reading and republishing the board; this housekeeping runs afterward, not as a separate wake-up proof.
-When the artifact is not available, continue only through the explicit local browser mode selected by the user.
 
 ## Present a review
 

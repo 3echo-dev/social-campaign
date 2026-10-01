@@ -400,7 +400,7 @@ const LIST = [
     inputs: ['approval:final'],
     output: 'PublishingResult',
     terminal: true,
-    capabilities: ['publishing.schedule', 'publishing.publish'],
+    capabilities: [],
   }),
 ];
 

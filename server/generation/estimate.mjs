@@ -1,7 +1,7 @@
 /**
  * The cost estimate behind the cost gate.
  *
- * buildEstimate turns a media plan into the itemized estimate review_cost shows.
+ * buildEstimate turns a media plan into the itemized estimate the cost approval shows.
  * It is pure: no database, no network, no clock. Everything it needs about price
  * arrives in the plan, because only Claude can ask a provider for a quote.
  *
@@ -229,7 +229,7 @@ function headroomItem(headroom) {
 }
 
 /**
- * Turn a media plan into the estimate review_cost expects.
+ * Turn a media plan into the estimate the cost approval expects.
  * @param {{media_plan: {items?: MediaPlanItem[], regeneration_headroom?: any}}} options
  * @returns {{items: any[], total_credits: number, needs_quote: string[], complete: boolean, provider_billed_characters: number, regeneration_headroom: {images: number, videos: number}|null, currency_note: string, summary: string}}
  */

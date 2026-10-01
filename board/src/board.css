@@ -62,6 +62,7 @@ small,.muted{color:var(--faint)}
 .brand-copy strong{font-size:19px;line-height:1;white-space:nowrap}
 .brand-copy small{font-size:13px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .header-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.header-actions{display:flex;align-items:center;gap:14px;flex:none}
 .connection{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:12px}
 .connection i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);transition:background-color 200ms ease,box-shadow 200ms ease}
 .connection .ready{background:var(--go);box-shadow:0 0 0 3px rgba(137,230,165,.16)}
@@ -85,7 +86,9 @@ small,.muted{color:var(--faint)}
 .notice>span:first-child{overflow-wrap:anywhere}
 .notice-actions{display:flex;align-items:center;gap:8px;flex:none}
 .notice.error{border-color:rgba(255,138,133,.45);color:var(--hold)}
-.slate-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.slate-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
+.slate-head .toolbar{margin-left:auto;flex-wrap:wrap}
+.slate-head .toolbar button{white-space:nowrap}
 .slate-head h1{margin:0;font-size:24px;line-height:1.12;letter-spacing:-.02em}
 .brand-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--line)}
 .brand-strip .section-head{width:100%;margin:0}
@@ -193,7 +196,8 @@ small,.muted{color:var(--faint)}
 /* min-height keeps this row the same height whether or not the field carries an Edit
    button, so two fields side by side in the grid line up: label row, then textarea, both
    matching top to bottom. */
-.context-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px}
+.context-field-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;min-height:24px}
+.context-field-head>button:last-child{margin-left:auto}
 .context-field-head>label,.context-field-head>.kit-label{color:var(--dim);font-size:12px;font-weight:700}
 /* Fixed height instead of growing with content (8 lines at the board's 14px/1.5 body font,
    the closest whole line count to 200px once the 7px padding and 1px border are counted:
@@ -236,10 +240,6 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .drawer-body pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);font:13px/1.7 var(--sans)}
 .drawer-body img,.drawer-body video{max-width:100%;border-radius:var(--radius)}
 .drawer-body audio{max-width:100%}
-.dialog{position:fixed;z-index:22;left:50%;top:50%;width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;transform:translate(-50%,-50%);padding:23px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius-lg);box-shadow:var(--shadow)}
-.dialog h2{margin-bottom:17px}
-.dialog .toolbar{justify-content:flex-end;margin-top:4px}
-.form{display:grid;gap:15px}
 .breadcrumb{display:flex;align-items:center;gap:8px;color:var(--faint);font-size:12px}
 .breadcrumb a{color:var(--dim);text-decoration:none}
 .breadcrumb a:hover{text-decoration:underline}
@@ -257,7 +257,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 #notice:not(:empty){position:fixed;z-index:40;left:50%;bottom:23px;max-width:calc(100% - 30px);padding:12px 18px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);border-radius:9px;box-shadow:0 10px 35px rgba(0,0,0,.4);color:var(--paper)}
 @media(max-width:950px){.layout{grid-template-columns:minmax(0,1fr)}.layout>.inbox{order:-1}}
 @media(max-width:720px){body{padding-inline:16px}.form-grid,.channel-grid,.kit-grid{grid-template-columns:1fr}.page-head{align-items:flex-start;flex-direction:column}.start-card{padding:16px}.start-head{gap:10px}.connector-card{flex-direction:column;align-items:stretch}.connector-card-actions{width:100%}.connector-card-actions button{flex:1;min-height:40px}}
-@media(max-width:520px){.top{align-items:flex-start}.header-tools{width:100%;justify-content:space-between}.brand{gap:9px}.brand img{height:23px}.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:1/-1}.stats.two .stat:last-child{grid-column:auto}.project-grid{grid-template-columns:1fr}}
+@media(max-width:520px){.top{align-items:flex-start}.header-tools{width:100%;justify-content:flex-end;gap:8px 10px}.header-actions{gap:10px;margin-left:auto}.connection{flex:1 1 140px;min-width:140px}.connection i{flex:none}.connection b{white-space:nowrap}.connection small{min-width:0;overflow-wrap:anywhere}.brand{gap:9px}.brand img{height:23px}.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:1/-1}.stats.two .stat:last-child{grid-column:auto}.project-grid{grid-template-columns:1fr}}
 /* "Logo, colours and fonts": one more section of the onboarding card, not a panel inside
    it. Same ground as the card, the same divider as the card footer (a --line top border)
    with --gap under it, a plain h3 and muted helper line, then the Logo, Colours and Fonts
@@ -299,6 +299,8 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-color-row{grid-template-columns:32px minmax(88px,1fr) minmax(0,124px) 32px}
 .kit-font-row{grid-template-columns:minmax(88px,1fr) minmax(0,124px) 32px 32px}
 @container (max-width:520px){.kit-font-row{grid-template-columns:minmax(0,1fr) 32px 32px}.kit-font-row>input{grid-column:1/-1}}
+/* On a narrow card the role select would shrink below the width of "Background", so it drops under the hex field and the remove button stays on the swatch row. */
+@container (max-width:290px){.kit-color-row{grid-template-columns:32px minmax(0,1fr) 32px}.kit-color-row>select{grid-column:2;grid-row:2}.kit-color-row>.kit-icon-button{grid-column:3;grid-row:1}}
 .kit-swatch{width:32px;height:32px;min-height:0;padding:0;border-radius:50%;background:none;cursor:pointer}
 .kit-swatch::-webkit-color-swatch-wrapper{padding:0}
 .kit-swatch::-webkit-color-swatch{border:0;border-radius:50%}

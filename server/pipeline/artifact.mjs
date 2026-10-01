@@ -373,9 +373,9 @@ function writeBufferAtomic(filePath, bytes) {
 }
 
 /**
- * Write the includePreviews:false board projection atomically to a
- * content-addressed file and report it by hash and size. The projection
- * itself never contains this file path.
+ * Write the board projection atomically to a content-addressed file and
+ * report it by hash and size. The projection itself never contains this
+ * file path.
  *
  * @param {{root:string, snapshot:object}} options
  */
@@ -535,30 +535,16 @@ export function sourceArtifactBoard({ root }) {
 }
 
 /**
- * Open a board in the requested mode. Artifact mode is the default and never
- * falls back to a localhost URL when publication has not happened.
+ * Open the board. Artifact mode is the only mode and never falls back to a
+ * localhost URL when publication has not happened.
  *
- * @param {{root:string, mode?:'artifact'|'local', uiUrl?:string|null}} options
+ * @param {{root:string, mode?:'artifact', sourceBuilder?: typeof buildBoard}} options
  */
-export function openArtifactBoard({ root, mode = 'artifact', uiUrl = null, sourceBuilder = buildBoard }) {
+export function openArtifactBoard({ root, mode = 'artifact', sourceBuilder = buildBoard }) {
   const workspace = workspaceFor(root);
-  if (mode !== 'artifact' && mode !== 'local') throw new Error('Board mode must be artifact or local.');
+  if (mode !== 'artifact') throw new Error('Board mode must be artifact.');
   const snapshot = boardSnapshot({ root });
   const projection = writeBoardDocuments({ root, snapshot });
-  if (mode === 'local') {
-    if (typeof uiUrl !== 'string' || !uiUrl) throw new Error('The local board is not available in this session.');
-    return {
-      mode: 'local',
-      status: 'ready',
-      url: new URL('/board', uiUrl).href,
-      ...boardSummary(snapshot),
-      workspaceId: workspace.workspaceId,
-      projectionFile: projection.projectionFile,
-      projectionSha256: projection.projectionSha256,
-      projectionBytes: projection.projectionBytes,
-      documents: projection.documents,
-    };
-  }
   const binding = readArtifactBinding({ root, workspaceId: workspace.workspaceId });
   if (!binding) {
     return {

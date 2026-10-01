@@ -34,9 +34,6 @@ const LIVE_WORKSPACE_TOOLS = new Set([
   'workspace_activate',
   'workspace_forget',
   'workspace_initialize',
-  'ui_open_url',
-  'setup_open',
-  'setup_wait',
   'capabilities_status',
   'doctor',
   'doctor_repair',
@@ -65,7 +62,7 @@ export class StdioTransport {
     this.buffer = '';
     /** @type {(() => void)|null} */
     this.onClose = null;
-    /** @type {Map<string, {controller: AbortController, cancelled: boolean, name: string, workspace: any, requestId: string, heartbeatTimer: NodeJS.Timeout|null}>} */
+    /** @type {Map<string, {controller: AbortController, cancelled: boolean}>} */
     this.inFlight = new Map();
   }
 
@@ -138,12 +135,10 @@ export class StdioTransport {
       return;
     }
     const requestKey = !isNotification ? String(message.id) : null;
-    const flight = requestKey
-      ? { controller: new AbortController(), cancelled: false, name: String(message.method), workspace: null, requestId: requestKey, heartbeatTimer: null }
-      : null;
+    const flight = requestKey ? { controller: new AbortController(), cancelled: false } : null;
     if (requestKey && flight) this.inFlight.set(requestKey, flight);
     try {
-      const result = await this.#handle(message.method, message.params ?? {}, flight?.controller.signal, flight);
+      const result = await this.#handle(message.method, message.params ?? {}, flight?.controller.signal);
       if (result === undefined) return; // notification, nothing to answer
       if (!isNotification && !flight?.cancelled) this.#send({ jsonrpc: JSON_RPC, id: message.id, result });
     } catch (error) {
@@ -162,7 +157,6 @@ export class StdioTransport {
       }
     } finally {
       if (requestKey && this.inFlight.get(requestKey) === flight) this.inFlight.delete(requestKey);
-      if (flight) this.#clearActivity(flight);
     }
   }
 
@@ -171,7 +165,7 @@ export class StdioTransport {
    * @param {any} params
    * @returns {Promise<unknown>} undefined means the message was a notification.
    */
-  async #handle(method, params, signal, flight = null) {
+  async #handle(method, params, signal) {
     switch (method) {
       case 'initialize':
         return this.#initialize(params);
@@ -193,7 +187,7 @@ export class StdioTransport {
       case 'tools/list':
         return { tools: this.registry.list() };
       case 'tools/call':
-        return await this.#callTool(params, signal, flight);
+        return await this.#callTool(params, signal);
       default: {
         if (method.startsWith('notifications/')) return undefined;
         const error = new Error(`Method not found: ${method}`);
@@ -204,7 +198,7 @@ export class StdioTransport {
     }
   }
 
-  /** Abort tool calls when the MCP peer disconnects, releasing any pane leases. */
+  /** Abort tool calls when the MCP peer disconnects. */
   #cancelFlights() {
     for (const flight of this.inFlight.values()) {
       flight.cancelled = true;
@@ -239,26 +233,26 @@ export class StdioTransport {
    * @param {any} params
    */
   async callToolForTests(params) {
-    return this.#callTool(params, undefined, null);
+    return this.#callTool(params, undefined);
   }
 
-  async #callTool(params, signal, flight = null) {
+  async #callTool(params, signal) {
     const name = typeof params?.name === 'string' ? params.name : '';
     const args = params?.arguments && typeof params.arguments === 'object' ? params.arguments : {};
     const startedAt = Date.now();
     let captured = null;
-    let activityContext = null;
+    let workspaceContext = null;
     let callContext = this.context;
     try {
-      // Activity belongs to the workspace that was active when the request
+      // The call belongs to the workspace that was active when the request
       // started, including a live control request that later switches roots.
       // Control handlers still receive the mutable live workspace below.
-      activityContext = this.context.workspace?.captureContext?.() ?? null;
+      workspaceContext = this.context.workspace?.captureContext?.() ?? null;
     } catch {
-      activityContext = null;
+      workspaceContext = null;
     }
     if (!LIVE_WORKSPACE_TOOLS.has(name)) {
-      captured = activityContext;
+      captured = workspaceContext;
       // Cancellation belongs to the request even when the tool starts before a
       // workspace has been configured, or captureContext cannot open one. Keep the
       // live workspace fallback in that case while still passing the signal to the
@@ -267,26 +261,13 @@ export class StdioTransport {
     } else if (signal) {
       callContext = { ...this.context, signal };
     }
-    if (flight) {
-      flight.name = name;
-      flight.workspace = activityContext;
-    }
-    this.#setActivity(activityContext, flight, true);
-    if (flight) {
-      flight.heartbeatTimer = setInterval(() => {
-        if (!flight.cancelled) this.#setActivity(activityContext, flight, true);
-      }, 10_000);
-      if (typeof flight.heartbeatTimer.unref === 'function') flight.heartbeatTimer.unref();
-    }
     try {
       // Every handler already runs inside this try, so a synchronous throw and a
       // rejected promise land in the same catch below either way: await on a
       // function that throws synchronously rejects the surrounding async call
       // exactly like a real rejection would.
       const run = () => this.registry.call(name, args, callContext);
-      const value = this.context.ui && typeof this.context.ui.withWorkspaceContext === 'function'
-        ? await this.context.ui.withWorkspaceContext(captured, run)
-        : await run();
+      const value = await run();
       const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : { value };
       // Transport level backstop: every tool result is redacted before it is
       // serialised, whatever tool built it. This is what protects against a
@@ -309,37 +290,6 @@ export class StdioTransport {
         structuredContent,
         isError: true,
       };
-    } finally {
-      if (flight?.heartbeatTimer) clearInterval(flight.heartbeatTimer);
-      if (flight) flight.heartbeatTimer = null;
-    }
-  }
-
-  /** @param {any} captured @param {any} flight @param {boolean} active */
-  #setActivity(captured, flight, active) {
-    if (!flight) return;
-    const ui = this.context.ui;
-    if (!ui || typeof ui.setChatActivity !== 'function') return;
-    const apply = () => ui.setChatActivity(active ? { active: true, tool: flight?.name, requestId: flight?.requestId } : { active: false, requestId: flight?.requestId });
-    try {
-      if (typeof ui.withWorkspaceContext === 'function') ui.withWorkspaceContext(captured, apply);
-      else apply();
-    } catch (error) {
-      log.debug('chat activity update skipped', { error: String(error) });
-    }
-  }
-
-  /** @param {any} flight */
-  #clearActivity(flight) {
-    if (!flight) return;
-    const ui = this.context.ui;
-    if (!ui || typeof ui.setChatActivity !== 'function') return;
-    const apply = () => ui.setChatActivity({ active: false, requestId: flight.requestId });
-    try {
-      if (typeof ui.withWorkspaceContext === 'function') ui.withWorkspaceContext(flight.workspace, apply);
-      else apply();
-    } catch (error) {
-      log.debug('chat activity cleanup skipped', { error: String(error) });
     }
   }
 

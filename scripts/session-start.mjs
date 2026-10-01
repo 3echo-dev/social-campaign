@@ -18,7 +18,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { execFileSync } from 'node:child_process';
 import { delimiter, join, resolve } from 'node:path';
 
-import { databasePath, globalConfigDir } from '../server/lib/paths.mjs';
+import { databasePath, globalConfigDir, integrationsPath } from '../server/lib/paths.mjs';
+import { readJsonFile } from '../server/lib/json.mjs';
 import { ytdlpInstallCommand, ytdlpSessionHint } from '../server/lib/install-hints.mjs';
 import { ytdlpCommand } from '../server/social/backends/ytdlp.mjs';
 import { resolveActiveWorkspace } from '../server/workspace/index.mjs';
@@ -175,6 +176,18 @@ export function ffmpegHint() {
   return 'Social Campaign: video and audio need FFmpeg. To add it, install the ffmpeg package for your system.';
 }
 
+/**
+ * Whether the workspace's integrations.json still holds a publishing key (a credential
+ * reference or a plain text key) from an earlier version. Reads that one file only; no credential store is touched.
+ * @param {string} root
+ * @returns {boolean}
+ */
+export function hasLegacyPublishingKey(root) {
+  const file = readJsonFile(integrationsPath(root), {});
+  const record = file && typeof file === 'object' && file.providers && typeof file.providers === 'object' ? file.providers.publisher : null;
+  return Boolean(record) && typeof record === 'object' && Boolean(record.credential_ref || record.api_key);
+}
+
 try {
   const hookEvent = await readHookEvent();
 
@@ -199,6 +212,13 @@ try {
   } else {
     say(`Social Campaign: this folder resolves to the workspace at ${root}.`);
     for (const line of boardSessionLines(root, hookEvent.session_id)) say(line);
+  }
+
+  if (root && existsSync(root) && hasLegacyPublishingKey(root)) {
+    say(
+      'Social Campaign: an old publishing key from an earlier version is still stored on this computer. ' +
+        'Run /social-campaign:doctor to remove it.',
+    );
   }
 
   const needsFfmpeg = !checkCached('ffmpeg', 'ffmpeg', () => hasCommand('ffmpeg'))

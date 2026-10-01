@@ -12,7 +12,6 @@ import { assertLegacyExecutionAllowed } from '../pipeline/legacy-guard.mjs';
 /**
  * @typedef {object} ToolContext
  * @property {import('../workspace/index.mjs').Workspace} workspace
- * @property {import('../ui/server.mjs').UiServer} ui
  * @property {AbortSignal} [signal] request cancellation signal
  */
 

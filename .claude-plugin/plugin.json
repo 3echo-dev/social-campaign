@@ -1,8 +1,8 @@
 {
   "name": "social-campaign",
   "displayName": "Social Campaign",
-  "description": "Orchestrates social media research, strategy, creative analysis, media generation, human approval and publishing for Facebook, Instagram and TikTok. Keeps a local workspace with brand, creative and preference memory, and drives an interactive review pane for every approval gate.",
-  "version": "0.7.5",
+  "description": "Orchestrates social media research, strategy, creative analysis, media generation, human approval and publishing for Facebook, Instagram and TikTok. Keeps a local workspace with brand, creative and preference memory, and presents every approval gate on a private board.",
+  "version": "0.7.6",
   "keywords": [
     "social media",
     "campaign",

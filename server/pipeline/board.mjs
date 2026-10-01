@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, realpathSync, statSync, renameSync, watch } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, realpathSync, statSync, renameSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -41,7 +41,7 @@ function isReportKind(kind) {
 }
 const digest = value => createHash('sha256').update(value).digest('hex');
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
-const MEDIA_TYPES={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.ogg':'audio/ogg'};
+
 const PROJECTION_BUDGET_BYTES = 204800; // 200 KiB
 const PROJECTION_TOO_LARGE = 'The board has too much to show at once, so it was not updated. Remove some old jobs from this workspace, then try again.';
 
@@ -118,10 +118,9 @@ function researchSuggestedFields(profile) {
   return Object.keys(filled).filter(name => filled[name] && filled[name].suggested === true);
 }
 
-function boardBrandProfile(brand, includePreviews) {
+function boardBrandProfile(brand) {
   let profile;
   try { profile = read(join(brand.path, 'brand', 'profile.json')); } catch { return null; }
-  if (includePreviews) return { ...profile, researchSuggested: researchSuggestedFields(profile) };
   const safe = { channels: safeArtifactProfileValue(profile.channels, 'channels'), researchSuggested: researchSuggestedFields(profile) };
   for (const field of SAFE_BRAND_PROFILE_FIELDS) {
     if (profile[field] !== undefined) safe[field] = safeArtifactProfileValue(profile[field], field);
@@ -134,14 +133,8 @@ function boardBrandProfile(brand, includePreviews) {
   return safe;
 }
 
-function boardArtifact(artifact, includePreviews, job) {
-  const item = { path: artifact.path, sha256: artifact.sha256, bytes: artifact.bytes, kind: artifact.kind };
-  const mediaType = includePreviews ? MEDIA_TYPES[extname(artifact.path).toLowerCase()] : null;
-  if (mediaType) {
-    item.mimeType = mediaType;
-    item.previewUrl = '/api/board/media?' + new URLSearchParams({ brand: job.brand, jobId: job.jobId, path: artifact.path, sha256: artifact.sha256 });
-  }
-  return item;
+function boardArtifact(artifact) {
+  return { path: artifact.path, sha256: artifact.sha256, bytes: artifact.bytes, kind: artifact.kind };
 }
 
 // Intake questions the board can answer inline. The keys are the job fields
@@ -605,10 +598,6 @@ function thumbnailDirectory(root) {
   return join(root, '.social-pipeline', 'board', 'thumbs');
 }
 
-function localMediaUrl(job) {
-  return ({ path, sha256 }) => '/api/board/media?' + new URLSearchParams({ brand: job.brand, jobId: job.jobId, path, sha256 });
-}
-
 /**
  * The job documents (see job-document.mjs) for every job in the workspace, or
  * for the named jobs only. Each is under the artifact database's per-document
@@ -629,9 +618,9 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const reviewUrl = ({ sha256 }) => reviewUrlFor(root, { brand: job.brand, jobId: job.jobId, sourceSha: sha256 });
     const studioWorkspace = gate === PRICE_GATE ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
-    const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot), includePreviews: false });
+    const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot) });
     const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path }));
-    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, media: 'inline', reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace });
+    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
   });
 }
@@ -673,7 +662,7 @@ function stageSummary(stages) {
   return { done: list.filter(stage => plainObject(stage) && stage.status === 'complete').length, total: list.length, current: current?.label || null };
 }
 
-function jobDetails({ root, job, snapshot, gate, review, profile, usage, includePreviews }) {
+function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   let report = null;
   try {
     const reportInputs = join(job.path, 'report-inputs.json');
@@ -689,7 +678,7 @@ function jobDetails({ root, job, snapshot, gate, review, profile, usage, include
     usageStages: usage.stages.map(({ id, label, kind, tokens: stageTokens, elapsedMs, openSince }) => ({ id, label, kind, tokens: stageTokens, elapsedMs, openSince })),
     metrics: { recordedTokens: tokens.length ? tokens.reduce((a, b) => a + b, 0) : null, tokens: projection.tokens, coverage: { tokens: projection.coverage.tokens } },
     brandProfile: snapshot.project.brandProfile || null,
-    artifacts: snapshot.artifacts.map(item => boardArtifact(item, includePreviews, job)),
+    artifacts: snapshot.artifacts.map(item => boardArtifact(item)),
   };
 }
 
@@ -1007,7 +996,7 @@ function connectorsSnapshot(root) {
   });
 }
 
-export function boardSnapshot({ root, includePreviews = false } = {}) {
+export function boardSnapshot({ root } = {}) {
   root = rootOf(root);
   const workspace = runtime.readWorkspace({ root });
   // The raw saved profile, used only to prefill intake answers (the audience and
@@ -1015,11 +1004,10 @@ export function boardSnapshot({ root, includePreviews = false } = {}) {
   const rawProfiles = new Map();
   const studioWorkspaces = readStudioWorkspaceList(root);
   const rawBrandEntries = runtime.listBrands({ root });
-  const brandDirBySlug = new Map(rawBrandEntries.map(brand => [brand.slug, brand.path]));
   const brands = rawBrandEntries.map(brand => {
     let raw = null;
     try { raw = read(join(brand.path, 'brand', 'profile.json')); rawProfiles.set(brand.slug, raw); } catch { /* No saved profile yet. */ }
-    const profile = boardBrandProfile(brand, includePreviews);
+    const profile = boardBrandProfile(brand);
     const usage = stageMetrics.brandResearchUsage(brand.path, root);
     const kit = libBrandKit.projection(brand.path, { now: new Date() });
     const readyForJobs = Boolean(brand.readyForJobs);
@@ -1074,13 +1062,6 @@ export function boardSnapshot({ root, includePreviews = false } = {}) {
         ...(report ? {} : {generation:usage.generation}),
       },
     };
-    // The local board has no artifact database, so it reads the same job document
-    // straight from the snapshot, with media linked to the local preview route.
-    if (includePreviews) {
-      const studioWorkspace = gate === PRICE_GATE ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
-      const details = jobDetails({ root, job, snapshot, gate, review, profile: rawProfiles.get(job.brand) || null, usage, includePreviews: true });
-      project.document = buildJobDocument({ dir: job.path, root, workspaceId: workspace.workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox: jobDocumentInbox(inbox), media: 'local', previewUrl: localMediaUrl(job), studioWorkspace });
-    }
     return { project, rawEventCount: snapshot.events.length, inboxItems: inbox.items };
   });
   const projects = projectEntries.map(entry => entry.project);
@@ -1088,15 +1069,7 @@ export function boardSnapshot({ root, includePreviews = false } = {}) {
   const brandNames = new Map(runtime.listBrands({ root, includeGeneral: true }).map(brand => [brand.slug, brand.name]));
   const inbox = workspaceInbox(projectEntries.flatMap(entry => entry.inboxItems), questionsByJob.get(null) || [], brandNames);
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
-  return includePreviews ? projection : applyProjectionBudget(projection);
-}
-
-export function boardMedia({root,brand,jobId,path,sha256}) {
-  root=rootOf(root);
-  const file=artifactFile(jobDirectory(root,brand,jobId),path),mimeType=MEDIA_TYPES[extname(file).toLowerCase()];
-  if(!mimeType)throw new Error('This file type is not a media preview.');
-  if(!/^[a-f0-9]{64}$/.test(sha256 || '') || digest(readFileSync(file))!==sha256)throw new Error('This media revision changed. Refresh the board.');
-  return {file,mimeType,size:statSync(file).size};
+  return applyProjectionBudget(projection);
 }
 
 function requestsDirectory(root) {
@@ -1118,29 +1091,6 @@ export function listBoardRequests({ root }) {
     const file=join(requestsDirectory(root),name),record=read(file);
     return record.status==='requested' && existsSync(`${file}.claim`)?{...record,status:'needs_reconciliation',detail:'An earlier runner claimed this request. Inspect its local effects before retrying.'}:record;
   }).filter(item=>item.status!=='applied' && item.status!=='declined');
-}
-
-export async function waitBoardRequests({root,timeoutMs=60000,signal}) {
-  root=rootOf(root);
-  const pending=listBoardRequests({root});
-  if(pending.length)return {status:'ready',requests:pending};
-  return await new Promise((resolvePromise,reject)=>{
-    let watcher,timer,settled=false;
-    const finish=(value,error)=>{
-      if(settled)return;settled=true;clearTimeout(timer);watcher?.close();signal?.removeEventListener('abort',abort);
-      if(error)reject(error);else resolvePromise(value);
-    };
-    const abort=()=>finish({status:'cancelled',requests:[]});
-    const changed=()=>{
-      try {const requests=listBoardRequests({root});if(requests.length)finish({status:'ready',requests});}
-      catch(error){finish(null,error);}
-    };
-    watcher=watch(requestsDirectory(root),changed);
-    watcher.on('error',error=>finish(null,error));
-    timer=setTimeout(()=>finish({status:'pending',requests:[]}),Math.min(60000,Math.max(1,timeoutMs)));
-    signal?.addEventListener('abort',abort,{once:true});
-    if(signal?.aborted)abort();else changed();
-  });
 }
 
 export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evidence}) {
@@ -1260,7 +1210,7 @@ function createJobFields(args) {
 
 export function boardOperation({ root,operation,args = {},source = 'local' }) {
   root = rootOf(root);
-  if(operation==='snapshot') return boardSnapshot({root,includePreviews:source==='local'});
+  if(operation==='snapshot') return boardSnapshot({root});
   if(source!=='local') return saveBoardRequest({root,operation,args,source});
   if(operation!=='snapshot' && !REQUEST_ID.test(args.requestId || ''))throw new Error('A stable request ID is required for this action.');
   // Ownership always comes from a future authenticated Studio binding, never browser input.

@@ -2,8 +2,8 @@
  * The five phases a person sees, and the map from every internal stage name to one
  * of them.
  *
- * The pane never learns a stage name: job_plan_open and every screen that carries a
- * `phase` field build it from this module, so the mapping lives in exactly one
+ * The board never learns a stage name: every view that carries a
+ * `phase` field builds it from this module, so the mapping lives in exactly one
  * place. A stage that shows up in registry/routes.json or server/planner/plan.mjs
  * without an entry here is a bug, not a silent fallback - see
  * server/planner/phases.test.mjs, which fails the build until it is added.
@@ -95,8 +95,8 @@ export function rollUpPhaseStatus(stages) {
 /**
  * The phase a JobExecutionPlan is currently sitting at: the first phase (after
  * Intake) that is not done or skipped, or the last phase when every stage is done.
- * Used by every tool that shows a screen carrying a `phase` field, e.g. the review
- * gates, so the pane can draw the compact five dot strip without knowing a single
+ * Used by every tool that reports a `phase` field, e.g. the review
+ * gates, so the board can draw the compact five dot strip without knowing a single
  * stage name.
  * @param {any} plan
  * @returns {string}

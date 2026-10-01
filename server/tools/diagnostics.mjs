@@ -9,7 +9,7 @@
  *
  * What doctor_repair is allowed to do is deliberately small. It recreates folders,
  * finishes an interrupted storage update, rewrites the pointer file that says where
- * the workspace is, clears a stale pane port, and restores the newest good backup
+ * the workspace is, and restores the newest good backup
  * when storage is damaged. It never deletes a user's work, and a restore always
  * keeps the damaged file rather than overwriting it.
  */
@@ -29,11 +29,14 @@ import {
   backupsDir,
   databasePath,
   defaultWorkspaceRoot,
+  integrationsPath,
   workspaceConfigPath,
 } from '../lib/paths.mjs';
 import { timestampSlug } from '../lib/ids.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { log } from '../lib/log.mjs';
+import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
+import { listLegacyCredentials, purgeLegacyCredential, sweepLegacyCredentials } from '../lib/legacy-credentials.mjs';
 import { recordProjectWorkspace } from '../workspace/index.mjs';
 import { readWorkspace as readPipelineWorkspace } from '../pipeline/runtime.mjs';
 import { readArtifactBinding } from '../pipeline/artifact.mjs';
@@ -111,15 +114,15 @@ export const diagnosticsTools = [
   defineTool({
     name: 'doctor',
     description:
-      'Run the Social Campaign self check: workspace, folders, storage, pane, media tools, yt-dlp (version and ' +
+      'Run the Social Campaign self check: workspace, folders, storage, media tools, yt-dlp (version and ' +
       'whether it can imitate a browser for TikTok) and every provider ' +
       'connection. Every item comes back with a plain language fix, and the ones Social Campaign can put ' +
       'right on its own are marked repairable so doctor_repair can be offered. Also returns pluginVersion and ' +
       'updateWaiting: when updateWaiting is true, or pluginVersion is missing, this running server is a ' +
       'superseded install waiting for the session to restart onto the newer one.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: async (_args, { workspace, ui }) => {
-      const checks = await runChecks(workspace, ui);
+    handler: async (_args, { workspace }) => {
+      const checks = await runChecks(workspace);
       const failing = checks.filter((check) => check.status === 'fail').length;
       const warning = checks.filter((check) => check.status === 'warn').length;
       return {
@@ -149,13 +152,14 @@ export const diagnosticsTools = [
       properties: {
         check: {
           type: 'string',
-          description: 'The check id to repair: workspace_pointer, workspace_folders, storage, storage_integrity, pane_port or research_helper.',
+          description: 'The check id to repair: workspace_pointer, workspace_folders, storage, storage_integrity, research_helper or legacy_publishing_credentials.',
         },
       },
       required: ['check'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, context) => {
+      const { workspace } = context;
       const id = String(args.check);
       const repair = REPAIRS[id];
       if (!repair) {
@@ -163,9 +167,9 @@ export const diagnosticsTools = [
           fix: 'Run the check first and use one of the items it says can be repaired.',
         });
       }
-      const outcome = repair(workspace, ui);
+      const outcome = repair(workspace, context);
       log.info('doctor repair', { check: id, repaired: outcome.repaired });
-      const checks = await runChecks(workspace, ui);
+      const checks = await runChecks(workspace);
       return {
         check: id,
         ...outcome,
@@ -179,10 +183,9 @@ export const diagnosticsTools = [
 /**
  * Build the whole checklist.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {import('../ui/server.mjs').UiServer} ui
  * @returns {Promise<Check[]>}
  */
-async function runChecks(workspace, ui) {
+async function runChecks(workspace) {
   /** @type {Check[]} */
   const checks = [];
   const status = workspace.status();
@@ -272,21 +275,6 @@ async function runChecks(workspace, ui) {
     });
   }
 
-  const paneUrl = ui.url();
-  const savedPort = Number(/** @type {any} */ (workspace.readConfig())?.ui?.port) || 0;
-  checks.push({
-    id: 'pane_port',
-    name: 'Social Campaign pane',
-    status: paneUrl ? 'ok' : 'warn',
-    detail: paneUrl ? paneUrl : 'The window Social Campaign shows you things in is not running.',
-    fix: paneUrl
-      ? null
-      : savedPort
-        ? 'Say yes and I will forget the saved window number, then start a new Claude session.'
-        : 'Close this Claude session and start a new one.',
-    repairable: !paneUrl && savedPort > 0,
-  });
-
   const [ffmpeg, ffprobe] = await Promise.all([probeBinary('ffmpeg'), probeBinary('ffprobe')]);
   checks.push({
     id: 'ffmpeg',
@@ -307,6 +295,8 @@ async function runChecks(workspace, ui) {
 
   checks.push(await ytdlpCheck());
   checks.push(await researchHelperCheck(workspace));
+  const legacyKeys = legacyPublishingCredentialsCheck(root);
+  if (legacyKeys) checks.push(legacyKeys);
 
   const { capabilities } = await resolveCapabilities(workspace);
   for (const row of CONNECTION_ROWS) {
@@ -319,7 +309,7 @@ async function runChecks(workspace, ui) {
       fix:
         state === 'ready'
           ? null
-          : `Ask Claude to connect ${connectLabel(row)}. Only needed when a job reaches the ${row.label.toLowerCase()} step.`,
+          : `Ask Claude to connect ${row.provider}. Only needed when a job reaches the ${row.label.toLowerCase()} step.`,
       repairable: false,
     });
   }
@@ -584,16 +574,6 @@ async function researchHelperCheck(workspace) {
 }
 
 /**
- * How to name a provider in a sentence. Two of the three are products with names;
- * the publishing one is whichever service the user ends up using.
- * @param {{provider: string}} row
- * @returns {string}
- */
-function connectLabel(row) {
-  return /provider$/i.test(row.provider) ? 'your publishing service' : row.provider;
-}
-
-/**
  * The install hint for whichever computer this is.
  * @returns {string}
  */
@@ -652,6 +632,48 @@ function newestGoodBackup(root) {
   return null;
 }
 
+/** The publishing services earlier versions could connect, as a person knows them. */
+const LEGACY_PUBLISHERS = { blotato: 'Blotato', postiz: 'Postiz', buffer: 'Buffer' };
+
+/**
+ * The publishing record an earlier version left in a workspace's integrations.json,
+ * read without touching any credential store.
+ * @param {string|null} root
+ * @returns {{credential_ref: string|null, hasKey: boolean, provider: string|null}|null}
+ */
+function legacyPublisherRecord(root) {
+  if (!root) return null;
+  const file = readJsonFile(integrationsPath(root), /** @type {any} */ ({}));
+  const record = file?.providers && typeof file.providers === 'object' ? file.providers.publisher : null;
+  if (!record || typeof record !== 'object') return null;
+  return {
+    credential_ref: typeof record.credential_ref === 'string' && record.credential_ref ? record.credential_ref : null,
+    hasKey: Boolean(record.credential_ref || record.api_key),
+    provider: Object.hasOwn(LEGACY_PUBLISHERS, String(record.provider)) ? LEGACY_PUBLISHERS[String(record.provider)] : null,
+  };
+}
+
+/**
+ * Publishing keys stored by earlier versions. Publishing no longer uses them, so the
+ * only thing left to do is remove them; the check appears only while one is there.
+ * @param {string|null} root
+ * @returns {Check|null}
+ */
+function legacyPublishingCredentialsCheck(root) {
+  const record = legacyPublisherRecord(root);
+  // A bare record with no key in it is dropped quietly by the repair, never reported.
+  if (!record?.hasKey && listLegacyCredentials().length === 0) return null;
+  const service = record?.provider ?? 'your publishing service';
+  return {
+    id: 'legacy_publishing_credentials',
+    name: 'Old publishing key',
+    status: 'warn',
+    detail: `An old ${service} key from an earlier version is still stored on this computer. Publishing no longer uses it.`,
+    fix: `Say yes and I will remove it from this computer. The key itself will still work at ${service}, so revoke it there too.`,
+    repairable: true,
+  };
+}
+
 /**
  * A workspace folder on this computer that looks set up but is not pointed at.
  * @returns {string|null}
@@ -662,7 +684,7 @@ function findAdoptableRoot() {
 }
 
 /**
- * @typedef {(workspace: import('../workspace/index.mjs').Workspace, ui: import('../ui/server.mjs').UiServer) => {repaired: boolean, detail: string, restart_needed?: boolean}} Repair
+ * @typedef {(workspace: import('../workspace/index.mjs').Workspace, options?: {legacyCredentials?: import('../lib/legacy-credentials.mjs').PurgeOptions}) => {repaired: boolean, detail: string, restart_needed?: boolean}} Repair
  */
 
 /** @type {Record<string, Repair>} */
@@ -782,13 +804,42 @@ const REPAIRS = {
     };
   },
 
-  pane_port(workspace) {
-    workspace.patchConfig({ ui: { port: null } });
-    return {
-      repaired: true,
-      detail: 'Forgot the saved window number. Start a new Claude session and the window will come back.',
-      restart_needed: true,
-    };
+  legacy_publishing_credentials(workspace, options = {}) {
+    const root = workspace.root;
+    const record = legacyPublisherRecord(root);
+    const credentialOptions = options.legacyCredentials ?? {};
+    const keyFailure = (/** @type {number} */ count) => ({
+      repaired: false,
+      detail:
+        count === 1
+          ? 'One stored publishing key could not be removed. It may be locked or in use. Unlock the credential store on this computer and run the doctor again.'
+          : `${count} stored publishing keys could not be removed. They may be locked or in use. Unlock the credential store on this computer and run the doctor again.`,
+    });
+    let removedKeys = 0;
+    try {
+      // The referenced key first, so a failure leaves the reference in place for a retry.
+      if (record?.credential_ref && purgeLegacyCredential(record.credential_ref, credentialOptions)) removedKeys += 1;
+      if (record && root) {
+        updateJsonFile(integrationsPath(root), (file) => {
+          const providers = { ...(file?.providers && typeof file.providers === 'object' ? file.providers : {}) };
+          delete providers.publisher;
+          return { ...file, providers };
+        }, {});
+      }
+    } catch (error) {
+      log.warn('legacy publishing key removal failed', { error: String(error) });
+      return keyFailure(1);
+    }
+    const swept = sweepLegacyCredentials(credentialOptions);
+    if (swept.failed > 0) return keyFailure(swept.failed);
+    if (record?.hasKey || removedKeys + swept.removed > 0) {
+      const where = record?.provider
+        ? `at ${record.provider}, so revoke it in your ${record.provider} account settings`
+        : 'at your publishing service, so revoke it there';
+      return { repaired: true, detail: `Removed the old publishing key from this computer. The key still works ${where}.` };
+    }
+    if (record) return { repaired: true, detail: 'Removed an old publishing connection record.' };
+    return { repaired: false, detail: 'Nothing to remove.' };
   },
 };
 

@@ -210,7 +210,7 @@ function outputPresent(db, campaignId, definition, options = {}) {
   }
   if (definition.output === 'PublishingResult') {
     const artifact = currentArtifact(db, campaignId, 'PublishingResult');
-    if (!artifact) return { ok: false, message: 'There is no publishing result yet. Finish publishing or export the package first.' };
+    if (!artifact) return { ok: false, message: 'There is no hand-off record yet. Save the finished hand-off package first.' };
     const result = artifact.json && typeof artifact.json === 'object' ? artifact.json : {};
     const posts = Array.isArray(result.posts) ? result.posts : [];
     const outcome = String(result.outcome ?? '');
@@ -218,7 +218,7 @@ function outputPresent(db, campaignId, definition, options = {}) {
     if (!expectedStatus || posts.length === 0 || posts.some((post) => String(post?.status ?? '') !== expectedStatus)) {
       return {
         ok: false,
-        message: 'The publishing result is still pending, accepted or unclear. Check the provider or export the package before finishing this step.',
+        message: 'The hand-off record is incomplete or unclear. Save the finished hand-off package before finishing this step.',
       };
     }
     return {

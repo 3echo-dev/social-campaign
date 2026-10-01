@@ -38,7 +38,7 @@ Raise a named evidence gap to the researcher role when the brief cannot be suppo
 
 Write only the strategy artifact named by the active plan.
 
-Leave the human strategy decision to the local board and pipeline decision tools.
+Leave the human strategy decision to the board and pipeline decision tools.
 Follow social-campaign's Never stop waiting on an open gate rule: keep the decision open until an answer arrives, and never fall back to asking the person to reply in chat.
 
 Reuse the existing board URL after the artifact lands and refresh the job snapshot after the mutation.

@@ -461,7 +461,6 @@ function reconcileCampaignConfigLocation(root) {
  * @property {string|null} projectRoot
  * @property {{projectRoot:string,workspaceRoot:string,lastUsed?:string}|null} projectBinding
  * @property {boolean} dbOk
- * @property {string|null} uiUrl
  * @property {number} version schema version, 0 when there is no database.
  * @property {string[]} issues plain language problems, empty when healthy.
  * @property {string|null} suggestedRoot one folder to offer for this project when it is unbound.
@@ -483,8 +482,6 @@ export class Workspace {
     this.db = null;
     /** @type {Map<string, import('node:sqlite').DatabaseSync>} */
     this.databases = new Map();
-    /** @type {string|null} */
-    this.uiUrl = null;
     /** @type {string[]} */
     this.issues = [];
     /** @type {string[]} migrations applied during the last open, for the boot log. */
@@ -650,13 +647,11 @@ export class Workspace {
         version: CONFIG_VERSION,
         workspaceRoot: root,
         createdAt: typeof current.createdAt === 'string' ? current.createdAt : nowIso(),
-        ui: current.ui && typeof current.ui === 'object' ? current.ui : { port: null },
       }),
       {
         version: CONFIG_VERSION,
         workspaceRoot: root,
         createdAt: nowIso(),
-        ui: { port: null },
       },
     );
     updateJsonFile(
@@ -703,7 +698,6 @@ export class Workspace {
           }
         : null,
       dbOk: Boolean(this.db),
-      uiUrl: this.uiUrl,
       version: this.db ? currentVersion(this.db) : 0,
       issues: [...this.issues],
       resolvedBy: this.resolvedBy,
@@ -884,7 +878,6 @@ export class CapturedWorkspace {
     this.projectBinding = live.projectBinding;
     this.db = snapshot.db;
     this.capturedAt = snapshot.capturedAt;
-    this.uiUrl = live.uiUrl;
     this.issues = [];
     this.lastApplied = [];
     this.lastBackupPath = null;
@@ -920,7 +913,6 @@ export class CapturedWorkspace {
           }
         : null,
       dbOk: Boolean(this.db),
-      uiUrl: this.uiUrl,
       version: this.db ? currentVersion(this.db) : 0,
       issues: [...this.issues],
       resolvedBy: this.resolvedBy,

@@ -267,7 +267,6 @@ export function assetFromRow(row, workspaceRoot) {
     audio_tracks: row.audio_tracks == null ? null : Number(row.audio_tracks),
     thumbnail_path: row.thumbnail_path ? String(row.thumbnail_path) : null,
     keyframe_paths: frames,
-    thumbnail_url: row.thumbnail_path ? `/thumbs/${id}/${basename(String(row.thumbnail_path))}` : null,
     origin: String(row.origin),
     duplicate_of: null,
     indexed_at: String(row.indexed_at ?? row.created_at),

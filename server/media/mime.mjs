@@ -34,7 +34,7 @@ export const KNOWN_TYPES = /** @type {Record<string, {mime: string, kind: AssetK
   '.pdf': { mime: 'application/pdf', kind: 'document' },
   // Brand reference fonts. Fonts are not a first class library kind (the assets.kind
   // CHECK constraint only allows video, image, audio, document, script, other), so
-  // they register as 'other'. The pane previews them by loading the file itself into
+  // they register as 'other'. A preview loads the file itself into
   // an in-page @font-face, not by generating a thumbnail image.
   '.ttf': { mime: 'font/ttf', kind: 'other' },
   '.otf': { mime: 'font/otf', kind: 'other' },

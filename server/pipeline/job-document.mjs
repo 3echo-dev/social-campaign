@@ -947,12 +947,10 @@ function outputTitle(platform, kind, index, count) {
  * @param {object} [options.job] the job record, for the posting schedule and account
  * @param {string|null} options.gate the review the job is waiting on, if any
  * @param {object|null} options.review the registered review record for that gate, if any
- * @param {'inline'|'local'} [options.media] inline small thumbnails, or link local previews
- * @param {(artifact:{path:string,sha256:string}) => string} [options.previewUrl] local preview URL builder
  * @param {string|null} [options.thumbDir] where scaled thumbnails are cached, keyed by content hash
  * @param {number} [options.budgetBytes]
  */
-export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, media = 'inline', previewUrl = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
+export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
   const artifacts = Array.isArray(project?.artifacts) ? project.artifacts : [];
   const shaOf = new Map(artifacts.map(item => [item.path, item.sha256]));
   const kindOf = new Map(artifacts.map(item => [item.path, item.kind || null]));
@@ -961,8 +959,6 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   const registered = new Map(currentReview ? review.artifacts.map(item => [item.path, item.sha256]) : []);
   const research = researchFiles(artifacts);
   const strategy = strategyFile(artifacts);
-  const inline = media === 'inline';
-  const local = path => (typeof previewUrl === 'function' && shaOf.get(path) ? previewUrl({ path, sha256: shaOf.get(path) }) : null);
   const uploaded = path => {
     if (typeof reviewUrl !== 'function' || !shaOf.get(path)) return null;
     try { return reviewUrl({ path, sha256: shaOf.get(path) }) || null; } catch { return null; }
@@ -1067,7 +1063,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     return shrunk && (!raw || shrunk.length < raw.length) ? shrunk : raw;
   };
   const thumbnail = (path, { video = false, budget = null, scaled = false } = {}) => {
-    if (!inline || thumbCount >= MAX_THUMBS) return null;
+    if (thumbCount >= MAX_THUMBS) return null;
     const data = thumbData(path, { video, scaled });
     if (!data) return null;
     if (budget === 'review') {
@@ -1081,10 +1077,6 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const kind = mediaKind(path);
     const ref = { path, title: basename(path), mimeType: MEDIA_TYPES[extname(path).toLowerCase()] || null, kind };
     if (!kind) return ref;
-    if (!inline) {
-      const url = local(path);
-      if (url) ref.previewUrl = url;
-    }
     const copy = uploaded(path);
     if (copy) ref.reviewUrl = copy;
     if (kind === 'image' && !copy) {
@@ -1098,9 +1090,9 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       const posterPath = posterOf.get(path) || siblingPoster(path);
       if (posterPath) {
         ref.posterPath = posterPath;
-        const poster = inline ? thumbnail(posterPath, { budget }) : local(posterPath);
+        const poster = thumbnail(posterPath, { budget });
         if (poster) ref.poster = poster;
-      } else if (inline && file) {
+      } else if (file) {
         const frame = thumbnail(path, { video: true, budget });
         if (frame) ref.poster = frame;
       }
@@ -1126,10 +1118,6 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
         const still = { path, at: stillSeconds(path) };
         const thumb = thumbnail(path, { budget: 'review' });
         if (thumb) still.thumb = thumb;
-        if (!inline) {
-          const url = local(path);
-          if (url) still.previewUrl = url;
-        }
         const copy = uploaded(path);
         if (copy) still.reviewUrl = copy;
         return still;
@@ -1148,7 +1136,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const hits = parsed.panels.map(panel => (deliverable ? frames.get(`${deliverable}|${canonicalItem(panel.ref)}`) : null) || null);
     return { parsed, deliverable, hits };
   };
-  const needsThumb = hit => Boolean(hit) && inline && !(hit.kind === 'image' && uploaded(hit.path));
+  const needsThumb = hit => Boolean(hit) && !(hit.kind === 'image' && uploaded(hit.path));
   let framePlan = [];
   const planFrameThumbs = paths => {
     const sizes = paths.flatMap(path => boardFrames(path).hits.filter(needsThumb).map(hit => thumbData(hit.path, { video: hit.kind === 'video' })?.length ?? null));
@@ -1181,10 +1169,6 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
           document.truncated = true;
         }
       }
-      if (!inline) {
-        const url = local(hit.path);
-        if (url) frame.previewUrl = url;
-      }
       return { ...panel, frame };
     });
     return { path, ...parsed, ref: parsed.ref || deliverable || null, ...(brief ? { briefSeconds: brief } : {}), panels };
@@ -1208,7 +1192,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       const ref = mediaRef(path);
       const sample = { path, sha256: registered.get(path), changed: changedSince(path), kind: ref.kind || null };
       for (const key of ['deliverable', 'panel', 'version', 'rest']) sample[key] = review.sample[key] ?? null;
-      for (const key of ['thumb', 'poster', 'durationSeconds', 'reviewUrl', 'previewUrl']) if (ref[key] != null) sample[key] = ref[key];
+      for (const key of ['thumb', 'poster', 'durationSeconds', 'reviewUrl']) if (ref[key] != null) sample[key] = ref[key];
       document.review.sample = sample;
     }
     if (gate === 'price' && reviewPaths.has(FACT_FILES.quote)) {
@@ -1316,8 +1300,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const kind = mediaKind(path);
     if (kind) {
       const allowThumb = (reviewPaths.has(path) || /^(media|drafts)\//i.test(path)) && !(document.report && stillSet.has(path));
-      const ref = allowThumb ? mediaRef(path, { budget: null }) : { ...(inline ? {} : { previewUrl: local(path) }), reviewUrl: uploaded(path) };
-      for (const key of ['thumb', 'poster', 'posterPath', 'durationSeconds', 'previewUrl', 'reviewUrl']) if (ref[key] != null) entry[key] = ref[key];
+      const ref = allowThumb ? mediaRef(path, { budget: null }) : { reviewUrl: uploaded(path) };
+      for (const key of ['thumb', 'poster', 'posterPath', 'durationSeconds', 'reviewUrl']) if (ref[key] != null) entry[key] = ref[key];
     }
     const made = generationInfo(generation, path);
     if (made) Object.assign(entry, made);

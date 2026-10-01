@@ -167,7 +167,7 @@ Call pipeline_status again only when the completion response has no onboarding r
 
 Confirm that the selected brand has onboardingStatus complete.
 
-Call pipeline_board_open in its default artifact mode only when the workspace has no bound board URL.
+Call pipeline_board_open only when the workspace has no bound board URL.
 
 If it returns needs_publication, invoke board-setup and bind the host's publish result before presenting the board.
 

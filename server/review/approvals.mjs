@@ -151,29 +151,3 @@ function refusal(reason, reviewId, action) {
     message: APPROVAL_REASON_MESSAGE[reason] ?? 'This is not approved right now.',
   };
 }
-
-/**
- * The approved release for a campaign, or a refusal explaining why there is not one.
- * Every publishing and export tool goes through this rather than reading reviews
- * itself, so they all refuse for the same reasons in the same words.
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} campaignId
- * @returns {{ok: true, release: any, review_id: string}|{ok: false, reason: string, message: string}}
- */
-export function approvedRelease(db, campaignId) {
-  const status = approvalStatus(db, campaignId, 'final');
-  if (!status.approved) {
-    return {
-      ok: false,
-      reason: String(status.reason),
-      message:
-        status.reason === 'no_review'
-          ? 'This campaign has not been through final review and approved yet, so there is nothing ready to publish.'
-          : status.reason === 'rejected_later'
-            ? 'The last final review decision was not an approval, so nothing can go out for this campaign.'
-            : 'The posts changed after they were approved, so they need approving again before anything goes out.',
-    };
-  }
-  const release = currentRelease(db, campaignId);
-  return { ok: true, release, review_id: String(status.review_id) };
-}

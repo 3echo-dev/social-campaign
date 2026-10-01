@@ -38,7 +38,7 @@ When setup is invoked directly without an explicitly selected workspace, use `wo
 When `workspaceRoot` is absent, present the current project's `suggestedRoot` as the one create-or-use choice and offer a choose-another fallback.
 If status contains an issue for a project binding, show that specific issue and bound path first; do not present the home default as a replacement.
 Do not list or select historical workspaces during ordinary setup.
-Use `workspace_switch_open` only when the user explicitly asks to reconnect to an older workspace.
+Only when the user explicitly asks to reconnect to an older workspace, list the known workspaces with `workspace_switch_open`, then call `workspace_activate` with the root they choose.
 Do not infer a folder from a machine-wide pointer or from the order of historical workspaces.
 
 Reuse a healthy active workspace when the user explicitly selects it.
@@ -48,7 +48,7 @@ If the user accepts the suggested current-project folder, call `workspace_initia
 When the selected existing folder needs initialization, call `workspace_initialize` with that exact folder and preserve all files already there.
 Keep the selected absolute root for every later tool call in this conversation.
 An existing `Social Campaign Workspace` child beside the current project is already the selected workspace after restart, so reuse it without creating a nested child.
-If a project binding points to a missing or invalid folder, show that exact path and ask whether to choose another folder or explicitly reconnect through `workspace_switch_open`; do not silently discover a different workspace.
+If a project binding points to a missing or invalid folder, show that exact path and ask whether to choose another folder or explicitly reconnect by listing with `workspace_switch_open` and then calling `workspace_activate` with the chosen root; do not silently discover a different workspace.
 
 ## Normal artifact setup
 
@@ -56,7 +56,7 @@ The research helper installs on its own in the background as soon as `workspace_
 Say so to the user in one line.
 Do not wait for it and do not call a research helper tool here.
 
-For normal setup, call `pipeline_board_open` once with its default artifact mode after the selected workspace is ready.
+For normal setup, call `pipeline_board_open` once after the selected workspace is ready.
 If the main entry already has a board result for this selected workspace from this same turn, reuse that result and do not repeat status, source, or open calls.
 Before doing anything else with whichever successful `pipeline_board_open`, `pipeline_status` or `pipeline_board_source` result this turn sees first, apply social-campaign/SKILL.md's "Check for a finished update before anything else": when it finds the server superseded, deliver its one plain line and stop without publishing, refreshing, or binding anything with this server; a result already checked this same turn by the caller does not need checking again.
 Pass the result to `board-setup` so a current binding opens directly, a routine source refresh updates the same artifact, and `needs_publication` follows the shared first-publication lifecycle.
@@ -64,7 +64,7 @@ Routine freshness updates keep the existing artifact URL and never create a repl
 A board already existing for this workspace is not the end by itself: a `bound` result with `sourceStatus: needs_refresh`, or `boardSourceOutdated: true`, is refreshed in place before setup is reported ready, whether that result came from `pipeline_board_open` or from a `pipeline_status` call later in the same setup.
 Use the fresh projection returned by `board-setup` for the final route.
 
-Before the board's Connectors step is shown, and before the in-chat fallback below asks, detect a connector the person already added in Claude.
+Before the board's Connectors step is shown, detect a connector the person already added in Claude.
 A connector counts when its tools are available in this session under any namespace; match on tool base names, never on the namespace string, because a Claude connector's namespace is an opaque id.
 3Echo Studio (`threeecho_studio`) is present when a tool's base name is `list_workspaces`, under any prefix.
 ElevenLabs (`elevenlabs`) is present when a tool's base name is `creative_list_voices`, under any prefix.
@@ -74,12 +74,11 @@ If it fails, call `integration_probe` with `ok: false` and one plain sentence.
 If no surface is present, make no provider call.
 When 3Echo is missing, say in plain words that they can add the 3Echo Studio connector from claude.ai Settings > Connectors; the plugin has no sign-in of its own.
 Then refresh the board projection as this skill already does, so a connected provider shows as Connected and the Connectors step is skipped entirely once both are connected.
-Only the providers still not connected are asked about, through the board or the in-chat fallback below.
+Only the providers still not connected are asked about, through the board.
 Do this check once per setup; do not repeat it on every board refresh.
 
 The board opens on its Connectors step and stays there, `setupStep: "connectors"`, until every connector in its `connectors` list is `connected` or `skipped`.
-If the board is not available, ask in chat for each connector in turn: Connect, or Skip for now.
-Record a Skip through the same `skip_provider` board request path a board click would use: land the request, then apply it immediately, the same as a board click; the person's answer to the chat question is the approval.
+A Skip the person gives in chat is recorded through the same `skip_provider` board request path a board click would use: land the request, then apply it immediately, the same as a board click; the person's answer in chat is the approval.
 A connector the user skips is not asked again during this setup.
 It can still be connected later, from the board or the next time a stage needs it.
 
@@ -100,8 +99,7 @@ After a successful replacement bind, retain the complete source result and hand 
 The shared lifecycle must seed metadata and the final route from those handed-off source documents and receipts without another status or source call.
 
 Use the host's actual Artifact, ArtifactData, and ArtifactComments schemas, and report the capability that is unavailable when any required native capability is missing.
-Stop setup when the host cannot publish or persist the private artifact, and explain that the explicit local board is available only through a separate user-selected local mode.
-Do not use a localhost launch, a pane setup fallback, or a browser fallback inside this setup flow.
+Stop setup when the host cannot publish or persist the private artifact, and name the missing host tool.
 Do not claim metadata access, a watch, notification delivery, or automatic wake until the host result or an observed board comment proves it in this session.
 
 ## Permissions

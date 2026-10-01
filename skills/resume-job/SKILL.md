@@ -28,12 +28,10 @@ Call pipeline_job_read only when the snapshot is absent or an external state cha
 Never pass a human gate or infer approval from conversation text.
 Reuse current artifacts and the existing bound artifact URL.
 
-Call pipeline_board_open in its default artifact mode when the binding is missing or the workspace changed.
+Call pipeline_board_open when the binding is missing or the workspace changed.
 
 If it returns needs_publication, invoke board-setup before presenting the resumed job.
 
 Use board-sync for projection refresh and artifact requests.
-
-Use mode local and pipeline_board_wait only after the user explicitly chooses the local browser board.
 
 Read the canonical nested contract for its output shape and checks.

@@ -16,8 +16,6 @@ const LEGACY_BRAND_TOOL_REPLACEMENTS = {
   brand_list: 'pipeline_status',
   brand_pillars_get: 'pipeline_status',
   brand_wiki_write: 'pipeline_brand_research_start',
-  brand_onboarding_open: 'pipeline_board_open',
-  brand_onboarding_progress: 'pipeline_board_open',
 };
 
 export function assertLegacyExecutionAllowed(root,toolName,args = {}) {

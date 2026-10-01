@@ -68,7 +68,7 @@ function readCampaign(db, campaignId) {
     .prepare('SELECT id, brand_id, title, job_type, starting_point, platforms, status FROM campaigns WHERE id = ?')
     .get(campaignId);
   if (!row) {
-    throw new InvalidInputError('That job could not be found.', { fix: 'Start a new job from the home screen.' });
+    throw new InvalidInputError('That job could not be found.', { fix: 'Start a new job on the board.' });
   }
   const detail = currentArtifact(db, campaignId, 'JobIntake');
   return {

@@ -12,7 +12,6 @@ import { execFile } from 'node:child_process';
 import { CAPABILITIES, RESOLVER_PROVIDER_KEY } from './registry.mjs';
 import { log } from '../lib/log.mjs';
 import { socialCapability } from '../social/router.mjs';
-import { readPublisherConfig } from '../publishing/adapter.mjs';
 import { hasUsableResearchHelperRecord, readResearchHelperRecord } from '../setup/research-helper-record.mjs';
 
 /** Cached binary probes, so one tool call does not spawn ffprobe six times. */
@@ -69,14 +68,6 @@ function stateFromIntegration(raw) {
 export async function resolveCapabilities(workspace) {
   const status = workspace.status();
   const integrations = status.configured ? workspace.readIntegrations() : {};
-  let publisher = null;
-  if (status.configured) {
-    try { publisher = readPublisherConfig(status.workspaceRoot); }
-    catch { publisher = { state: 'degraded', detail: 'Unlock the credential store and reconnect the publishing service.' }; }
-    if (publisher?.state === 'connected' && (!publisher.api_key || !publisher.provider)) {
-      publisher = { state: 'not_connected', detail: 'Connect a publishing service on this computer.' };
-    }
-  }
   const [ffmpeg, ffprobe, ytdlp] = await Promise.all([probeBinary('ffmpeg'), probeBinary('ffprobe'), probeBinary('yt-dlp')]);
 
   /** @type {Record<string, import('./registry.mjs').CapabilityState>} */
@@ -148,7 +139,7 @@ export async function resolveCapabilities(workspace) {
       }
       default: {
         const key = RESOLVER_PROVIDER_KEY[capability.resolver];
-        const record = key === 'publisher' ? publisher : key ? integrations[key] : null;
+        const record = key ? integrations[key] : null;
         state = stateFromIntegration(record);
         detail = record && typeof record === 'object' ? (/** @type {any} */ (record).detail ?? null) : null;
         break;

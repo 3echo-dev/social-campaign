@@ -12,7 +12,7 @@ Run pipeline scripts with Node argument arrays, an explicit workspace cwd, and s
 
 The local entry path is the pipeline_* tool set in server/tools/pipeline.mjs.
 
-Use workspace_status, setup_open, and setup_wait for folder selection.
+Use workspace_status and workspace_initialize for folder selection.
 
 Use pipeline_status and pipeline_board_open for local projections.
 

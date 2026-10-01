@@ -1,7 +1,6 @@
 /**
  * Memory tools: brand identity, creative profile, competitor intelligence,
- * preferences, memory proposals, the precedence resolver, the brand wiki, and the
- * brand onboarding screen.
+ * preferences, memory proposals, the precedence resolver and the brand wiki.
  *
  * Specialists never write canonical memory directly. brand_propose_update and
  * creative_profile_propose_update apply the precedence rule from docs/CONTRACTS.md
@@ -13,8 +12,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from
 import { extname, join } from 'node:path';
 
 import { defineTool } from '../mcp/registry.mjs';
-import { InvalidInputError } from '../lib/errors.mjs';
-import { isId, newId } from '../lib/ids.mjs';
+import { isId } from '../lib/ids.mjs';
 import {
   createBrand,
   listBrands,
@@ -24,8 +22,6 @@ import {
   writeBrandWiki,
   getPillars,
   savePillars,
-  PILLAR_KEYS,
-  PILLAR_HELP,
 } from '../memory/brand.mjs';
 import { getCreativeProfile, proposeCreativeProfileUpdate } from '../memory/creative.mjs';
 import { getCompetitor, saveCompetitorAnalysis, listCompetitors } from '../memory/competitor.mjs';
@@ -48,84 +44,10 @@ const FIELD_SCHEMA = {
   },
 };
 
-/** Matches the pane's own cap in server/ui/server.mjs; kept in sync by inspection. */
-const MAX_REFERENCES_PER_BRAND = 50;
-
-const ONBOARDING_STEPS = [
-  { key: 'ingest', label: 'Ingest what you provided' },
-  { key: 'research', label: 'Research the brand' },
-  { key: 'inspect', label: 'Inspect creative references' },
-  { key: 'analyze', label: 'Analyze patterns' },
-  { key: 'build_profiles', label: 'Build brand and creative profiles' },
-];
-
-/** The only statuses the progress screen knows how to render. */
-const ONBOARDING_STEP_STATUSES = ['pending', 'active', 'done'];
-
-/**
- * Every step the progress screen renders needs a real label and a known status.
- * A step missing either is refused here, in one plain sentence, rather than
- * rendered as "undefined": the contract is that the caller supplies `label`
- * (not `name`, not just `key`) on every step object.
- * @param {unknown} steps
- * @returns {Array<{key: string, label: string, status: string}>}
- */
-function normalizeOnboardingSteps(steps) {
-  if (!Array.isArray(steps) || steps.length === 0) {
-    return ONBOARDING_STEPS.map((step) => ({ ...step, status: 'pending' }));
-  }
-  return steps.map((step, index) => {
-    const raw = step && typeof step === 'object' ? step : {};
-    const key = typeof raw.key === 'string' && raw.key.trim() ? raw.key.trim() : null;
-    const label = typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim() : null;
-    const status = typeof raw.status === 'string' ? raw.status : '';
-    if (!key) {
-      throw new InvalidInputError(`Step ${index + 1} of the onboarding progress is missing its "key".`, {
-        fix: 'Pass every step as { key, label, status }, with a non-empty key.',
-      });
-    }
-    if (!label) {
-      throw new InvalidInputError(`The "${key}" onboarding step is missing its "label".`, {
-        fix: 'Pass every step as { key, label, status }, with a non-empty, human readable label.',
-      });
-    }
-    if (!ONBOARDING_STEP_STATUSES.includes(status)) {
-      throw new InvalidInputError(`The "${key}" onboarding step has an unknown status "${status}".`, {
-        fix: `Use one of: ${ONBOARDING_STEP_STATUSES.join(', ')}.`,
-      });
-    }
-    return { key, label, status };
-  });
-}
-
-/**
- * The data behind the phase two pillars screen: the four pillar values, what each
- * is for, and which are still gaps research could not close.
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {Record<string, any>} brand
- * @param {string|null} [campaignId] The job this onboarding detour belongs to, if
- *   any, carried through so "Start a Job" can resume it instead of guessing.
- * @returns {Record<string, unknown>}
- */
-function pillarsScreenData(db, brand, campaignId = null) {
-  const pillars = getPillars(db, brand.id);
-  return {
-    mode: 'pillars',
-    title: `${brand.name}: Brand Pillars`,
-    brand_id: brand.id,
-    brand_name: brand.name,
-    campaign_id: campaignId,
-    pillars,
-    pillar_help: PILLAR_HELP,
-    gaps: PILLAR_KEYS.filter((key) => pillars[key].gap),
-  };
-}
-
 /**
  * Move whatever a draft's staged reference uploads collected into the real
- * brand's references folder, once the brand exists. A draft id is handed out by
- * brand_onboarding_open before a brand has been created, so the uploader in
- * server/ui/server.mjs has somewhere safe to write phase one attachments.
+ * brand's references folder, once the brand exists. Only legacy workspaces have
+ * staged uploads under a draft id; a draft id with nothing staged is ignored.
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @param {Record<string, any>} brand
  * @param {string} draftId
@@ -175,7 +97,7 @@ export const memoryTools = [
         creative_references: { type: 'array', items: { type: 'string' } },
         draft_id: {
           type: 'string',
-          description: 'The draft id from brand_onboarding_open, so its staged reference uploads move into this brand.',
+          description: 'Legacy workspaces only: a draft id whose staged reference uploads move into this brand. Ignored when nothing is staged under it.',
         },
         website: { type: 'string' },
         socials: {
@@ -450,114 +372,6 @@ export const memoryTools = [
       const result = savePillars(db, root, args);
       writeBrandWiki(db, root, String(args.brand_id));
       return result;
-    },
-  }),
-
-  defineTool({
-    name: 'brand_onboarding_open',
-    description:
-      'Legacy workspaces only. Show the brand onboarding screen. With no brand_id, shows phase one: brand name, a free text brief, ' +
-      'a references dropzone, and a source media folder, plus a draft_id that reference uploads attach to ' +
-      'before the brand exists. With a brand_id, shows phase two directly: the four pillars, prefilled and ' +
-      'ready to edit, since this screen is also the edit screen for a brand that already exists. Pass ' +
-      'campaign_id when this onboarding is a detour from a job that had no brand yet, so the job can be ' +
-      'resumed afterwards instead of started over: it is carried through every onboarding screen and handed ' +
-      'back in the submit_brief and start_job payloads.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brand_id: { type: 'string' },
-        campaign_id: {
-          type: 'string',
-          description: 'The job this onboarding detour belongs to, if a new job sent the user here for a missing brand.',
-        },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { ui, workspace }) => {
-      const campaignId = typeof args.campaign_id === 'string' && args.campaign_id ? args.campaign_id : null;
-      if (args.brand_id && workspace.db) {
-        let existing = null;
-        try {
-          existing = getBrand(workspace.requireDb(), String(args.brand_id));
-        } catch {
-          existing = null;
-        }
-        if (existing) {
-          const screen = ui.show('brand_onboarding', pillarsScreenData(workspace.requireDb(), existing, campaignId));
-          return { url: ui.url(), screenId: screen.screenId };
-        }
-      }
-      // Reuse the draft id already on screen when the brief is already showing,
-      // rather than minting a fresh one on every call: a fresh id would point
-      // reference uploads already attached under the old draft folder at a
-      // draft the new screen no longer knows about, orphaning them the moment
-      // this tool is called a second time (a status re-check, a retry) while
-      // the person is still filling the form in.
-      const alreadyOnBrief = ui.screen.type === 'brand_onboarding' && ui.screen.data?.mode === 'brief';
-      const draftId = alreadyOnBrief && ui.screen.data?.draft_id ? String(ui.screen.data.draft_id) : newId();
-      const screen = ui.show('brand_onboarding', {
-        mode: 'brief',
-        title: 'Onboard a Brand',
-        draft_id: draftId,
-        campaign_id: campaignId,
-        max_references: MAX_REFERENCES_PER_BRAND,
-        values: {},
-      });
-      return { url: ui.url(), screenId: screen.screenId };
-    },
-  }),
-
-  defineTool({
-    name: 'brand_onboarding_progress',
-    description:
-      'Legacy workspaces only. Show onboarding progress for a brand: ingest, research, inspect, analyze, build profiles. When every ' +
-      'step is done, shows phase two, the pillars screen, instead: brand voice, audience, positioning and ' +
-      'platform playbook, prefilled from research and ready to edit. Pass steps as [{key, label, status}], ' +
-      'every field required: key is the stage identifier, label is the human readable text the screen shows ' +
-      '(never omit it, and never call it "name"), status one of pending, active, done. Pass campaign_id when ' +
-      'this onboarding is a detour from a job that had no brand yet, so it reaches the pillars screen and ' +
-      'the start_job payload too.',
-    inputSchema: {
-      type: 'object',
-      required: ['brand_id'],
-      properties: {
-        brand_id: { type: 'string' },
-        campaign_id: {
-          type: 'string',
-          description: 'The job this onboarding detour belongs to, if a new job sent the user here for a missing brand.',
-        },
-        steps: {
-          type: 'array',
-          items: {
-            type: 'object',
-            required: ['key', 'label', 'status'],
-            properties: { key: { type: 'string' }, label: { type: 'string' }, status: { type: 'string' } },
-            additionalProperties: false,
-          },
-        },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { ui, workspace }) => {
-      const steps = normalizeOnboardingSteps(args.steps);
-      const campaignId = typeof args.campaign_id === 'string' && args.campaign_id ? args.campaign_id : null;
-
-      const allDone = steps.every((step) => step.status === 'done');
-      if (!allDone) {
-        const screen = ui.show('brand_onboarding', {
-          mode: 'progress',
-          title: 'Building the brand profile',
-          brand_id: String(args.brand_id),
-          campaign_id: campaignId,
-          steps,
-        });
-        return { url: ui.url(), screenId: screen.screenId };
-      }
-
-      const brand = getBrand(workspace.requireDb(), String(args.brand_id));
-      const screen = ui.show('brand_onboarding', pillarsScreenData(workspace.requireDb(), brand, campaignId));
-      return { url: ui.url(), screenId: screen.screenId };
     },
   }),
 ];

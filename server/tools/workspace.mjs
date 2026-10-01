@@ -32,11 +32,10 @@ export const workspaceTools = [
       'Returns one suggested folder for an unbound project. Historical workspaces are available only through ' +
       'the explicit workspace switch tool. Call this first in any Social Campaign conversation.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: (_args, { workspace, ui }) => {
+    handler: (_args, { workspace }) => {
       const status = workspace.status();
       return {
         ...status,
-        uiUrl: ui.url() || status.uiUrl,
         suggestedRoot: status.issues.length > 0
           ? null
           : status.suggestedRoot ?? status.workspaceRoot ?? defaultWorkspaceRoot(),
@@ -48,20 +47,19 @@ export const workspaceTools = [
     name: 'workspace_switch_open',
     description:
       'Explicitly reconnect to a workspace remembered on this computer. This is the only action that lists ' +
-      'historical workspaces; it never changes files until a workspace is selected.',
+      'historical workspaces; it returns them as data and never changes files. Show the list in chat, then ' +
+      'call workspace_activate with the root the person picks.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: (_args, { workspace, ui }) => {
+    handler: (_args, { workspace }) => {
       const status = workspace.status();
-      const screen = ui.open('workspace_switch', {
-        title: 'Switch workspace',
-        intro: 'Pick which Social Campaign workspace this session should use.',
+      return {
+        ok: true,
         activeRoot: status.workspaceRoot,
         projectRoot: status.projectRoot,
         suggestedRoot: status.suggestedRoot,
         workspaces: listKnownWorkspaces(),
         defaultRoot: defaultWorkspaceRoot(),
-      });
-      return { ok: true, url: ui.url(), screenId: screen.screenId };
+      };
     },
   }),
 
@@ -79,10 +77,9 @@ export const workspaceTools = [
       required: ['root'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: (args, { workspace }) => {
       const status = workspace.activate(String(args.root ?? ''));
-      const pane = typeof ui.rebindWorkspace === 'function' ? await ui.rebindWorkspace() : { url: ui.url(), port: ui.port ?? 0, external: false };
-      return { ok: true, health: { ...status, uiUrl: pane.url }, pane };
+      return { ok: true, health: status };
     },
   }),
 
@@ -128,17 +125,15 @@ export const workspaceTools = [
       },
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: (args, { workspace }) => {
       const result = workspace.initialize(
         typeof args.root === 'string' && args.root.trim().length > 0 ? args.root : defaultWorkspaceRoot(),
       );
       // A workspace created mid session has not been through boot, so stamp the
       // plugin version and open its boot log here.
       recordBoot(workspace);
-      const pane = typeof ui.rebindWorkspace === 'function' ? await ui.rebindWorkspace() : { url: ui.url(), port: ui.port ?? 0, external: false };
       // The research helper install is part of approving the workspace: it starts
-      // the moment the workspace exists, not whenever the Connections screen happens
-      // to be shown. Idempotent, so calling this on an already set up workspace does
+      // the moment the workspace exists. Idempotent, so calling this on an already set up workspace does
       // nothing.
       const researchHelperInstallStarted = startInstallIfNeeded(workspace);
       return {
@@ -148,8 +143,6 @@ export const workspaceTools = [
         storageUpdates: result.applied,
         storageVersion: result.version,
         backupPath: result.backupPath,
-        uiUrl: pane.url,
-        pane,
         health: workspace.status(),
         researchHelperInstallStarted,
       };

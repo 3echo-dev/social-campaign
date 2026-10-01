@@ -31,7 +31,7 @@ import { createHash } from 'node:crypto';
  * Anything not in this list (a display label, a note) may change without invalidating
  * an approval; anything in this list changes what the provider is asked to make or
  * what it costs, so changing it must send the item back through cost_estimate and
- * review_cost. Mirrors studio-adapter.ts's request shape and lib.mjs's QUOTED_FIELDS.
+ * the cost approval. Mirrors studio-adapter.ts's request shape and lib.mjs's QUOTED_FIELDS.
  */
 export const REQUEST_FIELDS = [
   'tool',

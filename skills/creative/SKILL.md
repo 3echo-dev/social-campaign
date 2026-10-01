@@ -38,7 +38,7 @@ Write only artifacts named by the active plan.
 
 Keep generated media requests as producer inputs.
 
-Leave concept, storyboard, and content decisions to the local board and pipeline decision tools.
+Leave concept, storyboard, and content decisions to the board and pipeline decision tools.
 
 ## Copy choices at the concept step
 

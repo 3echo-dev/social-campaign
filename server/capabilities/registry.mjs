@@ -19,7 +19,7 @@
  * @property {string} name
  * @property {string} purpose
  * @property {string} provider the MVP implementation, in user facing words.
- * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'publisher'|'social'} resolver
+ * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'social'} resolver
  * @property {'none'|'low'|'medium'|'high'|'external'} risk
  */
 
@@ -64,14 +64,11 @@ export const CAPABILITIES = [
   { name: 'generation.subtitle', purpose: 'Subtitle timing and files', provider: 'Transcripts or the approved script, plus the local subtitle writer', resolver: 'ffmpeg', risk: 'medium' },
   { name: 'generation.remotion', purpose: 'Final edit and composition', provider: 'Local renderer', resolver: 'ffmpeg', risk: 'medium' },
 
-  { name: 'publishing.schedule', purpose: 'Schedule an approved post', provider: 'Publisher adapter', resolver: 'publisher', risk: 'external' },
-  { name: 'publishing.publish', purpose: 'Publish an approved post', provider: 'Publisher adapter', resolver: 'publisher', risk: 'external' },
-
-  { name: 'review.strategy', purpose: 'Human strategy approval', provider: 'Social Campaign pane', resolver: 'core', risk: 'none' },
-  { name: 'review.concept', purpose: 'Human concept and copy approval', provider: 'Social Campaign pane', resolver: 'core', risk: 'none' },
-  { name: 'review.cost', purpose: 'Human spend approval', provider: 'Social Campaign pane', resolver: 'core', risk: 'none' },
-  { name: 'review.media', purpose: 'Human media approval', provider: 'Social Campaign pane', resolver: 'core', risk: 'none' },
-  { name: 'review.final', purpose: 'Final approval before publish or export', provider: 'Social Campaign pane', resolver: 'core', risk: 'none' },
+  { name: 'review.strategy', purpose: 'Human strategy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
+  { name: 'review.concept', purpose: 'Human concept and copy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
+  { name: 'review.cost', purpose: 'Human spend approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
+  { name: 'review.media', purpose: 'Human media approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
+  { name: 'review.final', purpose: 'Final approval before publish or export', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
 
   { name: 'workflow.plan', purpose: 'Build the execution plan', provider: 'Job Planner', resolver: 'core', risk: 'none' },
   { name: 'workflow.state', purpose: 'Store and advance job state', provider: 'Social Campaign', resolver: 'core', risk: 'none' },
@@ -90,12 +87,11 @@ export const RESOLVER_PROVIDER_KEY = {
   claude: null,
   threeecho: 'threeecho_studio',
   elevenlabs: 'elevenlabs',
-  publisher: 'publisher',
   social: null,
 };
 
 /**
- * The three connection rows the home screen shows, in user facing language.
+ * The connection rows the doctor shows, in user facing language.
  * @type {Array<{key: string, label: string, provider: string, capabilities: string[]}>}
  */
 export const CONNECTION_ROWS = [
@@ -110,11 +106,5 @@ export const CONNECTION_ROWS = [
     label: 'Voice & Audio',
     provider: 'ElevenLabs',
     capabilities: ['generation.voice', 'generation.audio'],
-  },
-  {
-    key: 'publisher',
-    label: 'Publishing',
-    provider: 'Publishing provider',
-    capabilities: ['publishing.schedule', 'publishing.publish'],
   },
 ];

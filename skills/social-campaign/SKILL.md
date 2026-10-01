@@ -55,10 +55,9 @@ Call `workspace_status` once when no status context is already available.
 If the status has no usable workspace, invoke `setup` with that status context and let it own current-project selection, initialization, artifact setup, and final routing.
 When `workspaceRoot` is present for the current project, reuse it without showing historical folders or asking for a second choice.
 When it is absent, let setup offer its single `suggestedRoot` and a choose-another fallback, then call `workspace_initialize` or `workspace_activate` for the user's explicit choice.
-Never use `setup_open` or `setup_wait` to select a workspace in this chat flow.
 Do not repeat workspace status, workspace initialization, source, or board-open calls after setup returns its ready projection.
 
-For a selected healthy workspace, call `pipeline_board_open` once with its default artifact mode because workspace status does not prove that an artifact binding is valid.
+For a selected healthy workspace, call `pipeline_board_open` once because workspace status does not prove that an artifact binding is valid.
 Branch on that result: pass a `bound` result to `board-setup`, and invoke `setup` with a `needs_publication` result so setup continues without another status or open call.
 A `bound` result with `sourceStatus: needs_refresh`, or `boardSourceOutdated: true`, is not the end by itself: board-setup refreshes it from `pipeline_board_source` before anything else, the same path the session-start reminder describes.
 If opening reports a corrupt binding, explain that explicit `/social-campaign:setup --new` recovery is required and do not replace the binding automatically.
@@ -76,21 +75,11 @@ Refresh the local snapshot after a mutation or external state change instead of 
 
 Open a returned artifact URL through the host's artifact view.
 
-Open a localhost URL only after the user explicitly asks for the local board and `pipeline_board_open` is called with mode local.
-
-Use `ui_wait` for ordinary pane screens.
-
 Use `board-sync` and the artifact's comments or request records for the artifact board; before replying to anything else this session, follow its session-start procedure once: read and republish the bound board to re-arm the wake-up, which also records its alias automatically, then sweep its saved requests.
-
-Use `pipeline_board_wait` only for an explicitly selected local board.
 
 When a continue_job request arrives, apply it once and pass its returned snapshot to new-job to resume that same job.
 
 Reuse current snapshots returned by tools instead of reading the same unchanged state again.
-
-Use connections_wait only for the Connections screen.
-
-Treat a pending response as an open decision and continue waiting with the same screen ID.
 
 ## Local workspace rules
 
@@ -123,7 +112,6 @@ A post or campaign needs a ready brand: once one is ready the form opens with th
 Until a brand is ready, do not point the person to the New job form for a post or campaign; go through the brand gate below first, and let the board's onboarding card and its Inbox item lead.
 When the job can start, say it once, in one plain line in chat, for example "Fill in the New job form on the board and I will take it from there", naming the "+ New job" button when the person answered in chat.
 Then wait for the form's `create_job` request and continue as new-job describes.
-Ask for the brief in chat only when no board is available.
 
 A post or campaign keeps the flow below: the brand gate, then new-job.
 
@@ -187,9 +175,7 @@ Do not run stages while the route is waiting for clarification.
 
 pipeline_board_open defaults to the bound private Claude artifact URL and returns `setupStep`, `connectors`, `brands` and one short `jobs` entry per job.
 
-When no artifact is bound, it returns needs_publication without a localhost URL.
-
-Pass mode local only for an explicit local browser fallback.
+When no artifact is bound, it returns needs_publication.
 
 Each `jobs` entry has jobId, brand, brandSlug, title, state, revision and waitingOn; full detail comes from `pipeline_job_read`.
 
@@ -226,20 +212,19 @@ When the person says no to a request in chat, decline it through pipeline_board_
 This is the rule every Social Campaign skill that opens a gate follows.
 The other skills point back here instead of repeating it.
 
-A gate is any pane screen or job decision that can come back pending: setup, the Connections screen, and every job decision from the concept pick to going live.
+A gate is any job decision that can come back pending, from the concept pick to going live.
 
 Keep waiting rather than giving up on it.
-For a pane screen, call the matching wait tool again immediately, with the same screen ID, until it resolves: `setup_wait` or `connections_wait`, as Start every session describes above.
-For a board or chat job decision, apply whichever answer arrives first the moment it arrives, as Board and decisions describes above, then finish the turn: a board decision that has not arrived yet is not a stalled call to retry, it is the doorbell comment, or the next session's sweep of saved requests, still to come.
+Apply whichever answer arrives first the moment it arrives, as Board and decisions describes above, then finish the turn: a board decision that has not arrived yet is not a stalled call to retry, it is the doorbell comment, or the next session's sweep of saved requests, still to come.
 A decision typed in chat is recorded the same way, with the same `pipeline_decision_apply` call a board click uses.
 
 Never ask the person to reply approve in chat.
 Never tell them to send me any short message so I pick it up, or so I can pick it up.
 Never say the click was queued, or that a spinner just meant the click was queued.
-Those are all the same mistake: giving up on the pane or the board and falling back to chat because a single wait call returned, or a decision was still open, before the person had acted.
-A wait call timing out, or a decision that is still open, is normal and expected; it is not a signal to stop waiting, and it is not an error.
+Those are all the same mistake: giving up on the board and falling back to chat because a decision was still open before the person had acted.
+A decision that is still open is normal and expected; it is not a signal to stop waiting, and it is not an error.
 
-The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it on every pending wait.
+The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
 ## Stage behavior
 
@@ -251,8 +236,6 @@ Use the existing research, strategy, creative, generation, review, and publishin
 
 3Echo Studio and ElevenLabs are asked for once during setup, each with a Connect or Skip for now choice.
 A stage that needs a connector the user skipped asks again at that point, before the stage can run.
-
-Keep the Connections screen open while the user decides.
 
 Do not start paid generation before its cost approval.
 

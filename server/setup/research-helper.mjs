@@ -13,9 +13,9 @@
  * array, so a folder name with a space or a quote in it is an argument, never syntax.
  *
  * Nothing blocks. `startInstall` returns the moment the work is handed to the event
- * loop; the pane reads `installProgress()` through the live refresher and watches the
- * steps go by. Every step carries its own timeout, so a wedged installer ends as a
- * plain failure rather than a pane that says "Installing" forever.
+ * loop; `research_helper_status` reads `installProgress()` and reports the steps as they
+ * go by. Every step carries its own timeout, so a wedged installer ends as a
+ * plain failure rather than a status that says "Installing" forever.
  *
  * Nothing throws at the caller. Every failure becomes a recorded state with a
  * sentence a person can act on, because a failed optional extra must never take the
@@ -73,7 +73,7 @@ export const MIN_PYTHON = { major: 3, minor: 10 };
 export const SMOKE_URL = 'https://example.com';
 
 /**
- * Every step, in the order they run, with the words the pane shows and how far
+ * Every step, in the order they run, with the words the status shows and how far
  * through the bar sits once that step has finished.
  * @type {Array<{id: string, label: string, percent: number}>}
  */
@@ -404,8 +404,8 @@ export async function detect(candidates = pythonCandidates()) {
   return value;
 }
 
-/** Detection spawns up to five processes, and the doctor, the pane and the status
- * tool all ask within moments of each other. Cached the same way and for the same
+/** Detection spawns up to five processes, and the doctor and the status
+ * tool both ask within moments of each other. Cached the same way and for the same
  * reason `probeBinary` caches its own answers. */
 const DETECT_CACHE = new Map();
 const DETECT_CACHE_MS = 30_000;
@@ -528,7 +528,7 @@ function commandFromRecord(record) {
 }
 
 /**
- * Reconstruct the pane's progress shape from the durable record when another
+ * Reconstruct the progress shape from the durable record when another
  * process owns the installer job. This is deliberately a projection of persisted
  * data, so it never claims local ownership or creates a second installer.
  * @param {Record<string, any>|null} record
@@ -582,7 +582,7 @@ function installOwnerAlive(value) {
 }
 
 /**
- * What the pane's live refresher reads. A copy, so nothing outside this file can
+ * What the status tool reads. A copy, so nothing outside this file can
  * reach in and change a step.
  * @param {import('../workspace/index.mjs').Workspace|string} [workspace]
  * @returns {InstallProgress}
@@ -854,8 +854,7 @@ export function whenInstallSettles(workspace) {
 /**
  * Start the install unless it is already installed, already running, or has already
  * failed once. This is the one place workspace creation calls into, so the install
- * begins the moment a workspace exists rather than whenever the Connections screen
- * happens to be shown. Idempotent and never blocking, like `startInstall` itself.
+ * begins the moment a workspace exists. Idempotent and never blocking, like `startInstall` itself.
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[]}} [options]
  * @returns {boolean} true when this call actually started a new install.

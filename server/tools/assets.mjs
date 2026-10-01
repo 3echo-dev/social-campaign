@@ -1,5 +1,5 @@
 /**
- * Creative library tools: assets, analyses, ingestion jobs and the library screen.
+ * Creative library tools: assets, analyses and ingestion jobs.
  *
  * Originals are referenced in place and never touched. Everything derived lives in
  * the workspace. Searching is plain text matching over filename and analysis text,
@@ -12,7 +12,6 @@ import { newId, nowIso } from '../lib/ids.mjs';
 import { isTooBroadSourceFolder } from '../lib/paths.mjs';
 import { parseJson, toJsonColumn } from '../lib/json.mjs';
 import { validateAgainst } from '../lib/validate.mjs';
-import { thumbsRoot } from '../media/frames.mjs';
 import {
   assetFromRow,
   cancelLibraryJob,
@@ -33,25 +32,12 @@ const ANALYST_SCHEMA = {
   'script-analyst': 'script-analysis.schema.json',
 };
 
-/** How many assets the library screen shows at once. */
-const SCREEN_ASSET_LIMIT = 60;
-
 /**
  * @param {unknown} value
  * @returns {string|null}
  */
 function optionalString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-/**
- * Give the pane the folder it serves thumbnails from. Cheap, so every library tool
- * does it rather than relying on boot order.
- * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {import('../ui/server.mjs').UiServer} ui
- */
-function exposeThumbs(workspace, ui) {
-  if (workspace.root) ui.thumbsRoot = thumbsRoot(workspace.root);
 }
 
 /**
@@ -196,38 +182,6 @@ function summarize(db, brandId) {
   };
 }
 
-/**
- * Build the data the creative_library screen renders.
- * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{brandId: string|null, jobId: string|null}} options
- */
-function libraryScreenData(workspace, options) {
-  const status = workspace.status();
-  if (!status.configured) {
-    return { title: 'Build Creative Library', brand_id: options.brandId, job: null, assets: [], summary: null };
-  }
-  const db = workspace.requireDb();
-  const job = options.jobId ? getJob(db, options.jobId) : latestJob(db, options.brandId);
-  const { assets } = searchAssets({ brand_id: options.brandId, limit: SCREEN_ASSET_LIMIT }, workspace);
-  return {
-    title: 'Build Creative Library',
-    brand_id: options.brandId,
-    workspaceRoot: status.workspaceRoot,
-    job: job ? { ...job, running: isJobRunning(job.id) } : null,
-    assets: assets.map((asset) => ({
-      id: asset.id,
-      filename: asset.filename,
-      kind: asset.kind,
-      duration: asset.duration,
-      width: asset.width,
-      height: asset.height,
-      thumbnail_url: asset.thumbnail_url,
-      analyzed: asset.analysis_count > 0,
-    })),
-    summary: summarize(db, options.brandId),
-  };
-}
-
 /** @type {import('../mcp/registry.mjs').ToolDefinition[]} */
 export const assetTools = [
   defineTool({
@@ -247,10 +201,9 @@ export const assetTools = [
       required: ['path'],
       additionalProperties: false,
     },
-    handler: async (args, { workspace, ui }) => {
+    handler: async (args, { workspace }) => {
       const origin = optionalString(args.origin) ?? 'reference';
       if (!ORIGINS.includes(origin)) throw new InvalidInputError(`origin must be one of ${ORIGINS.join(', ')}.`);
-      exposeThumbs(workspace, ui);
       const result = await registerFile({
         db: workspace.requireDb(),
         workspaceRoot: workspace.requireRoot(),
@@ -399,7 +352,7 @@ export const assetTools = [
       required: ['source_folder'],
       additionalProperties: false,
     },
-    handler: (args, { workspace, ui }) => {
+    handler: (args, { workspace }) => {
       const workspaceRoot = workspace.requireRoot();
       const sourceFolder = String(args.source_folder);
       if (isTooBroadSourceFolder(sourceFolder, workspaceRoot)) {
@@ -407,7 +360,6 @@ export const assetTools = [
           'That folder is too broad to index. Choose a specific folder rather than the home directory, a drive root or the workspace root.',
         );
       }
-      exposeThumbs(workspace, ui);
       const job = startLibraryJob({
         db: workspace.requireDb(),
         workspaceRoot,
@@ -495,40 +447,5 @@ export const assetTools = [
       additionalProperties: false,
     },
     handler: (args, { workspace }) => ({ summary: summarize(workspace.requireDb(), optionalString(args.brand_id)) }),
-  }),
-
-  defineTool({
-    name: 'creative_library_open',
-    description:
-      'Show the creative library screen: a folder field with a Start button, progress of the current ' +
-      'indexing job, and the indexed assets. Call it again to refresh while a job runs. Wait with ui_wait; ' +
-      'the action comes back as start (payload.folder), skip_analysis, done or cancel.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brand_id: { type: 'string' },
-        job_id: { type: 'string', description: 'Show this job instead of the latest one.' },
-        folder: { type: 'string', description: 'Pre-fill the folder field.' },
-        error: { type: 'string', description: 'A one line problem to show at the top.' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace, ui }) => {
-      exposeThumbs(workspace, ui);
-      const brandId = optionalString(args.brand_id);
-      const jobId = optionalString(args.job_id);
-      const data = libraryScreenData(workspace, { brandId, jobId });
-      const screen = ui.show('creative_library', {
-        ...data,
-        folder: optionalString(args.folder) ?? data.job?.source_folder ?? '',
-        error: optionalString(args.error),
-      });
-      // --- live refresh: background analysts write analyses through
-      // creative_save_analysis without ever re-showing this screen, so the pane
-      // polls GET /api/live to read the same truth this handler just built.
-      ui.registerRefresher('creative_library', () => libraryScreenData(workspace, { brandId, jobId }));
-      // --- end live refresh ---
-      return { url: ui.url(), screenId: screen.screenId, job_id: data.job?.id ?? null, summary: data.summary };
-    },
   }),
 ];
