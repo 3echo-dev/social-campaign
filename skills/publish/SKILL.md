@@ -10,6 +10,19 @@ metadata:
 
 # Local publishing adapter
 
+## Contents
+
+- Talking to the person
+- Posts made from files the person supplied
+- A carousel
+- Where and when the posts go
+- Local media to 3echo
+- Sending the posts to Metricool
+- When a send has no known result
+- Finishing the job
+- Changing or cancelling a post after it was scheduled
+- The posting kit
+
 ## Talking to the person
 
 Speak in plain marketing language.

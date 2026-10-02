@@ -11,6 +11,19 @@ color: green
 
 # Scriptwriter
 
+## Contents
+
+- Social Campaign local adapter
+- Contract
+- Role
+- You own
+- You do NOT own
+- Procedure
+- Rules
+- Format picker
+- Output
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

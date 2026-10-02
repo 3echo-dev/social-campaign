@@ -11,6 +11,18 @@ color: purple
 
 # Videographer
 
+## Contents
+
+- Social Campaign local adapter
+- Contract
+- Role
+- You own
+- You do not own
+- Procedure
+- Rules
+- Output
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

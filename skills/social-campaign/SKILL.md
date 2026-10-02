@@ -9,6 +9,23 @@ metadata:
 
 # Social Campaign
 
+## Contents
+
+- Talking to the person
+- Start every session
+  - Check for a finished update before anything else
+- Local workspace rules
+- What does the person want to get done
+- Brand gate
+- Job and input flow
+- Board and decisions
+  - Never stop waiting on an open gate
+- Stuck jobs
+- Stage behavior
+- Operating practice
+- Artifact handoff
+- Recovery
+
 ## Talking to the person
 
 Speak in plain marketing language.

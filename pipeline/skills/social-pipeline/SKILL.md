@@ -11,6 +11,21 @@ metadata:
 
 # Social Pipeline
 
+## Contents
+
+- Social Campaign local adapter
+  - Local authority
+- Steps
+  - 1. Look before you speak
+  - 2. Say what this is, in one line
+  - 3. Read intent and ask only when needed
+  - 4. Route
+  - 5. Mention setup only if something is missing
+- Rules
+- Output contract
+- Boundary
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before following this vendored flow.

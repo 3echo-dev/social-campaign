@@ -5,6 +5,22 @@ model: claude-sonnet-5-5
 color: red
 ---
 
+## Contents
+
+- Social Campaign local adapter
+  - Local authority
+- Rules
+- Job and route
+- Dispatch loop
+- Talking to the person
+- Editor and revisions
+- Media: the only place money moves
+- Gates
+- Hand-off
+  - Posting files the person already has (publish_post)
+- Never
+- Workspace
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

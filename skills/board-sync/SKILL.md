@@ -6,6 +6,33 @@ user-invocable: false
 
 # Board sync
 
+## Contents
+
+- Stop reminders
+- Publish current state
+- Handling a board request
+- Reading a comment from the board
+- Land and apply requests
+- Questions on the board
+- Plain words
+- Agent Box
+- Stuck jobs
+- Housekeeping
+- Present a review
+- Decisions on the board and in chat
+  - Storyboard panels
+  - Sample image
+  - The report
+  - Final approval and the label check
+  - Review media on the board
+- Recipe picks on the board and in chat
+- Which Studio workspace pays
+- Which Metricool brand posts
+- Native connectors
+- Where the posts stand
+  - Answers about one post
+  - Marking a post as posted
+
 Local pipeline files are the canonical job state.
 The Claude artifact stores projections and user requests.
 Studio database sync is parked and is independent of this relay.

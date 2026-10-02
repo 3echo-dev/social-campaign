@@ -9,6 +9,15 @@ metadata:
 
 # Setup
 
+## Contents
+
+- Talking to the person
+- Select the workspace
+- Normal artifact setup
+- Explicit replacement with `--new`
+- Permissions
+- Route after readiness
+
 ## Talking to the person
 
 Speak in plain marketing language.

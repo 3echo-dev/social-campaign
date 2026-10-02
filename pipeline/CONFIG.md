@@ -1,5 +1,23 @@
 # Settings
 
+## Contents
+
+- Settings you may change
+- Internals
+- The gate app
+  - Connect the pane from scripts
+  - The workspace pane
+- Tokens
+- Function hooks
+  - What the model is told, every turn
+  - What watches the pane
+  - What refuses a spend
+  - What refuses a write
+  - What says the run is alive
+  - What says whose turn it is
+  - The rule about asking
+- Environment notes
+
 Claude reads this file at the start of any job and honours every value.
 To change something, edit it here. Asking in conversation does not change it.
 

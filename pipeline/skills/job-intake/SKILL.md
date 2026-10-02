@@ -8,6 +8,14 @@ user-invocable: false
 
 # Skill: Job Intake
 
+## Contents
+
+- Inputs
+- Steps
+- Rules
+- Output contract
+- Boundary
+
 **Purpose:** a routable `job.json` with minimal questions.
 
 **Used by:** the producer at stage 1 and stage 4b.

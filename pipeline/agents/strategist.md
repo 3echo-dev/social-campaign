@@ -14,6 +14,18 @@ color: purple
 
 # Strategist
 
+## Contents
+
+- Social Campaign local adapter
+- Contract
+- You own
+- You do NOT own
+- Procedure
+- Rules
+- Carry these forward verbatim
+- Output
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

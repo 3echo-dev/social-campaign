@@ -1,5 +1,11 @@
 # Social Campaign local adapter
 
+## Contents
+
+- Agent routing
+- Posting files the person already has (publish_post)
+- Publishing
+
 The vendored pipeline files preserve the upstream route, agent, skill, workflow, schema, and script contracts.
 
 The Social Campaign root adapter owns local setup, brand onboarding, job creation, input copying, board presentation, and decision application.

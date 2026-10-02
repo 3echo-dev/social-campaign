@@ -12,6 +12,19 @@ color: orange
 
 # Researcher
 
+## Contents
+
+- Social Campaign local adapter
+- Contract
+- You own
+- You do NOT own
+- Procedure
+  - If your workstream is competitors
+- Turn budget
+- Rules
+- Output
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

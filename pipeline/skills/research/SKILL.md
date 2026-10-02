@@ -8,6 +8,25 @@ user-invocable: false
 
 # Skill: Research
 
+## Contents
+
+- Social Campaign local adapter
+  - Local authority
+  - Report jobs
+- Required reads
+- Target market
+- Hard limits
+- Brand onboarding workstream
+  - What each fill holds
+  - Audience fallback
+  - No evidence in a fill
+- Steps
+  - Retry chain, per source, hard cap one pass
+- Rules
+- Output contract
+- Boundary
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before following this vendored flow.

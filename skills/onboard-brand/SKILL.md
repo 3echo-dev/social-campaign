@@ -10,6 +10,18 @@ metadata:
 
 # Onboard a brand
 
+## Contents
+
+- Talking to the person
+- 1. Inspect current brands
+- 2. Collect declared brand context
+- 3. Complete the profile
+- 4. Brand research pass
+- 5. Verify and show the board
+- 6. Return to a pending job
+- Local boundaries
+- Failure handling
+
 ## Talking to the person
 
 Speak in plain marketing language.

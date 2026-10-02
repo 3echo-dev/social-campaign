@@ -11,6 +11,21 @@ color: blue
 
 # Copywriter
 
+## Contents
+
+- Social Campaign local adapter
+- Contract
+- Role
+- You own
+- You do NOT own
+- Procedure
+- Rules
+- Caption for supplied files
+- Slide plan for a carousel
+- Platform notes
+- Output
+- Failure modes
+
 ## Social Campaign local adapter
 
 Read pipeline/LOCAL-ADAPTER.md before this contract.

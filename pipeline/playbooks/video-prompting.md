@@ -1,5 +1,17 @@
 # Video prompting for the 3echo video tool
 
+## Contents
+
+- The tool
+- The rule that saves the most money
+- Prompt order
+- Camera vocabulary
+- Rules
+- Motion budget
+- Known failure cases
+- Stitching the cut
+- When a shot is wrong
+
 Read by the scriptwriter when writing `generation-manifest.json`, and by the producer when running `make-video`.
 
 ## The tool
