@@ -2299,7 +2299,14 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       if (!held.has(stage.status) && stage.status === 'complete') stage.status = 'waiting';
     }
   }
-  return stages.filter((stage) => !stage.skipped);
+  const shown = stages.filter((stage) => !stage.skipped);
+  // Between stages the state maps to the end of the stage just finished, so the next stage would read pending while Claude
+  // is already working on it. Say it is running, so the list agrees with the "Where you are" rail.
+  const idle = !OFF_FLOW_STATES.has(state) && !statesRuntime.isTerminal(state) && !shown.some((stage) => stage.status === 'running' || stage.status === 'waiting' || stage.status === 'blocked');
+  const lastDone = shown.map((stage) => stage.status).lastIndexOf('complete');
+  const nextUp = idle && lastDone >= 0 ? shown.find((stage, index) => index > lastDone && stage.status === 'pending') : null;
+  if (nextUp) nextUp.status = 'running';
+  return shown;
 }
 
 function workflowStageIds(workflowId) {
