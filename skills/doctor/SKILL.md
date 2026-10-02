@@ -12,6 +12,16 @@ disable-model-invocation: true
 
 # Social Campaign doctor
 
+## Contents
+
+- Talking to the person
+- Steps
+  - 1. Run the check
+  - 2. Report it as a checklist
+  - 3. Offer the repair
+  - 4. Say what it means for the user
+  - 5. Offer the next step
+
 ## Talking to the person
 
 Speak in plain marketing language.

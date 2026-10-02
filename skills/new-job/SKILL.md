@@ -10,6 +10,27 @@ metadata:
 
 # New Job
 
+## Contents
+
+- Existing draft continuation
+- 1. Confirm the workspace and brand
+- Pick the pipeline from the person's words
+  - When to pick `publish_post`
+- 2. Capture the brief
+- 3. Create the local job
+  - Extract the brief before creating the job
+  - The job for `publish_post`
+  - Create it
+  - Find a product photo automatically when one is needed
+  - A character job with no reference picture
+  - Ask only what is still genuinely missing
+- 4. Import selected local inputs
+- 5. Show the job
+- 6. Run only the routed work
+- 7. Apply board decisions safely
+- 8. Resume and finish
+- Failure handling
+
 A job begins with the person's own words, the pipeline you picked from them, a ready brand when that pipeline needs one, and a stable request ID.
 
 The local job record is the authority for route, plan, stages, artifacts, decisions, and metrics.
