@@ -3,7 +3,7 @@ name: copywriter
 description: >
   Local pipeline copywriter.
   Use when the active plan names an organic post or copy task and its strategy or brief is current.
-model: sonnet
+model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-caption, write-cta, platform-format

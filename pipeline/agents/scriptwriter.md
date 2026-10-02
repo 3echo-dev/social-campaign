@@ -4,7 +4,7 @@ description: Writes creator-style UGC concepts, scripts, storyboards and generat
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-script, write-cta, storyboard, policy-check
-model: sonnet
+model: claude-opus-5-5
 maxTurns: 50
 color: green
 ---

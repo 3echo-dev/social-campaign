@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.8.1.
+Current version: 0.8.2.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -85,19 +85,19 @@ Each specialist gets only the tools its stage needs.
 
 | Role | What it owns | Skills it uses | Model |
 |---|---|---|---|
-| `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off, and sending the posts to Metricool | all of them, as the plan names them | sonnet |
-| `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | sonnet |
-| `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | **opus** |
-| `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | sonnet, run on **opus** for the script and storyboard step |
-| `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | sonnet |
-| `media-buyer` | Paid campaigns only: ad requirements, campaign proposal, activation checklist | write-cta, platform-format | sonnet |
-| `videographer` | Watching and breaking down source video, and checking rendered clips | watch-video, analyze-video, source-validation, write-report | sonnet |
-| `editor` | Check-only review: facts, brand, policy, platform rules | fact-check, brand-check, policy-check, platform-format, source-validation | sonnet |
-| `publisher` | The hand-off record after the posting approval. It never sends a post | publish | sonnet |
+| `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off, and sending the posts to Metricool | all of them, as the plan names them | Sonnet 5.5 |
+| `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | Sonnet 5.5 |
+| `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | Fable 5.1 |
+| `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | Opus 5.5, for the whole run including the script and storyboard step |
+| `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | Opus 5.5 |
+| `media-buyer` | Paid campaigns only: ad requirements, campaign proposal, activation checklist | write-cta, platform-format | Opus 5.5 |
+| `videographer` | Watching and breaking down source video, and checking rendered clips | watch-video, analyze-video, source-validation, write-report | Sonnet 5.5 |
+| `editor` | Check-only review: facts, brand, policy, platform rules | fact-check, brand-check, policy-check, platform-format, source-validation | Opus 5.5 |
+| `publisher` | The hand-off record after the posting approval. It never sends a post | publish | Haiku 4.5 |
 
-The strategist keeps Opus because the brief is the file every later stage reads.
+The strategist uses Fable 5.1 because the brief is the file every later stage reads.
 A weak angle is copied faithfully into the concepts, the script and the copy, where no gate will catch it.
-The workflow also runs the scriptwriter on Opus for the script and storyboard step.
+The scriptwriter runs on Opus 5.5 throughout, including the script and storyboard step.
 
 ---
 

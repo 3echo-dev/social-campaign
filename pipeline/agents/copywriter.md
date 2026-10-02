@@ -4,7 +4,7 @@ description: Writes platform-native organic posts and ad copy for facebook, inst
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-caption, write-cta, platform-format
-model: sonnet
+model: claude-opus-5-5
 maxTurns: 40
 color: blue
 ---

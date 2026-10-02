@@ -4,7 +4,7 @@ description: Check-only editor. Reads current deliverables, returns GO or NEEDS 
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: fact-check, brand-check, policy-check, platform-format, source-validation
-model: sonnet
+model: claude-opus-5-5
 maxTurns: 30
 color: yellow
 ---

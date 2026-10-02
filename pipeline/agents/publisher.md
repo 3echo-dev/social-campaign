@@ -6,7 +6,7 @@ description: >-
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: publish
-model: sonnet
+model: claude-haiku-4-5-20251001
 maxTurns: 30
 ---
 

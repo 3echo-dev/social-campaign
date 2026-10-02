@@ -3,7 +3,7 @@ name: publisher
 description: >
   Local pipeline publisher.
   Use only after the active plan has a current final approval and a complete delivery package.
-model: sonnet
+model: claude-haiku-4-5-20251001
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: publish

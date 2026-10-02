@@ -7,7 +7,7 @@ description: >-
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-cta, platform-format
-model: sonnet
+model: claude-opus-5-5
 maxTurns: 50
 color: magenta
 ---

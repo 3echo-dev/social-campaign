@@ -4,7 +4,7 @@ description: Reads the producer's canonical watch report, sampled frames, and an
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: watch-video, analyze-video, source-validation, write-report
-model: sonnet
+model: claude-sonnet-5-5
 maxTurns: 40
 color: purple
 ---

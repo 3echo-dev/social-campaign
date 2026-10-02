@@ -1,7 +1,7 @@
 ---
 name: producer
 description: "Main orchestrator: routes jobs, dispatches workflow stages, verifies artifacts, stops at human gates, controls spend, and builds hand-off. Use to start, resume or continue jobs."
-model: sonnet
+model: claude-sonnet-5-5
 color: red
 ---
 

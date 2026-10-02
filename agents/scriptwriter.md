@@ -3,7 +3,7 @@ name: scriptwriter
 description: >
   Local pipeline scriptwriter.
   Use when the active plan names a UGC script, concepts, or storyboard task.
-model: sonnet
+model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-script, write-cta, storyboard, policy-check

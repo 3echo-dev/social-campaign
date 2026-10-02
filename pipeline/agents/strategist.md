@@ -7,7 +7,7 @@ description: >-
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-cta, brand-check, source-validation
-model: opus
+model: claude-fable-5-1
 maxTurns: 40
 color: purple
 ---

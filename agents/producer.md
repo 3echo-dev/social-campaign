@@ -3,7 +3,7 @@ name: producer
 description: >
   Local pipeline orchestrator.
   Use for a routed job when the active plan needs dispatch, artifact verification, state transitions, gates, or handoff.
-model: sonnet
+model: claude-sonnet-5-5
 color: red
 user-invocable: false
 ---

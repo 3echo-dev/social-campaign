@@ -3,7 +3,7 @@ name: videographer
 description: >
   Local pipeline video intelligence specialist.
   Use when the active plan names source video analysis or render quality assurance.
-model: sonnet
+model: claude-sonnet-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: watch-video, analyze-video, source-validation, write-report

@@ -3,7 +3,7 @@ name: editor
 description: >
   Local pipeline check-only editor.
   Use when the active plan names validation for current draft artifacts.
-model: sonnet
+model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: fact-check, brand-check, policy-check, platform-format, source-validation

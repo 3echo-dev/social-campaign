@@ -39,7 +39,7 @@ skills. The producer is the only thing that can spend credits, and it cannot pas
 │        │          │          │ stage 6  │          │ stage 10 │ stage 14 │
 ├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┤
 │research│strategist│ script-  │ script-  │ producer │copywriter│ producer │
-│   -er  │  (opus)  │  writer  │  writer  │  3echo   │  editor  │  build-  │
+│   -er  │ Fable 5.1│  writer  │  writer  │  3echo   │  editor  │  build-  │
 │ x1or3  │          │          │          │ images,  │ 4 checks │  handoff │
 │skipped │          │min(3,n+1)│4 to 15 s │  video   │          │ receipt  │
 │when the│          │150 words │per clip  │  stitch  │          │          │
@@ -84,19 +84,19 @@ sets `disallowedTools: Agent`. No specialist holds an MCP tool, so no specialist
 
 | Role | What it owns | Skills | Model |
 |---|---|---|---|
-| `producer` | States, dispatch, disk verification, gates, every credit spent, the hand-off | job-intake, make-image, make-video, watch-video, storyboard, publish | sonnet |
-| `researcher` | One evidence workstream per spawn, fetch-before-cite, gaps recorded as findings | research, source-validation | sonnet |
-| `strategist` | `brief.md`: angle, audience, proof points with provenance, deliverable map | write-hook, write-cta, brand-check, source-validation | **opus** |
-| `copywriter` | Platform-native posts: hook inside the cutoff, caption, CTA, media spec | write-hook, write-caption, write-cta, platform-format | sonnet |
-| `scriptwriter` | Concepts, persona, script beats, storyboard, generation manifest | write-hook, write-script, write-cta, storyboard, policy-check | sonnet |
-| `media-buyer` | Objective, audience, budget, tracking, creative map, proposal, activation checklist | write-cta, platform-format | sonnet |
-| `videographer` | Source video analysis and QA of rendered clips against the board | watch-video, analyze-video, source-validation | sonnet |
-| `editor` | GO or NEEDS REVISION on fact, brand, policy and platform. Never edits | fact-check, brand-check, policy-check, platform-format, source-validation | sonnet |
+| `producer` | States, dispatch, disk verification, gates, every credit spent, the hand-off | job-intake, make-image, make-video, watch-video, storyboard, publish | Sonnet 5.5 |
+| `researcher` | One evidence workstream per spawn, fetch-before-cite, gaps recorded as findings | research, source-validation | Sonnet 5.5 |
+| `strategist` | `brief.md`: angle, audience, proof points with provenance, deliverable map | write-hook, write-cta, brand-check, source-validation | Fable 5.1 |
+| `copywriter` | Platform-native posts: hook inside the cutoff, caption, CTA, media spec | write-hook, write-caption, write-cta, platform-format | Opus 5.5 |
+| `scriptwriter` | Concepts, persona, script beats, storyboard, generation manifest | write-hook, write-script, write-cta, storyboard, policy-check | Opus 5.5 |
+| `media-buyer` | Objective, audience, budget, tracking, creative map, proposal, activation checklist | write-cta, platform-format | Opus 5.5 |
+| `videographer` | Source video analysis and QA of rendered clips against the board | watch-video, analyze-video, source-validation | Sonnet 5.5 |
+| `editor` | GO or NEEDS REVISION on fact, brand, policy and platform. Never edits | fact-check, brand-check, policy-check, platform-format, source-validation | Opus 5.5 |
 
-The strategist keeps Opus because `brief.md` is the one file every other agent reads, and a weak
-brief is copied faithfully into everything downstream where no gate will catch it. The script and
-board stage spawns the scriptwriter on Opus too: it is the one creative judgement in the run that
-nothing afterwards can check.
+The strategist uses Fable 5.1 because `brief.md` is the one file every other agent reads, and a weak
+brief is copied faithfully into everything downstream where no gate will catch it. The scriptwriter
+runs on Opus 5.5 throughout, including the script and board stage: it is the one creative judgement
+in the run that nothing afterwards can check.
 
 ---
 

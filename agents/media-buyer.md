@@ -3,7 +3,7 @@ name: media-buyer
 description: >
   Local pipeline paid distribution specialist.
   Use only when the active route includes the paid campaign discipline.
-model: sonnet
+model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-cta, platform-format

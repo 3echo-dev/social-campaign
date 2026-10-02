@@ -5,7 +5,7 @@ description: >-
 tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__web_crawl
 disallowedTools: Agent
 skills: research, source-validation, write-report
-model: sonnet
+model: claude-sonnet-5-5
 maxTurns: 40
 color: orange
 ---
