@@ -2362,24 +2362,26 @@ export function studioWorkspaceRequired(doc) {
   return Boolean(info && !info.workspaceId && (info.workspaces || []).length > 1);
 }
 
-export function studioWorkspaceSection(doc, state = {}, { disabled = false } = {}) {
+// `upload` is the same picker on the posting card, where the workspace is where the files go, not what pays.
+export function studioWorkspaceSection(doc, state = {}, { disabled = false, upload = false } = {}) {
   const info = doc?.review?.studioWorkspace;
   const workspaces = Array.isArray(info?.workspaces) ? info.workspaces : [];
-  if (!info || !workspaces.length) return '';
+  if (!info) return '';
+  if (!workspaces.length) return upload ? '<p class="muted">Claude is getting your 3echo workspaces.</p>' : '';
   const busy = Boolean(state.busy);
   const submitted = Boolean(state.submitted);
   const locked = disabled || busy || submitted;
-  const editing = Boolean(state.editing) || (!info.workspaceId && workspaces.length > 1);
+  const editing = Boolean(state.editing) || (!info.workspaceId && (workspaces.length > 1 || upload));
   if (!editing) {
     const balance = studioWorkspaceBalanceWords(info.creditAvailable);
-    return `<div class="price-workspace"><p>Paid from: <strong>${esc(info.name || 'A workspace')}</strong>${balance ? ` (${esc(balance)})` : ''}</p><button type="button" class="quiet" data-workspace-action="edit" ${disabled ? 'disabled' : ''}>Change</button></div>`;
+    return `<div class="price-workspace"><p>${upload ? 'Files go to' : 'Paid from'}: <strong>${esc(info.name || 'A workspace')}</strong>${balance ? ` (${esc(balance)})` : ''}</p><button type="button" class="quiet" data-workspace-action="edit" ${disabled ? 'disabled' : ''}>Change</button></div>`;
   }
   const selected = state.selected || info.workspaceId || workspaces[0]?.id || '';
   const options = workspaces.map(item => {
     const balance = studioWorkspaceBalanceWords(item.creditAvailable);
     return `<option value="${esc(item.id)}" ${selected === item.id ? 'selected' : ''}>${esc(item.name)}${balance ? ` (${esc(balance)})` : ''}</option>`;
   }).join('');
-  const label = info.workspaceId ? 'Change which workspace pays' : 'Choose which workspace pays for this job';
+  const label = upload ? (info.workspaceId ? 'Change which 3echo workspace your files go to' : 'Choose which 3echo workspace your files go to') : info.workspaceId ? 'Change which workspace pays' : 'Choose which workspace pays for this job';
   const cancel = info.workspaceId ? `<button type="button" class="quiet" data-workspace-action="cancel" ${locked ? 'disabled' : ''}>Cancel</button>` : '';
   const brandOption = `<label class="price-workspace-scope"><input type="checkbox" name="studio_workspace_brand_default" ${state.brandDefault ? 'checked' : ''} ${locked ? 'disabled' : ''}> Also use this for every job from this brand</label>`;
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
@@ -2972,6 +2974,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   }
   const used = new Set();
   const planned = gate === 'publish' && review.publish;
+  if (gate === 'publish' && review.publish && review.publish.route !== 'self' && !review.publish.studioWorkspace?.name && (review.publish.posts || []).some(post => post.media?.length)) parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked, upload: true }));
   if (gate === 'publish') parts.push(publishCard(review.publish, routeState, { disabled: locked, openKeys, postStates, note: doc.publishNote, jobId: project?.jobId || doc.jobId || '', signal, previews: planned ? post => publishPreviews(review, post, used) : null }));
   // The deliverable cards repeat the text in another split, so the publish gate leaves them out once it has the plan.
   if (review.posts?.length && !planned) parts.push(`<div class="post-list">${review.posts.map(post => postPreview(post)).join('')}</div>`);

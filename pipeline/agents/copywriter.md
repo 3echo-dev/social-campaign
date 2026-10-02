@@ -88,14 +88,15 @@ The person already has the pictures or video: there is no brief, no research and
 reads:         drafts/D{n}/post.md (the plugin's skeleton), job.json,
                brand/brand-voice.md, brand/audience.md, brand/positioning.md,
                platform-rules/{platform}.md,
-               the stills the producer names in the spawn prompt (open each with Read)
-writes:        drafts/D{n}/post.md: the Caption, Hashtags and CTA sections, and char_count
-must not read: research/, brief.md, other drafts/D*/post.md
+               at most 5 of the stills the producer names in the spawn prompt (open each with Read)
+writes:        drafts/D{n}/post.md: the Caption, Hashtags and CTA sections only
+must not read: research/, brief.md, other drafts/D*/post.md, plugin code or scripts
 done when:     every post file with caption_by: claude has a Caption
 ```
 
 - Never change a caption whose front matter says `caption_by: person`: it is the person's own words.
-- Leave the front matter (except `char_count`), Provenance, Disclosure and Publish plan as the plugin wrote them.
+- Leave the front matter, Provenance, Disclosure and Publish plan as the plugin wrote them, and leave `char_count` at 0: the platform check measures the real length.
+- Look at no more than 5 stills, spread across the video from start to end, even when more are named; never read plugin code, scripts or the parser.
 - One caption per platform, in the brand's voice, from what the files visibly show; each platform is a separate pass.
 - Add no claim the brand profile does not already support: no numbers, prices, offers, results, superlatives, names or places that are not in the profile or on screen.
   With no basis for a claim, describe what is shown and stop.

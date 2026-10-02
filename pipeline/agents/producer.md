@@ -117,6 +117,15 @@ The rest is in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`.
 Follow `skills/publish/SKILL.md` for the handoff sequence and receipt.
 Optional feedback can be recorded after completion; it does not reopen production.
 
+### Posting files the person already has (publish_post)
+
+Use these exact calls and nothing else for this job.
+- Caption stage: when the copywriter writes the caption, pass at most 5 frame paths in the spawn prompt, spread from the first to the last, even when `pipeline_qc_frames` saved more.
+- Platform check: `node "${CLAUDE_PLUGIN_ROOT}/scripts/platform-check.js" {brand} {jobId} --root "{workspace root}"`.
+- Show the final post: `pipeline_review_present {brand, jobId, gate:'content'}`, with no `paths`: every post file and every supplied file is presented.
+- Posting decision on a Metricool route: this job has no price step, so first call 3echo `list_workspaces` and `pipeline_studio_workspaces_save` with that list. With exactly one workspace, call `pipeline_studio_workspace_choose {brand, jobId, workspaceId}` without asking; with several, ask which one in plain words, on the board and in chat, and save the first answer the same way.
+- Review copies: `pipeline_review_copies_prepare {brand, jobId}`, upload each `toUpload[].path`, and only when the upload was not matched, `pipeline_review_copies_record {brand, jobId, items:[{path, assetId, url}]}`, one item per copy.
+
 ## Never
 
 1. Regenerate a board for one panel, or a panel nobody sent back.

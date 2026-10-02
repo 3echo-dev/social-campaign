@@ -40,6 +40,7 @@ When Metricool is connected and the brand's Metricool brand is chosen, the posts
 At the posting decision, call pipeline_review_present with each `drafts/D*/post.md`, whose Publish plan table carries the platform, account, time and destination, and write every entry of its returned `documents`.
 
 Follow the hand-off in `board-sync` under Decisions on the board and in chat: one short chat summary of where and when each post goes, answerable here or on the board, applied with the same decision tools, and never asked twice.
+When a failing check keeps Approve off on the posting card, name that check in the chat summary in plain words and say what is needed first; never tell the person to press Approve then.
 Follow social-campaign's Never stop waiting on an open gate rule: keep the decision open until an answer arrives, and never fall back to asking the person to reply in chat.
 
 With no Metricool connected or chosen, the only route is "I'll post it myself": the person approves the plan, the board shows the posting kit, and the person posts each one and marks it as posted.
@@ -85,6 +86,10 @@ While nothing has been sent, the person can still change an approved plan, and a
 Then say in one plain line that the plan changed, and wait for a new answer before uploading or sending anything.
 Once anything has gone to Metricool the plan is frozen: the tool refuses with "Some posts already went to Metricool, so this plan can't change. A post Claude cannot send is handed over to you in the posting kit on the board, and the ones that went out are changed in Metricool.", a post you cannot send is handed over to the person (see "The posting kit"), and the person changes the sent ones in Metricool.
 When a check on the plan fails, tell the person in their own terms and fix the cause at the right step, such as the post type, the media or the schedule.
+A job made from files the person already has skips the price step, which is where the 3echo workspace is normally chosen.
+So before presenting the posting decision on any Metricool route, call `list_workspaces` and then `pipeline_studio_workspaces_save` with that list.
+With exactly one workspace, choose it with `pipeline_studio_workspace_choose` (`brand`, `jobId`, `workspaceId`) without asking.
+With several, ask the person in plain words on the board and in chat which one their files should go to, and save the first answer the same way; the posting card also lists them.
 A post of an older job that has no post type says "Choose what kind of ... post this is", and the card shows a "Post type" select with only the kinds that fit: the person chooses there, or says it in chat and you save it with `pipeline_post_type_choose` (`brand`, `jobId`, `deliverable`, `placement`), which refuses once the plan is approved or sent and never replaces a type that is set.
 The plan is rebuilt and the decision presented again, so say that the plan changed and wait for the new answer.
 A post with no posting time says "Choose when this post goes out.", and on the Schedule route the card shows a date and time input in the plan's zone, which the person fills in there, or says it in chat and you save it with `pipeline_post_time_choose` (`brand`, `jobId`, `deliverable`, `dateTime` as `YYYY-MM-DDTHH:MM` local to the plan's zone), which refuses a time that is not real or less than 5 minutes ahead, and once the plan is approved or sent.

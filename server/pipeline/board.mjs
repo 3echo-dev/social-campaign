@@ -695,7 +695,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const reviewUrl = ({ sha256 }) => reviewUrlFor(root, { brand: job.brand, jobId: job.jobId, sourceSha: sha256 });
-    const studioWorkspace = gate === PRICE_GATE ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
+    const studioWorkspace = gate === PRICE_GATE || gate === 'publish' ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
     const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot) });
     const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path }));
     const brandDir = brandDirBySlug.get(job.brand) || null;
@@ -2192,6 +2192,15 @@ function reportReviewPaths(dir) {
   return [REPORT_FILE, ...stills];
 }
 
+function postFilePaths(dir) {
+  try {
+    return readdirSync(join(dir, 'drafts'), { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name) && existsSync(join(dir, 'drafts', entry.name, 'post.md')))
+      .map(entry => `drafts/${entry.name}/post.md`)
+      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  } catch { return []; }
+}
+
 function moveToReview(root, brand, jobId, snapshot, requested, paths) {
   const state = snapshot.project.state;
   const current = states.gateOf(state);
@@ -2238,6 +2247,8 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     const aimed=requested ?? current ?? inferredGate(snapshot.project.state,paths,workflowId);
     if(aimed && !current) assertReviewFits(aimed,workflowId);
     if(aimed===FINDINGS_GATE && (!current || current===FINDINGS_GATE)) paths=reportReviewPaths(jobDirectory(root,brand,jobId));
+    // The final post of a job made from supplied files needs no list: it is every post file, and the supplied files are added below.
+    if((!Array.isArray(paths) || !paths.length) && aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=postFilePaths(jobDirectory(root,brand,jobId));
     if(!Array.isArray(paths) || !paths.length || new Set(paths).size!==paths.length) throw new Error('Provide the complete, unique list of files for this review.');
     // The person's approval of the posting decision covers the posting plan by its hash, so the plan is built from
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is

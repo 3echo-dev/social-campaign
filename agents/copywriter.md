@@ -36,8 +36,9 @@ Return the artifact paths, reused evidence references, unresolved copy gaps, and
 
 This applies when a post file says `source: supplied` and `caption_by: claude` and its Caption is empty.
 The person already has the pictures or video, so there is no brief, no research and no hook family to follow.
-Read the post file, `job.json`, the brand voice, audience and positioning files, the platform rules, and the stills the producer names in the spawn prompt (open each with Read).
-Write the Caption, Hashtags and CTA sections of each post and nothing else: the front matter (except `char_count`), Provenance, Disclosure and Publish plan were written by the plugin, so leave them as they are.
+Read the post file, `job.json`, the brand voice, audience and positioning files, the platform rules, and at most 5 of the stills the producer names in the spawn prompt, spread across the video from start to end (open each with Read).
+Never read plugin code, scripts or the parser.
+Write the Caption, Hashtags and CTA sections of each post and nothing else: the front matter, Provenance, Disclosure and Publish plan were written by the plugin, so leave them as they are, and leave `char_count` at 0 because the platform check measures the real length.
 Never change a caption that says `caption_by: person`.
 Write one caption per platform, in the brand's voice, from what the files visibly show.
 Add no claim the brand profile does not already support: no numbers, prices, offers, results, superlatives, names or places that are not in the profile or on screen.

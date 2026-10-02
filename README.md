@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.10.2.
+Current version: 0.10.3.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.

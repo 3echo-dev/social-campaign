@@ -309,6 +309,7 @@ When a decision opens:
 
 1. Call `pipeline_review_present` with those files and write every entry of its returned `documents`, so the board shows the decision from the job document.
 2. Post one short chat summary of the same decision, naming the job's brand and title, with the same options, for example 'SK-II "Anna Sawai serum Reel": pick concept A or B, or ask for changes; concept A allows up to 48 credits.', and say it can be answered here or on the board.
+   When a failing check keeps Approve off (a posting card with a check marked as needing attention, for example), name that check in the summary in plain words and say what is needed first; never say to press Approve then.
 3. End the turn there; the board's doorbell comment, or the next session's sweep of saved requests, brings whichever answer comes first.
 
 An answer on the board arrives as a `submit_decision` request.

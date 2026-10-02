@@ -1551,6 +1551,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       // A post whose deliverable has no post type (a job planned before 0.8) carries the types it can still be.
       const typeChoices = postTypeChoices(intent?.posts, job?.deliverables);
       document.review.publish = projectPublish(intent && typeof intent === 'object' ? intent : { posts: [] }, { ...(publish || {}), now, changed, hosted, typeChoices });
+      if (studioWorkspace) document.review.studioWorkspace = studioWorkspace;
     }
   }
 
