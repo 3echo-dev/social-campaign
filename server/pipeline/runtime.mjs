@@ -1779,6 +1779,29 @@ export function updateJobIntake(options = {}) {
     const route = readJson(routeFile, null);
     const intakeState = ['INTAKE_PENDING', 'NEEDS_CLARIFICATION', 'UNSUPPORTED'].includes(status.state);
     const blockedDraft = status.state === 'BLOCKED' && route?.status !== 'ROUTED' && !existsSync(planFile);
+    // A publish_post job is planned as soon as it is made, so the person's own answers about their post (its caption and
+    // whether the files were made with AI) can still change until the final post is approved. They only rewrite the
+    // posts: the plan, the route and the state stay as they are.
+    const answersOnly = Object.keys(options.patch || {});
+    if (!intakeState && !blockedDraft && answersOnly.length && answersOnly.every(key => key === 'aiMade' || key === 'caption')
+      && ['PLANNED', 'DRAFTS_READY', 'VALIDATED', 'CHANGES_REQUESTED'].includes(status.state)) {
+      const currentJob = readJson(jobFile, null);
+      if (currentJob && kindsRuntime.suppliesMedia(jobKindOf(currentJob.kind))) {
+        const nextJob = applyIntakePatch(currentJob, options.patch);
+        if (JSON.stringify(nextJob) === JSON.stringify(currentJob)) {
+          return { jobId, brand: brand.slug, updated: false, revision: status.revision, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
+        }
+        nextJob.updatedAt = now();
+        writeJsonAtomic(jobFile, nextJob);
+        try {
+          placeSuppliedFiles({ root, brand, dir, files: [], rewritePosts: true });
+        } catch (error) {
+          writeFileSync(jobFile, jobBefore);
+          throw error;
+        }
+        return { jobId, brand: brand.slug, updated: true, revision: status.revision, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
+      }
+    }
     if (!intakeState && !blockedDraft) {
       const error = new Error(`Intake can only be updated before execution begins; current state is ${status.state}.`);
       error.code = 'INTAKE_UPDATE_NOT_ALLOWED';

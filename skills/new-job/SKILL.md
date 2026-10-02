@@ -186,6 +186,8 @@ When the files arrive after the job exists (the answer said the files were missi
 `replace: true` swaps the files already on the post for the new ones.
 Both only work while the job is still being set up; once it is planned the files cannot change, and a different file means a new post.
 To change the caption, the platforms, a post type, the time or the AI answer before the plan is made, use `pipeline_intake_update` with `caption`, `platforms`, `deliverables`, `schedule` or `aiMade`.
+The job is planned as soon as it is made, so ask whether the files were made with AI before you create it, together with anything else missing.
+After the plan is made, the caption and the AI answer can still change until the final post is approved: call `pipeline_intake_update` with only `caption` or `aiMade`.
 
 After the create call for `publish_post`, read the answer's `route`.
 When it is ROUTED, say in one plain line what will be posted and where, then carry on as for any job: the person approves the final post, then the posting plan.
