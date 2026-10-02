@@ -20,7 +20,7 @@ Follow these steps exactly and never read plugin code while doing them.
 
 1. Call `pipeline_qc_frames` with `brand` and `jobId`.
    It already takes every image and video registered for the pending review, including a contact sheet, so leave `paths` out unless you will show an image or video at the final approval that is not registered for the review yet.
-2. Open every returned frame `path` with Read, one at a time, and skip none.
+2. Open every returned frame `path` with Read, one at a time, and skip none; every slide of a carousel is one frame and gets the same reading as any other picture.
 3. For each frame, write down what it shows:
    - `text`: every word printed on the product, its pack or label, and every caption or overlay on screen.
      Copy it letter by letter exactly as printed, in the order shown.

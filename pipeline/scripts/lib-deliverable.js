@@ -149,6 +149,12 @@ const PHOTO_DISCIPLINES = Object.freeze(['static_image', 'carousel']);
 // Post types that fill a phone screen, so they are 9:16 and nothing else.
 const VERTICAL_ONLY = new Set(['reel', 'story', 'video']);
 
+// A carousel is a set of slides, one picture each. The platforms take more than ten on TikTok, but a plan
+// stays at ten: three to ten slides on every platform.
+const SLIDES = Object.freeze({ min: 3, max: 10 });
+const PLATFORM_SLIDE_MAX = Object.freeze({ instagram: 10, facebook: 10, tiktok: 35 });
+const slideRange = platform => ({ min: SLIDES.min, max: Math.min(SLIDES.max, PLATFORM_SLIDE_MAX[platform] || SLIDES.max) });
+
 // The order a person hears them in: Reel before post.
 const DISPLAY_ORDER = ['reel', 'post', 'story', 'carousel', 'video', 'photo'];
 const placementsFor = platform => (Object.hasOwn(PLACEMENTS, platform) ? PLACEMENTS[platform] : []);
@@ -156,9 +162,8 @@ const placementBelongs = (platform, placement) => placementsFor(platform).includ
 const allPlacements = () => [...new Set(Object.values(PLACEMENTS).flat())];
 const isVerticalOnly = (platform, placement) => placementBelongs(platform, placement) && VERTICAL_ONLY.has(placement);
 
-// A post type is offered to the person only while the discipline it needs can be made. The
-// carousel discipline's agent is planned, so a carousel is not offered until the registry says
-// that agent is active; nothing here has to change on that day.
+// A post type is offered to the person only while the discipline it needs can be made, so a
+// carousel is offered only while the registry says the agent for it is active.
 function offeredIn(registry, platform) {
   const map = (registry && registry.disciplineForCreativeDiscipline) || {};
   const agents = (registry && Array.isArray(registry.agents)) ? registry.agents : [];
@@ -343,6 +348,8 @@ function derivePlacement(d) {
   if (placementBelongs(d.platform, d.placement)) return d.placement;
   if (d.placement !== undefined && d.placement !== null) return null;
   const ratios = ratiosOf(d);
+  // A set of pictures on Instagram is a carousel, though a post would pass the rules too.
+  if (d.platform === 'instagram' && d.creativeDiscipline === 'carousel') return 'carousel';
   if (d.platform === 'instagram' && isVideoDiscipline(d.creativeDiscipline) && ratios.length > 0 && ratios.every(ratio => ratio === '9:16')) return 'reel';
   const open = validPlacementsFor(d);
   return open.length === 1 ? open[0] : null;
@@ -367,7 +374,7 @@ function withDerivedPlacements(jobSpec) {
 module.exports = {
   KIND_OF_DISCIPLINE, WORDS, CLIP_SECONDS, words, disciplines,
   plannedKind, plannedMinSeconds, actualKind, changeRecord, check, stillsOffer, plansVideo,
-  PLACEMENTS, PLACEMENT_NOUNS, PLATFORM_NAMES, VIDEO_DISCIPLINES, STORY_DISCIPLINES, PHOTO_DISCIPLINES, PLACEMENT_ENTRY,
+  SLIDES, slideRange, PLACEMENTS, PLACEMENT_NOUNS, PLATFORM_NAMES, VIDEO_DISCIPLINES, STORY_DISCIPLINES, PHOTO_DISCIPLINES, PLACEMENT_ENTRY,
   placementPlatforms, placementsFor, offeredPlacementsFor, offeredIn, placementBelongs, allPlacements, isVerticalOnly,
   placementWords, placementChoices, describe, publishable, placementProblems, missingPlacementLabel,
   placementProblemLabel, validPlacementsFor, asksForPlacement, placementEntryWords, placementEntryRef, withImpliedRatios, derivePlacement, withDerivedPlacements,

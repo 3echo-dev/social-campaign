@@ -162,6 +162,10 @@
             ],
             "description": "The fixed post type for this deliverable, chosen at the start of the job: instagram post | reel | story | carousel; facebook post | reel | story; tiktok video | photo. The enum is the union; route-job.js rejects a type that does not belong to the deliverable's platform and asks for it when a publishable deliverable has none."
           },
+          "slides": {
+            "type": "integer",
+            "description": "How many slides a carousel has, one picture each. Optional: the slide plan decides when it is left out. route-job.js rule 1d holds it to 3 to 10."
+          },
           "ugcSource": {
             "enum": [
               "ai",

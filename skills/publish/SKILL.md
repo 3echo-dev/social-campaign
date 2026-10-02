@@ -61,6 +61,13 @@ The posts, the post types and the caption were fixed at the final approval, and 
 A file over 100 MB cannot be uploaded to 3echo: the plan says so, and the person posts that one themselves with the posting kit.
 There is no hashing, copying or editing of the person's files here, and the label check never applies to them.
 
+## A carousel
+
+A carousel (an Instagram carousel, a Facebook post with several pictures, a TikTok photo post) is one post with all its slides, in slide order, and the plan sends it as one Metricool post with one caption.
+Upload every slide as the steps in "Local media to 3echo" say, and send them in the order the plan lists them.
+The plan checks the slide count, that every slide is the same shape, and the post type, so fix a failing check at its own step and never reorder or drop a slide by hand.
+With "I'll post it myself", the posting kit offers every slide for download.
+
 ## Where and when the posts go
 
 Every job that publishes has its own posting decision, with no exception: it is never folded into the final approval, whatever the schedule says and including "I'll post it myself".

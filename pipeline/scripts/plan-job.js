@@ -54,6 +54,9 @@ const tags = new Set(route.requiredDisciplines || []);
 const media = dels.some(d => d.creativeDiscipline !== 'text_only');
 if (media) tags.add('media');
 if (media && tags.has('video_intelligence')) tags.add('video_qa');
+// A carousel is planned slide by slide by the copywriter. A job that also makes a video keeps the producer's
+// media spec, which writes the script a video needs.
+if (dels.some(d => d.creativeDiscipline === 'carousel') && !dels.some(d => ['ugc', 'brand_video', 'motion_graphic'].includes(d.creativeDiscipline))) tags.add('carousel');
 if (!(route.gates || []).includes('publish')) tags.add('merged_publish');
 if (tags.has('ads')) tags.add('paid');
 // One tag per gate the route kept, so a row that only makes sense next to a gate

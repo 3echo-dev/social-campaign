@@ -42,6 +42,16 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 11. Regeneration after approval targets one panel by ID; a cut or insert returns to this gate. What a job delivers changes only at a gate.
 12. Shot, on-screen text and voiceover are written in plain words for a person: no task numbers, stage codes, file names or production notes. Production notes belong in `generation-manifest.json` only.
 
+## Carousel
+
+A carousel (an Instagram carousel, a Facebook post with several pictures, a TikTok photo post) is one post of 3 to 10 slides, never more than the job names.
+Set `format: carousel` in the board's front matter; its panels are then the slides, shown in swiping order and approved one by one.
+One panel per slide, `Duration` 0 (a picture has none), one ratio for all of them, never a 9:16 vertical on a feed unless the post type needs it.
+The Frame cell is the picture only, with no words in it; the `Spoken / on-screen` cell holds `On-screen: the short slide text`, or `(silent)` for a picture alone.
+The first slide is the hook, the middle slides carry one idea each, the last slide asks for the action.
+The caption goes with the whole post and is written later, so a slide carries no caption.
+`generation-manifest.json` has one image item per slide, so the price counts one image per slide.
+
 ## Edit protocol
 
 Put this verbatim under the board:

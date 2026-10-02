@@ -49,6 +49,7 @@ export const BOARD_TEXT = Object.freeze({
   rearm: "Re-arm the board's wake-up by reading and republishing it before replying.",
   agents: 'An agent finished since the board was written; call pipeline_board_job_documents for the jobs below and write them.',
   replies: 'The person left a message for the Director on the board. For each job below, answer it with pipeline_agent_reply, then write the documents it returns.',
+  chatAsk: 'You asked the person something in chat. Put the same question, with the same options, on the Director card with pipeline_board_ask, publish the board, then stop.',
   stuck: 'A job is stuck and the person has not been asked yet. For each job below, ask them in one plain line with pipeline_board_ask, say the same line in chat, then carry on.',
 });
 
@@ -476,6 +477,11 @@ function nextStageName(job, state) {
   }
 }
 
+const TASK_ENDED = /^(?:completed|done|failed|killed|stopped|cancelled|canceled|error)$/i;
+
+/** Does the Stop event list work still running in the background? */
+const backgroundWork = tasks => Array.isArray(tasks) && tasks.some(task => !TASK_ENDED.test(String(task?.status ?? '')));
+
 function hasOpenRun(lines, now) {
   return runsFrom(lines).some(run => {
     if (run.ended) return false;
@@ -537,11 +543,41 @@ function waitingFor(board, root, job, questions) {
   return gate ? { kind: 'decision', gate, reason: null } : null;
 }
 
+export const CHAT_ASK_RECENT_MS = 10 * 60 * 1000;
+const ENDS_IN_QUESTION = /\?[\s"')*_`\]]*$/;
+const OPTION_LINE = /^\s*(?:[-*]\s*)?(?:\(?[1-9][.)]|\(?[A-Da-d][.)])\s+\S/;
+const CHOOSE_CUE = /\b(?:choose|which|pick|reply with)\b/i;
+
+/** Does a chat message ask the person something? It ends with a question mark, or offers two or more numbered or lettered options with a cue like "choose" or "pick". */
+export function asksPerson(message) {
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (!text) return false;
+  if (ENDS_IN_QUESTION.test(text)) return true;
+  return text.split(/\r?\n/).filter(line => OPTION_LINE.test(line)).length >= 2 && CHOOSE_CUE.test(text);
+}
+
+/**
+ * The question Claude just asked in chat that the job bound to this session does not have on its board card yet: {ref, jobId, hash}, else null.
+ * "On the card" means an open question for the job asked in the last 10 minutes. Without the board's questions nothing is reported.
+ */
+function chatQuestion(root, jobs, questions, sessionId, message, now = Date.now()) {
+  try {
+    if (!questions || !asksPerson(message)) return null;
+    const bound = sessionId ? readSessionBinding(root, sessionId) : null;
+    const job = bound ? jobs.find(item => item.brand === bound.brand && item.jobId === bound.jobId) : null;
+    if (!job || isFinishedState(job.state)) return null;
+    if ((questions.get(job.jobId) || []).some(question => now - Date.parse(question.askedAt ?? '') <= CHAT_ASK_RECENT_MS)) return null;
+    return { ref: jobRef(job), jobId: job.jobId, hash: sha256(Buffer.from(String(message), 'utf8')) };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * What the stop hook looks at for these jobs. Each finding is worked out per job, so it can be
  * matched to the job that owns it; `waiting` holds the refs of jobs a person is needed on.
  */
-export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard, sessionId = null } = {}) {
+export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard, sessionId = null, lastMessage = null, backgroundTasks = null } = {}) {
   // A finished job never waits on anyone, so it is left out of everything except the board check:
   // a board that still shows a cancelled or completed job as open is behind, whoever it was for.
   const jobs = allJobs.filter(job => !isFinishedState(job.state));
@@ -560,7 +596,8 @@ export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: 
   return {
     behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting,
     agents: agentFinishes(root, jobs), replies: unansweredReplies(jobs), stuck: unaskedStuck(board, root, jobs, questions, sessionId),
-    yourTurn: yourTurnJobs(board, root, jobs, questions, sessionId),
+    yourTurn: backgroundWork(backgroundTasks) ? [] : yourTurnJobs(board, root, jobs, questions, sessionId),
+    chatAsk: chatQuestion(root, allJobs, questions, sessionId, lastMessage),
   };
 }
 

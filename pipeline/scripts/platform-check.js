@@ -35,6 +35,16 @@ let route = {}; try { route = JSON.parse(fs.readFileSync(path.join(jobDir, 'rout
 const flaggedSynthetic = [...(route.riskFlags || []), ...(route.modelAddedRiskFlags || [])].includes('synthetic_person');
 const families = recipes.hookFamilies(path.join(ROOT, 'playbooks', 'hooks.md'));
 
+// Width and height of a PNG (what 3echo lands), or null for any other file.
+function pngSize(file) {
+  try {
+    const head = Buffer.alloc(24);
+    const fd = fs.openSync(file, 'r');
+    try { fs.readSync(fd, head, 0, 24, 0); } finally { fs.closeSync(fd); }
+    return head.readUInt32BE(0) === 0x89504e47 ? { w: head.readUInt32BE(16), h: head.readUInt32BE(20) } : null;
+  } catch { return null; }
+}
+
 const draftsDir = path.join(jobDir, 'drafts');
 const dels = fs.existsSync(draftsDir) ? fs.readdirSync(draftsDir).filter(d => /^D\d+$/.test(d)).sort() : [];
 const report = { jobId: job, checkedAt: new Date().toISOString(), drafts: [], pass: true };
@@ -128,6 +138,17 @@ for (const D of dels) {
   if (changed && (!changed.decidedBy || !changed.theirWords))
     fail('R-SCOPE', 'what this job delivers was changed with nobody recorded as having decided it');
 
+  // A carousel is one post of several pictures: three to ten, the same kind of file, one shape. The platform's own
+  // limit can only lower the ten. The pictures keep the order of the media list, which is the order of the slides.
+  if (kind.planned === 'carousel') {
+    const room = del.slideRange(platform);
+    const most = Math.min(room.max, m.carousel_max_items || room.max);
+    if (media.length < room.min || media.length > most) fail('R-LIMIT', 'A carousel needs ' + room.min + ' to ' + most + ' pictures on ' + platform + ', and this has ' + media.length);
+    if (media.some(f => !/\.(png|jpe?g|webp)$/i.test(String(f)))) fail('R-SCOPE', 'every slide of a carousel must be a picture');
+    const shapes = media.map(f => pngSize(path.join(jobDir, String(f)))).filter(Boolean);
+    if (shapes.length > 1 && shapes.some(z => Math.abs(z.w / z.h - shapes[0].w / shapes[0].h) > 0.02))
+      fail('R-VISUAL', 'the slides are not all the same shape; a carousel needs one picture shape throughout');
+  }
   if (m.required && !media.length) fail('R-LIMIT', platform + ' requires media; front matter media is empty');
   if (m.text_only_allowed === false && !media.length) fail('R-LIMIT', 'text-only posts are not allowed on ' + platform);
   for (const f of media) if (!fs.existsSync(path.join(jobDir, String(f)))) fail('R-VISUAL', 'media file missing: ' + f);

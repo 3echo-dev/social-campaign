@@ -654,7 +654,7 @@ function deliverablePlatformLabel(platform) {
  * drafts/D*\/storyboard.md: the panel table, in the Sequence line's order, with
  * cut panels left out. Each panel carries its shot, on-screen text, voiceover and
  * duration in seconds, a permanent `ref` ("P1") for decisions and chat edits, and
- * a readable `label` ("Panel 1") a person reads. Fields are cleaned of leading
+ * a readable `label` ("Panel 1", or "Slide 1" for a carousel) a person reads. Fields are cleaned of leading
  * labels, production notes (task/stage references, file paths) and "no voiceover"
  * explanations, which read as null rather than an internal note.
  */
@@ -696,7 +696,9 @@ export function parseStoryboard(text) {
     : panels;
   const platform = typeof meta.platform === 'string' ? meta.platform : null;
   const aspectRatio = typeof meta.aspect_ratio === 'string' ? meta.aspect_ratio : null;
-  const format = deliverableFormat(platform, aspectRatio);
+  // A carousel's panels are its slides, in swiping order: the board says so in the words it uses.
+  const carousel = String(meta.format ?? '').trim().toLowerCase() === 'carousel';
+  const format = carousel ? 'carousel' : deliverableFormat(platform, aspectRatio);
   const runtimeSeconds = metaNumber(meta.runtime_s);
   const shown = ordered.slice(0, MAX_PANELS);
   const totalSeconds = shown.length && shown.every(panel => panel.durationSeconds > 0)
@@ -710,7 +712,7 @@ export function parseStoryboard(text) {
     aspectRatio,
     runtimeSeconds: runtimeSeconds ? runtimeSeconds : null, // 0 means no runtime (a still), never "0 s"
     totalSeconds,
-    panels: shown.map((panel, index) => ({ ...panel, label: `Panel ${index + 1}` })),
+    panels: shown.map((panel, index) => ({ ...panel, label: `${carousel ? 'Slide' : 'Panel'} ${index + 1}` })),
   };
 }
 
@@ -1422,10 +1424,19 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
 
   const generation = generationRecords(dir);
   const frames = panelFrames(generation, manifests, shaOf);
+  // A panel that reuses an image the person supplied (the product photo, or a file they gave) shows that photo, not a grey box.
+  const suppliedPictures = [job?.productAsset?.path, ...(Array.isArray(job?.suppliedMedia) ? job.suppliedMedia.map(item => item?.path) : [])]
+    .filter(file => typeof file === 'string' && mediaKind(file) === 'image' && load(file).file);
+  const keptHit = panel => {
+    if (panel.source !== 'kept' || !suppliedPictures.length) return null;
+    const name = /^Existing image:\s*(.+)$/i.exec(panel.shot || '')?.[1]?.trim().toLowerCase();
+    const file = (name && suppliedPictures.find(item => basename(item).toLowerCase().includes(name) || name.includes(basename(item, extname(item)).toLowerCase()))) || suppliedPictures[0];
+    return { path: file, kind: 'image' };
+  };
   const boardFrames = path => {
     const parsed = parseStoryboard(load(path).raw);
     const deliverable = canonicalDeliverable(parsed.ref) || canonicalDeliverable(/(?:^|\/)(D\d+)\//i.exec(path)?.[1]);
-    const hits = parsed.panels.map(panel => (deliverable ? frames.get(`${deliverable}|${canonicalItem(panel.ref)}`) : null) || null);
+    const hits = parsed.panels.map(panel => (deliverable ? frames.get(`${deliverable}|${canonicalItem(panel.ref)}`) : null) || keptHit(panel));
     return { parsed, deliverable, hits };
   };
   const needsThumb = hit => Boolean(hit) && !(hit.kind === 'image' && uploaded(hit.path));

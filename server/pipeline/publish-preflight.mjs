@@ -175,7 +175,7 @@ function mediaRule(platform, placement) {
   if (platform === 'facebook') {
     if (placement === 'reel') return { need: NEEDS.one_video, accepts: only('video') };
     if (placement === 'story') return { need: NEEDS.one_picture_or_video, accepts: kinds => kinds.length === 1 && ['image', 'video'].includes(kinds[0]) };
-    if (placement === 'post') return { need: 'words, a picture or a video', accepts: kinds => kinds.every(kind => ['image', 'video'].includes(kind)) };
+    if (placement === 'post') return { need: 'words, a picture or a video', accepts: kinds => kinds.length <= CAROUSEL_MAX && kinds.every(kind => ['image', 'video'].includes(kind)) };
   }
   if (platform === 'tiktok') {
     if (placement === 'video') return { need: NEEDS.one_video, accepts: only('video') };
@@ -251,13 +251,18 @@ function shapeCheck(post) {
   const media = Array.isArray(post.media) ? post.media : [];
   const phone = del.isVerticalOnly(post.platform, post.placement);
   const feed = post.platform === 'instagram' && (post.placement === 'post' || post.placement === 'carousel');
-  if (!phone && !feed) return null;
+  // Several pictures in one post (a carousel, a Facebook set, a TikTok photo post) all have to be the same shape.
+  const shapes = media.filter(item => item?.kind === 'image' && Number(item.width) > 0 && Number(item.height) > 0).map(item => Number(item.width) / Number(item.height));
+  const uneven = shapes.length > 1 && shapes.some(ratio => Math.abs(ratio - shapes[0]) > 0.02);
+  if (!phone && !feed && shapes.length < 2) return null;
   const problems = [];
+  if (uneven) problems.push('The pictures are not all the same shape. Every picture in one post needs the same shape.');
   for (const item of media) {
     if (!item || (item.kind !== 'image' && item.kind !== 'video')) continue;
     if (feed && item.kind !== 'image') continue;
     const width = Number(item.width);
     const height = Number(item.height);
+    if (!phone && !feed) continue;
     if (!(width > 0) || !(height > 0)) {
       problems.push(`The shape of the ${shapeWord(item.kind)} could not be read, so it could not be checked against ${label}.`);
       continue;
@@ -271,6 +276,7 @@ function shapeCheck(post) {
   }
   if (problems.length) return check(false, [...new Set(problems)].join(' '));
   if (!media.some(item => item && (item.kind === 'image' || item.kind === 'video') && (!feed || item.kind === 'image'))) return null;
+  if (!phone && !feed) return check(true, 'The pictures are all the same shape.');
   return check(true, phone ? `The media is 9:16, as ${label} needs.` : 'The picture shape suits an Instagram post.');
 }
 

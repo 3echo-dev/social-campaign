@@ -2150,8 +2150,10 @@ function panelFrameHtml(panel, index, { large = false } = {}) {
   return `<span class="sb-sketch">${shot ? inlineMarkdown(shot) : '<span class="muted">No shot described</span>'}</span>`;
 }
 
-function panelFields(panel) {
+function panelFields(panel, board = null) {
   const none = '<span class="muted">None</span>';
+  // A slide is a picture and the words on it, with nothing spoken.
+  if (board?.format === 'carousel') return `<dl class="review-fields"><div><dt>Picture</dt><dd>${panel?.shot ? inlineMarkdown(panel.shot) : none}</dd></div><div><dt>Slide text</dt><dd>${panel?.onScreen ? inlineMarkdown(panel.onScreen) : none}</dd></div></dl>`;
   return `<dl class="review-fields"><div><dt>Shot</dt><dd>${panel?.shot ? inlineMarkdown(panel.shot) : none}${panel?.camera ? `<small class="sb-camera">${inlineMarkdown(panel.camera)}</small>` : ''}</dd></div><div><dt>On-screen text</dt><dd>${panel?.onScreen ? inlineMarkdown(panel.onScreen) : none}</dd></div><div><dt>Voiceover</dt><dd>${panel?.voiceover ? inlineMarkdown(panel.voiceover) : none}</dd></div></dl>`;
 }
 
@@ -2169,7 +2171,7 @@ function stripCell(board, panel, index, { interactive = false, verdict = null, c
 export function storyboardStrip(board, { interactive = false, verdicts = {}, current = null, highlight = null } = {}) {
   const panels = board?.panels || [];
   const total = Number(board?.totalSeconds) > 0 ? Number(board.totalSeconds) : Number(board?.runtimeSeconds) > 0 ? Number(board.runtimeSeconds) : null;
-  const meta = [board?.platform ? platformName(board.platform) : '', board?.aspectRatio || '', total ? secondsWord(total) : '', `${panels.length} panel${panels.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+  const meta = [board?.platform ? platformName(board.platform) : '', board?.aspectRatio || '', total ? secondsWord(total) : '', `${panels.length} ${board?.format === 'carousel' ? 'slide' : 'panel'}${panels.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
   const boardRef = boardRefOf(board);
   const cells = panels.map((panel, index) => {
     const key = panelKey(board, panel, index);
@@ -2211,19 +2213,26 @@ export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const dis = disabled ? 'disabled' : '';
   const meta = [Number(panel?.durationSeconds) > 0 ? secondsWord(panel.durationSeconds) : '', PANEL_SOURCE_WORDS[panel?.source] || 'New'].filter(Boolean).join(' · ');
   const head = `<div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${boards.length > 1 ? refTag(boardRefOf(board)) : ''}${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span><span class="sb-slot-step">${at + 1} of ${all.length}</span></div>`;
-  const verdict = saved.verdict === 'approve'
-    ? `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`
-    : saved.verdict === 'changes' ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Change asked: ${saved.note}` : 'Change asked')}</span></p>` : '';
+  // A panel counts as approved until the person asks for a change on it.
+  const verdict = saved.verdict === 'changes'
+    ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Change asked: ${saved.note}` : 'Change asked')}</span></p>`
+    : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
   const error = editing && state.panelError ? `<p class="field-error" role="alert">${esc(state.panelError)}</p>` : '';
   const actions = editing
-    ? `<div class="sb-change"><label for="sb-note">What should change in this panel?</label><textarea id="sb-note" name="sb_note" maxlength="1000" placeholder="For example: show the bottle in her hand." ${dis}>${esc(state.panelDraft ?? saved.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-sb-action="cancel-change" ${dis}>Cancel</button><button type="button" class="primary" data-sb-action="save-change" ${dis}>Save change</button></div></div>`
-    : `<div class="sb-slot-actions"><button type="button" data-sb-action="change" ${dis}>Change this panel</button><button type="button" class="primary" data-sb-action="approve" ${dis}>Approve panel</button></div>`;
+    ? `<div class="sb-change"><label for="sb-note">What should change in ${board?.format === 'carousel' ? 'this slide' : 'this panel'}?</label><textarea id="sb-note" name="sb_note" maxlength="1000" placeholder="For example: show the bottle in her hand." ${dis}>${esc(state.panelDraft ?? saved.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-sb-action="cancel-change" ${dis}>Cancel</button><button type="button" class="primary" data-sb-action="save-change" ${dis}>Save change</button></div></div>`
+    // With one panel there is nothing to go through: the storyboard's own Approve and Ask for changes are all there is.
+    : all.length === 1 ? '' : `<div class="sb-slot-actions"><button type="button" data-sb-action="change" ${dis}>Change ${board?.format === 'carousel' ? 'this slide' : 'this panel'}</button></div>`;
   const frame = panelFrameHtml(panel, index, { large: true });
   const image = frame.startsWith('<img') ? frame : '';
   const frameBox = image
     ? `<div class="sb-slot-frame">${safePreviewUrl(panel?.frame?.reviewUrl) && panel.frame.kind === 'image' ? `<button type="button" class="media-open" data-view-media="${esc(safePreviewUrl(panel.frame.reviewUrl))}" data-view-alt="${esc(panelLabelOf(panel, index))}" aria-label="Open ${esc(panelLabelOf(panel, index))} full size">${image}</button>` : image}</div>`
     : `<div class="sb-slot-frame is-empty${panel?.frame?.thumbOmitted ? ' is-omitted' : ''}">${frame}</div>`;
-  return `<div class="sb-slot" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${frameBox}<div class="sb-slot-body">${head}${panelFields(panel)}${verdict}${actions}</div></div>`;
+  return `<div class="sb-slot" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${frameBox}<div class="sb-slot-body">${head}${panelFields(panel, board)}${verdict}${actions}</div></div>`;
+}
+
+// Every panel counts as approved until the person asks for a change on it.
+export function panelStates(boards, saved = {}) {
+  return Object.fromEntries(storyboardPanelsOf(boards).map(item => [item.key, saved?.[item.key]?.verdict === 'changes' ? saved[item.key] : { verdict: 'approve', note: '' }]));
 }
 
 export function panelVerdicts(boards, verdicts = {}) {
@@ -2264,7 +2273,7 @@ export function sampleView(doc) {
   const version = Number(sample.version) > 1 ? `<span class="count">Version ${esc(Number(sample.version))}</span>` : '';
   const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(sample.deliverable))}${refTag(trimmed(sample.panel))}${version}</div>`;
   const strips = boards.map(board => storyboardStrip(board, { highlight: found?.key || null })).join('');
-  return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${found ? panelFields(found.panel) : ''}</div></div>${strips}`;
+  return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${found ? panelFields(found.panel, found.board) : ''}</div></div>${strips}`;
 }
 
 export function labelCheckSection(check, accepted = {}, { disabled = false } = {}) {
@@ -2680,6 +2689,13 @@ function timeSignature(publish, postId) {
   return postId === ALL_POSTS ? posts.map(timeOf).join('|') : timeOf(posts.find(post => post?.id === postId));
 }
 
+// The pictures of one post. Several of them (a carousel) are a small strip, in the order they are posted.
+export function postMedia(preview) {
+  if (!preview) return '';
+  const tiles = (String(preview).match(/<figure class="media-tile/g) || []).length;
+  return tiles > 1 ? `<div class="publish-post-media is-strip" role="group" aria-label="Pictures, in the order they are posted">${preview}</div>` : `<div class="publish-post-media">${preview}</div>`;
+}
+
 function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ctx = {}) {
   const ref = `${jobId}:${post.id ?? ''}`;
   const caption = publishText(post.text ?? post.caption, `publish-text:${ref}`, 'caption', openKeys);
@@ -2690,7 +2706,7 @@ function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ct
   // While a request on the card is out, every row shows the plan as it was, muted, and says it is being updated in place of its checks.
   const updating = Boolean(ctx.held);
   const checks = updating ? `<p class="publish-updating">${esc(PUBLISH_UPDATING_LINE)}</p>` : publishChecks(post, `publish-checks:${ref}`, openKeys);
-  return `<article class="publish-post${preview ? ' has-preview' : ''}${updating ? ' is-updating' : ''}" role="listitem"${updating ? ' aria-busy="true"' : ''}>${preview ? `<div class="publish-post-media">${preview}</div>` : ''}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div><dl class="publish-facts"><div${whenEditing(post, ctx.state, ctx.usesAll) ? ' class="publish-when-fact"' : ''}><dt>When</dt><dd>${postWhen(post, ctx.state, ctx)}</dd></div><div><dt>Media</dt><dd>${media.length ? esc(media.join(', ')) : '<span class="muted">None</span>'}</dd></div>${post.aiLabel ? `<div><dt>AI label</dt><dd>${esc(post.aiLabel)}</dd></div>` : ''}${title}${caption ? `<div class="publish-wide"><dt>Caption</dt><dd>${caption}</dd></div>` : ''}${first ? `<div class="publish-wide"><dt>First comment</dt><dd>${first}</dd></div>` : ''}</dl><div class="publish-check-list">${postTypeBlock(post, ctx.state, ctx)}${checks}</div></div></article>`;
+  return `<article class="publish-post${preview ? ' has-preview' : ''}${updating ? ' is-updating' : ''}" role="listitem"${updating ? ' aria-busy="true"' : ''}>${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div><dl class="publish-facts"><div${whenEditing(post, ctx.state, ctx.usesAll) ? ' class="publish-when-fact"' : ''}><dt>When</dt><dd>${postWhen(post, ctx.state, ctx)}</dd></div><div><dt>Media</dt><dd>${media.length ? esc(media.join(', ')) : '<span class="muted">None</span>'}</dd></div>${post.aiLabel ? `<div><dt>AI label</dt><dd>${esc(post.aiLabel)}</dd></div>` : ''}${title}${caption ? `<div class="publish-wide"><dt>Caption</dt><dd>${caption}</dd></div>` : ''}${first ? `<div class="publish-wide"><dt>First comment</dt><dd>${first}</dd></div>` : ''}</dl><div class="publish-check-list">${postTypeBlock(post, ctx.state, ctx)}${checks}</div></div></article>`;
 }
 
 // A job planned before posting through Metricool says plainly that it ends with the hand-off package.
@@ -2910,7 +2926,7 @@ function kitPost(post, state, ctx) {
   const items = lines.join('');
   const when = typeof post.when === 'string' && post.when ? `<dl class="publish-facts"><div><dt>When</dt><dd>${esc(post.when)}</dd></div></dl>` : '';
   const preview = kitPreviews(post);
-  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${preview ? `<div class="publish-post-media">${preview}</div>` : ''}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
+  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
 }
 
 /**
@@ -2962,7 +2978,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   // gate that still lists the storyboard shows it as a plain strip, with no per-panel buttons whose answer would be lost.
   if (review.storyboards?.length && gate === 'storyboard') {
     const current = currentPanelKey(review.storyboards, state);
-    parts.push(review.storyboards.map(board => storyboardStrip(board, { interactive: true, verdicts: state.panels || {}, current })).join(''));
+    parts.push(review.storyboards.map(board => storyboardStrip(board, { interactive: true, verdicts: panelStates(review.storyboards, state.panels), current })).join(''));
     parts.push(storyboardSlot(review.storyboards, state, { disabled: locked }));
   } else if (review.storyboards?.length) {
     parts.push(review.storyboards.map(board => storyboardStrip(board)).join(''));
@@ -3041,12 +3057,10 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
   if (gate === 'storyboard') {
     const all = storyboardPanelsOf(doc?.review?.storyboards);
     if (!all.length) return { label: 'Approve storyboard', line: '' };
-    const verdicts = all.map(item => state.panels?.[item.key]?.verdict);
-    const approved = verdicts.filter(value => value === 'approve').length;
-    const changes = verdicts.filter(value => value === 'changes').length;
-    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} panel${changes === 1 ? '' : 's'} to change, ${approved} approved.` };
-    if (approved === all.length) return { label: 'Approve storyboard', line: `All ${all.length} panels approved.` };
-    return { disabled: true, label: 'Approve storyboard', line: approved ? `${approved} of ${all.length} panels approved.` : 'Approve or change each panel, then approve the storyboard.' };
+    const word = all.every(item => item.board?.format === 'carousel') ? 'slide' : 'panel';
+    const changes = Object.values(panelStates(doc?.review?.storyboards, state.panels)).filter(item => item.verdict === 'changes').length;
+    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} ${word}${changes === 1 ? '' : 's'} to change, ${all.length - changes} approved.` };
+    return { label: 'Approve storyboard', line: all.length === 1 ? `The ${word} is approved.` : `All ${all.length} ${word}s approved.` };
   }
   if (gate === 'sample') {
     const sample = doc?.review?.sample;
@@ -3090,8 +3104,9 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
   if (gate === 'storyboard') {
     const boards = doc?.review?.storyboards || [];
     const all = storyboardPanelsOf(boards);
-    const decided = panelVerdicts(boards, panels);
-    if (verdict === 'approve' && all.length && (decided.length !== all.length || decided.some(entry => entry.verdict !== 'approve'))) return { error: 'Approve every panel first.' };
+    // The server hears a verdict for every panel: "approve" for each one with no change asked.
+    const decided = panelVerdicts(boards, panelStates(boards, panels));
+    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on a panel, so send the changes instead.' };
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
     if (decided.length) args.panels = decided;
     if (note) args.note = note;
@@ -6030,17 +6045,6 @@ if (typeof document !== 'undefined') {
       focusQuietly(`[data-sb-panel="${CSS.escape(key)}"]`);
       return;
     }
-    if (action === 'approve') {
-      state.panels[slot] = { verdict: 'approve', note: state.panels[slot]?.note || '' };
-      state.panelEditing = null;
-      state.panelError = '';
-      state.slot = nextPanelKey(boards, state, slot);
-      state.error = '';
-      render();
-      revealCurrentCell();
-      focusQuietly('[data-sb-action="approve"]');
-      return;
-    }
     if (action === 'change') {
       state.panelEditing = slot;
       state.panelDraft = state.panels[slot]?.note || '';
@@ -6065,11 +6069,11 @@ if (typeof document !== 'undefined') {
       state.panelEditing = null;
       state.panelDraft = '';
       state.panelError = '';
-      state.slot = nextPanelKey(boards, state, slot);
+      state.slot = slot;
       state.error = '';
       render();
       revealCurrentCell();
-      focusQuietly('[data-sb-action="approve"]');
+      focusQuietly('[data-sb-action="change"]');
     }
   }
   function flagAction(id, accept) {

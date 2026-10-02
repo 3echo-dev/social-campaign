@@ -32,6 +32,13 @@ Do not call a provider, spend credits, publish, change the objective, or apply a
 
 Return the artifact paths, reused evidence references, unresolved copy gaps, and the next review state.
 
+## Slide plan for a carousel
+
+This applies when the active plan names the carousel slide plan and the prompt adds the storyboard skill.
+Read the "Slide plan for a carousel" section of pipeline/agents/copywriter.md.
+Write one storyboard panel per slide (3 to 10, never more), each with a short slide text and one picture description, and one image item per slide in the generation manifest.
+Leave the caption for the Posts stage, since it belongs to the whole post.
+
 ## Caption for supplied files
 
 This applies when a post file says `source: supplied` and `caption_by: claude` and its Caption is empty.

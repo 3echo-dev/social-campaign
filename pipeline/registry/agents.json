@@ -66,10 +66,10 @@
       "forbiddenActions": ["change_objective", "change_brand_profile", "spawn_agent", "write_approval", "publish", "paid_generation", "run_unapproved_command", "edit_artifact", "self_approve", "cross_brand_read", "read_credentials", "unapproved_provider_call"],
       "deniedSideEffects": ["external_write", "paid_spend", "credential_read"], "ownerForKinds": ["publish_post"], "maxTurns": 30 },
     { "agentId": "short-form-video-specialist", "discipline": "short_form_video", "status": "planned", "description": "Reels, TikTok, Shorts optimised for retention and edits.", "ownerForKinds": [] },
-    { "agentId": "static-creative-specialist", "discipline": "static_creative", "status": "planned", "description": "Images and carousels: layout, copy, visual hierarchy.", "ownerForKinds": [] },
+    { "agentId": "static-creative-specialist", "discipline": "static_creative", "status": "planned", "description": "Image layout, copy and visual hierarchy beyond what the copywriter does.", "ownerForKinds": [] },
     { "agentId": "email-specialist", "discipline": "email", "status": "planned", "description": "Email campaigns.", "ownerForKinds": [] },
     { "agentId": "landing-page-specialist", "discipline": "landing_page", "status": "planned", "description": "Conversion pages.", "ownerForKinds": [] },
     { "agentId": "community-specialist", "discipline": "community", "status": "planned", "description": "Replies, comments, community management.", "ownerForKinds": [] }
   ],
-  "disciplineForCreativeDiscipline": { "ugc": "ugc", "brand_video": "social_post", "static_image": "social_post", "text_only": "social_post", "carousel": "static_creative", "motion_graphic": "short_form_video" }
+  "disciplineForCreativeDiscipline": { "ugc": "ugc", "brand_video": "social_post", "static_image": "social_post", "text_only": "social_post", "carousel": "social_post", "motion_graphic": "short_form_video" }
 }

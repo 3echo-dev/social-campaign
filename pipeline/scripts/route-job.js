@@ -133,6 +133,16 @@ for (const d of Array.isArray(seenJob.deliverables) ? seenJob.deliverables : [])
   }
   for (const reason of deliverable.placementProblems(d, seenJob)) missing(deliverable.placementProblemLabel(d, reason, seenJob));
 }
+// Rule 1d: a carousel is a set of slides, one picture each. The count is optional on the job (the slide plan
+// decides it), but a count that was stated has to be one the platforms take, capped at ten for every platform.
+for (const d of supplied ? [] : (Array.isArray(job.deliverables) ? job.deliverables : [])) {
+  if (!d || d.creativeDiscipline !== 'carousel' || d.slides === undefined || d.slides === null) continue;
+  const room = deliverable.slideRange(d.platform);
+  if (!Number.isInteger(d.slides) || d.slides < room.min || d.slides > room.max) {
+    missing('deliverables' + (d.id ? '.' + d.id : '') + '.slides (how many pictures to swipe through? ' + room.min + ' to ' + room.max + ')');
+    say('Rule 1d: a carousel has ' + room.min + ' to ' + room.max + ' slides');
+  }
+}
 // Rule 1b: audience is optional on the job; it only narrows the brand's own audience for this
 // brief. A job with none of its own falls back to the brand profile, so the router asks for
 // one only when neither side has one.
@@ -391,7 +401,8 @@ if (job.usesHistoricalData === true) {
 
 // Rule 10: unsupported creative disciplines or inactive agents
 const map = agentsReg.disciplineForCreativeDiscipline || {};
-// A carousel maps to a planned agent, but a supplied set of pictures is not made by any discipline agent.
+// Every creative discipline must map to an active agent. A carousel is made by the copywriter (slide plan) and the
+// producer (make-image); a supplied set of pictures is not made by any discipline agent.
 for (const d of supplied ? [] : dels) {
   const disc = map[d.creativeDiscipline];
   const a = disc ? agentFor(disc) : null;

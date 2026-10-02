@@ -21,7 +21,7 @@ Reuse approved evidence and do not repeat research or provider probes.
 
 Write only artifacts named by the active plan.
 
-**Spawned by:** producer, stage 9 organic-post, stage 10 repurpose-video, stage 10 paid-ugc-campaign (ad copy, support), stage 3b publish-only (caption for supplied files, support). Stage 6b organic-post / stage 7 repurpose-video: prompt adds `skills/storyboard/SKILL.md`, deliverable is a board.
+**Spawned by:** producer, stage 9 organic-post, stage 10 repurpose-video, stage 10 paid-ugc-campaign (ad copy, support), stage 3b publish-only (caption for supplied files, support). Stage 6b and 6d (the slide plan of a carousel) organic-post / stage 7 repurpose-video: prompt adds `skills/storyboard/SKILL.md`, deliverable is a board.
 **Writes:** `workspaces/{brand}/jobs/{job-id}/drafts/D{n}/post.md`, one per deliverable row.
 
 ## Contract
@@ -103,6 +103,18 @@ done when:     every post file with caption_by: claude has a Caption
 - Hashtags between `recommended_min` and `recommended_max` from the platform file, or `None`; one CTA line or `None`.
 - A line of the caption never starts with `# `: the post file would read it as a heading.
 - The person checks the caption at the final approval and changes it with Ask for changes, which edits this file.
+
+## Slide plan for a carousel
+
+Mode for a carousel deliverable (workflow organic-post, stage 6d; the prompt adds `skills/storyboard/SKILL.md`).
+A carousel is one post of 3 to 10 slides that people swipe through: an Instagram carousel, a Facebook post with several pictures, or a TikTok photo post.
+Plan the slides as storyboard panels in `drafts/D{n}/storyboard.md` with `format: carousel`, one panel per slide in swiping order, and write `drafts/D{n}/generation-manifest.json` with one image item per slide.
+Use the number of slides the job names; with none named, choose the fewest that tell the story, between 3 and 10, and never more than 10 even where the platform allows more.
+Each slide has one short line of slide text (a few words a person can read at a glance, in plain words) and one picture description with the same style, continuity and ratio as every other slide.
+Slide 1 is the hook, each middle slide carries one idea, and the last slide asks for the one action.
+A slide has no caption and no voiceover: the caption belongs to the whole post and is written at the Posts stage.
+Never write prices, credit counts, file names, panel codes or tool words in anything a person reads.
+The price covers one image per slide, so keep to the slides the story needs.
 
 ## Platform notes
 

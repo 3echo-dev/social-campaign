@@ -36,6 +36,8 @@ The request verbatim, `workspace.json` (account handles), the brand record in th
      Paid-only work (`paid_campaign`, or `distribution` `paid`) asks for no post type.
      Never guess between two types: a plain "Instagram post" that could be a post or a reel is a question, not a default.
    - `creativeDiscipline`: "creator", "testimonial", "UGC", "talking to camera" is ugc; no media is text_only
+     "A carousel", "slides", "swipe" or "several pictures in one post" is `carousel`: an Instagram carousel is instagram/carousel, a Facebook one is facebook/post, a TikTok one is tiktok/photo.
+     A carousel has 3 to 10 slides; when the person says how many, put it in `slides`, and otherwise leave it out so the slide plan decides.
    - `subject`: ask whether the job is about a product, a character or neither, unless the request says; `product`, `character` or `none`
 
    Then: `sourceRefs` and `productAsset` from any URL or file they gave, `audience.description` from `brand/audience.md`, `evidence.supplied` only when their material answers the claims.

@@ -60,8 +60,8 @@
   "pipelines": {
     "organic_post": {
       "name": "Organic post",
-      "purpose": "One finished social post for Facebook, Instagram or TikTok: the picture or video, the caption and the posting details, ready for your approval.",
-      "examples": ["An Instagram post showing our new product", "A TikTok video announcing the weekend offer"],
+      "purpose": "One finished social post for Facebook, Instagram or TikTok: the picture, the video, or a carousel of several pictures to swipe through, plus the caption and the posting details, ready for your approval.",
+      "examples": ["An Instagram post showing our new product", "A TikTok video announcing the weekend offer", "A swipe-through carousel of five pictures for Facebook"],
       "notFor": ["Paid ads, which need a budget and an ad plan (use Paid ad campaign)", "A set of posts planned together (use Post series)"],
       "inputs": [
         { "field": "audience", "words": "Who the post is for, when it differs from your brand's usual audience" },
@@ -72,8 +72,8 @@
         { "field": "prohibitedClaims", "words": "Things the post must not say" },
         { "field": "sourceRefs", "words": "A post or video you would like it to look like" }
       ],
-      "outputs": "A delivery package for each post: the picture or video, the caption, hashtags and the posting details, ready to schedule or post.",
-      "cost": "Credits are spent only when pictures or video are made, and you approve the price first.",
+      "outputs": "A delivery package for each post: the picture or video (or every slide of a carousel, in order), the caption, hashtags and the posting details, ready to schedule or post.",
+      "cost": "Credits are spent only when pictures or video are made, and you approve the price first. A carousel costs one picture for each slide.",
       "starter": { "group": "make" }
     },
     "organic_series": {

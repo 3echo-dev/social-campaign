@@ -7,6 +7,7 @@ status: draft                 # draft | approved | superseded
 aspect_ratio: "9:16"          # confirmed, never assumed
 style: ""                     # one style preamble shared by every panel
 panels: 4
+format: panels                # panels | carousel (a carousel's panels are its slides)
 runtime_s: 20
 revision: 1
 created: YYYY-MM-DD HH:MM {tz}

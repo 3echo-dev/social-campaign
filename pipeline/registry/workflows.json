@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "workflows": [
     { "workflowId": "organic-post", "version": "1.0.0", "status": "active", "kinds": ["organic_post", "organic_series", "ugc_creative"], "file": "workflows/organic-post.md",
-      "conditionalTags": ["if:research", "if:strategy", "unless:strategy", "if:ugc", "if:media", "if:video_qa", "unless:merged_publish"],
+      "conditionalTags": ["if:research", "if:strategy", "unless:strategy", "if:ugc", "if:media", "if:carousel", "unless:carousel", "if:video_qa", "unless:merged_publish"],
       "gates": ["concept", "storyboard", "content", "publish"] },
     { "workflowId": "paid-ugc-campaign", "version": "1.0.0", "status": "active", "kinds": ["paid_campaign"], "file": "workflows/paid-ugc-campaign.md",
       "conditionalTags": ["if:research", "if:ugc", "if:media", "if:video_qa"],

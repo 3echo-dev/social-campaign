@@ -33,6 +33,10 @@ End the turn: wait for yes before batching, in chat or on the board.
 7. Batch the rest, same job key pattern with `v1`, same preamble, continuity and negatives. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. Then `pipeline_status` again: the whole grid goes to the person at once, and the turn ends there.
 8. `python "${CLAUDE_PLUGIN_ROOT}/scripts/contact-sheet.py" "media/D{n}" --cols 4`.
 
+A carousel is made the same way: one `kind: image` item per slide, so the quote counts one credit per slide and the one price approval covers all of them.
+The hero is slide 1, and every slide repeats the same style preamble, continuity and ratio, so the set looks like one piece.
+Slides land as `P1`, `P2` and so on; the post lists them in that order.
+
 ## Rules
 
 The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
