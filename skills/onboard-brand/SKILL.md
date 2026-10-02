@@ -131,6 +131,7 @@ There is nothing blank to fill, or research is already current.
 
 Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
+Put `brand:<slug>` alone on the first line of the researcher's spawn prompt, on every dispatch including a second round, so the board can show the Researcher working.
 
 Then call `pipeline_brand_research_save` with the brand and `runId`.
 

@@ -3897,6 +3897,21 @@ function agentRail(box, ui, ctx) {
   return `<aside class="agent-rail" aria-labelledby="ab-rail-title"><h2 id="ab-rail-title">Agents on this job</h2>${cards || '<p class="muted ab-solo">The Director is the only agent on this job so far.</p>'}${agentComposer(box, ui, ctx)}</aside>`;
 }
 
+// The Brand onboarding page's own small Agent Box: the Director and the Researcher (and anyone else who ran), from brand.agents.
+// No composer. The page knows research was just requested before the server does, so the Director is Working at once.
+export function onboardAgentsPanel(brand, draft = null, now = Date.now()) {
+  const list = (Array.isArray(brand?.agents?.list) ? brand.agents.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
+  if (!list.length) return '';
+  const running = brandResearchPhase(brand, draft, now) === 'running';
+  const ctx = { chipContext: {}, jobId: trimmed(brand.slug), openKeys: new Set(), now, canMessage: false };
+  const cards = list.map(agent => {
+    const director = isDirectorAgent(agent);
+    const shown = director && running && agent.state === 'needs_you' ? { ...agent, state: 'working', task: 'Getting your brand ready' } : agent;
+    return agentCard(shown, { ...ctx, director });
+  }).join('');
+  return `<aside class="agent-rail ab-onboard" aria-labelledby="ab-onboard-title"><h2 id="ab-onboard-title">Who is working on this</h2>${cards}</aside>`;
+}
+
 // Subscribe to the workspace projection and recover from exactly one class of
 // failure: a terminal "unavailable" from a dead platform bridge. Per db.d.ts a
 // fresh onSnapshot is the only recovery for that code, so clear the dead
@@ -4762,23 +4777,28 @@ if (typeof document !== 'undefined') {
     const firstRun = readyBrands().length === 0 && projects.length === 0;
     const onboarding = inlineStart();
     const newJob = Boolean(inline && inline.kind === 'new');
-    const stageTitle = newJob ? 'Jobs' : firstRun || (inline && inline.kind === 'onboard') ? 'Brand Onboarding' : 'Jobs';
+    const stageTitle = newJob ? 'Jobs' : firstRun || (inline && inline.kind === 'onboard') ? 'Brand onboarding' : 'Jobs';
     const brandButton = '<button data-action="brand">Brand onboarding</button>';
     const newButton = '<button class="primary" data-action="new">+ New job</button>';
     const tools = !firstRun ? brandButton + newButton : newJob ? brandButton : newButton;
     const head = `<div class="slate-head"><h1>${esc(stageTitle)}</h1><div class="toolbar">${tools}</div></div>`;
     const jobs = firstRun ? '' : `<section class="jobs-section"><div class="section-head"><div><span class="eyebrow">Work in progress</span><h2>Jobs</h2></div><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${projects.map(projectCard).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
     const strip = brandStrip();
-    const inbox = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean) });
+    // On the Brand onboarding page the agent cards say who is working, so they stand in for the "research has started" note.
+    const onboardBrand = inline?.kind === 'onboard' && inline.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
+    const agentsPanel = onboardAgentsPanel(onboardBrand, inline);
+    const workspaceItems = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean) });
+    const inbox = agentsPanel ? { ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
+    const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}${aside}</div>` : aside);
     if (firstRun) {
       syncInboxDocuments();
-      if (!inbox.items.length) return `${head}${onboarding}${strip}`;
-      return `${head}<div class="layout"><div>${onboarding}${strip}</div>${inboxAside(inbox, { workspace: true })}</div>`;
+      if (!inbox.items.length && !agentsPanel) return `${head}${onboarding}${strip}`;
+      return `${head}<div class="layout"><div>${onboarding}${strip}</div>${side(inbox.items.length ? inboxAside(inbox, { workspace: true }) : '')}</div>`;
     }
     syncInboxDocuments(inbox.items.filter(answeredInPlace).map(item => item.jobId));
     // With no form open, the Inbox holds the starter, the same composer the home page shows when a job is being started.
     const starter = inline ? '' : composerForm({ values: starterValues }, { brands: data.brands || [], variant: 'inbox' });
-    return `${head}<div class="layout"><div>${overviewColumn({ strip, jobs, onboarding, onboardFirst: inline?.kind === 'onboard' })}</div>${inboxAside(inbox, { workspace: true, starter })}</div>`;
+    return `${head}<div class="layout"><div>${overviewColumn({ strip, jobs, onboarding, onboardFirst: inline?.kind === 'onboard' })}</div>${side(inboxAside(inbox, { workspace: true, starter }))}</div>`;
   }
   function metricDetails(metrics) {
     const tokens=metrics.tokens || {};

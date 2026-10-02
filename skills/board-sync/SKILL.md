@@ -45,6 +45,7 @@ The `socialCampaign` `workspace` write in that batch is what marks the board cau
 A `jobDocs` entry carries one job's review, research, strategy and output contents for the board, and needs no read first.
 Add `if_version` set to the last read version only on that `socialCampaign` `workspace` entry.
 On a version conflict, read the workspace document once more and resend the whole batch.
+When the batch fails because a `jobDocs` entry already exists and carries no `if_version` (another session or window wrote it last), list the `jobDocs` collection once and resend the batch with each existing entry's `if_version`.
 Keep local events intact: replacing a projection never acknowledges, truncates, or deletes event logs.
 If a write fails, retain all local data and report that the artifact is waiting for sync.
 

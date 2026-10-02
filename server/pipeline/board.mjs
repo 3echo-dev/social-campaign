@@ -18,7 +18,7 @@ import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceLi
 import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
-import { agentName, gateAuthor, jobAgentLine, lastChangeAt, rosterOf, stuckFor } from './agent-box.mjs';
+import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
@@ -1144,7 +1144,9 @@ export function boardSnapshot({ root } = {}) {
       ? { workspaceId: brandChoice.workspaceId, name: studioWorkspaces.find(item => item.id === brandChoice.workspaceId)?.name || brandChoice.name }
       : null;
     const publishing = brandPublishingInfo({ brandDir: brand.path, channels: raw?.channels, brands: metricoolBrands, connected: metricoolOn });
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing};
+    // The agents behind onboarding (the Director and the Researcher), shown on the Brand onboarding page until the brand is ready.
+    const agents = !readyForJobs || usage.status === 'running' ? onboardingAgents({ brandDir: brand.path, brandName: brand.name, usage, onboardingStatus: brand.onboardingStatus, readyForJobs }) : null;
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const setupStep = connectors.some(connector => !connector.optional && connector.state !== 'connected' && connector.state !== 'skipped')

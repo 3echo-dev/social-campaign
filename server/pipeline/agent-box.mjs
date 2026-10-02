@@ -868,3 +868,64 @@ export function jobAgentLine({ dir, snapshot, lines, now } = {}) {
     .map(id => ({ id, name: nameOf(id), state: 'working' }));
   return agentLine({ list });
 }
+
+// ---------------------------------------------------------------------------
+// Brand onboarding: a small list of agents, no job
+// ---------------------------------------------------------------------------
+
+const RESEARCHER = 'researcher';
+
+// The same reading the board makes of a brand's research usage: running, complete, failed or new.
+function onboardingPhase({ usage, onboardingStatus, clock }) {
+  const status = usage?.status ?? null;
+  const pending = usage?.pending ?? null;
+  const until = timeOf(usage?.pendingUntil);
+  const lapsed = pending === 'expired' || (pending === 'waiting' && until !== null && clock >= until);
+  if (status === 'running') return 'running';
+  if (pending && lapsed) return 'failed';
+  if (pending === 'waiting') return 'running';
+  if (status === 'complete') return 'complete';
+  if (status === 'failed' || status === 'abandoned') return 'failed';
+  return onboardingStatus === 'complete' ? 'complete' : 'new';
+}
+
+/**
+ * The agents on a brand's onboarding page: the Director, then the Researcher (always), then any other agent that recorded a run
+ * under the brand (<brand folder>/onboarding/agents.jsonl). Cards use the job card shape, with no files or messages.
+ * @param {{brandDir:string, brandName?:string, usage?:object, onboardingStatus?:string, readyForJobs?:boolean, now?:number|string|Date, lines?:object[]}} input
+ * @returns {{v:1, list:object[]}}
+ */
+export function onboardingAgents({ brandDir, brandName, usage, onboardingStatus, readyForJobs, now, lines } = {}) {
+  const clock = clockOf(now);
+  const phase = onboardingPhase({ usage, onboardingStatus, clock });
+  const registry = agentRegistry();
+  const runs = runsFrom(lines ?? (brandDir ? readAgentLines(join(brandDir, 'onboarding')) : []));
+  const brand = clipOneLine(brandName, 60) || 'your brand';
+  const card = (id, fields) => ({
+    id, name: nameOf(id), model: shortModel(registry.get(id)?.model), state: 'waiting', task: actionOf(id), since: null, files: [], filesMore: 0,
+    activity: [], messages: [], messagesMore: 0, pendingMessages: 0, ...fields,
+  });
+
+  const waitsOnPerson = phase === 'failed'
+    ? 'Research could not finish. Fill in the profile by hand'
+    : phase === 'complete' ? 'Waiting for you to check the brand profile' : 'Waiting for you to start onboarding';
+  const director = phase === 'running' ? { state: 'working', task: 'Getting your brand ready' }
+    : readyForJobs ? { state: 'done', task: 'Your brand is ready for jobs' }
+      : { state: 'needs_you', task: waitsOnPerson };
+
+  const ids = [RESEARCHER, ...runs.map(run => run.agent).filter(id => id !== DIRECTOR)].filter((id, at, all) => all.indexOf(id) === at);
+  const others = ids.map(id => {
+    const mine = runs.filter(run => run.agent === id);
+    const open = mine.filter(run => isOpen(run) && isFresh(run, clock)).at(-1);
+    const last = mine.at(-1);
+    const researcher = id === RESEARCHER;
+    if (open) return card(id, { state: 'working', since: text(open.startedAt) ?? text(open.dispatchedAt), task: researcher ? `Researching ${brand}` : actionOf(id) });
+    if (last?.ended === 'failed') return card(id, { state: 'waiting', task: researcher ? 'Could not finish the research' : actionOf(id) });
+    if (last || (researcher && phase === 'complete')) {
+      const summary = plainLine(last?.summary, 160);
+      return card(id, { state: 'done', task: researcher ? `Researched ${brand}` : actionOf(id), ...(summary ? { note: summary } : {}) });
+    }
+    return card(id, { state: 'up_next', task: phase === 'running' ? 'Gets to work in a moment' : 'Researches your brand after you start' });
+  });
+  return { v: 1, list: [card(DIRECTOR, director), ...others] };
+}

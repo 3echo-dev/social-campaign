@@ -68,7 +68,7 @@ export const honoursEstimateOnly = (base, input) => asObject(input).estimate_onl
 
 // messages/ holds what the person wrote to each agent on the board and the Director's replies; the model never writes it by hand.
 const FACT_DIRS = new Set(['generation', 'pricing', 'approvals', 'messages']);
-// The record of which agents ran, written by the agent-run hook, at the job root.
+// The record of which agents ran, written by the agent-run hook, at the job root (and under a brand's onboarding folder).
 const ROOT_FACT_FILES = new Set(['agents.jsonl']);
 const RECIPE_FACT_FILES = new Set(['recipe.json', 'recipe-options.json', 'recipe-history.jsonl']);
 // The approved posting plan, the record of uploads and the remembered file measurements and the log of sends, all in the job's publish/ folder: the model must not
@@ -98,6 +98,10 @@ function canonicalPath(full) {
 
 function inJobRecords(path) {
   const parts = path.split(/[\\/]+/).map(part => part.toLowerCase());
+  // Brand onboarding keeps the same agent log straight under its onboarding folder: workspaces/<brand>/onboarding/agents.jsonl.
+  for (let i = 2; i < parts.length - 1; i++) {
+    if (parts[i] === 'onboarding' && parts[i - 2] === 'workspaces' && i + 2 === parts.length && (parts[i + 1] === 'agents.jsonl' || ALIASED_NAME.test(parts[i + 1]))) return true;
+  }
   for (let i = 2; i < parts.length - 1; i++) {
     if (parts[i] !== 'jobs' || parts[i - 2] !== 'workspaces') continue;
     const inside = parts.slice(i + 2);

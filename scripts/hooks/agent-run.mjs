@@ -4,11 +4,13 @@
 //
 // Only a `social-campaign:<id>` agent that agents.json lists as active counts. The job comes from the `job:<jobId>` tag in
 // the spawn prompt, else the session's binding. Everything lands in <job>/agents.jsonl (see server/pipeline/agent-log.mjs).
+// With no job, a `brand:<slug>` tag on the first line of the prompt (brand onboarding research) records the run under the brand,
+// in <brand folder>/onboarding/agents.jsonl; that run has no board messages and no board-sync reminder.
 // It protects no money: it always exits 0 and fails open. It says two things: the board-sync reminder, and the one refusal of a
 // spawn that leaves out the messages the person left for that agent (see server/pipeline/agent-messages.mjs).
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { jobAt, resolveJobForCall, resolveWorkspaceRoot } from '../../server/pipeline/facts.mjs';
 import {
@@ -76,14 +78,28 @@ function replyOf(event, input) {
   };
 }
 
-/** The job an Agent call belongs to: the run already on record, else the tag in the prompt, else the session's binding. */
+const BRAND_TAG = /^\s*brand:([A-Za-z0-9][A-Za-z0-9_.-]{0,159})/;
+
+/** Where a brand's onboarding runs are logged: a job-shaped record with no job id. Null when the brand has no folder. */
+function brandSpot(root, brand) {
+  if (!existsSync(join(resolve(root), 'workspaces', brand))) return null;
+  return { root: resolve(root), brand, jobId: '', dir: join(resolve(root), 'workspaces', brand, 'onboarding'), brandOnly: true };
+}
+
+/** The job a run was recorded under, or the brand's onboarding record when it has no job. */
+const placeOf = (root, brand, jobId) => (jobId ? jobAt(root, brand, jobId) : brandSpot(root, brand));
+
+/** The job an Agent call belongs to: the run already on record, else the tag in the prompt, else the session's binding, else the brand tag. */
 function jobFor(root, event, input, run) {
   if (run) {
-    const known = jobAt(root, run.brand, run.jobId);
+    const known = placeOf(root, run.brand, run.jobId);
     if (known) return known;
   }
-  const job = resolveJobForCall({ root, sessionId: event.session_id, toolInput: { context: typeof input.prompt === 'string' ? input.prompt : '' } });
-  return job ? { root: job.root, brand: job.brand, jobId: job.jobId, dir: job.dir } : null;
+  const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+  const job = resolveJobForCall({ root, sessionId: event.session_id, toolInput: { context: prompt } });
+  if (job) return { root: job.root, brand: job.brand, jobId: job.jobId, dir: job.dir };
+  const slug = BRAND_TAG.exec(prompt.split(/\r?\n/, 1)[0])?.[1]?.replace(/[._-]+$/, '');
+  return slug ? brandSpot(root, slug) : null;
 }
 
 function titleOf(job) {
@@ -96,7 +112,7 @@ function titleOf(job) {
 
 /** The board-sync reminder, claimed once per job until a publish is recorded. Null when it was already given. */
 function reminderFor(job, agent, verb) {
-  if (!claimBoardReminder(job.root, job.brand, job.jobId)) return null;
+  if (job.brandOnly || !claimBoardReminder(job.root, job.brand, job.jobId)) return null;
   return boardReminderText({ agent, brand: job.brand, jobId: job.jobId, title: titleOf(job), verb });
 }
 
@@ -112,7 +128,7 @@ const REFUSAL = agent => `The person left a message for the ${agentLabel(agent)}
  * lets the spawn go on. Returns a deny output object, or null.
  */
 function deliveryGuard({ root, job, agent, input }) {
-  if (agent === DIRECTOR) return null;
+  if (agent === DIRECTOR || job.brandOnly) return null;
   try {
     const waiting = pendingMessages(job.dir, agent);
     if (!waiting.length) return null;
@@ -131,7 +147,7 @@ function deliveryGuard({ root, job, agent, input }) {
  */
 function markDelivered({ job, agent, input, event, agentId }) {
   try {
-    if (agent === DIRECTOR) return;
+    if (agent === DIRECTOR || job.brandOnly) return;
     const delivered = deliveredBy(input.prompt, agent, pendingMessages(job.dir, agent));
     if (delivered.length) markMessagesDelivered(job.dir, agent, delivered.map(message => message.id), { toolUseId: word(event.tool_use_id), agentId });
   } catch {
@@ -261,7 +277,7 @@ function onSubagentStart(event, root) {
     return { ...run };
   });
   if (!found) return;
-  const job = jobAt(root, found.brand, found.jobId);
+  const job = placeOf(root, found.brand, found.jobId);
   if (job) appendAgentLine(job.dir, { kind: 'started', toolUseId: found.toolUseId, agentId: word(event.agent_id), agent, sessionId: found.sessionId, at });
 }
 
@@ -280,7 +296,7 @@ function onSubagentStop(event, root) {
     return { ...run };
   });
   if (!found) return;
-  const job = jobAt(root, found.brand, found.jobId);
+  const job = placeOf(root, found.brand, found.jobId);
   if (!job) return;
   const summary = clipOneLine(event.last_assistant_message, SUMMARY_LIMIT);
   appendAgentLine(job.dir, { kind: 'stopped', toolUseId: found.toolUseId, agentId: word(event.agent_id), agent, ...(summary ? { summary } : {}), at });
