@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../../scripts/build-board.mjs';
 import { factsFingerprint, isFinishedState, landingReport, listJobs, readSessionBinding } from './facts.mjs';
-import { readAgentLines } from './agent-log.mjs';
+import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
+import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
@@ -450,6 +451,81 @@ function unaskedStuck(board, root, jobs, questions, sessionId, now = Date.now())
   }
 }
 
+// States where the next move is a person's answer or a problem to ask about, never plain work for Claude.
+const NOT_YOUR_TURN = new Set(['BLOCKED', 'ESCALATED', 'UNSUPPORTED', 'NEEDS_CLARIFICATION']);
+
+const stageWords = id => {
+  const text = String(id).split('-').join(' ');
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+};
+
+/** The stage the job moves into next, in the words the board uses; a state that belongs to no stage gives its own label. */
+function nextStageName(job, state) {
+  const label = lifecycle?.label?.(state) || state;
+  try {
+    const stages = requireScript('lib-stages.js');
+    const route = readJson(join(job.dir, 'route.json'));
+    const workflowId = typeof route?.workflowId === 'string' ? route.workflowId : null;
+    const here = stages?.forState(state, workflowId);
+    if (!here) return label;
+    const order = stages.walkedStages(null, workflowId, { route }) || (stages.isReportWorkflow(workflowId) ? stages.REPORT_STAGE_IDS : stages.STAGE_IDS);
+    const at = order.indexOf(here.stage);
+    return stageWords(here.status === 'done' && at >= 0 && at + 1 < order.length ? order[at + 1] : here.stage);
+  } catch {
+    return label;
+  }
+}
+
+function hasOpenRun(lines, now) {
+  return runsFrom(lines).some(run => {
+    if (run.ended) return false;
+    const began = Date.parse(run.startedAt ?? run.dispatchedAt ?? '');
+    return !Number.isFinite(began) || now - began < STALE_RUN_MS;
+  });
+}
+
+function lastActiveAt(job, lines) {
+  let status = null;
+  try {
+    status = statSync(join(job.dir, 'status.md')).mtimeMs;
+  } catch {
+    status = null;
+  }
+  return Math.max(lastChangeAt({ dir: job.dir, lines }) ?? 0, status ?? 0) || null;
+}
+
+/**
+ * Jobs that are Claude's to move on right now, with nobody to ask and no agent running: [{ref, jobId, title, state, revision, next}].
+ * Only a job bound to this session, or active in the last 24 hours, counts. Needs the board to say nobody is waiting; without it nothing is reported.
+ */
+function yourTurnJobs(board, root, jobs, questions, sessionId, now = Date.now()) {
+  try {
+    if (typeof board?.personWaiting !== 'function') return [];
+    const bound = sessionId ? readSessionBinding(root, sessionId) : null;
+    const mine = bound ? `${bound.brand}/${bound.jobId}` : null;
+    const out = [];
+    for (const job of jobs) {
+      const state = job.state;
+      if (!state || isFinishedState(state) || NOT_YOUR_TURN.has(state) || gateOfState(state) || lifecycle?.isDeliveryBoundary?.(state)) continue;
+      const ref = jobRef(job);
+      const lines = readAgentLines(job.dir);
+      const at = lastActiveAt(job, lines);
+      if (ref !== mine && !(at !== null && now - at <= STUCK_RECENT_MS)) continue;
+      if (waitingFor(board, root, job, questions) || hasOpenRun(lines, now)) continue;
+      const title = readJson(join(job.dir, 'job.json'))?.title;
+      out.push({ ref, jobId: job.jobId, title: typeof title === 'string' && title.trim() ? title.trim() : job.jobId, state, revision: job.revision ?? 0, next: nextStageName(job, state) });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** What Claude is told for jobs on its turn: one sentence per job. */
+export const yourTurnReason = list => list
+  .map(entry => `Job "${entry.title}" is waiting on you, Claude: its next step is "${entry.next}". Continue it now, or if something is missing, ask the person on the Director card and in chat.`)
+  .join(' ');
+
 /** The board's own answer to "is a person needed here", or just the approval gates when it cannot load. */
 function waitingFor(board, root, job, questions) {
   try {
@@ -484,6 +560,7 @@ export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: 
   return {
     behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting,
     agents: agentFinishes(root, jobs), replies: unansweredReplies(jobs), stuck: unaskedStuck(board, root, jobs, questions, sessionId),
+    yourTurn: yourTurnJobs(board, root, jobs, questions, sessionId),
   };
 }
 
