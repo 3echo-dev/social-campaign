@@ -12,12 +12,12 @@ metadata:
 
 This check runs before the final approval on every job that has an image or video, including footage the person supplied.
 It cannot be skipped.
-The final approval is refused until a current check covers exactly the files being approved and every item it found is fixed or accepted by the person.
+The final approval is refused until a current check covers every image and video being approved, contact sheets included, and every item it found is fixed or accepted by the person.
 Run it once all the images and video for the final approval are in place, and again whenever one of them changes.
 Follow these steps exactly and never read plugin code while doing them.
 
 1. Call `pipeline_qc_frames` with `brand` and `jobId`.
-   Add `paths` only for an image or video you will show at the final approval that no post names.
+   It already takes every image and video registered for the pending review, including a contact sheet, so leave `paths` out unless you will show an image or video at the final approval that is not registered for the review yet.
 2. Open every returned frame `path` with Read, one at a time, and skip none.
 3. For each frame, write down what it shows:
    - `text`: every word printed on the product, its pack or label, and every caption or overlay on screen.

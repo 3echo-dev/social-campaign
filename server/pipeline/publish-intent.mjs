@@ -22,7 +22,8 @@
  *       "title": "<TikTok only: first line of the caption, at most 90 characters>" | null,
  *       "firstComment": "",
  *       "publicationDate": { "dateTime": "2026-10-03T09:00:00", "timezone": "Asia/Singapore" } | null,
- *                                                  // null for metricool_now (resolved when it is sent)
+ *                                                  // from the time chosen on the card (job.json deliverables[].postTime), else the post's
+ *                                                  // Publish plan row, else the job schedule; null for metricool_now (resolved when it is sent)
  *       "autoPublish": true,
  *       "draft": false,                            // true only for metricool_draft
  *       "aiGenerated": false,                      // AI-made people or media (over-labels rather than under-labels)
@@ -56,7 +57,7 @@ import { THREE_ECHO, jobFromDir, legalChain, readLanded, readRecords } from './f
 import { HOSTED_MEDIA_FILE, PUBLISH_INTENT_FILE, hasPublishApproval, hostedAssetFor } from './media-host.mjs';
 import { hasSendRecords } from './publish-attempts.mjs';
 import { brandPublishingInfo, metricoolConnected, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
-import { HANDOFF_ONLY_TEXT, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, preflightIntent, validZone } from './publish-preflight.mjs';
+import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
 import * as runtime from './runtime.mjs';
 import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-workspace.mjs';
 
@@ -337,6 +338,27 @@ function planTime(sections) {
   return cells[2] || '';
 }
 
+const CARD_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const CARD_TIME_PARTS = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * The posting time chosen on the posting card for this deliverable (job.json `deliverables[].postTime`, saved by choosePostTime),
+ * as the plan holds it, or null when there is none or it is not a real local time. It is read in the zone it was saved with,
+ * so a job whose zone changes later does not move the moment the person chose.
+ */
+function cardTime(deliverable, zones) {
+  const stored = deliverable?.postTime;
+  if (!plain(stored) || typeof stored.dateTime !== 'string' || !CARD_TIME.test(stored.dateTime)) return null;
+  const zone = [stored.timezone, ...zones].find(validZone);
+  if (!zone) return null;
+  const instant = zonedInstant(stored.dateTime, zone);
+  if (instant === null || localDateTime(instant, zone).slice(0, 16) !== stored.dateTime) return null;
+  return { dateTime: `${stored.dateTime}:00`, timezone: zone };
+}
+
+/** The zones a job's time can be read in, most specific first: the job's own, the brand's, the connected Metricool brand's. */
+const zonesOf = (job, brandEntry, connection) => [job.schedule?.timezone, brandEntry.timezone, connection.timezone].filter(zone => typeof zone === 'string' && zone.trim()).map(zone => zone.trim());
+
 /**
  * The posting time as Metricool takes it: a wall-clock time and an IANA zone. A time with an offset is shown in
  * the first known zone; a plain local time is read in it. A date with no time of day, or words, give no time.
@@ -409,10 +431,10 @@ function composePost({ jobDir, realJob, job, deliverable, route, zones, flags, a
   const aiMade = media.some(item => ai.shas.has(item.sha256) || ai.paths.has(item.path) || made.has(item.path));
   const aiGenerated = flags.has('synthetic_person') || aiMade;
   const paid = ['paid', 'both'].includes(job.distribution) || [...flags].some(flag => PAID_FLAGS.has(flag)) || PAID_WORDS.test(String(sections.Disclosure || ''));
-  // The time in the post's own Publish plan wins over the job's schedule, as it does in the hand-off.
+  // The time chosen on the posting card wins, then the time in the post's own Publish plan (as in the hand-off), then the job's schedule.
   const planned = planTime(sections);
   // Post now is resolved when it is sent, but the zone it is sent in is the plan's, so the send guard has it.
-  const when = route === 'metricool_now' ? { dateTime: null, timezone: zones.find(validZone) || null } : planned ? publicationFor(planned, zones) : publicationFor(job.schedule?.publishAt, zones);
+  const when = route === 'metricool_now' ? { dateTime: null, timezone: zones.find(validZone) || null } : cardTime(deliverable, zones) || (planned ? publicationFor(planned, zones) : publicationFor(job.schedule?.publishAt, zones));
   return {
     id: `${D}-${platform}`,
     deliverable: D,
@@ -448,7 +470,7 @@ function compose({ root, brand, jobId, probe = probeMedia, useCache = true }) {
   const connection = connectionOf(root, brandEntry);
   const route = plannedBeforeMetricool(snapshot) ? 'self' : storedPublishRoute(job) || defaultPublishRoute(connection);
   const publishing = readBrandPublishing(brandEntry.path);
-  const zones = [job.schedule?.timezone, brandEntry.timezone, connection.timezone].filter(zone => typeof zone === 'string' && zone.trim()).map(zone => zone.trim());
+  const zones = zonesOf(job, brandEntry, connection);
   const flags = new Set([...(snapshot.route?.riskFlags || []), ...(snapshot.route?.modelAddedRiskFlags || [])]);
   const studioWorkspace = studioWorkspaceFor({ root, brandDir: brandEntry.path, jobDir });
   const remembered = readJsonFile(join(jobDir, MEDIA_FACTS_FILE), {});
@@ -471,7 +493,7 @@ function compose({ root, brand, jobId, probe = probeMedia, useCache = true }) {
     studioWorkspace,
     posts,
   };
-  return { intent, brandEntry, jobRecord, jobDir, connection, studioWorkspace, route, job };
+  return { intent, brandEntry, jobRecord, jobDir, connection, studioWorkspace, route, job, zone: zones.find(validZone) || null };
 }
 
 const textOf = intent => `${JSON.stringify(intent, null, 2)}\n`;
@@ -565,11 +587,11 @@ export function evaluatePublishPlan({ root, brand, jobId, now = Date.now(), prob
   const fresh = compose({ root, brand, jobId, useCache: measure === 'display', ...(probe ? { probe } : {}) });
   const onDisk = readJsonFile(join(fresh.jobDir, ...PUBLISH_INTENT_FILE.split('/')), null);
   const changed = !plain(onDisk) || JSON.stringify(onDisk) !== JSON.stringify(fresh.intent);
-  const checks = preflightIntent(fresh.intent, { route: fresh.route, now, studioWorkspace: fresh.studioWorkspace, hosted: hostedShasOf(fresh.jobDir, fresh.studioWorkspace?.id), ...fresh.connection });
+  const checks = preflightIntent(fresh.intent, { route: fresh.route, now, studioWorkspace: fresh.studioWorkspace, hosted: hostedShasOf(fresh.jobDir, fresh.studioWorkspace?.id), ...fresh.connection, zone: fresh.zone });
   const ready = checks.ready && !changed;
   const failing = Object.values(checks.posts).flat().find(item => !item.ok);
   const reason = ready ? null : failing ? failing.text : changed ? 'The posting plan changed after it was shown, so it has to be shown again.' : 'There is nothing to post yet.';
-  return { ready, changed, reason, checks, intent: fresh.intent };
+  return { ready, changed, reason, checks, intent: fresh.intent, zone: fresh.zone };
 }
 
 /**
@@ -674,6 +696,13 @@ export function choosePublishRoute({ root, brand, jobId, route, probe }) {
 // ---------------------------------------------------------------------------
 
 const GATE_STATE = 'AWAITING_PUBLISH_APPROVAL';
+
+/** Why a card choice (`what`, for example "the kind of post") cannot be made in this state, in plain words, or null at the posting decision. */
+function gateClosedReason(state, what) {
+  if (state === GATE_STATE) return null;
+  const past = STATE_ORDER.indexOf(state) > GATE_AT && !REOPENABLE.has(state);
+  return past ? `This job is already past the posting decision, so ${what} can no longer be chosen.` : `${what[0].toUpperCase()}${what.slice(1)} can be chosen once the posting decision is open.`;
+}
 /**
  * Throws a plain sentence when this post type cannot be saved for this deliverable now. Returns the brand, the job and
  * the deliverable as stored. It is open only at the posting decision with nothing approved or sent, only for a
@@ -686,10 +715,8 @@ export function checkPostType({ root, brand, jobId, deliverable, placement }) {
   const locked = planLockReason(jobRecord.path);
   if (locked) throw new Error(locked);
   const state = runtime.readJobSnapshot({ root, brand: brandEntry.slug, jobId: jobRecord.jobId }).project.state;
-  if (state !== GATE_STATE) {
-    const past = STATE_ORDER.indexOf(state) > GATE_AT && !REOPENABLE.has(state);
-    throw new Error(past ? 'This job is already past the posting decision, so the kind of post can no longer be chosen.' : 'The kind of post can be chosen once the posting decision is open.');
-  }
+  const closed = gateClosedReason(state, 'the kind of post');
+  if (closed) throw new Error(closed);
   const id = typeof deliverable === 'string' ? deliverable.trim() : '';
   if (!id) throw new Error('Say which post this is for.');
   const stored = readJsonFile(join(jobRecord.path, 'job.json'), null);
@@ -725,6 +752,99 @@ export function savePostType({ root, brand, jobId, deliverable, placement, probe
     deliverable: entry.id,
     placement,
     label: rules.placementWords(entry.platform, placement),
+    posts: built.intent.posts.length,
+    changed: built.changed,
+    path: built.path,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The posting time chosen on the card
+// ---------------------------------------------------------------------------
+
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * Throws a plain sentence when this posting time cannot be saved now. Returns the brand, the job, the deliverables it is for
+ * (`entries`, as stored) and the zone the time is read in. With a `deliverable` it is for that one post; with `deliverable`
+ * left out (`undefined`) it is for every publishable deliverable of the job at once. It is open only at the posting decision with
+ * nothing approved or sent, only for deliverables of the job, and only for a plain local time (`YYYY-MM-DDTHH:MM`, no seconds or
+ * offset) that really exists in the zone and is at least five minutes ahead there. The zone is the one the card shows: the one a
+ * time saved from the card keeps (the same rule cardTime reads it by), else the plan's own (the job's schedule zone, else the
+ * brand's, else the connected Metricool brand's). For every post at once it is the zone the posts share, else the plan's.
+ */
+export function checkPostTime({ root, brand, jobId, deliverable, dateTime, now = Date.now() }) {
+  const brandEntry = findBrand(root, brand);
+  const jobRecord = findJob(root, brandEntry.slug, jobId);
+  const locked = planLockReason(jobRecord.path);
+  if (locked) throw new Error(locked);
+  const snapshot = runtime.readJobSnapshot({ root, brand: brandEntry.slug, jobId: jobRecord.jobId });
+  const closed = gateClosedReason(snapshot.project.state, 'the posting time');
+  if (closed) throw new Error(closed);
+  const all = deliverable === undefined;
+  const id = typeof deliverable === 'string' ? deliverable.trim() : '';
+  if (!all && !id) throw new Error('Say which post this is for.');
+  const stored = readJsonFile(join(jobRecord.path, 'job.json'), null);
+  if (!plain(stored)) throw new Error('This job record could not be read, so the posting time was not saved.');
+  const listed = (Array.isArray(stored.deliverables) ? stored.deliverables : []).filter(item => plain(item) && typeof item.id === 'string' && item.id);
+  let entries;
+  if (all) {
+    entries = listed.filter(item => rules.publishable(snapshot.job || {}, item));
+    if (!entries.length) throw new Error('This job has no posts to set a time for.');
+  } else {
+    const entry = listed.find(item => item.id === id);
+    if (!entry) throw new Error('This job has no such post.');
+    entries = [entry];
+  }
+  const zones = zonesOf(snapshot.job || {}, brandEntry, connectionOf(root, brandEntry));
+  const planZone = zones.find(validZone);
+  const own = new Set(entries.map(item => cardTime(item, zones)?.timezone || planZone));
+  const zone = own.size === 1 && [...own][0] ? [...own][0] : planZone;
+  if (!zone) throw new Error('No time zone is set for this job yet, so a posting time cannot be chosen. Set the job\'s time zone first.');
+  const instant = typeof dateTime === 'string' && CARD_TIME.test(dateTime) ? zonedInstant(dateTime, zone) : null;
+  // A date that rolls over (31 February) or a wall-clock time the zone skips does not come back the same, so it is not a real time.
+  if (instant === null) throw new Error('Choose a date and a time.');
+  if (localDateTime(instant, zone).slice(0, 16) !== dateTime) {
+    // A real calendar time that comes back different is one the clocks skip (spring forward); one that is not on the calendar is not a date.
+    const [, year, month, day, hour, minute] = CARD_TIME_PARTS.exec(dateTime);
+    const real = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
+    const onCalendar = real.toISOString().slice(0, 16) === dateTime;
+    throw new Error(onCalendar ? `That time doesn't exist in ${zoneWords(zone, instant)} because the clocks change. Pick another time.` : 'Choose a date and a time.');
+  }
+  const when = whenText({ dateTime: `${dateTime}:00`, timezone: zone });
+  if (instant < now) throw new Error(`That time has already passed: ${when}. Pick a time at least ${MIN_LEAD_MINUTES} minutes ahead.`);
+  if (instant < now + MIN_LEAD_MINUTES * MINUTE_MS) throw new Error(`That time is less than ${MIN_LEAD_MINUTES} minutes away: ${when}. Pick a time at least ${MIN_LEAD_MINUTES} minutes ahead.`);
+  return { brandEntry, jobRecord, entries, all, zone, when };
+}
+
+/**
+ * Store the posting time on the deliverable in job.json (`postTime: { dateTime, timezone }`, the same atomic, locked write the
+ * route choice uses) and rebuild the posting plan with it. The plan reads it before the post's own publish plan and the job
+ * schedule. With no `deliverable` the time goes on every publishable deliverable in one write, followed by one rebuild. The lock is
+ * checked again inside the write, so an approval that landed a moment earlier is never overwritten.
+ */
+export function savePostTime({ root, brand, jobId, deliverable, dateTime, probe, now }) {
+  const { brandEntry, jobRecord, entries, all, zone, when } = checkPostTime({ root, brand, jobId, deliverable, dateTime, ...(now === undefined ? {} : { now }) });
+  const jobFile = join(jobRecord.path, 'job.json');
+  const ids = new Set(entries.map(item => item.id));
+  updateJsonFile(jobFile, current => {
+    const locked = planLockReason(jobRecord.path);
+    if (locked) throw new Error(locked);
+    const list = plain(current) && Array.isArray(current.deliverables) ? current.deliverables : [];
+    if (![...ids].every(id => list.some(item => plain(item) && item.id === id))) throw new Error('This job record could not be read, so the posting time was not saved.');
+    return { ...current, deliverables: list.map(item => (plain(item) && ids.has(item.id) ? { ...item, postTime: { dateTime, timezone: zone } } : item)), updatedAt: new Date().toISOString() };
+  }, {});
+  const built = buildPublishIntent({ root, brand: brandEntry.slug, jobId: jobRecord.jobId, ...(probe ? { probe } : {}) });
+  const [entry] = entries;
+  return {
+    brand: brandEntry.slug,
+    jobId: jobRecord.jobId,
+    deliverable: all ? null : entry.id,
+    deliverables: [...ids],
+    dateTime,
+    timezone: zone,
+    when,
+    label: all ? 'Every post' : rules.placementWords(entry.platform, entry.placement) || rules.PLATFORM_NAMES[entry.platform] || 'This post',
     posts: built.intent.posts.length,
     changed: built.changed,
     path: built.path,

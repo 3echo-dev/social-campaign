@@ -18,7 +18,7 @@ import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceLi
 import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
-import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostType, withPublishIntent } from './publish-intent.mjs';
+import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
 const campaignReport = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-campaign-report.js'));
@@ -1212,11 +1212,12 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','resolve_post','mark_posted','answer_question'].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question'].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
   if (operation === 'choose_post_type') validatePostType(root, args);
+  if (operation === 'choose_post_time') validatePostTime(root, args);
   if (operation === 'resolve_post') checkResolvePost(root, args);
   if (operation === 'mark_posted') checkMarkPosted(root, args);
   if (operation === 'create_job') createJobFields(args || {});
@@ -1269,6 +1270,17 @@ function validatePostType(root, args) {
   if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
   if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
   checkPostType({ root, brand: args.brand.trim(), jobId: args.jobId.trim(), deliverable: args.deliverable, placement: args.placement });
+}
+
+// The posting time for one post, or for every post when `deliverable` is left out: exactly these fields and the workspace the board belongs to.
+const POST_TIME_FIELDS = new Set(['requestId', 'brand', 'jobId', 'deliverable', 'dateTime', 'workspaceId']);
+
+function validatePostTime(root, args) {
+  if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
+  if (Object.keys(args).some(key => !POST_TIME_FIELDS.has(key))) throw new Error('This request carries more than a posting time choice, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
+  checkPostTime({ root, brand: args.brand.trim(), jobId: args.jobId.trim(), deliverable: args.deliverable, dateTime: args.dateTime });
 }
 
 // A post's own request from the status list or the posting kit. Like a route choice it carries exactly its own fields
@@ -1466,6 +1478,17 @@ export function choosePublishRouteOnBoard({ root, brand, jobId, route }) {
 export function choosePostType({ root, brand, jobId, deliverable, placement }) {
   root = rootOf(root);
   const result = savePostType({ root, brand, jobId, deliverable, placement });
+  return { ...result, presented: representPublishGate(root, result.brand, result.jobId) };
+}
+
+/**
+ * Save the posting time chosen on the card for one post (or, with no deliverable, for every post in one write) and rebuild the posting plan with it, presenting the posting decision
+ * again when it is open, so the person approves exactly the plan they see. Only at the posting decision with nothing approved or
+ * sent, and only for a time at least five minutes ahead in the plan's zone. The board request and the chat tool both use this function.
+ */
+export function choosePostTime({ root, brand, jobId, deliverable, dateTime }) {
+  root = rootOf(root);
+  const result = savePostTime({ root, brand, jobId, deliverable, dateTime });
   return { ...result, presented: representPublishGate(root, result.brand, result.jobId) };
 }
 
@@ -1731,6 +1754,11 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const result = choosePostType({root,brand:args.brand.trim(),jobId:args.jobId.trim(),deliverable:args.deliverable,placement:args.placement});
     return {...result,message:`Post type saved: ${result.label}.`};
   }
+  if(operation==='choose_post_time') {
+    validatePostTime(root,args);
+    const result = choosePostTime({root,brand:args.brand.trim(),jobId:args.jobId.trim(),deliverable:args.deliverable,dateTime:args.dateTime});
+    return {...result,message:`Posting time saved: ${result.when}.`};
+  }
   if(operation==='resolve_post') {
     checkResolvePost(root,args);
     const result = resolveAmbiguous({root,brand:args.brand.trim(),jobId:args.jobId.trim(),postId:args.postId,answer:args.answer,requestId:args.requestId,lid:args.lid});
@@ -1775,6 +1803,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'choose_metricool_brand') return result.blogId ? { brand: result.brand, blogId: result.blogId } : null;
   if (operation === 'choose_publish_route') return result.route ? { jobId: result.jobId, route: result.route } : null;
   if (operation === 'choose_post_type') return result.deliverable ? { jobId: result.jobId, deliverable: result.deliverable, placement: result.placement } : null;
+  if (operation === 'choose_post_time') return result.dateTime ? { jobId: result.jobId, ...(result.deliverable ? { deliverable: result.deliverable } : {}), dateTime: result.dateTime } : null;
   if (operation === 'resolve_post') return result.postId ? { jobId: result.jobId, postId: result.postId, outcome: result.outcome } : null;
   if (operation === 'mark_posted') return result.postId ? { jobId: result.jobId, postId: result.postId, allMarked: result.allMarked, closed: result.closed } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;

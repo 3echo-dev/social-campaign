@@ -1,6 +1,6 @@
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
-import { boardSnapshot, choosePostType, choosePublishRouteOnBoard, closePublishedJob, reopenPublishPlan } from '../pipeline/board.mjs';
+import { boardSnapshot, choosePostTime, choosePostType, choosePublishRouteOnBoard, closePublishedJob, reopenPublishPlan } from '../pipeline/board.mjs';
 import { PUBLISH_ROUTES, hostedAssetsFor, readPublishIntent } from '../pipeline/publish-intent.mjs';
 import { deliveryReference, handOverPost, lookupNeeded, projectPublishStatus, reconcilePosts, sentPosts } from '../pipeline/publish-attempts.mjs';
 import { writeBoardDocuments } from '../pipeline/artifact.mjs';
@@ -67,6 +67,34 @@ export const publishTools = [
     handler: async (args, { workspace }) => {
       const root = local(workspace);
       const result = choosePostType({ root, brand: args.brand, jobId: args.jobId, deliverable: args.deliverable, placement: args.placement });
+      const projection = writeBoardDocuments({ root, snapshot: boardSnapshot({ root }), jobIds: [result.jobId] });
+      return { ...result, projectionFile: projection.projectionFile, documents: projection.documents };
+    },
+  }),
+  defineTool({
+    name: 'pipeline_post_time_choose',
+    description: [
+      'Save the posting time of one deliverable, or of every post at once when deliverable is left out (the card\'s "same time for every post"), and rebuild the posting plan once, for example when the person tells you in chat when a post should go out instead of choosing it on the board.',
+      'dateTime is a plain local time as `YYYY-MM-DDTHH:MM` (no seconds, no offset), read in the time zone of the plan (the job\'s schedule zone, else the brand\'s, else the Metricool brand\'s), which it names in the answer. It must be a real time at least 5 minutes ahead there; otherwise it says why and changes nothing.',
+      'The plan then sends this time for that post: it is read before the post\'s own publish plan and before the job schedule. A time chosen earlier is replaced.',
+      'It is refused, in plain words, unless the job is waiting on the posting decision with nothing approved or sent.',
+      'When the decision is open it is registered again with the new plan, so tell the person the plan changed and that they approve it as it now is.',
+      'Returns the deliverable, the time and its zone, how many posts the plan has, whether the decision was presented again, and documents to write to the board.',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        brand: { ...string, description: 'The brand the job belongs to.' },
+        jobId: string,
+        deliverable: { ...string, description: 'The deliverable id, for example D1. Leave it out to set the same time for every post of the job in one step.' },
+        dateTime: { ...string, description: 'The local time in the plan\'s zone, as YYYY-MM-DDTHH:MM, for example 2026-10-03T09:00.' },
+      },
+      required: ['brand', 'jobId', 'dateTime'],
+      additionalProperties: false,
+    },
+    handler: async (args, { workspace }) => {
+      const root = local(workspace);
+      const result = choosePostTime({ root, brand: args.brand, jobId: args.jobId, deliverable: args.deliverable, dateTime: args.dateTime });
       const projection = writeBoardDocuments({ root, snapshot: boardSnapshot({ root }), jobIds: [result.jobId] });
       return { ...result, projectionFile: projection.projectionFile, documents: projection.documents };
     },

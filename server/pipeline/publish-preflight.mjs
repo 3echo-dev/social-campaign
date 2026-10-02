@@ -333,10 +333,21 @@ function titleCheck(post) {
   return check(true, 'The TikTok title is set.');
 }
 
+/** What a post with no posting time fails on. The card's time input sits right under it, so there is nothing to explain. */
+export const NEEDS_TIME_TEXT = 'Choose when this post goes out.';
+/** A draft needs a date in the planner too, but nothing goes out. */
+export const NEEDS_DRAFT_DATE_TEXT = 'Choose the date for this draft.';
+/** No time can be read, or chosen, until the person says which zone these posts are in. */
+export const NEEDS_ZONE_TEXT = 'Tell Claude which time zone these posts are in.';
+
 function timeCheck(post, context) {
   if (context.route === 'metricool_now') return check(true, 'Goes out within a few minutes of your approval.');
   const date = post.publicationDate;
-  if (!plain(date) || !date.dateTime) return check(false, "This post has no posting time Metricool can use yet. Set a date and time in the job's schedule or in the post's publish plan.");
+  if (!plain(date) || !date.dateTime) {
+    // `zone: null` is a plan that knows no zone at all (a context with no zone key says nothing about it): no input can be offered, so say who has to act.
+    if (context.zone === null && !validZone(date?.timezone)) return check(false, NEEDS_ZONE_TEXT);
+    return check(false, context.route === 'metricool_draft' ? NEEDS_DRAFT_DATE_TEXT : NEEDS_TIME_TEXT);
+  }
   if (!validZone(date.timezone)) return check(false, 'The posting time has no time zone, so Metricool cannot place it. Say which time zone it is in.');
   const instant = zonedInstant(date.dateTime, date.timezone);
   if (instant === null) return check(false, 'The posting time could not be read as a date and a time.');
@@ -344,7 +355,7 @@ function timeCheck(post, context) {
   const when = whenText(date);
   if (instant < now) return check(false, `The posting time has already passed: ${when}. Pick a time at least ${MIN_LEAD_MINUTES} minutes ahead.`);
   if (instant < now + MIN_LEAD_MINUTES * 60 * 1000) return check(false, `The posting time is less than ${MIN_LEAD_MINUTES} minutes away: ${when}. Pick a time at least ${MIN_LEAD_MINUTES} minutes ahead.`);
-  return check(true, `Goes out ${when}.`);
+  return check(true, context.route === 'metricool_draft' ? `Saved for ${when}.` : `Goes out ${when}.`);
 }
 
 function hostedSet(context) {
@@ -435,12 +446,33 @@ function accountOf(platform, value) {
   return raw.startsWith('@') ? raw : `@${raw}`;
 }
 
-function whenFor(post, route) {
+/**
+ * What the Schedule route's date and time input needs: the zone the person's time is read in (the post's own, else the plan's),
+ * how that zone is said ("Singapore time"), and the time now set as `YYYY-MM-DDTHH:MM` local to that zone, or '' when there is none.
+ * Null when no zone is known, because a time cannot be read without one.
+ */
+/** What the draft route's date is called, with the zone it is read in: Metricool needs a date for a draft, but a draft is never published. */
+export const draftDateLabel = words => `Date in your Metricool planner, ${words} (a draft is not published)`;
+
+function timeInput(post, planZone, route) {
+  const date = plain(post.publicationDate) ? post.publicationDate : null;
+  const zone = [date?.timezone, planZone].find(validZone);
+  if (!zone) return null;
+  const instant = date?.dateTime && validZone(date.timezone) ? zonedInstant(date.dateTime, date.timezone) : null;
+  return { zone, zoneWords: zoneWords(zone, instant ?? Date.now()), dateTime: instant === null ? '' : localDateTime(instant, zone).slice(0, 16), ...(route === 'metricool_draft' ? { label: draftDateLabel(zoneWords(zone, instant ?? Date.now())) } : {}) };
+}
+
+function whenFor(post, route, planZone) {
   if (route === 'metricool_now') return { text: 'Goes out within a few minutes of your approval' };
   const text = whenText(post.publicationDate);
-  if (text) return { text };
-  if (plain(post.publicationDate) && post.publicationDate.dateTime) return { text: `${post.publicationDate.dateTime.replace('T', ' ')} (time zone not set)` };
-  return { text: route === 'self' ? 'When you choose' : 'No posting time set' };
+  let when;
+  if (text) when = { text };
+  else if (plain(post.publicationDate) && post.publicationDate.dateTime) when = { text: `${post.publicationDate.dateTime.replace('T', ' ')} (time zone not set)` };
+  else when = { text: route === 'self' ? 'When you choose' : 'No posting time set' };
+  // Schedule and draft take a date from the person here (Metricool needs one for a draft too, which says so). Post now needs none,
+  // and posting it yourself is your own time.
+  const input = route === 'metricool_schedule' || route === 'metricool_draft' ? timeInput(post, planZone, route) : null;
+  return input ? { ...when, input } : when;
 }
 
 // Through Metricool the label is set for the person. When they post it themselves nothing sets it, so the line says
@@ -458,6 +490,31 @@ function typeKinds(post, choices) {
 }
 
 /**
+ * The card-level "same time for every post" field, or null when it does not apply: only on Schedule and Draft, only for two or more
+ * posts (one post has its own field), and only when every post can take a time. `state` is 'none' (no post has a time: this field is
+ * the main control and each row says it uses it), 'shared' (every post has the one same time, shown with Change) or 'mixed'
+ * (the posts differ). The zone is the one the posts share, else the plan's. Pure.
+ */
+function allTimeOf(posts, route, planZone) {
+  if ((route !== 'metricool_schedule' && route !== 'metricool_draft') || posts.length < 2 || posts.some(post => !post.when?.input)) return null;
+  const zones = new Set(posts.map(post => post.when.input.zone));
+  const zone = zones.size === 1 ? [...zones][0] : planZone;
+  if (!validZone(zone)) return null;
+  const times = posts.map(post => post.when.input.dateTime);
+  const set = times.filter(Boolean);
+  const state = !set.length ? 'none' : set.length === posts.length && zones.size === 1 && new Set(times).size === 1 ? 'shared' : 'mixed';
+  const words = zoneWords(zone, Date.now());
+  return {
+    state,
+    zone,
+    zoneWords: words,
+    dateTime: state === 'shared' ? times[0] : '',
+    text: state === 'shared' ? posts[0].when.text : '',
+    label: route === 'metricool_draft' ? `Same date for every draft, ${words} (a draft is not published)` : `Same time for every post, ${words}`,
+  };
+}
+
+/**
  * The `review.publish` block of the job document: the route and the routes on offer, where posts go, and one row
  * per post with its account, time, media and checks. The checks are run again now, so a posting time that has
  * passed since the plan was made shows as failing. `context` is what preflightPost takes plus
@@ -468,7 +525,10 @@ export function projectPublish(intent, context = {}) {
   if (!plain(intent)) return null;
   const route = PUBLISH_ROUTES.includes(intent.route) ? intent.route : 'self';
   const networks = plain(context.networks) ? context.networks : {};
-  const live = preflightIntent(intent, { ...context, route });
+  // The zone the plan speaks in (`context.zone`, or the fresh evaluation's): null when it is known that there is none.
+  const zoneEvaluation = plain(context.evaluation) ? context.evaluation : null;
+  const zoneGiven = context.zone !== undefined || zoneEvaluation?.zone !== undefined;
+  const live = preflightIntent(intent, { ...context, route, ...(zoneGiven ? { zone: [context.zone, zoneEvaluation?.zone].find(validZone) || null } : {}) });
   const metricool = isMetricoolRoute(route);
   // While a plan exists, the destination is the plan's own Metricool brand, not whatever is chosen now.
   const planLabel = typeof intent.metricoolLabel === 'string' && intent.metricoolLabel ? intent.metricoolLabel : null;
@@ -495,7 +555,9 @@ export function projectPublish(intent, context = {}) {
   const workspace = plain(intent.studioWorkspace) && intent.studioWorkspace.name ? { name: String(intent.studioWorkspace.name) } : null;
   const ready = live.ready && !outdated && !changed && (!evaluation || evaluation.ready === true) && (!metricool || (Boolean(context.connected) && Boolean(context.found)));
   const failingText = Object.values(live.posts).flat().find(item => !item.ok)?.text || null;
-  return {
+  // The zone a time is read in when the post has none yet: the plan's own, as the fresh build worked it out.
+  const planZone = [context.zone, evaluation?.zone].find(validZone) || null;
+  const projection = {
     route,
     routes: routeOptions(context),
     metricool: metricool && label ? { label } : null,
@@ -510,7 +572,7 @@ export function projectPublish(intent, context = {}) {
         title: typeof post.title === 'string' && post.title ? post.title : null,
         firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
         account: accountOf(post.platform, networks[post.platform]),
-        when: whenFor(post, route),
+        when: whenFor(post, route, planZone),
         media: (Array.isArray(post.media) ? post.media : []).map(item => ({ name: basename(String(item?.path || '')), path: typeof item?.path === 'string' ? item.path : null, kind: item?.kind || null })),
         // A post with no post type shows the choice in place of the sentence that says to choose.
         checks: kinds.length ? live.posts[post.id].filter(item => !(item.ok === false && item.text === chooseKindText(post))) : live.posts[post.id],
@@ -523,4 +585,6 @@ export function projectPublish(intent, context = {}) {
     outdated: Boolean(outdated),
     changed,
   };
+  const allTime = allTimeOf(projection.posts, route, planZone);
+  return allTime ? { ...projection, allTime } : projection;
 }

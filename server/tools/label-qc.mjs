@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { extractQcFrames, saveLabelCheck } from '../pipeline/label-qc.mjs';
+import { reviewMediaPaths } from '../pipeline/board.mjs';
 
 const string = { type: 'string' };
 const textList = { type: 'array', items: string };
@@ -24,7 +25,7 @@ function brandSlug(root, brand) {
 export const labelQcTools = [
   defineTool({
     name: 'pipeline_qc_frames',
-    description: 'Take review stills for the label and brand-mark check from every image and video in a job: the finished media each post names (or the latest landed outputs when no post names any), plus every supplied source video or image. A video gets one still per scene change and at least one every 2 seconds at a size where small label text stays readable; an image is used as is unless it is huge. Pass paths only for an extra image or video that will be shown at the final approval and no post names. Returns each frame id with its local path, source file and time. Open every frame with Read, then save what each one shows with pipeline_qc_save.',
+    description: 'Take review stills for the label and brand-mark check from every image and video in a job: the finished media each post names (or the latest landed outputs when no post names any), every image or video registered for the pending review (a contact sheet included), plus every supplied source video or image. A video gets one still per scene change and at least one every 2 seconds at a size where small label text stays readable; an image is used as is unless it is huge. Pass paths only for an extra image or video that will be shown at the final approval and is not yet registered for the review. Returns each frame id with its local path, source file and time. Open every frame with Read, then save what each one shows with pipeline_qc_save.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -37,7 +38,11 @@ export const labelQcTools = [
     },
     handler: async (args, { workspace }) => {
       const root = local(workspace);
-      return extractQcFrames({ root, brand: brandSlug(root, args.brand), jobId: args.jobId, paths: args.paths });
+      const brand = brandSlug(root, args.brand);
+      // The files the final approval will show are checked too, so a review picture no post names (a contact sheet) is never missed.
+      let reviewPaths = [];
+      try { reviewPaths = reviewMediaPaths({ root, brand, jobId: args.jobId }); } catch { reviewPaths = []; }
+      return extractQcFrames({ root, brand, jobId: args.jobId, paths: args.paths, reviewPaths });
     },
   }),
   defineTool({

@@ -164,7 +164,7 @@ Then call the existing probe or mark-connected tool and verify it truly works.
 Only call `pipeline_board_request_apply` once that verification is in hand.
 Applying it before the provider is actually connected fails and leaves the request needing reconciliation.
 A `skip_provider` or `connect_provider` request can be declined the same way as any other, through `pipeline_board_request_decline`.
-For Metricool, a `connect_provider` request is also the board's Check again button, and the verification is the full check in `skills/setup/SKILL.md`.
+For Metricool, a `connect_provider` request is also the board's Connect or Refresh brands button, and the verification is the full check in `skills/setup/SKILL.md`.
 Find Metricool by the tool base name `getBrandSettings`, under any prefix, since the prefix is an opaque per-connection id.
 Call `getBrandSettings` (read-only), then `integration_probe` with provider `metricool`, then `pipeline_metricool_brands_save` with the `data` list exactly as returned.
 Apply the request only when the probe was `ok: true`; when Metricool is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
@@ -354,6 +354,10 @@ A route chosen in chat is saved with `pipeline_publish_route_choose` instead.
 A post type chosen for a post that has none arrives as a `choose_post_type` request (`args: {requestId, brand, jobId, deliverable, placement, workspaceId}`, where `workspaceId` is the workspace the board belongs to and any other field is refused); apply it immediately with `pipeline_board_request_apply`.
 It is refused once the plan is approved or sent, for a post that already has a type, and for a type the post cannot be; otherwise it rebuilds the plan and presents the decision again, so write the documents afterwards and never apply an approval given for the earlier plan.
 A type chosen in chat is saved with `pipeline_post_type_choose` instead.
+A posting time chosen on a post of the Schedule route arrives as a `choose_post_time` request (`args: {requestId, brand, jobId, deliverable, dateTime, workspaceId}`, where `dateTime` is a plain local time `YYYY-MM-DDTHH:MM` in the plan's zone, `workspaceId` is the workspace the board belongs to and any other field is refused); apply it immediately with `pipeline_board_request_apply`.
+It is refused once the plan is approved or sent, and for a time that is not real or less than 5 minutes ahead in the plan's zone; otherwise it stores the time on the post, rebuilds the plan and presents the decision again, so write the documents afterwards and never apply an approval given for the earlier plan.
+The card also has one time for every post (two or more posts): that request carries no `deliverable`, and the time is stored on every post in one write with one rebuild; with a `deliverable` it is that one post, which overrides the time for all.
+A time chosen in chat is saved with `pipeline_post_time_choose` instead (leave `deliverable` out for every post).
 Read Metricool again with `getBrandSettings` at the start of a session or when the person says the brands changed, then save the result the same way; never read it on every board refresh.
 
 ## Native connectors

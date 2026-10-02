@@ -254,10 +254,12 @@ const kitAiLabel = post => (post.aiGenerated ? (post.platform === 'tiktok' ? 'Tu
  * plan it is only the posts Claude handed over (it could not send them), plus any the person already marked: never a refusal
  * Claude is still fixing, and never a post it may still send. Each entry has the type, time with its zone, account, caption with hashtags, first comment,
  * the checklist and the AI-label line, the 3echo page of each file when it is hosted, and whether it was marked posted.
+ * `previewOf(item)` (optional) gives the preview of a plan file the board draws beside its Download link (a media reference the
+ * way the review's posts carry them: thumbnail or player), or null; the kit shows no preview when it is not given.
  * `settled` is true when every post of the plan is either sent through Metricool or marked, which is when the job closes, and
  * `closed` when it has (`state` is COMPLETE). Null for any other job, and when the approval no longer covers the plan; never throws.
  */
-export function postingKitSection(dir, publish, now, state = null) {
+export function postingKitSection(dir, publish, now, state = null, previewOf = null) {
   try {
     const approved = readApprovedIntent(dir);
     if (!approved.ok || !Array.isArray(approved.document?.posts) || !approved.document.posts.length) return null;
@@ -286,11 +288,16 @@ export function postingKitSection(dir, publish, now, state = null) {
         firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
         aiLabel: kitAiLabel(post),
         checklist: kitChecklist(post.platform, post.placement),
-        media: (Array.isArray(post.media) ? post.media : []).slice(0, 10).map(item => ({
-          name: basename(String(item?.path || '')),
-          kind: item?.kind || null,
-          appUrl: kitAppUrl(dir, item, planWorkspace),
-        })),
+        media: (Array.isArray(post.media) ? post.media : []).slice(0, 10).map(item => {
+          let preview = null;
+          try { preview = typeof previewOf === 'function' ? previewOf(item) : null; } catch { preview = null; }
+          return {
+            name: basename(String(item?.path || '')),
+            kind: item?.kind || null,
+            appUrl: kitAppUrl(dir, item, planWorkspace),
+            ...(preview && typeof preview === 'object' ? { preview } : {}),
+          };
+        }),
         marked: mark ? { at: mark.at, ...(markedText(mark.at, zone) ? { text: markedText(mark.at, zone) } : {}), ...(mark.link ? { link: mark.link } : {}) } : null,
       };
     });
@@ -1105,12 +1112,12 @@ export function flagSentence(flag, fileKind, job = null) {
   return `${subject}${at} shows '${seen}', which is not in the approved copy.`;
 }
 
-function labelCheckSection(root, project, dir, still, job = null) {
+function labelCheckSection(root, project, dir, still, job = null, files = []) {
   if (!root || !project?.brand || !project?.jobId) return null;
   let status;
   let record;
   try {
-    status = labelCheckStatus({ root, brand: project.brand, jobId: project.jobId });
+    status = labelCheckStatus({ root, brand: project.brand, jobId: project.jobId, files });
     record = readLabelCheck({ root, brand: project.brand, jobId: project.jobId });
   } catch {
     return null;
@@ -1255,8 +1262,6 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   }
   const sent = publishStatusSection(dir, now);
   if (sent) document.publishStatus = sent;
-  const kit = postingKitSection(dir, publish, now, project.state);
-  if (kit) document.postingKit = kit;
   const recipes = recipesSection(root, project.brand, project.jobId);
   if (recipes) { document.recipes = recipes; document.recipeCatalog = RECIPE_CATALOG; }
 
@@ -1366,6 +1371,21 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     }
     return ref;
   };
+
+  // The posting kit shows each file of a post beside its Download link, with the same tile the posting decision uses. The file
+  // is the one the person approved: one that changed since shows nothing rather than something else. The previews are set apart
+  // here and put back after the files are listed, only where the document has room, so they are the first thing to go.
+  const kitPreview = item => {
+    const path = typeof item?.path === 'string' ? item.path : '';
+    if (!path || !mediaKind(path) || !shaOf.has(path) || shaOf.get(path) !== item.sha256) return null;
+    return mediaRef(path);
+  };
+  const kit = postingKitSection(dir, publish, now, project.state, kitPreview);
+  const kitPreviews = [];
+  if (kit) {
+    for (const post of kit.posts) for (const entry of post.media) if (entry.preview) { kitPreviews.push([entry, entry.preview]); delete entry.preview; }
+    document.postingKit = kit;
+  }
 
   const stillPaths = reportStills(artifacts);
   const stillSet = new Set(stillPaths);
@@ -1490,7 +1510,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     // Media registered for the review that no post already shows.
     document.review.media = gate === 'sample' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
     if (gate === 'content') {
-      const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job);
+      const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job, review.artifacts);
       if (labelCheck) document.review.labelCheck = labelCheck;
     }
     if (gate === 'publish' || gate === 'content') {
@@ -1617,9 +1637,16 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.files.push(entry);
     size += cost;
   }
+  for (const [entry, preview] of kitPreviews) {
+    const cost = byteSize({ preview }) + 1;
+    if (size + cost > budgetBytes - margin) continue;
+    entry.preview = preview;
+    size += cost;
+  }
   // Only pathological input makes the parsed review itself too large: shed the
   // file contents, then the review thumbnails, then the parsed structures,
   // rather than exceed the budget.
+  if (byteSize(document) > budgetBytes && kitPreviews.length) for (const [entry] of kitPreviews) delete entry.preview;
   if (byteSize(document) > budgetBytes) {
     document.truncated = true;
     document.files = document.files.map(({ path, sha256, title, mimeType, kind }) => ({ path, sha256, title, mimeType, kind, omitted: true }));

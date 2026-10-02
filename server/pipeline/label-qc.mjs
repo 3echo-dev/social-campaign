@@ -158,7 +158,17 @@ function isProductAsset(ref, value) {
 function plainMediaRef(ref, file) {
   if (!file || typeof file.path !== 'string') return 'this file';
   if (file.role === 'supplied') return isProductAsset(ref, file.path) ? suppliedNoun(readJson(join(ref.dir, 'job.json'))) : `a supplied ${mediaNoun(file.kind)}`;
+  const aid = reviewAidName(file.path);
+  if (aid) return aid;
   return deliverableName(ref, file) || `the finished ${mediaNoun(file.kind)}`;
+}
+
+// Pictures made to help the person review, not posted: named for what they are, never "the finished image".
+function reviewAidName(path) {
+  const clean = forward(path);
+  if (/(^|\/)validation\/qc-frames\//i.test(clean)) return 'the check frames';
+  if (/^contact[-_ ]?sheet/i.test(basename(clean))) return 'the contact sheet';
+  return null;
 }
 
 // The deliverable the way the person sees it ("the Instagram Reel", "the second Instagram post"), from the
@@ -402,9 +412,9 @@ function readRun(ref) {
   return value && typeof value.runId === 'string' && Array.isArray(value.files) && Array.isArray(value.frames) ? value : null;
 }
 
-export async function extractQcFrames({ root, brand, jobId, paths = [] } = {}) {
+export async function extractQcFrames({ root, brand, jobId, paths = [], reviewPaths = [] } = {}) {
   const ref = jobRef({ root, brand, jobId });
-  const extras = [];
+  const extras = approvalMedia(ref, reviewPaths);
   for (const value of Array.isArray(paths) ? paths : []) {
     if (typeof value !== 'string' || !value.trim()) continue;
     const abs = inputPath(ref, value.trim());
@@ -891,6 +901,21 @@ export function readLabelCheck({ root, brand, jobId } = {}) {
   return value && Array.isArray(value.files) && Array.isArray(value.frames) && Array.isArray(value.flags) ? value : null;
 }
 
+// The check's own output (the frames it cuts to read) is never something it has to cover: a check that had to cover its own frames
+// could never be finished, because every run makes new ones.
+const inQcFrames = abs => new RegExp('(^|/)' + QC_FRAMES_DIR + '/', 'i').test(String(abs).replace(/\\/g, '/'));
+
+// The media the final approval puts in front of the person (the review's artifact files, relative to the job
+// folder or absolute). The label check has to cover exactly these on top of the job's own images and video, so
+// the board's label-check state and the server's refusal read the same list.
+function approvalMedia(ref, files) {
+  return (Array.isArray(files) ? files : [])
+    .map(item => (typeof item === 'string' ? item : item?.path))
+    .filter(value => typeof value === 'string' && value.trim())
+    .map(value => inputPath(ref, value.trim()))
+    .filter(abs => mediaKind(abs) && existsSync(abs) && !inQcFrames(abs));
+}
+
 function coverageOf(ref, check, extras = []) {
   const covered = new Set((check?.files || []).map(file => file.sha256));
   const targets = qcTargets(ref, { paths: extras });
@@ -917,10 +942,10 @@ function openFlags(check, live, accepted) {
   });
 }
 
-export function labelCheckStatus({ root, brand, jobId, acceptedFlagIds = [] } = {}) {
+export function labelCheckStatus({ root, brand, jobId, acceptedFlagIds = [], files = [] } = {}) {
   const ref = jobRef({ root, brand, jobId });
   const check = readLabelCheck(ref);
-  const coverage = coverageOf(ref, check);
+  const coverage = coverageOf(ref, check, approvalMedia(ref, files));
   const targets = coverage.targets.map(target => ({ path: target.path, role: target.role, kind: target.kind, deliverable: target.deliverable }));
   if (!coverage.targets.length) return { state: 'not_needed', checkedAt: check?.checkedAt ?? null, flags: [], files: check?.files ?? [], targets, changed: [] };
   if (!check) return { state: 'missing', checkedAt: null, flags: [], files: [], targets, changed: coverage.missing.map(target => target.path) };
@@ -944,19 +969,14 @@ export function labelCheckStatus({ root, brand, jobId, acceptedFlagIds = [] } = 
 
 export function assertContentQc({ root, job, files = [], acceptedFlagIds = [] } = {}) {
   const ref = refFromJob(root, job);
-  const extras = (Array.isArray(files) ? files : [])
-    .map(item => (typeof item === 'string' ? item : item?.path))
-    .filter(value => typeof value === 'string' && value.trim())
-    .map(value => inputPath(ref, value.trim()))
-    .filter(abs => mediaKind(abs) && existsSync(abs));
   const check = readLabelCheck(ref);
-  const coverage = coverageOf(ref, check, extras);
+  const coverage = coverageOf(ref, check, approvalMedia(ref, files));
   if (!coverage.targets.length) return { required: false, checkedAt: check?.checkedAt ?? null, accepted: [] };
   if (!check) {
     throw new UserFacingError('The labels and logos in the images and video have not been checked yet. Run the label check before the final approval.', { code: 'label_check_missing' });
   }
   if (!coverage.current) {
-    const refs = coverage.missing.map(target => plainMediaRef(ref, target)).join(', ');
+    const refs = [...new Set(coverage.missing.map(target => plainMediaRef(ref, target)))].join(', ');
     throw new UserFacingError(`Some images or video changed after the label check: ${refs}. Run the label check again before the final approval.`, { code: 'label_check_stale', details: { files: coverage.missing.map(target => target.path) } });
   }
   const accepted = new Set(Array.isArray(acceptedFlagIds) ? acceptedFlagIds : []);

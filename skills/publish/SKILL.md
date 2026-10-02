@@ -79,6 +79,11 @@ Once anything has gone to Metricool the plan is frozen: the tool refuses with "S
 When a check on the plan fails, tell the person in their own terms and fix the cause at the right step, such as the post type, the media or the schedule.
 A post of an older job that has no post type says "Choose what kind of ... post this is", and the card shows a "Post type" select with only the kinds that fit: the person chooses there, or says it in chat and you save it with `pipeline_post_type_choose` (`brand`, `jobId`, `deliverable`, `placement`), which refuses once the plan is approved or sent and never replaces a type that is set.
 The plan is rebuilt and the decision presented again, so say that the plan changed and wait for the new answer.
+A post with no posting time says "Choose when this post goes out.", and on the Schedule route the card shows a date and time input in the plan's zone, which the person fills in there, or says it in chat and you save it with `pipeline_post_time_choose` (`brand`, `jobId`, `deliverable`, `dateTime` as `YYYY-MM-DDTHH:MM` local to the plan's zone), which refuses a time that is not real or less than 5 minutes ahead, and once the plan is approved or sent.
+With two or more posts the card also has one "same time for every post" field, and in chat you set every post at once by leaving `deliverable` out of `pipeline_post_time_choose`; a time chosen for one post afterwards overrides just that post.
+On Draft the same field is a date in the Metricool planner and a draft is not published.
+The time chosen this way is the one the plan sends: it is read before the post's own publish plan and before the job schedule, and it works for every route except Post now.
+The plan is rebuilt and the decision presented again, so say that the plan changed and wait for the new answer.
 Never get around a check by editing the plan or by choosing another route for the person.
 
 ## Local media to 3echo
