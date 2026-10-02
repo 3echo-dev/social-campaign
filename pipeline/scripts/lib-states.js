@@ -17,7 +17,9 @@ const STATES = [
   { id: 'ROUTED',           label: 'Working out the plan',              next: ['PLANNED', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
   // Historical metric/report states stay in this table so existing status files and receipts
   // remain readable. They are never valid destinations for a current production plan.
-  { id: 'PLANNED',          label: 'Plan ready, starting work',         next: ['RESEARCH_RUNNING', 'BRIEF_READY', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
+  // DRAFTS_READY straight from the plan is the publish-only walk (publish_post): the person supplied
+  // the pictures or video, so there is no research, brief or media step before the posts.
+  { id: 'PLANNED',          label: 'Plan ready, starting work',         next: ['RESEARCH_RUNNING', 'BRIEF_READY', 'DRAFTS_READY', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
 
   // Research and brief
   { id: 'RESEARCH_RUNNING', label: 'Looking into your audience and competitors', next: ['RESEARCH_COMPLETE', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },

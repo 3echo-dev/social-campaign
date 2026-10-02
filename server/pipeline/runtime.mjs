@@ -28,6 +28,7 @@ import {
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as facts from './facts.mjs';
+import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..', '..');
@@ -44,17 +45,18 @@ const INTAKE_PATCH_FIELDS = new Set([
   'brief', 'request', 'title', 'kind', 'objective', 'distribution', 'platforms',
   'deliverables', 'audience', 'evidence', 'requiredClaims', 'prohibitedClaims',
   'offer', 'landingPageUrl', 'schedule', 'budget', 'productAsset', 'account',
-  'specWork', 'usesHistoricalData', 'metricsScope', 'links', 'subject',
+  'specWork', 'usesHistoricalData', 'metricsScope', 'links', 'subject', 'kindReason',
+  'caption', 'aiMade',
 ]);
 const LINK_LIMIT = 20;
 const LINK_MAX_LENGTH = 2000;
 const VIDEO_FILE_LINK = /\.(mp4|mov|m4v|webm)$/i;
 const STILLS_KINDS = new Set(['video_breakdown']);
-const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'objective', 'distribution', 'offer', 'landingPageUrl', 'subject']);
+const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'kindReason', 'objective', 'distribution', 'offer', 'landingPageUrl', 'subject', 'caption']);
 const JOB_SUBJECTS = ['product', 'character', 'none'];
 const INTAKE_PATCH_ARRAYS = new Set(['platforms', 'deliverables', 'requiredClaims', 'prohibitedClaims']);
 const INTAKE_PATCH_OBJECTS = new Set(['audience', 'evidence', 'schedule', 'budget', 'productAsset', 'account', 'metricsScope']);
-const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData']);
+const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade']);
 const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const PHOTO_SOURCES = new Set(['uploaded', 'found-online', 'made']);
@@ -120,6 +122,14 @@ function reportKind(kind) {
 export function jobKindOf(value) {
   const entry = kindsRuntime.kindOf(value);
   return entry ? entry.kind : null;
+}
+
+/** The one line Claude saves with the pipeline it picked: plain text on one line, at most KIND_REASON_LIMIT characters, or '' when there is none. */
+export const KIND_REASON_LIMIT = 200;
+export function kindReasonOf(value) {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length > KIND_REASON_LIMIT ? `${text.slice(0, KIND_REASON_LIMIT - 1).trim()}…` : text;
 }
 
 function ensureJobFolders(dir, kind) {
@@ -1103,6 +1113,8 @@ function defaultJobInput(options, jobId, brand) {
     const value = supplied[field] ?? options[field];
     if (value !== undefined && value !== null && String(value).trim()) job[field] = value;
   }
+  const kindReason = kindReasonOf(supplied.kindReason ?? options.kindReason);
+  if (kindReason && job.kind) job.kindReason = kindReason;
   const arrayFields = ['deliverables', 'requiredClaims', 'prohibitedClaims'];
   for (const field of arrayFields) {
     const value = supplied[field] ?? options[field];
@@ -1129,6 +1141,11 @@ function defaultJobInput(options, jobId, brand) {
   if (supplied.specWork !== undefined || options.specWork !== undefined) {
     job.specWork = Boolean(supplied.specWork ?? options.specWork);
   }
+  // A caption the person gave is kept as they typed it, and whether their files were made with AI is their answer.
+  const caption = supplied.caption ?? options.caption;
+  if (typeof caption === 'string' && caption.trim()) job.caption = caption;
+  const aiMade = supplied.aiMade ?? options.aiMade;
+  if (typeof aiMade === 'boolean') job.aiMade = aiMade;
   return job;
 }
 
@@ -1557,9 +1574,31 @@ function brandForJob(root, options, kind) {
   return { brand, general: false };
 }
 
+/** What a placed file is, without where it came from or its hash: for answers shown to the model and the person. */
+const suppliedSummary = (entry) => ({ path: entry.path, kind: entry.kind, bytes: entry.bytes, width: entry.width, height: entry.height, durationSeconds: entry.durationSeconds });
+
+/**
+ * Copy, measure and record a person's own files on a publish_post job and write its posts (supplied-media.mjs). The
+ * files are added after the ones already there, or take their place with `replace`. The posts are written again from
+ * the job when the files are replaced or `rewritePosts` is set (an intake edit); otherwise a caption already in a post
+ * stays. job.json is written here and nothing is routed: the caller does that.
+ */
+function placeSuppliedFiles({ root, brand, dir, files = [], replace = false, rewritePosts = replace, probe = undefined }) {
+  const current = readJson(join(dir, 'job.json'), {});
+  const placed = addSuppliedMedia({ root, brand, jobDir: dir, job: current, files, replace, ...(typeof probe === 'function' ? { probe } : {}) });
+  const patch = { ...placed.patch };
+  if (patch.deliverables) patch.deliverables = deliverableRuntime.withImpliedRatios(patch.deliverables);
+  const job = updateJobRecord(dir, { ...patch, updatedAt: now() });
+  const posts = writeSuppliedPosts({ jobDir: dir, brandDir: brand.path, job, deliverables: Array.isArray(job.deliverables) ? job.deliverables : [], files: Array.isArray(job.suppliedMedia) ? job.suppliedMedia : [], replace: rewritePosts });
+  return { ...placed, job, posts };
+}
+
 export function createJob(options = {}) {
   const { root, config } = assertLocalWorkspace(options.root);
   const kind = requestedKind(options);
+  if (Array.isArray(options.files) && options.files.length && !kindsRuntime.suppliesMedia(kind)) {
+    throw new Error('Files can only be given for a post made from pictures or video you already have.');
+  }
   const chosen = brandForJob(root, options, kind);
   const release = acquireRequestLock(root);
   try {
@@ -1581,10 +1620,23 @@ export function createJob(options = {}) {
     const dir = createJobTree(root, brand, jobId, kind);
     const job = defaultJobInput({ ...options, workspaceId: config.workspaceId }, jobId, brand);
     if (kind) job.kind = kind;
+    // A post made from files the person already has: say what it is in their words when they gave no brief.
+    if (kindsRuntime.suppliesMedia(kind) && !job.request) job.request = `Post ${job.title} as it is.`;
     writeJsonAtomic(join(dir, 'job.json'), job);
     writeFileSync(join(dir, 'status.md'), statusFromTemplate(jobId, brand.slug, job.title), 'utf8');
     if (Array.isArray(options.sourcePaths) && options.sourcePaths.length) {
       importLocalInputs({ ...options, root, brandId: brand.id, jobId, reroute: false });
+    }
+    // The files are copied, measured and turned into posts before routing, so the router sees what the job really is.
+    // A refusal here leaves no half-made job behind.
+    let supplied = null;
+    if (kindsRuntime.suppliesMedia(kind)) {
+      try {
+        supplied = placeSuppliedFiles({ root, brand, dir, files: Array.isArray(options.files) ? options.files : [], probe: options.probe });
+      } catch (error) {
+        removeTree(dir);
+        throw error;
+      }
     }
     const routed = runRouteAndPlan(root, brand, jobId, { allowBlocked: true });
     rememberRequest(root, 'job', options.requestId, { jobId, brandId: brand.id, slug });
@@ -1599,6 +1651,7 @@ export function createJob(options = {}) {
       created: true,
       idempotent: false,
       requestId: options.requestId || null,
+      ...(supplied ? { supplied: { added: supplied.added.map(suppliedSummary), skipped: supplied.skipped, notes: supplied.notes } } : {}),
     };
   } finally {
     release();
@@ -1630,7 +1683,7 @@ function applyIntakePatch(current, patch) {
         continue;
       }
       if (typeof value !== 'string') throw new TypeError(`Intake field ${rawKey} must be a string or null.`);
-      const text = value.trim();
+      const text = field === 'kindReason' ? kindReasonOf(value) : value.trim();
       if (field === 'title' && !text) throw new TypeError('A job title cannot be empty.');
       if (field === 'subject' && text && !JOB_SUBJECTS.includes(text)) throw new TypeError('The subject must be product, character or none.');
       if (text) next[field] = text;
@@ -1667,6 +1720,8 @@ function applyIntakePatch(current, patch) {
       next[field] = value;
     }
   }
+  // The reason belongs to the pipeline it was written for: a new kind with no new reason leaves the old one behind, so it goes.
+  if (seen.has('kind') && !seen.has('kindReason') && jobKindOf(next.kind) !== jobKindOf(current?.kind)) delete next.kindReason;
   return next;
 }
 
@@ -1761,6 +1816,11 @@ export function updateJobIntake(options = {}) {
     try {
       writeJsonAtomic(jobFile, nextJob);
       ensureJobFolders(dir, nextJob.kind);
+      // The posts of a publish_post job carry its caption, platforms, post types, time and AI answer, so an edit to any of
+      // them rewrites them from the job (the files stay as they were placed).
+      if (kindsRuntime.suppliesMedia(nextJob.kind)) {
+        placeSuppliedFiles({ root, brand, dir, files: [], rewritePosts: true });
+      }
       // An intake edit invalidates the current draft plan.  The route helper
       // writes a fresh plan only when the edited brief is actually routable.
       if (existsSync(planFile)) unlinkSync(planFile);
@@ -1794,6 +1854,72 @@ export function updateJobIntake(options = {}) {
       replaceFileContents(statusFile, statusBefore);
       throw error;
     }
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Add a person's own pictures or video to a publish_post job that is still being set up, or replace the ones it has
+ * (`replace`), then route and plan it again. The files are copied into the job and measured, and its posts are
+ * rewritten; the plan, the approvals and the posting plan all come after, so a job past intake refuses.
+ * `aiMade` records whether the files were made with AI.
+ */
+export function addSuppliedFiles(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const { brand, jobId, dir } = resolveJobRef(root, options);
+  const release = acquireRequestLock(root);
+  try {
+    const status = readStatus(dir);
+    const routeFile = join(dir, 'route.json');
+    const planFile = join(dir, 'plan.md');
+    const contractsFile = join(dir, 'task-contracts.json');
+    const route = readJson(routeFile, null);
+    const job = readJson(join(dir, 'job.json'), null);
+    if (!job || typeof job !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
+    if (!kindsRuntime.suppliesMedia(job.kind)) throw new Error('Files can only be added to a post made from pictures or video you already have.');
+    const intakeState = ['INTAKE_PENDING', 'NEEDS_CLARIFICATION', 'UNSUPPORTED'].includes(status.state);
+    const blockedDraft = status.state === 'BLOCKED' && route?.status !== 'ROUTED' && !existsSync(planFile);
+    if (!intakeState && !blockedDraft) {
+      const error = new Error('The files of a post can only change while it is still being set up. To post different files, start a new post.');
+      error.code = 'INTAKE_UPDATE_NOT_ALLOWED';
+      throw error;
+    }
+    if (options.aiMade !== undefined && typeof options.aiMade !== 'boolean') throw new TypeError('Say whether the files were made with AI as yes or no.');
+    const before = { job: readFileSync(join(dir, 'job.json'), 'utf8'), route: existsSync(routeFile) ? readFileSync(routeFile, 'utf8') : null };
+    if (options.aiMade !== undefined) updateJobRecord(dir, { aiMade: options.aiMade });
+    let placed;
+    try {
+      placed = placeSuppliedFiles({ root, brand, dir, files: options.files, replace: options.replace === true, probe: options.probe });
+    } catch (error) {
+      replaceFileContents(join(dir, 'job.json'), before.job);
+      throw error;
+    }
+    if (existsSync(planFile)) unlinkSync(planFile);
+    if (existsSync(contractsFile)) unlinkSync(contractsFile);
+    if (status.state === 'UNSUPPORTED' || status.state === 'BLOCKED') {
+      const reset = runPipelineScript('set-state.js', [brand.slug, jobId, 'INTAKE_PENDING', '--by', 'local-supplied-files', '--root', root], root);
+      if (reset.status !== 0) throw new Error(`Could not reopen the intake state: ${reset.output}`);
+    }
+    const routed = runRouteAndPlan(root, brand, jobId, { allowBlocked: true });
+    const afterRoute = readStatus(dir);
+    const revision = Math.max(afterRoute.revision, status.revision + 1);
+    if (afterRoute.revision !== revision) writeFileSync(join(dir, 'status.md'), bumpStatusRevision(afterRoute.text, revision), 'utf8');
+    const snapshot = readJobSnapshot({ root, brandId: brand.id, jobId });
+    return {
+      jobId,
+      brand: brand.slug,
+      suppliedMedia: placed.suppliedMedia.map(suppliedSummary),
+      added: placed.added.map(suppliedSummary),
+      skipped: placed.skipped,
+      notes: placed.notes,
+      deliverables: placed.job.deliverables || [],
+      platforms: placed.job.platforms || [],
+      route: routed.route,
+      plan: routed.plan,
+      revision: snapshot.project.revision,
+      snapshot,
+    };
   } finally {
     release();
   }
@@ -2095,7 +2221,7 @@ function namesOf(gates) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '';
 }
 
-function deriveStages(stages, state, planRows, { dir = null, decisions = [], workflowId = null } = {}) {
+function deriveStages(stages, state, planRows, { dir = null, decisions = [], workflowId = null, reached = [] } = {}) {
   const referenceOnly = Boolean(dir) && facts.referenceArtOnly({ dir });
   const priced = priceFacts(dir);
   const price = referenceOnly ? { saved: false, quote: false, referencePriced: false, referenceApproved: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false } : priced;
@@ -2107,14 +2233,19 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
   const currentIndex = stages.findIndex((stage) => stage.id === stagesRuntime.forState(state, workflowId)?.stage);
   const making = stages.find((stage) => stage.id === 'making-the-images-and-video');
   const pastMaking = Boolean(making) && (making.status === 'complete' || making.status === 'done');
+  // Nothing was priced and the job has got as far as the media being made: the job had no pricing stages, so the
+  // list leaves them out. Decided from the job's facts and the states it has been in, never from a stage's status,
+  // so asking for changes or a hold-up does not bring them back and change the count.
+  const nothingPriced = !priced.quote && !priced.referencePriced && !priced.made && stagesRuntime.reachedMaking([state, ...reached], workflowId);
   for (const [index, stage] of stages.entries()) {
+    if (nothingPriced && (stage.id === 'pricing-the-media' || stage.id === 'your-approval-of-the-price')) { stage.skipped = true; continue; }
     if (!held.has(stage.status)) {
       if (stage.id === 'pricing-the-media' && price.quote) stage.status = price.changesAsked ? 'running' : 'complete';
       if (stage.id === 'your-approval-of-the-price' && price.quote) stage.status = price.current ? 'complete' : price.changesAsked ? 'pending' : 'waiting';
       // No saved quote means nothing was priced. While the job has not got past the making stage,
       // a pricing stage the state merely walked by reads pending, not done. Once the job is past
       // making (or finished) with still no quote, nothing in it needed paying for (supplied media,
-      // a cut-and-stitch job, a migrated job), so the stages are complete and say so.
+      // a cut-and-stitch job, a migrated job), the stages are left out (see nothingPriced above).
       if ((stage.id === 'pricing-the-media' || stage.id === 'your-approval-of-the-price') && !price.quote && (stage.status === 'complete' || stage.status === 'done')) {
         if (!pastMaking) stage.status = 'pending';
         else if (priced.referencePriced) {
@@ -2126,7 +2257,7 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
             stage.status = 'complete';
             if (!priced.referenceApproved) stage.note = 'Reference pictures were not needed.';
           }
-        } else stage.note = 'Nothing needed pricing.';
+        }
       }
       if (stage.id === 'making-the-images-and-video' && price.made) {
         stage.status = price.landedAll ? 'complete' : price.inFlight || price.current ? 'running' : 'pending';
@@ -2145,7 +2276,7 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       if (!held.has(stage.status) && stage.status === 'complete') stage.status = 'waiting';
     }
   }
-  return stages;
+  return stages.filter((stage) => !stage.skipped);
 }
 
 function workflowStageIds(workflowId) {
@@ -2160,7 +2291,7 @@ function stageSubstep(current, stageId, workflowId) {
 function snapshotStages(state, planRows, route, context = {}) {
   const workflowId = typeof route?.workflowId === 'string' ? route.workflowId : null;
   const stateIds = planRows.map((row) => row['State after']).filter(Boolean);
-  const walked = stagesRuntime.walkedStages(stateIds, workflowId) || workflowStageIds(workflowId);
+  const walked = stagesRuntime.walkedStages(stateIds, workflowId, { rows: planRows, route }) || workflowStageIds(workflowId);
   const current = stagesRuntime.forState(state, workflowId);
   const currentIndex = current ? walked.indexOf(current.stage) : -1;
   const routeStages = walked.map((stageId, index) => {
@@ -2205,10 +2336,22 @@ function hashFile(filePath) {
   catch { return null; }
 }
 
+// The board reads every job often, and a job can hold a 500 MB video, so a file is hashed again only when its path, size or modified time changed.
+const artifactHashes = new Map();
+function cachedHash(file, stat) {
+  const known = artifactHashes.get(file);
+  if (known && known.bytes === stat.size && known.mtimeMs === stat.mtimeMs) return known.sha256;
+  const sha256 = hashFile(file);
+  if (artifactHashes.size > 5000) artifactHashes.clear();
+  if (sha256) artifactHashes.set(file, { bytes: stat.size, mtimeMs: stat.mtimeMs, sha256 });
+  return sha256;
+}
+
 function listArtifacts(dir) {
   const output = [];
   const skip = new Set(['job.json', 'route.json', 'plan.md', 'task-contracts.json', 'status.md', 'events.jsonl']);
-  const factFolders = new Set(['generation', 'pricing']);
+  const factFolders = new Set(['generation', 'pricing', 'messages']);
+  const factFiles = new Set(['agents.jsonl']);
   const visit = (current, prefix = '') => {
     let entries;
     try { entries = readdirSync(current, { withFileTypes: true }); }
@@ -2216,13 +2359,14 @@ function listArtifacts(dir) {
     for (const entry of entries) {
       if (entry.name.startsWith('.') || skip.has(entry.name)) continue;
       if (!prefix && entry.isDirectory() && factFolders.has(entry.name)) continue;
+      if (!prefix && entry.isFile() && factFiles.has(entry.name)) continue;
       const file = join(current, entry.name);
       const rel = forward(join(prefix, entry.name));
       if (entry.isDirectory()) visit(file, rel);
       else if (entry.isFile()) {
         try {
           const stat = statSync(file);
-          output.push({ path: rel, bytes: stat.size, sha256: hashFile(file), kind: classifyArtifact(rel) });
+          output.push({ path: rel, bytes: stat.size, sha256: cachedHash(file, stat), kind: classifyArtifact(rel) });
         } catch { /* an artifact may disappear while a producer is writing */ }
       }
     }
@@ -2344,7 +2488,7 @@ export function readJobSnapshot(options = {}) {
       ownerUserId: job.ownerUserId || null,
       ownerEmail: job.ownerEmail || null,
       ownershipStatus: job.ownershipStatus || (job.ownerUserId ? 'bound' : 'unbound'),
-      stages: snapshotStages(status.state, rows, route, { dir, decisions }),
+      stages: snapshotStages(status.state, rows, route, { dir, decisions, reached: stagesRuntime.loggedStates(status.text) }),
       artifacts,
       decisions,
       metrics,
@@ -2410,6 +2554,7 @@ export default {
   createJob,
   updateJobIntake,
   importLocalInputs,
+  addSuppliedFiles,
   copyLocalInputs,
   readJobSnapshot,
   getJobSnapshot,

@@ -42,6 +42,11 @@ Put the brand's target market in every researcher spawn prompt.
 Read `targetMarket` from `brand/profile.json`.
 Blank means Singapore, and so does a job with no brand.
 
+Put `job:<jobId>` on the first line of every spawn prompt.
+Before spawning an agent, call `pipeline_agent_brief` with the brand, the job ID and that agent, and add the block it returns, unchanged, at the end of the prompt.
+When it returns no block, add nothing.
+Answer every message addressed to the Director with `pipeline_agent_reply`.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.

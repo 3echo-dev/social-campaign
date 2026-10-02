@@ -1,6 +1,6 @@
 ---
 name: brand-check
-description: Local adapter for the vendored brand-check contract, plus the label and brand-mark check that reads every image and video, including supplied footage, before the final approval.
+description: Local adapter for the vendored brand-check contract, plus the label and brand-mark check that reads every image and video, including footage supplied as a reference, before the final approval. Posts made from the person's own finished files skip it.
 user-invocable: false
 metadata:
   version: 0.3.0
@@ -10,8 +10,10 @@ metadata:
 
 ## Label and brand-mark check
 
-This check runs before the final approval on every job that has an image or video, including footage the person supplied.
-It cannot be skipped.
+This check runs before the final approval on every job that has an image or video, including footage the person supplied as a reference.
+It cannot be skipped, with one exception: a publish_post job (the person's own finished pictures or video, posted as they are) has no label check.
+Its files were made and approved by the person, the board does not ask for the check on its final-post card, and the final approval is refused or accepted on the checks that card shows instead.
+Never run this check on a publish_post job: it would flag every word printed in the person's own picture.
 The final approval is refused until a current check covers every image and video being approved, contact sheets included, and every item it found is fixed or accepted by the person.
 Run it once all the images and video for the final approval are in place, and again whenever one of them changes.
 Follow these steps exactly and never read plugin code while doing them.

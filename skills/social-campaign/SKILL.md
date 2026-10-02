@@ -98,41 +98,51 @@ Use a stable request ID for every create or import request.
 
 Retrying the same request ID with the same arguments must return the existing result.
 
-## What does the person need
+## What does the person want to get done
 
-If the person has not already said what they need, ask once, in the board's Inbox and in chat together, as board-sync's Questions in the Inbox describes.
-The question is "What do you need?", with the options "A post or campaign", "Research", "An analysis of a post or campaign" and "A breakdown of a video".
+A job starts from the person's own words, never from a job type they pick.
+The board asks one question, "What do you want to get done?", in a box on the home page and in the Inbox.
+The person writes it in their own words, may choose a brand and add links, and sends it.
+It arrives as a `create_job` request that carries no kind: `brief` is their words, `title` is the first line of them, and `brand` and `sourceRefs` are there only when they chose a brand or gave links.
+In chat, what the person says is the same thing: treat their words as the brief.
 
-Route whichever answer arrives first to the matching kind.
+Never ask "What do you need?" with a list of job types, and never ask the person to pick a pipeline.
+You diagnose which one fits, then create and route the job.
+When the person has not said what they want yet, point them to the box in one plain line, for example "Tell me what you want to get done in the box on the board and I will take it from there", or let them say it in chat.
 
-Once the kind is known, never ask for the job's details (the product, who it is for, where it will run, the format) as a question in the Inbox, and never as a free-text question in chat.
-The board's New job form asks for exactly those details, and it opens on its own when the person picks a kind on the board, but only when the job can start now.
-A research, analysis or video breakdown job can start without a brand, so the form opens with the kind chosen, unless the workspace has no ready brand and its first brand's onboarding is running, in which case the onboarding card stays in front.
-A post or campaign needs a ready brand: once one is ready the form opens with the kind chosen, and with the brand chosen when the question was about a ready brand or only one brand is ready, and the Inbox shows "Start the job: fill in the brief" until the request is sent.
-Until a brand is ready, do not point the person to the New job form for a post or campaign; go through the brand gate below first, and let the board's onboarding card and its Inbox item lead.
-When the job can start, say it once, in one plain line in chat, for example "Fill in the New job form on the board and I will take it from there", naming the "+ New job" button when the person answered in chat.
-Then wait for the form's `create_job` request and continue as new-job describes.
+Diagnose in this order:
 
-A post or campaign keeps the flow below: the brand gate, then new-job.
+1. Read the words against `pipelines_list`.
+   In the Markdown each pipeline has a short description, then its Examples, Not for and Needs lists, and its heading names its `kind` in brackets.
+   Call it once per session with `format` set to `markdown`, which has all the diagnosis needs, and reuse the answer; ask for one pipeline by its id when you need its stages.
+2. Pick one pipeline, and keep its `kind`.
+   `publish_post` is for the person who already has the finished picture, pictures or video and only wants it posted as it is; new-job says how to tell it from a job that makes or edits something.
+3. Ask only for what is still missing, through the questions this skill and new-job already describe: a brand when the pipeline needs one and none was chosen, then the intake questions in one batch after the job exists.
+   Never ask again for what the words, the links or the brand profile already say.
+4. Create the job and route it as new-job describes, with the `kind` you picked and, in `kindReason`, one short plain sentence of why.
+   The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>".
 
-Research is kind `research`.
+When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
+Board-sync's Questions in the Inbox describes how to ask it.
 
-An analysis of a post or campaign is kind `creative_analysis`.
-
-A breakdown of a video is kind `video_breakdown`.
-
-Never ask this question again once the person's own words already say which one they mean.
-
-Parse every link and file already in the request into `sourceRefs` before asking anything else, each `{uri, mediaType}`: a web link is `url`, a video file is `video`.
-
+Parse every link already in the request into `sourceRefs` before asking anything else, each `{uri, mediaType}`: a web link is `url`, a video file link is `video`.
+The files of a `publish_post` are never `sourceRefs`: they go in `files`, as new-job describes.
 Never re-ask for a link or a file the request already gave.
 
-Only a post or campaign needs the brand gate below.
-For research, an analysis, or a breakdown, use a brand only when the person names one that already exists in the workspace; otherwise the job runs with no brand.
+Files come in through chat, after the person sends the request; the board does not take them.
+The box says so ("Have files? Add them in chat after you send this.").
+
+A pipeline needs a brand when `pipelines_list` says `Needs a brand: yes`.
+A pipeline that lists no brand runs with `brand: "no-brand"`, unless the person names a brand that already exists in the workspace.
+When the pipeline needs a brand and the request carries none, use the brand without asking when exactly one brand is ready; otherwise ask which one in the Inbox and in chat together, with the ready brands as the options, and wait for whichever answer arrives first.
+When no brand is ready, go through the brand gate below first, and let the board's onboarding card and its Inbox item lead.
+A request whose brand you have had to ask for is landed with the brand the person chose, as board-sync describes.
+
+When the person says in a comment that the planned pipeline is not right, ask what they want in the Inbox and in chat together, as board-sync describes, and carry on from their answer.
 
 ## Brand gate
 
-This gate is for a post or campaign; the other kinds are covered above.
+This gate is for a pipeline that needs a brand; the others are covered above.
 
 Read the brands in pipeline_status before creating a job.
 
@@ -153,7 +163,7 @@ An existing ready brand leaves both actions available: start a new job or update
 
 ## Job and input flow
 
-Invoke new-job after a ready brand is selected, or, for research, an analysis, or a breakdown, once the kind and any named brand are settled.
+Invoke new-job once the pipeline is picked and, when it needs a brand, a ready brand is chosen.
 
 Collect a written brief before creating the job.
 

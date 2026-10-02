@@ -18,7 +18,7 @@ import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceLi
 import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
-import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, withPublishIntent } from './publish-intent.mjs';
+import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
 const campaignReport = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-campaign-report.js'));
@@ -31,8 +31,17 @@ const wording = createRequire(import.meta.url)(join(runtime.runtimeConstants.pip
 const deliverableRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-deliverable.js'));
 const handoffRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-handoff-validation.js'));
 const REQUEST_ID = /^[a-zA-Z0-9_-]{8,100}$/;
-const KIND_LABELS = Object.freeze({ research: 'Research', creative_analysis: 'Analysis', video_breakdown: 'Video breakdown' });
+const catalogueLib = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-catalogue.js'));
 const POST_OR_CAMPAIGN = 'Post or campaign';
+// The words for each kind (the short label on a job card, the pipeline's own name) come from the pipeline catalogue, so a new
+// kind needs no constant here. Built on first use and kept: the registries only change with a plugin update, which restarts the server.
+// A catalogue that does not line up is a build failure the tests catch; if one ever shipped, the board still shows, with plain labels.
+let kindWords = null;
+function kindWordsOf() {
+  if (kindWords) return kindWords;
+  try { kindWords = catalogueLib.kindIndex(); } catch { kindWords = {}; }
+  return kindWords;
+}
 const LINK_LIMIT = 20;
 const NEEDS_A_BRAND = 'A post or campaign needs a brand. Choose one, or onboard a new one.';
 
@@ -51,7 +60,7 @@ export function badgeLabel(state) {
 
 export function kindLabel(kind) {
   const id = runtime.jobKindOf(kind);
-  return (id && KIND_LABELS[id]) || POST_OR_CAMPAIGN;
+  return (id && kindWordsOf()[id]?.label) || POST_OR_CAMPAIGN;
 }
 
 function isReportKind(kind) {
@@ -163,8 +172,12 @@ function boardArtifact(artifact) {
 // field the form asks about. Anything else stays a plain blocker for chat.
 const PLATFORM_LABELS = Object.freeze({ facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', youtube: 'YouTube' });
 const option = ([value, label]) => ({ value, label });
+let kindChoices = null;
+const kindOptions = () => (kindChoices ??= Object.freeze(Object.entries(kindWordsOf()).filter(([, words]) => !words.report).map(([kind, words]) => option([kind, words.name]))));
 export const INTAKE_OPTIONS = Object.freeze({
-  kind: Object.freeze([['organic_post', 'Single post'], ['organic_series', 'Post series'], ['ugc_creative', 'UGC video'], ['paid_campaign', 'Paid campaign'], ['content_repurpose', 'Repurpose a video']].map(option)),
+  // The pipelines that make or post content, named as the catalogue names them, so a new kind is offered here with no list to edit.
+  // Built on first use, not when this file loads, so a catalogue problem never stops the board from starting.
+  get kind() { return kindOptions(); },
   objective: Object.freeze([['awareness', 'Awareness'], ['engagement', 'Engagement'], ['traffic', 'Website traffic'], ['leads', 'Leads'], ['sales', 'Sales'], ['app_installs', 'App installs'], ['retention', 'Retention']].map(option)),
   distribution: Object.freeze([['organic', 'Organic'], ['paid', 'Paid'], ['both', 'Organic and paid']].map(option)),
   format: Object.freeze([['static_image', 'Image'], ['carousel', 'Carousel'], ['brand_video', 'Brand video'], ['ugc', 'UGC video'], ['motion_graphic', 'Motion graphic'], ['text_only', 'Text only']].map(option)),
@@ -690,8 +703,21 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
       catch { publish.evaluation = { ready: false, changed: false, reason: REVIEW_NOT_READY, checks: null }; }
     }
     const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot) });
+    if (gate === 'content' && document.review && kinds.suppliesMedia(snapshot.job?.kind)) suppliedCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
   });
+}
+
+// The final-post card of a post made from supplied files shows the checks on each post (the same ones approval runs) and no
+// label check: that check is skipped for the person's own finished files, so its "not checked yet" must never hold the card.
+function suppliedCardChecks(review, { root, brand, jobId }) {
+  delete review.labelCheck;
+  try {
+    const checked = suppliedChecks({ root, brand, jobId, measure: 'display' });
+    review.checks = { ready: checked.ready, posts: Object.entries(checked.posts).map(([id, list]) => ({ id, label: checked.labels?.[id] || null, checks: list.map(item => ({ ok: item.ok, text: item.text })) })) };
+  } catch {
+    review.checks = { ready: false, posts: [], reason: REVIEW_NOT_READY };
+  }
 }
 
 function rawBrandProfile(brandDir) {
@@ -1140,6 +1166,7 @@ export function boardSnapshot({ root } = {}) {
       brandName:snapshot.brand.name,
       kind,
       kindLabel:kindLabel(kind),
+      ...(kind && runtime.kindReasonOf(snapshot.job?.kindReason) ? { kindReason:runtime.kindReasonOf(snapshot.job.kindReason) } : {}),
       state:snapshot.project.state,
       stateLabel:badgeLabel(snapshot.project.state),
       revision:snapshot.project.revision,
@@ -1220,9 +1247,9 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   if (operation === 'choose_post_time') validatePostTime(root, args);
   if (operation === 'resolve_post') checkResolvePost(root, args);
   if (operation === 'mark_posted') checkMarkPosted(root, args);
-  if (operation === 'create_job') createJobFields(args || {});
+  if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
-  const record = {requestId,operation,args:{...args,requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
+  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
   const file = requestFile(root,requestId);
   try { writeFileSync(file,JSON.stringify(record,null,2),{flag:'wx'}); }
   catch(error) {
@@ -1606,7 +1633,7 @@ function sameRequesterData(operation, left, right) {
 // Identity, owners and local file references never come from a request: a
 // product photo is kept only as an http(s) link, and inputs are imported with
 // pipeline_inputs_import.
-const BOARD_JOB_FIELDS = ['request', 'kind', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject'];
+const BOARD_JOB_FIELDS = ['request', 'kind', 'kindReason', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject', 'caption', 'aiMade'];
 const webUrl = value => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 const LINK_MEDIA_TYPES = new Set(['video', 'image', 'document', 'url']);
 
@@ -1630,6 +1657,15 @@ function boardJobFields(value) {
   if (!plainObject(value)) return null;
   const job = {};
   for (const key of BOARD_JOB_FIELDS) if (value[key] !== undefined) job[key] = structuredClone(value[key]);
+  // A caption stays exactly as the person wrote it; whether their files were made with AI is a yes or a no. Anything else is dropped.
+  if (job.caption !== undefined && !(typeof job.caption === 'string' && job.caption.trim())) delete job.caption;
+  if (job.aiMade !== undefined && typeof job.aiMade !== 'boolean') delete job.aiMade;
+  // The one line Claude saves when it picks the kind: a short plain sentence, kept only when it is one.
+  if (job.kindReason !== undefined) {
+    const reason = runtime.kindReasonOf(job.kindReason);
+    if (reason) job.kindReason = reason;
+    else delete job.kindReason;
+  }
   if (job.productAsset !== undefined && !(webUrl(job.productAsset) || (plainObject(job.productAsset) && webUrl(job.productAsset.path)))) delete job.productAsset;
   if (job.sourceRefs !== undefined) {
     const refs = linkRefs(job.sourceRefs);
@@ -1639,13 +1675,39 @@ function boardJobFields(value) {
   return Object.keys(job).length ? job : null;
 }
 
-function createJobFields(args) {
-  const job = boardJobFields(args.job) || {};
-  if (args.kind !== undefined && args.kind !== null) {
-    const kind = runtime.jobKindOf(args.kind);
-    if (!kind || !kinds.activeKindIds().includes(kind)) throw new Error('Choose what you need: a post or campaign, research, an analysis of a post or campaign, or a video breakdown.');
-    job.kind = kind;
+// A new job request carries exactly these fields. A product photo never travels with it (a request can never carry a
+// local path), so `photo` is dropped on the way in; anything else is refused before the request is saved or claimed.
+const CREATE_JOB_FIELDS = new Set(['requestId', 'workspaceId', 'title', 'brief', 'brand', 'brandName', 'sourceRefs', 'kind', 'job']);
+const TITLE_LIMIT = 200;
+const BRIEF_LIMIT = 6000;
+const withoutPhoto = args => (plainObject(args) ? Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'photo')) : args);
+
+function kindNames() {
+  const names = Object.values(kindWordsOf()).map(entry => entry.name);
+  return `Choose what you need${names.length ? `: ${names.join(', ')}` : ''}.`;
+}
+
+// Everything a new job request must satisfy, checked before it is saved or claimed so a bad one is refused cleanly and never
+// left stuck: the exact fields, this workspace, the sizes, a kind that is offered, links that are https, and a brand that
+// exists and, when the kind needs one, is ready. Returns the typed job fields to create the job with.
+function createJobFields(args, root) {
+  if (!plainObject(args)) throw new Error('This request has nothing in it, so it was not accepted.');
+  if (Object.keys(args).some(key => key !== 'photo' && !CREATE_JOB_FIELDS.has(key))) throw new Error('This request carries more than a new job, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  for (const [key, limit] of [['title', TITLE_LIMIT], ['brief', BRIEF_LIMIT]]) {
+    if (args[key] === undefined) continue;
+    if (typeof args[key] !== 'string') throw new TypeError(`The ${key} must be text.`);
+    if (args[key].length > limit) throw new Error(`Keep the ${key} to ${limit} characters or fewer.`);
   }
+  if (args.brand !== undefined && args.brand !== null && typeof args.brand !== 'string') throw new TypeError('The brand must be text.');
+  const job = boardJobFields(args.job) || {};
+  // The pipeline is always chosen: by Claude in the job fields, or by the request itself. It is normalised and written back.
+  const raw = job.kind ?? args.kind;
+  const kind = raw === undefined || raw === null ? null : runtime.jobKindOf(raw);
+  if (!kind || !kinds.activeKindIds().includes(kind)) throw new Error(kindNames());
+  job.kind = kind;
+  // The reason belongs to the kind it was written for: when the request names another kind, it no longer applies.
+  if (job.kindReason !== undefined && args.kind !== undefined && args.kind !== null && runtime.jobKindOf(args.kind) !== kind) delete job.kindReason;
   if (args.sourceRefs !== undefined && args.sourceRefs !== null) {
     if (!Array.isArray(args.sourceRefs) || args.sourceRefs.length > LINK_LIMIT || args.sourceRefs.some(item => !runtime.webLink(item))) throw new TypeError('Each link must be a full https address.');
     const known = job.sourceRefs || [];
@@ -1654,8 +1716,18 @@ function createJobFields(args) {
     if (refs.length) job.sourceRefs = refs;
   }
   const brand = typeof args.brand === 'string' ? args.brand.trim() : '';
-  if (kinds.brandRequired(job.kind) && (!brand || runtime.isGeneralBrand(brand))) throw new Error(NEEDS_A_BRAND);
-  return Object.keys(job).length ? job : null;
+  const named = brand && !runtime.isGeneralBrand(brand);
+  if (kinds.brandRequired(kind) && !named) throw new Error(NEEDS_A_BRAND);
+  if (named) {
+    const found = runtime.listBrands({ root }).find(item => item.slug === brand || item.id === brand || item.brandId === brand);
+    if (!found) throw new Error('Choose one of your brands, or onboard a new one.');
+    if (kinds.brandRequired(kind) && !found.readyForJobs) {
+      throw new Error(found.onboardingStatus !== 'complete'
+        ? `Complete brand onboarding before starting a job for ${found.name}.`
+        : `Review the logo, colours and fonts for ${found.name} on the board and click Save and continue before starting a job.`);
+    }
+  }
+  return job;
 }
 
 export function boardOperation({ root,operation,args = {},source = 'local' }) {
@@ -1685,17 +1757,11 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     return result;
   }
   if(operation==='create_job') {
-    const job=createJobFields(args);
+    const job=createJobFields(args,root);
     const result=runtime.createJob({root,brand:args.brand,requestId:args.requestId,title:args.title,brief:args.brief,...(job?{job}:{}),ownerUserId:null,ownerEmail:null});
     const brand=result.brand||args.brand;
-    // A photo never travels as a job field (boardJobFields strips a local
-    // productAsset path on sight): it is attached right after creation, the
-    // same local-file transit the board's other uploads use.
-    const withPhoto = args.photo?.dataBase64 !== undefined || args.photo?.path
-      ? runtime.attachProductPhoto({root,brand,jobId:result.jobId,path:args.photo.path,dataBase64:args.photo.dataBase64,source:args.photo.source,ownedByBrand:args.photo.ownedByBrand})
-      : null;
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand,jobId:result.jobId},source:'local'});
-    return {...(withPhoto || result),jobId:result.jobId,brand,message:'Job saved. Your Claude session can now continue intake.'};
+    return {...result,jobId:result.jobId,brand,message:'Job saved. Your Claude session can now continue intake.'};
   }
   if(operation==='continue_job') {
     runtime.readJobSnapshot({root,brand:args.brand,jobId:args.jobId});
@@ -1914,6 +1980,11 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
     const verdict=evaluatePublishPlan({root,brand:snapshot.brand?.slug || brand,jobId});
     if(!verdict.ready) throw new Error(verdict.reason || 'Fix the items on the posting card first.');
   }
+  // A post made from files the person supplied is approved only while every check on its posts passes, run fresh now.
+  if(reviewId==='content' && decision==='approve' && kinds.suppliesMedia(snapshot.job?.kind)) {
+    const verdict=suppliedChecks({root,brand:snapshot.brand?.slug || brand,jobId});
+    if(!verdict.ready) throw new Error(`Fix these first: ${Object.values(verdict.posts).flat().find(item=>!item.ok)?.text || 'a check on the final post has not passed.'}`);
+  }
   if(panels!==undefined && reviewId!=='storyboard') throw new Error('Only the storyboard takes a decision per panel.');
   if(reviewId===SAMPLE_GATE && decision==='request_changes' && !(typeof note==='string' && note.trim())) throw new Error('Say what should change in the sample.');
   if(!Array.isArray(artifacts) || !artifacts.length) throw new Error('No review files are registered. Ask Claude to prepare the review.');
@@ -2016,6 +2087,8 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
     // built before the job moves, so a plan that cannot be built leaves the job where it was.
     if(aimed==='publish') paths=withPublishIntent({root,brand,jobId,paths});
+    // The final approval of a post made from supplied files covers every file the person gave, whatever the caller listed, so the posting plan can always be built from it.
+    if(aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=[...paths,...(Array.isArray(snapshot.job?.suppliedMedia) ? snapshot.job.suppliedMedia : []).map(item=>item?.path).filter(path=>typeof path==='string' && !paths.includes(path))];
     ({gate,snapshot,moved}=moveToReview(root,brand,jobId,snapshot,requested ?? null,paths));
   }
   const dir=jobDirectory(root,brand,jobId);
@@ -2058,7 +2131,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   // or invalid answer leaves the request unclaimed and nothing written: decline it
   // with the reason and the board shows the current questions again.
   if(record.operation==='update_intake') validateIntakeUpdate({root,brand:record.args?.brand,jobId:record.args?.jobId,expectedRevision:record.args?.expectedRevision,patch:record.args?.patch});
-  if(record.operation==='create_job') createJobFields(record.args || {});
+  if(record.operation==='create_job') createJobFields(record.args, root);
   if(record.operation==='answer_question') validateBoardAnswer(root,record.args);
   // A post answer or mark that cannot be taken yet (the wait has not passed, the post is not waiting) is checked before the
   // claim, so the request stays unclaimed and can be declined with the reason.
@@ -2130,7 +2203,8 @@ export function applyBoardDecision({root,requestId,confirmedBy,maxCredits}) {
   if(args.reviewId==='concept' && args.decision==='approve' && (!Number.isInteger(maxCredits) || maxCredits<0)) throw new Error('Concept approval needs the spending limit the user selected.');
   // A board approval is at the amount the board showed, never another figure.
   if(args.reviewId==='concept' && args.decision==='approve' && Number.isInteger(args.credits) && maxCredits!==args.credits) throw new Error(`Approve this concept at the ${args.credits} credits the board showed.`);
-  const labelCheck = args.reviewId==='content' && args.decision==='approve'
+  // The label and brand-mark check is skipped for a post made from the person's own finished files: they approve those as they are.
+  const labelCheck = args.reviewId==='content' && args.decision==='approve' && !kinds.suppliesMedia(validated.snapshot.job?.kind)
     ? assertContentQc({root,job:{brand:validated.snapshot.brand?.slug || args.brand,jobId:args.jobId},files:args.artifacts,acceptedFlagIds:Array.isArray(args.acceptedFlagIds) ? args.acceptedFlagIds : []})
     : null;
   // Claim before invoking the legacy two-write approval command. A crash is reconciled, never replayed blindly.
@@ -2238,6 +2312,7 @@ export function saveJobQuote({root,brand,jobId,items,drop}) {
   jobDirectory(root,brand,jobId);
   const job=facts.jobAt(root,brand,jobId);
   if(!job) throw new Error('Job not found in this workspace.');
+  if(kinds.suppliesMedia(readJsonFile(join(job.dir,'job.json'),{})?.kind)) throw new Error('This post is made from files you already have, so nothing is made and there is no price to approve.');
   const refusal=priceRefusal(job,facts.buildQuote(job,items,{drop}).quote.items);
   if(refusal) throw new Error(refusal);
   const saved=facts.saveQuote(job,items,{drop});

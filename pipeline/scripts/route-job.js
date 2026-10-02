@@ -93,6 +93,12 @@ const brandDir = path.resolve(path.dirname(jobPath), '..', '..');
 
 const kindEntry = kinds.kindOf(job.kind);
 const producesContent = kinds.makesContent(job.kind);
+// A kind whose pictures or video the person already has (publish_post). The files were copied into
+// the job when it was created, so the rules about making, researching and planning content do not
+// apply to it; every rule below that is skipped for it says so.
+const supplied = kinds.suppliesMedia(job.kind);
+const suppliedFiles = Array.isArray(job.suppliedMedia) ? job.suppliedMedia : [];
+const hasCaption = typeof job.caption === 'string' && job.caption.trim().length > 0;
 
 // Rule 1: schema and v1 platforms
 for (const e of validate(schema, job)) {
@@ -131,7 +137,9 @@ for (const d of Array.isArray(seenJob.deliverables) ? seenJob.deliverables : [])
 // brief. A job with none of its own falls back to the brand profile, so the router asks for
 // one only when neither side has one.
 const jobAudienceDescription = job.audience && typeof job.audience.description === 'string' ? job.audience.description.trim() : '';
-if (producesContent && !jobAudienceDescription) {
+if (supplied) {
+  say('Rule 1b: a post made from supplied files needs no audience, so none is asked for');
+} else if (producesContent && !jobAudienceDescription) {
   let brandAudience = '';
   try {
     const profile = brandProfile.read(brandDir);
@@ -146,7 +154,10 @@ if (R.missingFields.length) say('Rule 1: missing or invalid fields: ' + R.missin
 // Rule 2: does this kind produce content
 say('Rule 2: kind ' + job.kind + ' producesContent=' + producesContent);
 const dels = Array.isArray(job.deliverables) ? job.deliverables : [];
-if (producesContent && dels.length === 0) { missing('deliverables (at least one)'); say('Rule 2: a content job needs at least one deliverable'); }
+// A supplied-media job is already asked for its files and its platforms by rule 1, and its deliverables follow from those two, so it is not also asked for deliverables.
+// Words alone on Facebook (a caption, no file) have no file to ask for, so they keep this rule.
+const wordsAlone = hasCaption && Array.isArray(job.platforms) && job.platforms.length > 0 && job.platforms.every(p => p === 'facebook');
+if (producesContent && dels.length === 0 && !(supplied && !wordsAlone && (suppliedFiles.length === 0 || !(Array.isArray(job.platforms) && job.platforms.length)))) { missing('deliverables (at least one)'); say('Rule 2: a content job needs at least one deliverable'); }
 
 // Rule 3: paid distribution
 if (['paid', 'both'].includes(job.distribution) && producesContent) {
@@ -159,7 +170,7 @@ if (['paid', 'both'].includes(job.distribution) && producesContent) {
 // Rule 4: UGC deliverable. Current UGC is generated, so it carries the synthetic-person flag
 // and the AI-label policy path. Retired real-creator inputs are rejected by the availability
 // guard above rather than being silently converted into generated UGC.
-const ugcDels = dels.filter(d => d.creativeDiscipline === 'ugc');
+const ugcDels = supplied ? [] : dels.filter(d => d.creativeDiscipline === 'ugc');
 if (ugcDels.length) {
   need('ugc');
   R.deliverableModes = ugcDels.map(d => ({ id: d.id, mode: 'ai_generated' }));
@@ -168,8 +179,8 @@ if (ugcDels.length) {
 }
 
 const TALKING_KINDS = ['ugc', 'brand_video'];
-const talkingDels = dels.filter(d => d.talkingCharacter === true && TALKING_KINDS.includes(d.creativeDiscipline));
-for (const d of dels) {
+const talkingDels = supplied ? [] : dels.filter(d => d.talkingCharacter === true && TALKING_KINDS.includes(d.creativeDiscipline));
+for (const d of supplied ? [] : dels) {
   if (d.talkingCharacter === true && !TALKING_KINDS.includes(d.creativeDiscipline)) {
     say('Rule 4b: deliverable ' + (d.id || '?') + ' is marked talkingCharacter but is not a ugc or brand_video deliverable, so the mark is ignored');
   }
@@ -183,14 +194,21 @@ if (talkingDels.length) {
 }
 
 // Rule 5: organic distribution
-if (['organic', 'both'].includes(job.distribution) && producesContent) {
+if (supplied) {
+  // The post goes out as it is, so the copywriter is needed only when the person gave no caption.
+  flag('external_publish');
+  if (!hasCaption) need('social_post');
+  say('Rule 5: supplied files are posted as they are and flag external_publish; ' + (hasCaption ? 'the person gave the caption, so no caption is written' : 'no caption was given, so social_post writes one'));
+} else if (['organic', 'both'].includes(job.distribution) && producesContent) {
   need('social_post'); flag('external_publish');
   say('Rule 5: organic distribution adds social_post and flags external_publish');
 }
 
 // Rule 6: video must be inspected
 const refs = Array.isArray(job.sourceRefs) ? job.sourceRefs : [];
-if (job.kind === 'content_repurpose' || refs.some(kinds.isVideoSource) ||
+if (supplied) {
+  say('Rule 6: supplied files are not inspected, repurposed or rendered, so video_intelligence is not added');
+} else if (job.kind === 'content_repurpose' || refs.some(kinds.isVideoSource) ||
     dels.some(d => ['ugc', 'brand_video'].includes(d.creativeDiscipline))) {
   need('video_intelligence');
   say('Rule 6: video is inspected, repurposed or rendered, so video_intelligence is added');
@@ -274,7 +292,9 @@ const proofPoints = countRows(path.join(brandDir, 'brand', 'positioning.md'), /^
 const verbatim = countRows(path.join(brandDir, 'brand', 'audience.md'), /^\s*\|\s*Phrase\s*\|/i);
 const evidenceBearing = proofPoints >= 3 && verbatim >= 1;
 
-if (producesContent && !blockedOnAsset) {
+if (supplied) {
+  say('Rule 7: supplied files need no research');
+} else if (producesContent && !blockedOnAsset) {
   const paid = R.requiredDisciplines.includes('ads');
   const makesVideo = dels.some(d => ['ugc', 'brand_video', 'video', 'motion_graphic'].includes(d.creativeDiscipline));
   let decision;
@@ -358,7 +378,7 @@ if (producesContent && !blockedOnAsset) {
 
 // Rule 8: strategy for campaigns, series, multi-platform, multi-persona
 const personas = ((job.audience || {}).personas || []);
-if (producesContent && (['paid_campaign', 'organic_series'].includes(job.kind) || (job.platforms || []).length > 1 || personas.length > 1)) {
+if (!supplied && producesContent && (['paid_campaign', 'organic_series'].includes(job.kind) || (job.platforms || []).length > 1 || personas.length > 1)) {
   need('strategy');
   say('Rule 8: campaign, series, more than one platform or persona, so strategy is added');
 }
@@ -371,7 +391,8 @@ if (job.usesHistoricalData === true) {
 
 // Rule 10: unsupported creative disciplines or inactive agents
 const map = agentsReg.disciplineForCreativeDiscipline || {};
-for (const d of dels) {
+// A carousel maps to a planned agent, but a supplied set of pictures is not made by any discipline agent.
+for (const d of supplied ? [] : dels) {
   const disc = map[d.creativeDiscipline];
   const a = disc ? agentFor(disc) : null;
   if (!a || a.status !== 'active') {
@@ -393,7 +414,8 @@ R.requiredDisciplines.sort((a, b) => order.indexOf(a) - order.indexOf(b));
 R.support = R.requiredDisciplines
   .filter(d => !ownerA || d !== ownerA.discipline)
   .map(d => agentFor(d)).filter(Boolean).map(a => a.agentId);
-if (producesContent && agentFor('review')) R.support.push(agentFor('review').agentId);
+// A supplied post has no editor pass: the person checks their own files, and the plugin checks their shape.
+if (producesContent && !supplied && agentFor('review')) R.support.push(agentFor('review').agentId);
 say('Rule 11: owner ' + (R.owner || 'none') + '; support ' + (R.support.join(', ') || 'none'));
 
 // Rule 12: confidence

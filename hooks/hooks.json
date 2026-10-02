@@ -26,6 +26,10 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"" }]
+      },
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
       }
     ],
     "PostToolUse": [
@@ -38,7 +42,7 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
       },
       {
-        "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_inputs_import|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare)$",
+        "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_inputs_import|pipeline_post_files_add|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare)$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-bind.mjs\"" }]
       },
       {
@@ -48,20 +52,32 @@
       {
         "matcher": "^Artifact$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/artifact-assets.mjs\"" }]
+      },
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
       }
     ],
     "PostToolUseFailure": [
       {
         "matcher": "^mcp__.+__(createScheduledPost)$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
+      },
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
       }
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pipeline-hook.mjs\"" }] },
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-stop.mjs\"" }] }
     ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }] }
+    ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pipeline-hook.mjs\"" }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pipeline-hook.mjs\"" }] },
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }] }
     ]
   }
 }

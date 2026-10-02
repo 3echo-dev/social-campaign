@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.8.2.
+Current version: 0.9.0.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -108,7 +108,7 @@ Three are for you to type.
 
 | Skill | You type it | Runs when |
 |---|---|---|
-| `/social-campaign` | Yes | The entry point. Opens the board, sets up a workspace if there is none, and asks "What do you need?" |
+| `/social-campaign` | Yes | The entry point. Opens the board, sets up a workspace if there is none, and asks "What do you want to get done?" in a box on the board |
 | `/social-campaign:setup` | Yes | Set up or recover the workspace and its private board. `--new` publishes a replacement board for the same workspace |
 | `/social-campaign:doctor` | Yes, only you | A health check and repair. Claude never starts it on its own |
 | `board-setup` | No | The first publication of the board as a private claude.ai artifact |
@@ -177,6 +177,29 @@ The board shows tokens and time for each stage and for the whole job.
 Time you spent deciding is its own row.
 Media shows in 3echo credits.
 A figure that was not measured reads "Not reported".
+
+<!-- pipelines:start -->
+
+### Pipelines
+
+Each kind of job below is its own pipeline.
+This table is generated from the plugin's own registries, so it always matches what the plugin does.
+
+| Pipeline | For | You give | Approvals | Who works on it | You get | Cost | Posts |
+|---|---|---|---|---|---|---|---|
+| Organic post | One finished social post for Facebook, Instagram or TikTok: the picture or video, the caption and the posting details, ready for your approval. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Editor | A delivery package for each post: the picture or video, the caption, hashtags and the posting details, ready to schedule or post. | Credits are spent only when pictures or video are made, and you approve the price first. | Yes |
+| Post series | A set of related posts planned together, so they read as one campaign across platforms and days. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Editor | A delivery package for each post in the series: the pictures or video, the captions, hashtags and the posting details. | Credits are spent only when pictures or video are made, and you approve the price first. | Yes |
+| Creator-style video | A short video that looks like a customer or creator talking to the camera: ideas to pick from, a script, a storyboard and the finished video. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Scriptwriter, Videographer, Researcher, Strategist, Copywriter, Editor | The finished video with its caption and the posting details, in a delivery package. | Credits are spent to make the video. You approve the price, then check a sample, before the rest is made. | Yes |
+| Paid ad campaign | Ad creative and a campaign plan for paid social: audience, budget, placements and the setup steps. Nothing is switched on for you. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Approve the campaign plan, Approve going live | Media buyer, Videographer, Researcher, Strategist, Scriptwriter, Copywriter, Editor | The ad creative, the campaign plan and a checklist of setup steps for your ad manager. | Credits are spent only when pictures or video are made, and you approve the price first. | No |
+| Repurpose a video | Turn a video you already have into new posts for other platforms, with new cuts and captions. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many | Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Editor | New cuts of your video with captions and the posting details, in a delivery package. | Credits are spent only when something new has to be made, and you approve the price first. | Yes |
+| Post something I already have | Post a finished picture, a set of pictures or a video you already have, exactly as it is, with your own caption or one Claude writes. Nothing is researched or made, and no credits are spent. | The brand it is for; Which platforms it is for; The pictures or video to post (one video, or up to 35 pictures), given to Claude in chat | Approve the final post, Confirm where and when to post | Publisher, Copywriter | Your pictures or video with the caption and the posting details, scheduled or saved as a draft in Metricool, or with a posting kit so you can post it yourself. | No credits. Nothing is made, so nothing is priced. | Yes |
+| Research | A written report about a product, a brand or its competitors, with a source for every claim. | Nothing required | Review the report | Researcher | A report you can read on the board and download. | No credits | No |
+| Post or campaign analysis | A written report on why a post or campaign works or does not, from the links or files you give. | At least one link or file to look at | Review the report | Researcher, Videographer | A report you can read on the board and download. | No credits | No |
+| Video breakdown | One video taken apart scene by scene: the shots, the spoken words, the on-screen text and how it is built from hook to call to action. | A video to break down, as a link or a file | Review the report | Videographer | A report with a still for each scene, which you can read on the board and download. | No credits | No |
+
+Some approvals appear only when they apply, for example the price check only when pictures or video are made.
+
+<!-- pipelines:end -->
 
 ---
 
@@ -334,9 +357,11 @@ Look over the card and click Save and continue.
 
 ### First job
 
-Click **+ New job**, or answer the question in the Inbox, and fill in the form with a title and a brief.
-Add links or local files if you have them.
-Claude reads the brief and the brand profile first and fills in every field they already answer.
+Type what you want to get done in the box on the home page or in the Inbox, or click **+ New job**.
+Choose a brand if it is for one, and add links if you have them.
+Give Claude any files in chat after you send it.
+Claude reads your words and picks the pipeline that fits, and the job page says which one and why.
+It fills in every field your words and the brand profile already answer.
 It asks only for what is genuinely missing, one plain question at a time.
 Your original files are copied in and left untouched.
 A picture of a character you upload is treated as not yours until you say it is, so the post carries the right disclosure.

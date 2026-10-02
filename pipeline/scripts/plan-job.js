@@ -15,6 +15,7 @@ const ws = require('./lib-workspace.js');
 const { buildContracts } = require('./lib-task-contracts.js');
 const execution = require('./lib-execution-availability.js');
 const kinds = require('./lib-kinds.js');
+const { parseStageTable } = require('./lib-workflow-table.js');
 
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -78,16 +79,7 @@ function holds(cond) {
 }
 
 // Parse the first markdown table that has a Condition column
-const lines = table.split(/\r?\n/);
-let header = null, rows = [];
-for (const line of lines) {
-  if (!line.trim().startsWith('|')) { if (header && rows.length) break; continue; }
-  const cells = line.split('|').slice(1, -1).map(c => c.trim());
-  if (!header) { if (cells.includes('Condition')) header = cells; continue; }
-  if (cells.every(c => /^:?-+:?$/.test(c))) continue;
-  const row = {}; header.forEach((h, i) => row[h] = cells[i] || '');
-  rows.push(row);
-}
+const { header, rows } = parseStageTable(table);
 if (!header) { console.error('no stage table with a Condition column in ' + wf.file); process.exit(1); }
 
 const owner = route.owner;

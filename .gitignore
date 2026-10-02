@@ -28,6 +28,7 @@ supabase/.temp/
 /supabase/
 /evals/
 /docs/
+/proposals/
 /workflows/
 /.creative-studio-pipeline/
 /workspace-a/

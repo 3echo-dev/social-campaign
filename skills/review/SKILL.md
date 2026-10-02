@@ -27,7 +27,8 @@ Present the current revision and exact artifact hashes through the board.
 Call pipeline_review_present with the exact files and write every entry of its returned `documents`, so the board shows the decision from the job document.
 
 Before presenting the final post for its content approval, run the label and brand-mark check exactly as `skills/brand-check/SKILL.md` describes, for every image and video the post names.
-This check cannot be skipped: never call pipeline_review_present with gate content until the check is current for exactly those files.
+This check cannot be skipped for any job except a publish_post job (the person's own supplied files, posted as they are), which has no label check: skip this step for it and present the final post straight away.
+For every other job, never call pipeline_review_present with gate content until the check is current for exactly those files.
 When the person accepts a flagged item in chat instead of on the board, carry its id in `acceptedFlagIds` on the final decision, alongside every id already accepted earlier.
 
 Follow the hand-off in `board-sync` under Decisions on the board and in chat at every decision: concept, storyboard, price, final post, posting, and for paid work the campaign plan and going live.

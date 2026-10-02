@@ -296,7 +296,7 @@ for (const p of posts) {
   if (p.media.length) perPost += '- Media: ' + p.media.map(m => '`' + p.platform + '/' + m + '`').join(', ') + '\n';
   if (p.accessibility) perPost += '- Alt text / on-screen summary: ' + p.accessibility + '\n';
   perPost += '- Disclosure: ' + (p.disclosure || 'None') + '\n';
-  perPost += '- Hook family: ' + p.hookFamily + '\n';
+  if (p.hookFamily) perPost += '- Hook family: ' + p.hookFamily + '\n';
 }
 let checklists = '';
 for (const platform of platforms) {

@@ -207,6 +207,45 @@ function nextRunning(stateId, nextStateIds, walked, workflowId) {
 }
 
 
+// The skills that spend credits. A plan row that uses one makes media, so the job is priced
+// and the price approved; a plan with none has nothing to price. `skills.json` is the source
+// (`cost: "credits"`), and a test keeps this list in step with it.
+const CREDIT_SKILLS = new Set(['make-image', 'make-video']);
+
+const cleanCell = value => String(value || '').replace(/`/g, '').trim();
+const skillsOf = value => cleanCell(value).split(/[,\s]+/).filter(skill => skill && skill !== '-');
+
+/**
+ * Does this plan make media that costs credits?  true, false, or null when the plan cannot say.
+ *
+ * A plan frozen before the Skills column existed has no column to read, so it says nothing
+ * and the caller falls back to the old rule: pricing comes along with making.
+ */
+function pricesMedia(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  if (!rows.some(row => row && Object.prototype.hasOwnProperty.call(row, 'Skills'))) return null;
+  return rows.some(row => skillsOf(row && row.Skills).some(skill => CREDIT_SKILLS.has(skill)));
+}
+
+// The states a route will pass through, for a job that is routed but has no plan yet. It is
+// the same list the planner would write, read off the route's disciplines and gates, so the
+// page shows this job's journey from the moment it is routed instead of every stage there is.
+function routeStateIds(route) {
+  if (!route || typeof route !== 'object' || (route.status && route.status !== 'ROUTED')) return [];
+  const disciplines = new Set(Array.isArray(route.requiredDisciplines) ? route.requiredDisciplines : []);
+  const gates = new Set(Array.isArray(route.gates) ? route.gates : []);
+  const ids = ['ROUTED', 'PLANNED'];
+  if (disciplines.has('research') || disciplines.has('video_intelligence')) ids.push('RESEARCH_COMPLETE');
+  if (normalizeWorkflowId(route.workflowId) !== 'publish_only') ids.push('BRIEF_READY');
+  if (gates.has('concept')) ids.push('AWAITING_CONCEPT_APPROVAL');
+  if (gates.has('storyboard')) ids.push('AWAITING_STORYBOARD_APPROVAL', 'MEDIA_READY');
+  ids.push('DRAFTS_READY', 'VALIDATED');
+  if (gates.has('content')) ids.push('AWAITING_CONTENT_APPROVAL');
+  if (gates.has('publish')) ids.push('AWAITING_PUBLISH_APPROVAL');
+  ids.push('COMPLETE');
+  return ids;
+}
+
 /**
  * The stages this run will actually walk, from the states its plan will pass through.
  *
@@ -214,19 +253,25 @@ function nextRunning(stateId, nextStateIds, walked, workflowId) {
  * job. It never lights up, so the journey reads as though it stalled before it started.
  * The page hides what it is not given, so give it the truth.
  *
- * Pricing is not a state, it is two stages the media skills report around a quote, so they
- * come along whenever anything is being made.
+ * Pricing is not a state, it is two stages the media skills report around a quote. They come
+ * along when the plan makes media that costs credits. A plan that cannot say (frozen before it
+ * listed its skills) keeps the old rule: whenever anything is being made.
+ *
+ * `plan` is optional: `{ rows, route }`, the job's plan rows and its route. With the rows the
+ * pricing rule above applies; with only the route (no plan yet) the states come from the route.
  */
-function walkedStages(stateIds, workflowId) {
+function walkedStages(stateIds, workflowId, plan) {
   const report = isReportWorkflow(workflowId);
   const ids = report ? REPORT_STAGE_IDS : STAGE_IDS;
   const seen = new Set();
-  for (const id of stateIds || []) {
+  let states = stateIds && stateIds.length ? stateIds : null;
+  if (!states && !report && plan && plan.route) states = routeStateIds(plan.route);
+  for (const id of states || []) {
     const step = forState(id, workflowId);
     if (step) seen.add(step.stage);
   }
   if (!seen.size) return null;
-  if (!report && seen.has('making-the-images-and-video')) {
+  if (!report && seen.has('making-the-images-and-video') && pricesMedia(plan && plan.rows) !== false) {
     seen.add('pricing-the-media');
     seen.add('your-approval-of-the-price');
   }
@@ -236,7 +281,32 @@ function walkedStages(stateIds, workflowId) {
   return ids.filter(id => seen.has(id));
 }
 
+// Has the job got as far as the media being made, whatever state it is in now? A job asked for
+// changes or held up has left the state it was in, so "now" cannot say; the states it has been in
+// can. True once any of them is MEDIA_READY or a state after the making stage.
+function reachedMaking(stateIds, workflowId) {
+  if (isReportWorkflow(workflowId)) return false;
+  const making = STAGE_IDS.indexOf('making-the-images-and-video');
+  return (stateIds || []).some(id => {
+    if (id === 'MEDIA_READY') return true;
+    const step = forState(id, workflowId);
+    return Boolean(step) && STAGE_IDS.indexOf(step.stage) > making;
+  });
+}
+
+// The states a job's status.md stage log records, in order: the "To" column of its log table.
+function loggedStates(statusText) {
+  const found = [];
+  for (const line of String(statusText || '').split(/\r?\n/)) {
+    const cells = line.split('|').map(cell => cell.trim());
+    if (cells.length < 5 || !/^\d{4}-\d{2}-\d{2}T/.test(cells[1])) continue;
+    const state = cells[3].replace(/`/g, '');
+    if (state) found.push(state);
+  }
+  return found;
+}
+
 module.exports = {
-  STAGE_OF, STAGE_IDS, REPORT_STAGE_IDS, APPROVAL_STAGE_IDS, nextRunning, walkedStages,
+  STAGE_OF, STAGE_IDS, REPORT_STAGE_IDS, APPROVAL_STAGE_IDS, CREDIT_SKILLS, nextRunning, walkedStages, pricesMedia, reachedMaking, loggedStates,
   BRAND_STAGE_IDS, SHORT_OF, ACCEPTED_STAGE_IDS, forState, resolveStage, isReportWorkflow,
 };

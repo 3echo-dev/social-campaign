@@ -59,6 +59,17 @@
       "workflowId": "repurpose-video",
       "owner": "copywriter"
     },
+    "publish_post": {
+      "status": "active",
+      "makesContent": true,
+      "brandRequired": true,
+      "productPhoto": "never",
+      "suppliedMedia": true,
+      "requiredFields": ["platforms"],
+      "requiredSources": "supplied_media",
+      "workflowId": "publish-only",
+      "owner": "publisher"
+    },
     "research": {
       "status": "active",
       "makesContent": false,

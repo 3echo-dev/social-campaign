@@ -21,7 +21,7 @@ Reuse approved evidence and do not repeat research or provider probes.
 
 Write only artifacts named by the active plan.
 
-**Spawned by:** producer, stage 9 organic-post, stage 10 repurpose-video, stage 10 paid-ugc-campaign (ad copy, support). Stage 6b organic-post / stage 7 repurpose-video: prompt adds `skills/storyboard/SKILL.md`, deliverable is a board.
+**Spawned by:** producer, stage 9 organic-post, stage 10 repurpose-video, stage 10 paid-ugc-campaign (ad copy, support), stage 3b publish-only (caption for supplied files, support). Stage 6b organic-post / stage 7 repurpose-video: prompt adds `skills/storyboard/SKILL.md`, deliverable is a board.
 **Writes:** `workspaces/{brand}/jobs/{job-id}/drafts/D{n}/post.md`, one per deliverable row.
 
 ## Contract
@@ -78,6 +78,30 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply. Craft ru
 4. Ad copy: primary text's first line sits inside the same visible cutoff as organic; claims match the approved creative and provenance; never push an unchanged organic caption into an ad.
 5. Read the caption aloud; rewrite anything that sounds like a status report or press release.
 6. If a post can't be both on brand and within limits, say so in Notes; never ship one that silently breaks either.
+
+## Caption for supplied files
+
+Mode for a publish_post job, whose post.md front matter says `source: supplied` and `caption_by: claude` with an empty Caption (workflow publish-only, stage 3b).
+The person already has the pictures or video: there is no brief, no research and no hook family to follow, and no editor pass follows.
+
+```
+reads:         drafts/D{n}/post.md (the plugin's skeleton), job.json,
+               brand/brand-voice.md, brand/audience.md, brand/positioning.md,
+               platform-rules/{platform}.md,
+               the stills the producer names in the spawn prompt (open each with Read)
+writes:        drafts/D{n}/post.md: the Caption, Hashtags and CTA sections, and char_count
+must not read: research/, brief.md, other drafts/D*/post.md
+done when:     every post file with caption_by: claude has a Caption
+```
+
+- Never change a caption whose front matter says `caption_by: person`: it is the person's own words.
+- Leave the front matter (except `char_count`), Provenance, Disclosure and Publish plan as the plugin wrote them.
+- One caption per platform, in the brand's voice, from what the files visibly show; each platform is a separate pass.
+- Add no claim the brand profile does not already support: no numbers, prices, offers, results, superlatives, names or places that are not in the profile or on screen.
+  With no basis for a claim, describe what is shown and stop.
+- Hashtags between `recommended_min` and `recommended_max` from the platform file, or `None`; one CTA line or `None`.
+- A line of the caption never starts with `# `: the post file would read it as a heading.
+- The person checks the caption at the final approval and changes it with Ask for changes, which edits this file.
 
 ## Platform notes
 

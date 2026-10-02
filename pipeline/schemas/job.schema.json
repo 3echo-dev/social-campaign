@@ -68,10 +68,16 @@
         "paid_campaign",
         "creative_analysis",
         "content_repurpose",
+        "publish_post",
         "research",
         "video_breakdown",
         "performance_review"
       ]
+    },
+    "kindReason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
     },
     "objective": {
       "enum": [
@@ -430,6 +436,41 @@
     },
     "specWork": {
       "type": "boolean"
+    },
+    "caption": {
+      "type": "string",
+      "description": "publish_post only: the person's own caption, kept word for word. Absent means Claude writes one."
+    },
+    "aiMade": {
+      "type": "boolean",
+      "description": "publish_post only: true when the supplied pictures or video were made with AI, so the post carries the platform's AI label."
+    },
+    "suppliedMedia": {
+      "type": "array",
+      "description": "publish_post only, written only by the plugin: the files the person supplied, copied into media/supplied/ and measured there.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes", "kind", "mime"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^media/supplied/[0-9a-f]{8}-.+$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "kind": { "enum": ["image", "video"] },
+          "mime": { "type": "string" },
+          "width": { "type": ["integer", "null"] },
+          "height": { "type": ["integer", "null"] },
+          "durationSeconds": { "type": ["number", "null"] },
+          "source": {
+            "type": "object",
+            "properties": {
+              "from": { "enum": ["computer", "workspace"] },
+              "path": { "type": "string" }
+            }
+          },
+          "aiMade": { "type": "boolean" },
+          "addedAt": { "type": "string" }
+        }
+      }
     }
   }
 }

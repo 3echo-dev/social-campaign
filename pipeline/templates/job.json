@@ -34,7 +34,8 @@
       "organic_series",
       "ugc_creative",
       "paid_campaign",
-      "content_repurpose"
+      "content_repurpose",
+      "publish_post"
     ],
     "objective": [
       "awareness",

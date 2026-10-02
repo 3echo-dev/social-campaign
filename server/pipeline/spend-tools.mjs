@@ -66,7 +66,10 @@ export const isGuardedTool = base => GUARDED_TOOLS.has(base);
 /** True when the call is a plain estimate that the tool itself answers without spending. */
 export const honoursEstimateOnly = (base, input) => asObject(input).estimate_only === true && VOICE_ESTIMABLE.includes(base);
 
-const FACT_DIRS = new Set(['generation', 'pricing', 'approvals']);
+// messages/ holds what the person wrote to each agent on the board and the Director's replies; the model never writes it by hand.
+const FACT_DIRS = new Set(['generation', 'pricing', 'approvals', 'messages']);
+// The record of which agents ran, written by the agent-run hook, at the job root.
+const ROOT_FACT_FILES = new Set(['agents.jsonl']);
 const RECIPE_FACT_FILES = new Set(['recipe.json', 'recipe-options.json', 'recipe-history.jsonl']);
 // The approved posting plan, the record of uploads and the remembered file measurements and the log of sends, all in the job's publish/ folder: the model must not
 // write any of them, since media upload and the send guard trust them. handoff/ stays the person's package.
@@ -101,6 +104,7 @@ function inJobRecords(path) {
     if (!inside.length) continue;
     if (inside.some(part => ALIASED_NAME.test(part))) return true;
     if (FACT_DIRS.has(inside[0])) return true;
+    if (inside.length === 1 && ROOT_FACT_FILES.has(inside[0])) return true;
     if (inside[0] === 'publish' && inside.length === 2 && PUBLISH_FACT_FILES.has(inside[1])) return true;
     if (inside[0] === 'validation' && inside.length === 2 && inside[1] === 'label-check.json') return true;
     if (inside[0] === 'validation' && inside.length >= 3 && inside[1] === 'qc-frames') return true;
@@ -110,10 +114,11 @@ function inJobRecords(path) {
 }
 
 /**
- * True for a file a job keeps as its own record: price, generation, approvals, label and frame checks, recipe files, the
- * posting plan, the upload record and the send log. The path is judged as spelled and as it really is (the deepest part
- * that exists resolved to its long name, links followed), and a name inside a job folder that could be an alias of
- * another (8.3 short names, ::$DATA streams, a trailing dot or space) is refused outright. Case never matters.
+ * True for a file a job keeps as its own record: price, generation, approvals, board messages, the agent run log, label and
+ * frame checks, recipe files, the posting plan, the upload record and the send log. The path is judged as spelled and as it
+ * really is (the deepest part that exists resolved to its long name, links followed), and a name inside a job folder that
+ * could be an alias of another (8.3 short names, ::$DATA streams, a trailing dot or space) is refused outright. Case never
+ * matters.
  */
 export function isFactFile(filePath, cwd) {
   if (!filePath) return false;

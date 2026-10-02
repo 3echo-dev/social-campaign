@@ -64,7 +64,7 @@
       "allowedSkillIds": ["publish"],
       "allowedCapabilities": ["read_assigned_inputs", "write_task_output", "hash_artifact"],
       "forbiddenActions": ["change_objective", "change_brand_profile", "spawn_agent", "write_approval", "publish", "paid_generation", "run_unapproved_command", "edit_artifact", "self_approve", "cross_brand_read", "read_credentials", "unapproved_provider_call"],
-      "deniedSideEffects": ["external_write", "paid_spend", "credential_read"], "ownerForKinds": [], "maxTurns": 30 },
+      "deniedSideEffects": ["external_write", "paid_spend", "credential_read"], "ownerForKinds": ["publish_post"], "maxTurns": 30 },
     { "agentId": "short-form-video-specialist", "discipline": "short_form_video", "status": "planned", "description": "Reels, TikTok, Shorts optimised for retention and edits.", "ownerForKinds": [] },
     { "agentId": "static-creative-specialist", "discipline": "static_creative", "status": "planned", "description": "Images and carousels: layout, copy, visual hierarchy.", "ownerForKinds": [] },
     { "agentId": "email-specialist", "discipline": "email", "status": "planned", "description": "Email campaigns.", "ownerForKinds": [] },

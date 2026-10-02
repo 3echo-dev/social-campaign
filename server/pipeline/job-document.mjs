@@ -50,6 +50,8 @@ const MAX_CONCEPTS = 8;
 const MAX_PANELS = 60;
 const MAX_BOARDS = 12;
 const MAX_POSTS = 12;
+// A post holds one video or up to 35 pictures (supplied-media.mjs MAX_FILES); the card and the kit show every one.
+const MAX_POST_FILES = 35;
 const MAX_QUOTE_ROWS = 80;
 const MAX_STILLS = 40;
 const MAX_REVIEW_URLS = 200;
@@ -288,7 +290,7 @@ export function postingKitSection(dir, publish, now, state = null, previewOf = n
         firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
         aiLabel: kitAiLabel(post),
         checklist: kitChecklist(post.platform, post.placement),
-        media: (Array.isArray(post.media) ? post.media : []).slice(0, 10).map(item => {
+        media: (Array.isArray(post.media) ? post.media : []).slice(0, MAX_POST_FILES).map(item => {
           let preview = null;
           try { preview = typeof previewOf === 'function' ? previewOf(item) : null; } catch { preview = null; }
           return {
@@ -750,7 +752,7 @@ export function parsePost(text) {
     caption,
     hashtags: hashtags.slice(0, 60).map(tag => clip(tag, 100)),
     cta: clip(sectionText(readable, 'CTA') || ''),
-    media: (Array.isArray(meta.media) ? meta.media : []).filter(path => typeof path === 'string' && path).slice(0, 12),
+    media: (Array.isArray(meta.media) ? meta.media : []).filter(path => typeof path === 'string' && path).slice(0, MAX_POST_FILES),
     accessibilityText: clip(typeof meta.accessibility_text === 'string' ? meta.accessibility_text : ''),
     publishPlan: parsePublishPlan(body),
   };

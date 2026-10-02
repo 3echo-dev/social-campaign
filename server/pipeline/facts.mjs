@@ -613,7 +613,11 @@ export function factsFingerprint(job) {
   } catch {
     lines.push('status.md\tmissing');
   }
-  for (const folder of ['pricing', 'generation', 'approvals']) statEntries(job.dir, folder, lines);
+  for (const folder of ['pricing', 'generation', 'approvals', 'messages']) statEntries(job.dir, folder, lines);
+  try {
+    const info = statSync(join(job.dir, 'agents.jsonl'));
+    lines.push(`agents.jsonl\t${info.size}\t${info.mtimeMs}`);
+  } catch {}
   try {
     const info = statSync(join(job.dir, 'validation', 'label-check.json'));
     lines.push(`validation/label-check.json\t${info.size}\t${info.mtimeMs}`);

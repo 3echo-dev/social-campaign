@@ -12,9 +12,13 @@ const ws = require('./lib-workspace.js');
 const del = require('./lib-deliverable.js');
 const execution = require('./lib-execution-availability.js');
 const recipes = require('./lib-recipe.js');
+const kinds = require('./lib-kinds.js');
 
 const ROOT = path.join(__dirname, '..');
 const POST_SCHEMA = JSON.parse(fs.readFileSync(path.join(ROOT, 'schemas', 'post.schema.json'), 'utf8'));
+// A post made from files the person supplied has no hook, recipe or alt text to write: the plugin wrote its front matter
+// and the person's caption is theirs, so only what a supplied post carries is required.
+const SUPPLIED_SCHEMA = { ...POST_SCHEMA, required: ['job', 'deliverable', 'platform', 'version', 'status', 'char_count', 'media', 'created'] };
 const argv = process.argv.slice(2);
 const { brand, jobId: job, dir } = ws.resolveJobArgs(argv, argv);
 if (!brand || !job) { console.error('usage: platform-check.js <brand> <job-id> [--out <file>]'); process.exit(2); }
@@ -28,7 +32,7 @@ if (!availability.available) {
 }
 
 let route = {}; try { route = JSON.parse(fs.readFileSync(path.join(jobDir, 'route.json'), 'utf8')); } catch {}
-const synthetic = [...(route.riskFlags || []), ...(route.modelAddedRiskFlags || [])].includes('synthetic_person');
+const flaggedSynthetic = [...(route.riskFlags || []), ...(route.modelAddedRiskFlags || [])].includes('synthetic_person');
 const families = recipes.hookFamilies(path.join(ROOT, 'playbooks', 'hooks.md'));
 
 const draftsDir = path.join(jobDir, 'drafts');
@@ -48,6 +52,9 @@ let jobSpec = null;
 try {
   jobSpec = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
 } catch {}
+// Files the person said were made with AI need the platform's label as much as a generated person does.
+const synthetic = flaggedSynthetic || Boolean(jobSpec && (jobSpec.aiMade === true || (Array.isArray(jobSpec.suppliedMedia) && jobSpec.suppliedMedia.some(file => file && file.aiMade === true))));
+const suppliesMedia = Boolean(jobSpec) && kinds.suppliesMedia(jobSpec.kind);
 if (jobSpec && Array.isArray(jobSpec.deliverables)) {
   const expected = jobSpec.deliverables.map(d => d.id).filter(Boolean);
   report.missingDeliverables = expected.filter(id => !dels.includes(id));
@@ -66,10 +73,13 @@ for (const D of dels) {
   }
   const { data, sections } = parseFile(p);
   const platform = String(data.platform || '');
+  // Supplied mode needs both: a kind that supplies media and a post that says so. A post of any other kind that claims
+  // `source: supplied` is still held to every authoring check, so the flag cannot be used to skip them.
+  const supplied = suppliesMedia && data.source === 'supplied';
   const findings = [];
   const fail = (code, msg) => findings.push({ severity: 'fail', code, msg });
   const warn = (code, msg) => findings.push({ severity: 'warn', code, msg });
-  const schemaErrors = validate(POST_SCHEMA, data);
+  const schemaErrors = validate(supplied ? SUPPLIED_SCHEMA : POST_SCHEMA, data);
   const requiredSections = ['Caption', 'Hashtags', 'CTA', 'Provenance', 'Disclosure', 'Publish plan'];
   const missingSections = requiredSections.filter(name => sections[name] === undefined);
   if (schemaErrors.length || missingSections.length) {
@@ -91,8 +101,11 @@ for (const D of dels) {
 
   if (!caption) fail('R-LIMIT', 'Caption section is empty');
   if (c.max_chars && chars > c.max_chars) fail('R-LIMIT', 'caption+hashtags ' + chars + ' chars, limit ' + c.max_chars);
-  if (c.visible_cutoff_chars && [...firstLine].length > c.visible_cutoff_chars)
-    fail('R-HOOK', 'first line is ' + [...firstLine].length + ' chars; hook must land inside the visible cutoff of ' + c.visible_cutoff_chars);
+  if (c.visible_cutoff_chars && [...firstLine].length > c.visible_cutoff_chars) {
+    const said = 'first line is ' + [...firstLine].length + ' chars; hook must land inside the visible cutoff of ' + c.visible_cutoff_chars;
+    // The person's own first line is theirs to keep, so for a supplied post it is a note, not a failure.
+    if (supplied) warn('R-HOOK', said); else fail('R-HOOK', said);
+  }
   if (c.ideal_max_chars && chars > c.ideal_max_chars) warn('R-LIMIT', 'caption ' + chars + ' chars, above the ideal ' + c.ideal_min_chars + ' to ' + c.ideal_max_chars + ' for this platform');
   if (h.max != null && tags.length > h.max) fail('R-LIMIT', tags.length + ' hashtags, platform max ' + h.max);
   if (h.recommended_max != null && tags.length > h.recommended_max) warn('R-LIMIT', tags.length + ' hashtags, recommended at most ' + h.recommended_max);
@@ -123,19 +136,23 @@ for (const D of dels) {
   const disclosureText = (sections['Disclosure'] || '').trim();
   if (hasVideo && synthetic && disc.ai_generated_video_label_required && (!disclosureText || /^none$/i.test(disclosureText)))
     fail('R-POLICY', 'generated video needs an AI-made disclosure on ' + platform + '; Disclosure section is empty');
-  if (!data.hook_family) fail('R-HOOK', 'hook_family missing from front matter');
-  else if (families.size) {
-    for (const problem of recipes.checkHook({ family: data.hook_family, mechanism: data.hook_mechanism, text: firstLine }, families)) fail('R-HOOK', problem);
+  // A supplied post has no hook family, recipe or sourced claims: the caption is the person's (or was written from the files)
+  // and the person approves it. The limits, the files and the policy checks around this block still apply.
+  if (!supplied) {
+    if (!data.hook_family) fail('R-HOOK', 'hook_family missing from front matter');
+    else if (families.size) {
+      for (const problem of recipes.checkHook({ family: data.hook_family, mechanism: data.hook_mechanism, text: firstLine }, families)) fail('R-HOOK', problem);
+    }
+    const draftDir = path.join(draftsDir, D);
+    const recipe = recipes.readRecipe(draftDir);
+    if (!recipe && !recipes.readOptions(draftDir)) warn('R-ANGLE', 'This post was written before copy choices were offered, so it has no recipe to check against.');
+    else for (const finding of recipes.comparePost({ data, sections }, recipe)) fail(finding.code, finding.msg);
+    const alts = Array.isArray(data.hook_alternates) ? data.hook_alternates.filter(a => String(a).trim()) : [];
+    if (alts.length < 2) warn('R-HOOK', 'fewer than two hook alternates recorded');
+    const prov = (sections['Provenance'] || '').trim();
+    const claimy = /\d|%|percent|study|report|customers|users|faster|cheaper|best|only|first|guarantee/i.test(caption);
+    if (claimy && (!prov || !/->/.test(prov))) fail('R-FACT', 'caption carries a checkable claim but Provenance maps nothing to a source');
   }
-  const draftDir = path.join(draftsDir, D);
-  const recipe = recipes.readRecipe(draftDir);
-  if (!recipe && !recipes.readOptions(draftDir)) warn('R-ANGLE', 'This post was written before copy choices were offered, so it has no recipe to check against.');
-  else for (const finding of recipes.comparePost({ data, sections }, recipe)) fail(finding.code, finding.msg);
-  const alts = Array.isArray(data.hook_alternates) ? data.hook_alternates.filter(a => String(a).trim()) : [];
-  if (alts.length < 2) warn('R-HOOK', 'fewer than two hook alternates recorded');
-  const prov = (sections['Provenance'] || '').trim();
-  const claimy = /\d|%|percent|study|report|customers|users|faster|cheaper|best|only|first|guarantee/i.test(caption);
-  if (claimy && (!prov || !/->/.test(prov))) fail('R-FACT', 'caption carries a checkable claim but Provenance maps nothing to a source');
   if (!(sections['Publish plan'] || '').split('\n').some(l => l.trim().startsWith('|') && !/Account|^\|\s*-/.test(l))) warn('R-TIMING', 'Publish plan table has no row');
   if (Number(data.char_count) !== chars) warn('R-LIMIT', 'front matter char_count ' + data.char_count + ' differs from measured ' + chars);
 

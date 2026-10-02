@@ -52,6 +52,14 @@ Call pipeline_board_open only when no board URL exists for the current workspace
 
 The local flow does not call the legacy campaign publishing tools.
 
+## Posts made from files the person supplied
+
+A publish_post job posts pictures or video the person already had, copied into the job under `media/supplied/`.
+There is nothing to make, so the posting decision, the hosting and the send work exactly as below, with no changes: the files are hosted like any other local file in the job's media folder, with the steps in "Local media to 3echo".
+The posts, the post types and the caption were fixed at the final approval, and the posting plan is built from that approval as always.
+A file over 100 MB cannot be uploaded to 3echo: the plan says so, and the person posts that one themselves with the posting kit.
+There is no hashing, copying or editing of the person's files here, and the label check never applies to them.
+
 ## Where and when the posts go
 
 Every job that publishes has its own posting decision, with no exception: it is never folded into the final approval, whatever the schedule says and including "I'll post it myself".

@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "1.0",
+  "groups": {
+    "make": {
+      "value": "post",
+      "kindLabel": "Post or campaign",
+      "jobWord": null,
+      "label": "A post or campaign",
+      "order": 1,
+      "form": "post",
+      "links": null,
+      "placeholders": ["Campaign or deliverable name", "What should we create, who is it for, and where will it be used?"],
+      "filesHint": null
+    },
+    "publish": {
+      "value": "publish_post",
+      "kindLabel": "Post from files",
+      "jobWord": "post from your files",
+      "label": "Post something I already have",
+      "order": 2,
+      "form": "publish",
+      "links": null,
+      "placeholders": ["For example: spring launch Reel", "Which platforms, and when should it go out? Leave the caption empty and Claude writes one."],
+      "filesHint": "Give Claude the pictures or video in chat."
+    },
+    "research": {
+      "value": "research",
+      "kindLabel": "Research",
+      "jobWord": "research job",
+      "label": "Research",
+      "order": 3,
+      "form": "report",
+      "links": null,
+      "placeholders": ["For example: serum competitor research", "What should Claude find out, and what will you use it for?"],
+      "filesHint": null
+    },
+    "analysis": {
+      "value": "creative_analysis",
+      "kindLabel": "Analysis",
+      "jobWord": "analysis job",
+      "label": "Analyse a post or campaign",
+      "order": 4,
+      "form": "report",
+      "links": "Links to the posts or campaign to analyse",
+      "placeholders": ["For example: summer campaign review", "What do you want to learn from these posts?"],
+      "filesHint": null
+    },
+    "breakdown": {
+      "value": "video_breakdown",
+      "kindLabel": "Video breakdown",
+      "jobWord": "video breakdown job",
+      "label": "Break down a video",
+      "order": 5,
+      "form": "report",
+      "links": "The video to break down (a link, or a file on this computer)",
+      "placeholders": ["For example: launch video breakdown", "What do you want to learn from this video?"],
+      "filesHint": "For a video file on your computer, give it to Claude in chat."
+    }
+  },
+  "pipelines": {
+    "organic_post": {
+      "name": "Organic post",
+      "purpose": "One finished social post for Facebook, Instagram or TikTok: the picture or video, the caption and the posting details, ready for your approval.",
+      "examples": ["An Instagram post showing our new product", "A TikTok video announcing the weekend offer"],
+      "notFor": ["Paid ads, which need a budget and an ad plan (use Paid ad campaign)", "A set of posts planned together (use Post series)"],
+      "inputs": [
+        { "field": "audience", "words": "Who the post is for, when it differs from your brand's usual audience" },
+        { "field": "offer", "words": "An offer or message the post should carry" },
+        { "field": "landingPageUrl", "words": "The web page people should go to" },
+        { "field": "schedule", "words": "When it should go out" },
+        { "field": "requiredClaims", "words": "Things the post must say" },
+        { "field": "prohibitedClaims", "words": "Things the post must not say" },
+        { "field": "sourceRefs", "words": "A post or video you would like it to look like" }
+      ],
+      "outputs": "A delivery package for each post: the picture or video, the caption, hashtags and the posting details, ready to schedule or post.",
+      "cost": "Credits are spent only when pictures or video are made, and you approve the price first.",
+      "starter": { "group": "make" }
+    },
+    "organic_series": {
+      "name": "Post series",
+      "purpose": "A set of related posts planned together, so they read as one campaign across platforms and days.",
+      "examples": ["Five Instagram posts for our product launch week", "A month of Facebook posts about our team"],
+      "notFor": ["One single post (use Organic post)", "Paid ads (use Paid ad campaign)"],
+      "inputs": [
+        { "field": "audience", "words": "Who the posts are for, when it differs from your brand's usual audience" },
+        { "field": "offer", "words": "An offer or message the posts should carry" },
+        { "field": "landingPageUrl", "words": "The web page people should go to" },
+        { "field": "schedule", "words": "When the posts should go out" },
+        { "field": "requiredClaims", "words": "Things the posts must say" },
+        { "field": "prohibitedClaims", "words": "Things the posts must not say" },
+        { "field": "sourceRefs", "words": "A post or video you would like them to look like" }
+      ],
+      "outputs": "A delivery package for each post in the series: the pictures or video, the captions, hashtags and the posting details.",
+      "cost": "Credits are spent only when pictures or video are made, and you approve the price first.",
+      "starter": { "group": "make" }
+    },
+    "ugc_creative": {
+      "name": "Creator-style video",
+      "purpose": "A short video that looks like a customer or creator talking to the camera: ideas to pick from, a script, a storyboard and the finished video.",
+      "examples": ["A creator-style TikTok about why customers love our product", "A short testimonial-style Reel"],
+      "notFor": ["A polished brand film", "A video you already have (use Repurpose a video)"],
+      "inputs": [
+        { "field": "audience", "words": "Who the video is for, when it differs from your brand's usual audience" },
+        { "field": "offer", "words": "An offer or message the video should carry" },
+        { "field": "landingPageUrl", "words": "The web page people should go to" },
+        { "field": "schedule", "words": "When it should go out" },
+        { "field": "requiredClaims", "words": "Things the video must say" },
+        { "field": "prohibitedClaims", "words": "Things the video must not say" },
+        { "field": "sourceRefs", "words": "A video you would like it to look like" }
+      ],
+      "outputs": "The finished video with its caption and the posting details, in a delivery package.",
+      "cost": "Credits are spent to make the video. You approve the price, then check a sample, before the rest is made.",
+      "starter": { "group": "make" }
+    },
+    "paid_campaign": {
+      "name": "Paid ad campaign",
+      "purpose": "Ad creative and a campaign plan for paid social: audience, budget, placements and the setup steps. Nothing is switched on for you.",
+      "examples": ["A TikTok ad campaign for our spring sale", "Instagram ads for a new product with a fixed budget"],
+      "notFor": ["Ordinary posts that are not ads (use Organic post)", "Changing a campaign that is already running"],
+      "inputs": [
+        { "field": "budget", "words": "The most you want to spend" },
+        { "field": "landingPageUrl", "words": "The web page people should go to" },
+        { "field": "audience", "words": "Who the ads are for, when it differs from your brand's usual audience" },
+        { "field": "offer", "words": "An offer or message the ads should carry" },
+        { "field": "schedule", "words": "When the ads should start" },
+        { "field": "sourceRefs", "words": "An ad or video you would like them to look like" }
+      ],
+      "outputs": "The ad creative, the campaign plan and a checklist of setup steps for your ad manager.",
+      "cost": "Credits are spent only when pictures or video are made, and you approve the price first.",
+      "starter": { "group": "make" }
+    },
+    "content_repurpose": {
+      "name": "Repurpose a video",
+      "purpose": "Turn a video you already have into new posts for other platforms, with new cuts and captions.",
+      "examples": ["Cut our launch video into three Reels", "Make a TikTok from last month's webinar clip"],
+      "notFor": ["A brand new video (use Creator-style video)", "Posting a finished file as it is"],
+      "inputs": [
+        { "field": "sourceRefs", "words": "The video to reuse, as a link or a file" },
+        { "field": "audience", "words": "Who the new posts are for, when it differs from your brand's usual audience" },
+        { "field": "schedule", "words": "When the posts should go out" },
+        { "field": "requiredClaims", "words": "Things the posts must say" },
+        { "field": "prohibitedClaims", "words": "Things the posts must not say" }
+      ],
+      "outputs": "New cuts of your video with captions and the posting details, in a delivery package.",
+      "cost": "Credits are spent only when something new has to be made, and you approve the price first.",
+      "starter": { "group": "make" }
+    },
+    "publish_post": {
+      "name": "Post something I already have",
+      "purpose": "Post a finished picture, a set of pictures or a video you already have, exactly as it is, with your own caption or one Claude writes. Nothing is researched or made, and no credits are spent.",
+      "examples": ["Post this video on our Instagram as a Reel tomorrow at 9 am", "Put these three pictures on Facebook with my caption"],
+      "notFor": ["Cutting, resizing or adding subtitles to a video (use Repurpose a video)", "Making new pictures or video (use Organic post or Creator-style video)"],
+      "inputs": [
+        { "field": "caption", "words": "Your own caption, posted word for word. Leave it out and Claude writes one" },
+        { "field": "aiMade", "words": "Whether the pictures or video were made with AI, so the post carries the platform's AI label" },
+        { "field": "schedule", "words": "When it should go out" }
+      ],
+      "outputs": "Your pictures or video with the caption and the posting details, scheduled or saved as a draft in Metricool, or with a posting kit so you can post it yourself.",
+      "cost": "No credits. Nothing is made, so nothing is priced.",
+      "starter": { "group": "publish" }
+    },
+    "research": {
+      "name": "Research",
+      "purpose": "A written report about a product, a brand or its competitors, with a source for every claim.",
+      "examples": ["What do customers say about our three closest competitors?", "What is the market for a vitamin C serum in Singapore?"],
+      "notFor": ["Making posts", "Looking at one post or one video you already have (use Post or campaign analysis or Video breakdown)"],
+      "inputs": [
+        { "field": "sourceRefs", "words": "Links or files you want it to read" }
+      ],
+      "outputs": "A report you can read on the board and download.",
+      "cost": "No credits",
+      "starter": { "group": "research" }
+    },
+    "creative_analysis": {
+      "name": "Post or campaign analysis",
+      "purpose": "A written report on why a post or campaign works or does not, from the links or files you give.",
+      "examples": ["Why did our summer campaign get so many comments?", "What is a competitor's best ad doing?"],
+      "notFor": ["Making new posts", "Taking apart one video scene by scene (use Video breakdown)"],
+      "inputs": [],
+      "outputs": "A report you can read on the board and download.",
+      "cost": "No credits",
+      "starter": { "group": "analysis" }
+    },
+    "video_breakdown": {
+      "name": "Video breakdown",
+      "purpose": "One video taken apart scene by scene: the shots, the spoken words, the on-screen text and how it is built from hook to call to action.",
+      "examples": ["Break down our best-performing launch video", "How is this competitor's Reel put together?"],
+      "notFor": ["Making a new video", "Judging a whole campaign (use Post or campaign analysis)"],
+      "inputs": [],
+      "outputs": "A report with a still for each scene, which you can read on the board and download.",
+      "cost": "No credits",
+      "starter": { "group": "breakdown" }
+    }
+  }
+}

@@ -10,17 +10,22 @@ export function humanize(value) {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 export const NO_BRAND = 'no-brand';
-export const JOB_NEEDS = Object.freeze([
-  Object.freeze({ value: 'post', label: 'A post or campaign', kind: null, links: null }),
-  Object.freeze({ value: 'research', label: 'Research', kind: 'research', links: null }),
-  Object.freeze({ value: 'creative_analysis', label: 'Analyse a post or campaign', kind: 'creative_analysis', links: 'Links to the posts or campaign to analyse' }),
-  Object.freeze({ value: 'video_breakdown', label: 'Break down a video', kind: 'video_breakdown', links: 'The video to break down (a link, or a file on this computer)' }),
-]);
-const REPORT_KINDS = new Set(['research', 'creative_analysis', 'video_breakdown']);
-const KIND_LABELS = Object.freeze({ research: 'Research', creative_analysis: 'Analysis', video_breakdown: 'Video breakdown' });
-export const kindLabelOf = project => project?.kindLabel || KIND_LABELS[project?.kind] || 'Post or campaign';
-export const isReportJob = project => REPORT_KINDS.has(project?.kind) || (project?.pendingReviews || []).some(review => (review?.gate || review?.reviewId) === 'findings');
+// The job-type words the board shows (a kind's pipeline name, its short label, whether it is a report, the word in a
+// "new job" line) come from the pipeline catalogue this page was built with (scripts/build-board.mjs puts it in the page
+// config), so a new kind needs no constant here. Until configurePipelines runs, a lookup finds nothing and the label
+// the projection already carries stands.
+let PIPELINE_KINDS = Object.freeze({});
+export function configurePipelines(config) {
+  const kinds = config && typeof config === 'object' && config.kinds && typeof config.kinds === 'object' ? config.kinds : {};
+  PIPELINE_KINDS = Object.freeze(Object.fromEntries(Object.entries(kinds).map(([kind, words]) => [kind, Object.freeze({ ...words })])));
+  return PIPELINE_KINDS;
+}
+export const kindNameOf = kind => PIPELINE_KINDS[kind]?.name || '';
+export const kindLabelOf = project => project?.kindLabel || PIPELINE_KINDS[project?.kind]?.label || 'Post or campaign';
+export const newJobWord = kind => PIPELINE_KINDS[kind]?.jobWord || 'job';
+export const isReportJob = project => PIPELINE_KINDS[project?.kind]?.report === true || (project?.pendingReviews || []).some(review => (review?.gate || review?.reviewId) === 'findings');
 export const LINK_LIMIT = 20;
+export const LINK_MAX_LENGTH = 2000;
 const VIDEO_FILE_HINT = 'For a video file on your computer, give it to Claude in chat.';
 const REPORT_MARK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
 export function parseLinks(text) {
@@ -28,6 +33,7 @@ export function parseLinks(text) {
   let error = null;
   for (const raw of String(text ?? '').split(/\s+/).filter(Boolean)) {
     const value = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
+    if (value.length > LINK_MAX_LENGTH) { error = `Each link must be ${LINK_MAX_LENGTH} characters or fewer.`; continue; }
     let valid = false;
     try { const url = new URL(value); valid = url.protocol === 'https:' && Boolean(url.hostname) && url.hostname.includes('.') && !url.username && !url.password; } catch { valid = false; }
     if (!valid) { error = 'Each link must be a full address that starts with https://.'; continue; }
@@ -118,6 +124,10 @@ export function jobStats(project, now = Date.now()) {
   const note = voice ? `3Echo Studio credits used. Voice: ${voice} ElevenLabs credits.` : '3Echo Studio credits used';
   const shared = `${metric('Tokens', number(usage.tokens), 'Claude usage for this job')}${metric('Time', clock(elapsedMs), timeNote)}`;
   if (isReportJob(project)) return `<div class="stats two">${shared}</div>`;
+  // A job whose own stages never make media has no media generation to report, unless credits were spent anyway. Until the stages are loaded there is nothing to go on, so the card stays.
+  const listed = Array.isArray(project?.stages) ? project.stages.filter(stage => stage && typeof stage === 'object') : [];
+  const spent = creditsInUse(usage.generation?.threeEchoCredits) || creditsInUse(usage.generation?.elevenLabsCredits);
+  if (listed.length && !spent && !listed.some(stage => stage.id === 'making-the-images-and-video')) return `<div class="stats two">${shared}</div>`;
   return `<div class="stats">${shared}${metric('Media generation', studio ? `${studio} credits` : 'Not reported', note)}</div>`;
 }
 export function safePreviewUrl(value) {
@@ -752,44 +762,42 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}) {
   return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
 }
 
-const NEW_JOB_PLACEHOLDERS = Object.freeze({
-  post: ['Campaign or deliverable name', 'What should we create, who is it for, and where will it be used?'],
-  research: ['For example: serum competitor research', 'What should Claude find out, and what will you use it for?'],
-  creative_analysis: ['For example: summer campaign review', 'What do you want to learn from these posts?'],
-  video_breakdown: ['For example: launch video breakdown', 'What do you want to learn from this video?'],
-});
+const COMPOSER_TITLE_LIMIT = 80;
+const COMPOSER_TEXT_LIMIT = 6000;
+const COMPOSER_QUESTION = 'What do you want to get done?';
+const COMPOSER_PLACEHOLDER = 'For example: an Instagram Reel for our new serum, or a report on who leads the vitamin C market.';
+const COMPOSER_BRAND_HINT = 'Posts and campaigns need one. Claude will ask.';
+const COMPOSER_FILES_LINE = 'Have files? Add them in chat after you send this.';
 
-export function newJobBrand(values = {}, brands = []) {
-  const post = values.need === 'post';
-  const options = post ? brands.filter(brandReady) : brands;
-  if (options.some(brand => brand.slug === values.brand)) return values.brand;
-  return post ? options[0]?.slug || '' : NO_BRAND;
+// A job's title is the first line of what the person wrote, cut at a word when it is long.
+export function composerTitle(text) {
+  const line = (String(text ?? '').split(/\r?\n/).map(part => part.replace(/\s+/g, ' ').trim()).find(Boolean) || '').replace(/[\s.,;:-]+$/, '');
+  if (line.length <= COMPOSER_TITLE_LIMIT) return line;
+  const cut = line.slice(0, COMPOSER_TITLE_LIMIT - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space >= COMPOSER_TITLE_LIMIT / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, '')}…`;
 }
 
-export function newJobArgs(values = {}, { brands = [], requestId, photo = null } = {}) {
-  const need = JOB_NEEDS.find(item => item.value === values.need);
-  if (!need) return { errors: { need: 'Choose what you need.' } };
+// What the composer sends: the person's own words, the brand when one was chosen and the links. Never a kind:
+// Claude reads the words against the pipeline catalogue and picks the pipeline. A brand is never required here,
+// because only Claude can tell whether the words are about making or posting content; it asks when it needs one.
+export function newJobArgs(values = {}, { brands = [], requestId } = {}) {
   const errors = {};
-  const slug = String(values.brand || '').trim();
-  const pool = need.value === 'post' ? brands.filter(brandReady) : brands;
-  const brand = slug && slug !== NO_BRAND ? pool.find(item => item.slug === slug) || null : null;
-  if (need.value === 'post' && !brand) errors.brand = 'Choose a brand for a post or campaign.';
-  const title = String(values.title || '').trim();
-  const brief = String(values.brief || '').trim();
-  if (!title) errors.title = 'Add a title.';
-  if (!brief) errors.brief = 'Say what you need.';
-  const parsed = need.links ? parseLinks(values.links) : { links: [], error: null };
+  const text = String(values.text ?? '').trim();
+  if (!text) errors.text = 'Say what you want to get done.';
+  const slug = String(values.brand ?? '').trim();
+  const brand = slug && slug !== NO_BRAND ? brands.filter(brandReady).find(item => item.slug === slug) || null : null;
+  if (slug && slug !== NO_BRAND && !brand) errors.brand = 'Choose one of your brands, or leave it empty.';
+  const parsed = parseLinks(values.links);
   if (parsed.error) errors.links = parsed.error;
   if (Object.keys(errors).length) return { errors };
-  const args = { requestId, ...(brand ? { brand: brand.slug, brandName: brand.name } : {}), title, brief };
-  if (need.kind) args.kind = need.kind;
+  const args = { requestId, ...(brand ? { brand: brand.slug, brandName: brand.name } : {}), title: composerTitle(text) || text.slice(0, COMPOSER_TITLE_LIMIT), brief: text };
   if (parsed.links.length) args.sourceRefs = parsed.links;
-  if (need.value === 'post' && photo) args.photo = photo;
   return { args };
 }
 
-function newJobField(id, label, control, { error = '', hint = '', wide = false } = {}) {
-  return `<div class="new-field${wide ? ' field-wide' : ''}"><label for="${id}">${esc(label)}</label>${control}${hint ? `<p class="field-hint" id="${id}-hint">${esc(hint)}</p>` : ''}${error ? `<p class="field-error" id="${id}-error" role="alert">${esc(error)}</p>` : ''}</div>`;
+function newJobField(id, label, control, { error = '', hint = '', wide = false, hidden = false } = {}) {
+  return `<div class="new-field${wide ? ' field-wide' : ''}"><label for="${id}"${hidden ? ' class="visually-hidden"' : ''}>${esc(label)}</label>${control}${hint ? `<p class="field-hint" id="${id}-hint">${esc(hint)}</p>` : ''}${error ? `<p class="field-error" id="${id}-error" role="alert">${esc(error)}</p>` : ''}</div>`;
 }
 
 function newJobAria(id, { error = '', hint = '' } = {}) {
@@ -797,33 +805,53 @@ function newJobAria(id, { error = '', hint = '' } = {}) {
   return `aria-invalid="${error ? 'true' : 'false'}"${described ? ` aria-describedby="${described}"` : ''}`;
 }
 
-export function newJobForm(state = {}, { brands = [] } = {}) {
+// The one place a job starts: one box for what the person wants, an optional brand and links, and Send. The same
+// form is the card on the home page (variant card) and the starter in the Inbox (variant inbox); only one of them is on
+// the page at a time, so each keeps its own ids.
+export function composerForm(state = {}, { brands = [], variant = 'card' } = {}) {
   const values = state.values || {};
-  const need = JOB_NEEDS.find(item => item.value === values.need) || null;
   const errors = state.fieldErrors || {};
-  const choices = JOB_NEEDS.map(item => `<label class="need-card"><input type="radio" class="visually-hidden" name="need" value="${esc(item.value)}" ${need?.value === item.value ? 'checked' : ''}><span class="need-body"><span class="need-radio" aria-hidden="true"></span><span class="need-label">${esc(item.label)}</span></span></label>`).join('');
+  const inbox = variant === 'inbox';
+  const id = inbox ? 'starter' : 'new';
+  const ready = brands.filter(brandReady);
+  // With exactly one ready brand it is chosen for the person, until they say otherwise (an empty choice is theirs).
+  const brandValue = ready.some(brand => brand.slug === values.brand) ? values.brand : values.brand === undefined && ready.length === 1 ? ready[0].slug : '';
+  const text = newJobField(`${id}-text`, COMPOSER_QUESTION, `<textarea id="${id}-text" name="text" rows="${inbox ? 4 : 5}" maxlength="${COMPOSER_TEXT_LIMIT}" placeholder="${esc(COMPOSER_PLACEHOLDER)}" ${newJobAria(`${id}-text`, { error: errors.text })}>${esc(values.text || '')}</textarea>`, { error: errors.text, wide: true, hidden: true });
+  const brand = ready.length
+    ? newJobField(`${id}-brand`, 'Brand', `<select id="${id}-brand" name="brand" ${newJobAria(`${id}-brand`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })}><option value="" ${brandValue ? '' : 'selected'}>No brand chosen</option>${ready.map(item => `<option value="${esc(item.slug)}" ${brandValue === item.slug ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select>`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })
+    : '<div class="new-field"><span class="new-field-label">Brand</span><p class="field-note">Posts and campaigns need a brand. <button type="button" class="sb-ask" data-action="brand">Onboard a brand</button></p></div>';
+  const links = newJobField(`${id}-links`, 'Links (optional)', `<textarea id="${id}-links" class="links-input" name="links" rows="2" maxlength="${LINK_LIMIT * 2100}" placeholder="One link per line" spellcheck="false" ${newJobAria(`${id}-links`, { error: errors.links })}>${esc(values.links || '')}</textarea>`, { error: errors.links });
+  const blocked = state.busy || state.submitted || state.needsReconciliation;
+  const label = state.busy ? 'Sending...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Send';
+  const problem = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
+  const foot = `<div class="start-foot"><small class="composer-files">${esc(COMPOSER_FILES_LINE)}</small><button class="primary" type="submit" ${blocked ? 'disabled' : ''}>${label}</button></div>`;
+  const form = `<form id="${inbox ? 'starter-form' : 'inline-form'}" class="start-form composer-form" novalidate>${text}<div class="composer-grid">${brand}${links}</div>${problem}${foot}</form>`;
+  if (inbox) return `<section class="composer composer-inbox" aria-labelledby="starter-title"><h3 class="composer-title" id="starter-title">${COMPOSER_QUESTION}</h3>${form}</section>`;
   const notice = state.declined ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>` : '';
-  let body = '';
-  if (need) {
-    const post = need.value === 'post';
-    const ready = brands.filter(brandReady);
-    const options = post ? ready : brands;
-    const brandValue = newJobBrand(values, brands);
-    const [titleHint, briefHint] = NEW_JOB_PLACEHOLDERS[need.value];
-    const brandField = post && !ready.length
-      ? `<div class="new-field"><span class="new-field-label">Brand</span><p class="field-note">A post or campaign needs a brand. <button type="button" class="sb-ask" data-action="brand">Onboard a brand</button></p></div>`
-      : newJobField('new-brand', 'Brand', `<select id="new-brand" name="brand" ${newJobAria('new-brand', { error: errors.brand })}>${post ? '' : `<option value="${NO_BRAND}" ${brandValue === NO_BRAND ? 'selected' : ''}>No brand</option>`}${options.map(brand => `<option value="${esc(brand.slug)}" ${brandValue === brand.slug ? 'selected' : ''}>${esc(brand.name)}</option>`).join('')}</select>`, { error: errors.brand });
-    const title = newJobField('new-title', 'Job title', `<input id="new-title" name="title" value="${esc(values.title || '')}" maxlength="200" placeholder="${esc(titleHint)}" ${newJobAria('new-title', { error: errors.title })}>`, { error: errors.title });
-    const brief = newJobField('new-brief', 'Brief', `<textarea id="new-brief" name="brief" maxlength="6000" placeholder="${esc(briefHint)}" ${newJobAria('new-brief', { error: errors.brief })}>${esc(values.brief || '')}</textarea>`, { error: errors.brief, wide: true });
-    const hint = need.value === 'video_breakdown' ? VIDEO_FILE_HINT : '';
-    const links = need.links ? newJobField('new-links', need.links, `<textarea id="new-links" class="links-input" name="links" maxlength="${LINK_LIMIT * 2100}" placeholder="One link per line" spellcheck="false" ${newJobAria('new-links', { error: errors.links, hint })}>${esc(values.links || '')}</textarea>`, { error: errors.links, hint, wide: true }) : '';
-    const photo = post ? `<div class="field-wide"><div class="context-field-head"><span class="kit-label">Product photo (optional)</span></div>${photoTile('new-photo-file', state.photo, { removeAction: 'remove-photo' })}</div>` : '';
-    const blocked = state.busy || state.submitted || state.needsReconciliation || (post && !ready.length);
-    const label = state.busy ? 'Saving...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Create job';
-    const note = post ? '<small>Your local files stay on this computer. Add sources after the job is saved.</small>' : '';
-    body = `<div class="form-grid">${brandField}${title}${brief}${links}</div>${photo}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot">${note}<button class="primary" type="submit" ${blocked ? 'disabled' : ''}>${label}</button></div>`;
-  }
-  return `<section class="start-card new-job"><div class="start-head"><h2 id="need-title">What do you need?</h2></div>${notice}<form id="inline-form" class="start-form" novalidate><div class="need-grid" role="radiogroup" aria-labelledby="need-title">${choices}</div>${body}</form></section>`;
+  return `<section class="start-card new-job composer"><div class="start-head"><h2 id="composer-title">${COMPOSER_QUESTION}</h2></div>${notice}${form}</section>`;
+}
+
+// The one line under a job's title that says which pipeline Claude chose and why, with a quiet way to say it is wrong.
+// It shows only for a job Claude planned from the person's words: the pipeline's name comes from the catalogue and the
+// reason is the line Claude saved with it. Once the person has said it is wrong, the button is replaced by a plain note.
+export const FINAL_JOB_STATES = Object.freeze(['COMPLETE', 'CANCELLED']);
+export function plannedAsLine(project, { sent = false } = {}) {
+  const name = kindNameOf(project?.kind);
+  const reason = trimmed(project?.kindReason);
+  if (!name || !reason) return '';
+  const action = FINAL_JOB_STATES.includes(project?.state) ? ''
+    : sent
+      ? '<span class="planned-sent" role="status">Claude has been told.</span>'
+      : '<button type="button" class="quiet planned-tell" data-action="not-right">Not right? Tell Claude</button>';
+  return `<p class="planned-as"><span class="planned-text">Claude planned this as <strong>${esc(name)}</strong>: ${esc(reason)}</span>${action}</p>`;
+}
+
+// The plain sentence the button sends to Claude. It names the job and asks Claude to ask the person what they meant.
+export function notRightMessage(project) {
+  const title = String(project?.title || '').trim().slice(0, 100);
+  const id = String(project?.jobId || '').trim();
+  const which = [title ? `for "${title}"` : '', id ? `(${id})` : ''].filter(Boolean).join(' ');
+  return `This is not the kind of job I meant${which ? ` ${which}` : ''}. Please ask me what I want.`;
 }
 
 // A brand's onboarding research phase, from its research usage.status
@@ -2256,6 +2284,24 @@ export function labelCheckSection(check, accepted = {}, { disabled = false } = {
   return `<section class="qc-flags"><h3>Label check</h3><ul class="qc-list">${items}</ul></section>`;
 }
 
+// The checks on each post of a final post made from files the person supplied (review.checks). Approval runs the same
+// ones, so what fails here is what would refuse it, and the card says so in the approve line.
+export function suppliedChecksCard(checks, openKeys = new Set()) {
+  const posts = (Array.isArray(checks?.posts) ? checks.posts : []).filter(post => post && Array.isArray(post.checks));
+  if (!posts.length) return '';
+  const rows = posts.map(post => `<article class="publish-post" role="listitem"><div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4></div><div class="publish-check-list">${publishChecks({ checks: post.checks }, `final-checks:${post.id}`, openKeys)}</div></div></article>`).join('');
+  return `<section class="supplied-checks" aria-label="Checks on each post"><h3>Checks</h3><div class="publish-posts" role="list">${rows}</div></section>`;
+}
+
+// The first thing the checks on a supplied post say is wrong, or null while every one passes.
+function suppliedFirstProblem(checks) {
+  for (const post of Array.isArray(checks?.posts) ? checks.posts : []) {
+    const found = (post.checks || []).find(item => item && item.ok === false && typeof item.text === 'string');
+    if (found) return found.text;
+  }
+  return null;
+}
+
 export function mediaTile(ref, { className = '' } = {}) {
   const name = esc(displayTitle(ref, 'Media'));
   const cls = `media-tile${className ? ` ${className}` : ''}`;
@@ -2932,6 +2978,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   const looseMedia = (review.media || []).filter(ref => !used.has(ref.path));
   if (looseMedia.length) parts.push(`<div class="media-grid">${looseMedia.map(ref => mediaTile(ref)).join('')}</div>`);
   if (gate === 'content' && doc.publishNote) parts.unshift(publishNoteLine(doc.publishNote));
+  if (gate === 'content' && review.checks) parts.push(suppliedChecksCard(review.checks, openKeys));
   if (gate === 'content') parts.push(labelCheckSection(review.labelCheck, state.accepted || {}, { disabled: locked }));
   const covered = new Set([review.concepts?.path, ...(review.storyboards || []).map(item => item.path), ...(review.posts || []).map(item => item.path), review.quote?.path, review.sample?.path, ...(review.media || []).map(item => item.path)].filter(Boolean));
   // The posting plan (publish/intent.json and the rest of publish/) is shown by the publish card, never as a file panel.
@@ -3002,6 +3049,12 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
     const sample = doc?.review?.sample;
     const rest = sampleRestWords(sample?.rest);
     return { label: 'Approve sample', line: rest ? `Approving lets Claude make the other ${rest}.` : 'Approving lets Claude make the rest.' };
+  }
+  if (gate === 'content' && doc?.review?.checks) {
+    // A final post made from files the person supplied has no label check; it is approved while every check on its posts passes.
+    const problem = suppliedFirstProblem(doc.review.checks);
+    if (!doc.review.checks.ready) return { disabled: true, label: 'Approve', line: problem ? `Fix these first: ${problem}` : 'Fix these first. Claude is still getting the checks ready.' };
+    return { label: 'Approve', line: '' };
   }
   if (gate === 'content') {
     const check = doc?.review?.labelCheck;
@@ -3104,7 +3157,7 @@ export function reviewPanel(project, doc, state = {}, { docState = 'loaded', sig
 export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
-const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'jobstart', 'post']);
+const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
@@ -3145,52 +3198,6 @@ function legacySummaryInbox(project) {
   return Number(project?.blockerCount) > 0 ? [{ ...base, kind: 'brief', text: BRIEF_MISSING }] : [];
 }
 
-const NEED_ANSWERS = Object.freeze({
-  'a post or campaign': 'post',
-  'research': 'research',
-  'an analysis of a post or campaign': 'creative_analysis',
-  'analyse a post or campaign': 'creative_analysis',
-  'a breakdown of a video': 'video_breakdown',
-  'break down a video': 'video_breakdown',
-});
-
-export function jobNeedOfAnswer(item, choice) {
-  if (!item || item.kind !== 'question' || item.jobId) return null;
-  const options = inboxOptions(item.options);
-  const picked = Number.isInteger(choice) ? options[choice] : null;
-  const need = picked ? NEED_ANSWERS[String(picked.label).trim().toLowerCase()] || null : null;
-  if (!need) return null;
-  const known = options.every(option => NEED_ANSWERS[String(option.label).trim().toLowerCase()]);
-  return known ? need : null;
-}
-
-export function jobStartPlan(need, item, ready = [], { onboardingBusy = false } = {}) {
-  const brands = Array.isArray(ready) ? ready : [];
-  const wanted = need === 'post' ? (brands.find(brand => brand.slug === item?.brand) || (brands.length === 1 ? brands[0] : null)) : null;
-  const open = need === 'post' ? brands.length > 0 : !(brands.length === 0 && onboardingBusy);
-  return { open, brand: wanted?.slug || '', track: open };
-}
-
-export function applyJobStart(draft, { need = '', brand = '' } = {}) {
-  draft.values = { ...(draft.values || {}), need, ...(brand ? { brand } : {}) };
-  draft.fieldErrors = null;
-  draft.focusName = 'title';
-  draft.selectionStart = null;
-  draft.selectionEnd = null;
-  return draft;
-}
-
-export function jobStartInboxItems(starts = [], brands = []) {
-  return (Array.isArray(starts) ? starts : []).filter(start => JOB_NEEDS.some(need => need.value === start?.need)).map(start => {
-    const brand = (Array.isArray(brands) ? brands : []).find(item => item?.slug === start.brand) || null;
-    const name = trimmed(brand?.name);
-    const text = start.need === 'post'
-      ? (name ? `Start the ${name} job: fill in the brief.` : 'Start your post or campaign: fill in the brief.')
-      : `Start the ${NEW_JOB_WORDS[start.need]}: fill in the brief.`;
-    return { kind: 'jobstart', need: start.need, brand: brand?.slug || null, brandName: name || null, needsYou: true, text };
-  });
-}
-
 export function onboardingInboxItems(brands = [], drafts = []) {
   const open = (Array.isArray(brands) ? brands : []).filter(brand => brand?.slug && !brandReady(brand));
   return open.flatMap(brand => {
@@ -3208,12 +3215,12 @@ export function onboardingInboxItems(brands = [], drafts = []) {
   });
 }
 
-export function workspaceInbox(snapshot, { drafts = [], starts = [] } = {}) {
+export function workspaceInbox(snapshot, { drafts = [] } = {}) {
   const inbox = snapshot?.inbox && typeof snapshot.inbox === 'object' ? snapshot.inbox : null;
-  const onboarding = [...onboardingInboxItems(snapshot?.brands, drafts), ...jobStartInboxItems(starts, snapshot?.brands)];
+  const onboarding = onboardingInboxItems(snapshot?.brands, drafts);
   const asks = onboarding.filter(item => item.needsYou).length;
   if (inbox && Array.isArray(inbox.items)) {
-    const rest = inbox.items.filter(item => item?.kind !== 'onboarding' && item?.kind !== 'jobstart');
+    const rest = inbox.items.filter(item => item?.kind !== 'onboarding');
     const items = inboxItemsOf([...onboarding, ...rest]);
     return { items, count: (Number.isSafeInteger(inbox.count) ? Math.max(inbox.count, inboxItemsOf(rest).length) : inboxItemsOf(rest).length) + asks };
   }
@@ -3423,17 +3430,12 @@ const INBOX_TEXT_FALLBACK = Object.freeze({ decision: 'A decision is waiting for
 
 export function inboxKey(item) {
   if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}`;
-  if (item?.kind === 'jobstart') return `jobstart-${item.need || ''}`;
   if (item?.kind === 'post') return `post-${item.jobId || ''}-${item.target || ''}`;
   return item?.kind === 'question' ? `question-${item.questionId}` : [item?.kind || 'item', item?.jobId || '', item?.field || ''].filter(Boolean).join('-');
 }
 
 export function inboxItemText(item) {
   return trimmed(item?.text) || (item?.kind === 'decision' ? GATE_TITLES[item.gate] : '') || INBOX_TEXT_FALLBACK[item?.kind] || '';
-}
-
-function jobStartCard(item) {
-  return `<div class="inbox-actions"><button type="button" class="primary" data-job-start="${esc(item.need)}"${item.brand ? ` data-job-brand="${esc(item.brand)}"` : ''}>Fill in the brief</button></div>`;
 }
 
 function onboardingCard(item) {
@@ -3480,9 +3482,8 @@ function postCard(item) {
 export function inboxCard(item, ctx = {}) {
   const index = Number.isInteger(ctx.index) ? ctx.index : 0;
   const text = inboxItemText(item);
-  const onboarding = item.kind === 'onboarding' || item.kind === 'jobstart';
-  const body = item.kind === 'jobstart' ? jobStartCard(item)
-    : onboarding ? onboardingCard(item)
+  const onboarding = item.kind === 'onboarding';
+  const body = onboarding ? onboardingCard(item)
     : item.kind === 'post' ? postCard(item)
     : item.kind === 'question' ? questionCard(item, ctx.question || {}, ctx.signal || {}, index)
       : item.kind === 'decision' ? decisionCard(item, ctx)
@@ -3490,11 +3491,11 @@ export function inboxCard(item, ctx = {}) {
   return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}</li>`;
 }
 
-export function inboxPanel({ items = [], count = null, announcement = '', workspace = false, signal = {}, context = () => ({}) } = {}) {
+export function inboxPanel({ items = [], count = null, announcement = '', workspace = false, starter = '', signal = {}, context = () => ({}) } = {}) {
   const list = inboxItemsOf(items);
   const contexts = list.map(item => context(item) || {});
   const answered = list.filter((item, at) => item.kind === 'question' && (contexts[at].question?.submitted || contexts[at].question?.answered)).length;
-  const needs = Math.max(0, Math.max(Number.isSafeInteger(count) ? count : 0, list.filter(item => (item.kind !== 'onboarding' && item.kind !== 'jobstart' && !item.closing) || item.needsYou).length) - answered);
+  const needs = Math.max(0, Math.max(Number.isSafeInteger(count) ? count : 0, list.filter(item => (item.kind !== 'onboarding' && !item.closing) || item.needsYou).length) - answered);
   const tag = needs ? `<span class="pill needed">${needs} ${needs === 1 ? 'needs' : 'need'} you</span>` : '';
   const empty = trimmed(announcement) || (workspace ? INBOX_EMPTY : '');
   const briefs = list.filter(item => item.kind === 'brief' && item.inline && item.field);
@@ -3506,7 +3507,7 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
   const body = list.length
     ? `<ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol>`
     : empty ? `<p class="inbox-announce">${esc(empty)}</p>` : '';
-  return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Inbox</h2>${tag}</div>${body}</section></aside>`;
+  return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Inbox</h2>${tag}</div>${body}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
 }
 
 const statusPill = state => `<span class="pill ${esc(String(state || 'pending').toLowerCase().split('_')[0])}">${esc(humanize(state))}</span>`;
@@ -3581,6 +3582,15 @@ export function overviewColumn({ strip = '', jobs = '', onboarding = '', onboard
 export function jobFlowStage(stage, index) {
   const s = typeof stage === 'string' ? { id: stage, label: humanize(stage), status: 'pending' } : stage || {};
   return `<div class="stage"><span class="stage-index ${s.status === 'running' ? 'active' : ''}">${String(index + 1).padStart(2, '0')}</span><div class="stage-title"><strong>${esc(s.label || s.name || humanize(s.id))}</strong>${stageApprovals(s)}${s.note ? `<small>${esc(s.note)}</small>` : ''}</div>${statusPill(s.status)}</div>`;
+}
+
+// The job's own stages and how many there are. The list is the one the planner made for this job,
+// so a research job shows its few stages and a job that makes no media has no pricing stages; the
+// count is that list's length, never a fixed ten.
+export function jobFlowPanel(project) {
+  const stages = Array.isArray(project?.stages) ? project.stages : [];
+  const count = stages.length;
+  return `<section class="panel job-flow"><div class="section-head"><h2>Job flow</h2><span class="count">${count} ${count === 1 ? 'stage' : 'stages'}</span></div>${stages.map(jobFlowStage).join('') || '<p class="muted">The stages appear when the brief is routed. Ask Claude to complete the missing brief details.</p>'}</section>`;
 }
 
 /** The job document's file entry for a project output, when it is the same revision. */
@@ -3775,7 +3785,6 @@ const GATE_COMMENT_NAMES = Object.freeze({
   campaign_activation: 'Going live',
   findings: 'Report',
 });
-const NEW_JOB_WORDS = Object.freeze({ research: 'research job', creative_analysis: 'analysis job', video_breakdown: 'video breakdown job' });
 function truncateText(value, max) {
   const text = String(value || '').trim();
   return text.length > max ? `${text.slice(0, max - 1).trim()}…` : text;
@@ -3797,7 +3806,7 @@ function requestComment(operation, args = {}) {
       return args.kit ? `Brand profile and kit saved for ${name}.` : `Brand profile saved for ${name}.`;
     }
     case 'create_job': {
-      const what = NEW_JOB_WORDS[args?.kind] || 'job';
+      const what = newJobWord(args?.kind);
       return args?.brandName
         ? `New ${what} for ${args.brandName}: "${truncateText(args?.title, 120)}".`
         : `New ${what}: "${truncateText(args?.title, 120)}".`;
@@ -3934,6 +3943,17 @@ export async function createTransport(config = {}, host = globalThis) {
     return typeof unsubscribe === 'function' ? unsubscribe : () => {};
   }
 
+  // That the person said a job's planned pipeline is not right is kept in the board's own database, one small record per job,
+  // so a reload, another device or another viewer does not offer the button again. It applies to the plan it was said about:
+  // a different pipeline or reason (Claude changed the plan) starts clean.
+  async function readPlanNote(project) {
+    const saved = recordData(await db.doc(`planNotes/${project.jobId}`).get());
+    return Boolean(saved) && saved.kind === (project.kind || null) && saved.reason === (project.kindReason || null);
+  }
+  async function markPlanNote(project) {
+    await db.doc(`planNotes/${project.jobId}`).set({ jobId: project.jobId, workspaceId, kind: project.kind || null, reason: project.kindReason || null, at: new Date().toISOString() });
+  }
+
   async function bellLog(reason, outcome, detail, requestId = null) {
     const record = {
       at: new Date().toISOString(),
@@ -4064,15 +4084,18 @@ export async function createTransport(config = {}, host = globalThis) {
     subscribeJobDocument,
     signal,
     checkSignalAvailability,
+    readPlanNote,
+    markPlanNote,
   };
 }
 
 if (typeof document !== 'undefined') {
   const config = JSON.parse(document.getElementById('board-config')?.textContent || '{}');
+  configurePipelines(config);
   const logoData = String(document.getElementById('board-logo')?.textContent || '').trim();
   const logoSrc = logoData.startsWith('data:image/') ? logoData : '';
   const app = document.getElementById('app');
-  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), jobStarts = new Map();
+  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {};
   let signalAvailability = null, signalAvailabilityPending = false;
   let connectorsView = false;
   let viewer = null;
@@ -4189,10 +4212,9 @@ if (typeof document !== 'undefined') {
   }
   function inlineJobForm() {
     inline.values ||= {};
-    if (inline.values.need) inline.values.brand = newJobBrand(inline.values, data.brands || []);
-    return newJobForm(inline, { brands: data.brands || [] });
+    return composerForm(inline, { brands: data.brands || [] });
   }
-  function newJobDraft() { return {kind:'new', values:{need:'', brand:'', title:'', brief:'', links:''}}; }
+  function newJobDraft() { return {kind:'new', values:{text:'', links:''}}; }
   function defaultInline() {
     const incomplete = (data.brands || []).find(brand => !brandReady(brand));
     if (incomplete) return onboardDraft(incomplete);
@@ -4244,11 +4266,11 @@ if (typeof document !== 'undefined') {
     const docState = jobDocStates.get(view.jobId) || (watched ? 'loading' : 'loaded');
     return { project: view, doc: docFor(view), docState, review: ui.review, intake: ui.intake };
   }
-  function inboxAside(inbox, { project = null, workspace = false } = {}) {
+  function inboxAside(inbox, { project = null, workspace = false, starter = '' } = {}) {
     inboxQuestions.clear();
     inboxDecisions.clear();
     inboxBriefs.clear();
-    return inboxPanel({ ...inbox, workspace, signal: signalInfo(), context: item => inboxContext(item, project) });
+    return inboxPanel({ ...inbox, workspace, starter, signal: signalInfo(), context: item => inboxContext(item, project) });
   }
   const answeredInPlace = item => item.kind === 'decision' && item.jobId && !inboxDecisionArgs(item).error;
   function syncInboxDocuments(jobIds = []) {
@@ -4297,6 +4319,22 @@ if (typeof document !== 'undefined') {
     if (!project) return null;
     const doc = jobDocs.get(project.jobId);
     return doc && doc.jobId === project.jobId ? doc : null;
+  }
+  // Whether the person has already said this job's plan is not right: read once per job and plan, kept for this visit.
+  const planNotes = new Map();
+  function planNoteSent(project) {
+    return planNotes.get(project.jobId)?.sent === true;
+  }
+  function ensurePlanNote(project) {
+    if (!artifactMode() || typeof transport?.readPlanNote !== 'function' || !project.kindReason) return;
+    const key = `${project.kind}|${project.kindReason}`;
+    if (planNotes.get(project.jobId)?.key === key) return;
+    planNotes.set(project.jobId, { key, sent: false });
+    transport.readPlanNote(project).then(found => {
+      if (!found) return;
+      const known = planNotes.get(project.jobId);
+      if (known?.key === key) { known.sent = true; render(); }
+    }).catch(() => { /* Without the record the button simply shows. */ });
   }
   function ensureJobDocument(project) {
     if (!artifactMode() || typeof transport?.subscribeJobDocument !== 'function') return;
@@ -4429,13 +4467,14 @@ if (typeof document !== 'undefined') {
   function details(project) {
     const metrics = project.metrics || {};
     ensureJobDocument(project);
+    ensurePlanNote(project);
     syncInboxDocuments();
     const ui = uiFor(project);
     const doc = docFor(project);
     const docState = jobDocStates.get(project.jobId) || 'loading';
     const brandLabel = project.brandName || 'Unassigned brand';
     const nextLine = project.nextAction || humanize(project.state);
-    const headOf = line => `<div class="breadcrumb"><a href="#/">Projects</a><span>/</span><span>${esc(brandLabel)}</span></div><div class="page-head"><div><div class="eyebrow">${esc(`${kindLabelOf(project)} · ${brandLabel}`)}</div><h1>${esc(project.title || 'Untitled job')}</h1>${line ? `<p>${esc(line)}</p>` : ''}</div>${pill(project.state, project.stateLabel)}</div>`;
+    const headOf = line => `<div class="breadcrumb"><a href="#/">Projects</a><span>/</span><span>${esc(brandLabel)}</span></div><div class="page-head"><div><div class="eyebrow">${esc(`${kindLabelOf(project)} · ${brandLabel}`)}</div><h1>${esc(project.title || 'Untitled job')}</h1>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}</div>${pill(project.state, project.stateLabel)}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const railParts = stepRailParts(project, doc);
@@ -4477,7 +4516,7 @@ if (typeof document !== 'undefined') {
     const omitted = project.artifactsOmitted || 0;
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
     const inbox = inboxAside(jobInbox(project, doc), { project });
-    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="layout"><div>${rail}${intakePanel}${report}${review}${sentPanel}${kitPanel}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}<section class="panel"><div class="section-head"><h2>Job flow</h2><span class="count">${project.stages?.length || 0} ${(project.stages?.length || 0) === 1 ? 'stage' : 'stages'}</span></div>${(project.stages || []).map(jobFlowStage).join('') || '<p class="muted">The stages appear when the brief is routed. Ask Claude to complete the missing brief details.</p>'}</section><section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section></div>${inbox}</div>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="layout"><div>${rail}${intakePanel}${report}${review}${sentPanel}${kitPanel}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}${jobFlowPanel(project)}<section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section></div>${inbox}</div>`;
   }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
@@ -4515,21 +4554,23 @@ if (typeof document !== 'undefined') {
     const firstRun = readyBrands().length === 0 && projects.length === 0;
     const onboarding = inlineStart();
     const newJob = Boolean(inline && inline.kind === 'new');
-    const stageTitle = newJob ? 'New Job' : firstRun || (inline && inline.kind === 'onboard') ? 'Brand Onboarding' : 'Jobs';
+    const stageTitle = newJob ? 'Jobs' : firstRun || (inline && inline.kind === 'onboard') ? 'Brand Onboarding' : 'Jobs';
     const brandButton = '<button data-action="brand">Brand onboarding</button>';
     const newButton = '<button class="primary" data-action="new">+ New job</button>';
     const tools = !firstRun ? brandButton + newButton : newJob ? brandButton : newButton;
     const head = `<div class="slate-head"><h1>${esc(stageTitle)}</h1><div class="toolbar">${tools}</div></div>`;
-    const jobs = firstRun ? '' : `<section class="jobs-section"><div class="section-head"><div><span class="eyebrow">Work in progress</span><h2>Jobs</h2></div><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${projects.map(projectCard).join('')}</div>` : '<p class="muted empty-jobs">No jobs yet. Complete brand onboarding, then describe the first campaign.</p>'}</section>`;
+    const jobs = firstRun ? '' : `<section class="jobs-section"><div class="section-head"><div><span class="eyebrow">Work in progress</span><h2>Jobs</h2></div><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${projects.map(projectCard).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
     const strip = brandStrip();
-    const inbox = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean), starts: [...jobStarts.values()] });
+    const inbox = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean) });
     if (firstRun) {
       syncInboxDocuments();
       if (!inbox.items.length) return `${head}${onboarding}${strip}`;
       return `${head}<div class="layout"><div>${onboarding}${strip}</div>${inboxAside(inbox, { workspace: true })}</div>`;
     }
     syncInboxDocuments(inbox.items.filter(answeredInPlace).map(item => item.jobId));
-    return `${head}<div class="layout"><div>${overviewColumn({ strip, jobs, onboarding, onboardFirst: inline?.kind === 'onboard' })}</div>${inboxAside(inbox, { workspace: true })}</div>`;
+    // With no form open, the Inbox holds the starter, the same composer the home page shows when a job is being started.
+    const starter = inline ? '' : composerForm({ values: starterValues }, { brands: data.brands || [], variant: 'inbox' });
+    return `${head}<div class="layout"><div>${overviewColumn({ strip, jobs, onboarding, onboardFirst: inline?.kind === 'onboard' })}</div>${inboxAside(inbox, { workspace: true, starter })}</div>`;
   }
   function metricDetails(metrics) {
     const tokens=metrics.tokens || {};
@@ -4587,8 +4628,14 @@ if (typeof document !== 'undefined') {
     const at = nextPendingExpiry(data.brands, Date.now());
     if (at !== null) researchWake = setTimeout(() => { researchWake = null; render(); }, Math.max(50, at - Date.now() + 50));
   }
+  // What was typed in the Inbox starter survives a redraw; it is cleared once it is sent.
+  function captureStarter() {
+    const form = app.querySelector('#starter-form');
+    if (form) starterValues = Object.fromEntries(new FormData(form));
+  }
   function render() {
     const project = current();
+    captureStarter();
     const jobFocus = captureJobFocus();
     const jumped = Object.values(JUMP_TARGETS).find(selector => document.activeElement?.matches?.(`${selector}[tabindex="-1"]`)) || null;
     const stripScroll = [...app.querySelectorAll('.sb-strip')].map(strip => strip.scrollLeft);
@@ -4662,27 +4709,6 @@ if (typeof document !== 'undefined') {
     render();
     focusQuietly(`[data-inbox-type="${CSS.escape(String(questionId))}"]`);
   }
-  function startJobFromQuestion(need, item) {
-    const ready = readyBrands();
-    const drafting = inline?.kind === 'onboard' && inline.brand ? (data.brands || []).find(brand => brand.slug === inline.brand) : null;
-    const onboardingBusy = inline?.kind === 'onboard' && brandResearchPhase(drafting, inline) === 'running';
-    const plan = jobStartPlan(need, item, ready, { onboardingBusy });
-    if (!plan.open) {
-      if (inline?.kind === 'onboard') { render(); jumpTo(ONBOARDING_SECTION); }
-      else openInline(onboardDraft((data.brands || []).find(brand => !brandReady(brand)) || null));
-      return;
-    }
-    jobStarts.set(need, { need, brand: plan.brand });
-    openNewJob({ need, brand: plan.brand });
-  }
-  function openNewJob({ need = '', brand = '' } = {}) {
-    captureInlineValues();
-    const draft = inline?.kind === 'new' ? inline : inlineDrafts.get('new') || newJobDraft();
-    applyJobStart(draft, { need, brand });
-    openInline(draft);
-    jumpTo('section.new-job');
-    app.querySelector('#new-title')?.focus({ preventScroll: true });
-  }
   async function answerQuestion(questionId, { choice = null, text = null } = {}) {
     const item = inboxQuestions.get(String(questionId));
     if (!item || !transport) return;
@@ -4697,10 +4723,7 @@ if (typeof document !== 'undefined') {
       return;
     }
     Object.assign(state, { requestId, busy: true, error: '', declined: false, choice: args.text ? null : choice, text: args.text || '', operation: 'answer_question', args });
-    const asked = args.text ? null : jobNeedOfAnswer(item, choice);
-    if (asked) startJobFromQuestion(asked, item);
-    else render();
-    const keepFocus = () => { if (asked && inline?.kind === 'new' && document.activeElement === document.body) app.querySelector('#new-title')?.focus({ preventScroll: true }); };
+    render();
     try {
       const result = await transport.call('answer_question', args);
       if (result?.status === 'requested') {
@@ -4717,7 +4740,6 @@ if (typeof document !== 'undefined') {
       Object.assign(state, { busy: false, requestId: null, error: e.message });
       render();
     }
-    keepFocus();
   }
   async function approveFromInbox(jobId) {
     const item = inboxDecisions.get(jobId);
@@ -4895,13 +4917,6 @@ if (typeof document !== 'undefined') {
       return { error: 'Use a PNG, JPG or WebP file.' };
     }
   }
-  async function handleNewJobPhotoFile(file) {
-    if (!file) return;
-    captureInlineValues();
-    inline.photo = await preparePhotoFile(file);
-    captureInlineValues();
-    render();
-  }
   // The Finish the brief photo field attaches the moment a valid file is
   // picked (there is nothing else to review first, unlike the other intake
   // answers), so Replace just sends a fresh attach with the new file.
@@ -4960,13 +4975,6 @@ if (typeof document !== 'undefined') {
     if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
     if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
     if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
-    if(target.dataset.photoAction==='remove-photo'){
-      captureInlineValues();
-      inline.photo = null;
-      captureInlineValues();
-      render();
-      return;
-    }
     if(target.dataset.kitAction){
       captureInlineValues();
       captureInlineValues();
@@ -4997,10 +5005,6 @@ if (typeof document !== 'undefined') {
         inline.kitFocus = kitFocusSelector('remove-logo');
       }
       render();
-      return;
-    }
-    if(target.dataset.jobStart){
-      openNewJob({need:target.dataset.jobStart,brand:target.dataset.jobBrand || ''});
       return;
     }
     if(target.dataset.onboard){
@@ -5051,6 +5055,7 @@ if (typeof document !== 'undefined') {
       case'connectors':connectorsView=true;render();break;
       case'connectors-close':connectorsView=false;render();break;
       case'signal':try{const result=await transport?.signal?.('Notify Claude');notify(result?.message || 'The board could not notify Claude.');render();}catch(e){notify(e.message);}break;
+      case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'Claude has been told. Watch the Inbox for its question.':(result?.message || 'The board could not notify Claude.'));render();}catch(e){notify(e.message);}break;}
       case'remind':await remindRequest(target.dataset.requestId);break;
       case'source':
         { const p=current(); const jobLabel=p?.title || 'this job'; const brandLabel=p?.brandName || 'the selected brand'; try { const result=await transport?.signal?.(`Please select the local source files for ${jobLabel} for ${brandLabel} in Claude. The board does not accept local paths.`); notify(result?.message || 'Ask Claude in chat to select the local source files for this job.'); render(); } catch(e) { notify(e.message); } }
@@ -5268,14 +5273,13 @@ if (typeof document !== 'undefined') {
       if (Object.keys(kitErrors).length) { active.values = values; active.kitErrors = kitErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
       active.kitErrors = null;
     } else {
-      const checked = newJobArgs(values, { brands: data.brands || [], requestId: 'pending', photo: photoPayload(active.photo) });
+      const checked = newJobArgs(values, { brands: data.brands || [], requestId: 'pending' });
       if (checked.errors) {
         active.values = values; active.fieldErrors = checked.errors; active.error = ''; render();
         app.querySelector('#inline-form [aria-invalid="true"]')?.focus();
         return;
       }
       active.fieldErrors = null;
-      if (values.need === 'post' && active.photo?.error) { active.values = values; active.error = 'Fix the product photo before saving.'; render(); return; }
     }
     const requestId = active.requestId ||= randomId(globalThis);
     const operation = active.kind === 'onboard' ? 'onboard_brand' : 'create_job';
@@ -5284,13 +5288,12 @@ if (typeof document !== 'undefined') {
       : {};
     const args = active.kind === 'onboard'
       ? {requestId, name:String(values.name).trim(), ...(active.brand ? {brand:active.brand} : {}), profile:buildProfile(values, active.prefilled, active.unlocked), ...kitArgs}
-      : newJobArgs(values, { brands: data.brands || [], requestId, photo: photoPayload(active.photo) }).args;
+      : newJobArgs(values, { brands: data.brands || [], requestId }).args;
     active.operation = operation; active.args = args;
-    active.values = values; active.pendingName = values.name; active.pendingTitle = values.title; active.busy = true; active.error = ''; active.declined = false; render();
+    active.values = values; active.pendingName = values.name; active.busy = true; active.error = ''; active.declined = false; render();
     try {
       const result = await transport.call(operation, args);
       active.busy = false;
-      if (operation === 'create_job') jobStarts.delete(active.values?.need);
       if (result?.status && result.status !== 'applied' && !result.brand && !result.jobId) {
         active.submitted = result.status === 'requested';
         active.signal = result.signal || null;
@@ -5918,13 +5921,13 @@ if (typeof document !== 'undefined') {
   });
   function captureJobFocus() {
     const element = document.activeElement;
-    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit') : null;
+    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit,#starter-form') : null;
     if (!scope) return null;
     const box = element.type === 'checkbox' || element.type === 'radio';
     let start = null;
     let end = null;
     try { start = typeof element.selectionStart === 'number' ? element.selectionStart : null; end = typeof element.selectionEnd === 'number' ? element.selectionEnd : null; } catch { start = end = null; }
-    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name]';
+    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name], #starter-form [name]';
     return { within, name: element.name, value: box ? element.value : null, start, end };
   }
   function restoreJobFocus(focus) {
@@ -5959,14 +5962,7 @@ if (typeof document !== 'undefined') {
   app.addEventListener('change', event => {
     const field = event.target;
     const name = field.name || '';
-    if (name === 'need' && inline?.kind === 'new') {
-      captureInlineValues();
-      inline.fieldErrors = null;
-      setTimeout(render, 0);
-      return;
-    }
     if (name === 'kit_logo_file') { void handleLogoFile(field.files?.[0] || null); return; }
-    if (name === 'new-photo-file') { void handleNewJobPhotoFile(field.files?.[0] || null); return; }
     const colorIndex = /^kit_color_(swatch|hex|role)_(\d+)$/.exec(name);
     if (colorIndex) {
       captureInlineValues();
@@ -5999,6 +5995,9 @@ if (typeof document !== 'undefined') {
   });
   app.addEventListener('submit', async event=>{
     if (event.target.id === 'inline-form') { void submitInline(event); return; }
+    // The Inbox starter hands what was typed to the same composer the home page shows: it becomes the open draft, sends from
+    // there, and shows its progress or any problem in that card.
+    if (event.target.id === 'starter-form') { starterValues = {}; inline = newJobDraft(); void submitInline(event); return; }
     if (event.target.id === 'intake-form') { event.preventDefault(); void submitIntake(event.target); return; }
     if (event.target.dataset?.inboxForm !== undefined) {
       event.preventDefault();

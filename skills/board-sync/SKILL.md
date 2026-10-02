@@ -106,12 +106,26 @@ After applying `onboard_brand`, publish the workspace projection, then start the
 An `onboard_brand` request that carries `kit` is the Save and continue submission: apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection so the board moves to New job.
 If something about the submitted profile is worth flagging, for example a mismatched region between two channels, say so in chat in one plain sentence once research starts; do not block on it.
 Existing drafts use the safe profile projection to prefill the same inline form.
-New jobs require a completed brand profile, except a `research`, `creative_analysis`, or `video_breakdown` job, which may carry `brand: "no-brand"` or a brand that already exists in the workspace.
+New jobs require a completed brand profile, except for a pipeline whose required inputs in `pipelines_list` do not list a brand (today `research`, `creative_analysis` and `video_breakdown`), which may carry `brand: "no-brand"` or a brand that already exists in the workspace.
 
-A `create_job` request carries the brand, title and brief, and may also carry `kind` and `sourceRefs` when the board's chooser already picked research, an analysis, or a breakdown.
-Before landing it, read the brief and the brand's saved profile and put every field they state or clearly imply into `args.job`, so the job routes the moment it is created.
-Land the request with `args` unchanged except for that added `job` object, then apply it with `pipeline_board_request_apply`.
-Do not publish the board between landing and applying: the board must never show a question the brief already answers.
+A `create_job` request from the board's "What do you want to get done?" box carries the person's own words as `brief`, a `title` made from the first line of them, and `brand` with `brandName` and `sourceRefs` only when the person chose a brand or gave links.
+It carries no `kind`: the person never picks a job type, so you diagnose it.
+
+Before landing a kind-less `create_job`:
+
+1. Read `brief`, the links and the chosen brand's saved profile against `pipelines_list`, and pick the one pipeline that fits, as new-job's Pick the pipeline from the person's words describes.
+   When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and land nothing until it is answered.
+2. Put the pipeline's `kind` and, in `kindReason`, one short plain sentence of why into `args.job`, with every other field the words, the links and the brand profile state or clearly imply, so the job routes the moment it is created.
+3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in the Inbox and in chat together, with the ready brands as options.
+   Land the request with `args.brand` set to the brand's slug and `args.brandName` to its name, from the person's answer or the one ready brand, and nothing else.
+   A pipeline that lists no brand needs none: land without one.
+   A landing that fails with the brand line ("A post or campaign needs a brand") means this step was skipped: ask the brand question, then land again.
+4. Land the request with `args` otherwise unchanged except for that added `job` object, then apply it with `pipeline_board_request_apply`.
+   Do not publish the board between landing and applying: the board must never show a question the brief already answers.
+
+An older request that does carry a `kind` is landed the same way, with `kindReason` added.
+For a `publish_post` request, the box takes no files: after the apply, ask for the files in chat if the person has not given them, and add them with `pipeline_post_files_add`, as new-job describes.
+A request never carries a file path from the person's computer.
 
 If the applied job's route blocks with "a photo of the product" among its blockers and the brief gave no photo, do not publish or ask for one yet.
 Look for the product's own page on the brand's official website, with web search restricted to that domain, then call web_product_photo_find with the brand, the job ID, and that page address.
@@ -122,8 +136,11 @@ Never mention rules, tools, files, or where the picture came from to the person.
 Use these exact `job` field names and values:
 
 - `request`: the brief, in the person's words.
-- `kind`: `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `research`, `creative_analysis` or `video_breakdown`.
+- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis` or `video_breakdown`.
+- `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms; the board shows it under the job's title.
 - `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+  Never use it for the files of a `publish_post`: those go in `files`, as new-job describes.
+- `caption` and `aiMade`: for `publish_post` only, exactly as new-job's "The job for `publish_post`" describes; the caption word for word, `aiMade` a yes or a no.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
 - `platforms`: a list of `facebook`, `instagram` and `tiktok`.
@@ -132,7 +149,7 @@ Use these exact `job` field names and values:
 - `budget` and `landingPageUrl`, only when the brief states them for paid work: `{currency, maxTotalAmount}` and an https URL.
 - `schedule`: `{publishAt, timezone}`, only when the brief states a time.
 
-The product or subject stays in `request`; a product photo goes in as an https link in `productAsset`, or, from the New job form's own optional photo field, as `args.photo` on the same request, handled the same transit way as the brand kit's logo, above.
+The product or subject stays in `request`; a product photo goes in as an https link in `productAsset` when the words give one; the box takes no photo, and a photo file arrives later on the board's own Finish the brief photo field.
 For `research`, `creative_analysis` or `video_breakdown`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
 Leave out anything the brief and profile do not say; references and supporting material are never required.
 
@@ -149,6 +166,16 @@ For an `attach_product_photo` request, the person added a photo on the board's o
 Land it with the saved local path in `photo.path`, then apply it immediately with `pipeline_board_request_apply`; the click is the approval, same as `update_intake`.
 If the apply refuses because the job changed or the file is not a usable image, nothing was written: decline the request with `pipeline_board_request_decline` and the refusal as the reason, then publish.
 After a successful apply, publish, then continue the job as for `continue_job`.
+
+A comment that says the job is not the kind the person meant, for example 'This is not the kind of job I meant for "Serum Reel". Please ask me what I want.', comes from the "Not right? Tell Claude" button under a job's title.
+The comment names the job and carries its id in brackets: find the job by that id.
+Hold that job: do no further work on it (no research, drafting, making, checking or posting) until the person decides, and answer any decision it is waiting on only if the person asks.
+Ask what they want in the Inbox and in chat together, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
+When the answer is a pipeline and the job has not been planned yet, call `pipeline_intake_update` with a patch of `kind` and a new `kindReason`, then let the job carry on.
+When it has been planned, its pipeline cannot change: only after the person has chosen another pipeline, create a new job from the same words with it, as new-job describes, and say in one plain line that the first job stays on the board as it was and is not being worked on.
+Never start a second job without that answer, and never cancel or edit the first.
+When the person says the plan was right after all, let the job carry on.
+When the answer is a new description of what they want, treat it as the words of a new request.
 
 For a `continue_job` request, apply it once and pass its returned snapshot to `new-job` to resume the existing job.
 Never create a replacement job to answer missing intake fields.
@@ -207,8 +234,9 @@ A chat answer is recorded with `pipeline_board_answer`, passing `choice` when th
 An already answered question returns its saved answer instead of an error, from either tool; act on that saved answer rather than asking again.
 When the question is no longer needed, for example the person answered some other way or the job moved on, call `pipeline_board_withdraw` with its `questionId`.
 Fixed approvals and intake fields keep their existing flow, since the Inbox already shows them without a separate question.
-Never use a question to collect the details of a job the person wants made, such as the product, who it is for, where it will run or the format: the board's New job form asks for those, so point the person to the form as social-campaign's What does the person need describes.
-Free-text questions stay for genuinely open questions in the middle of a job, and for the "What do you need?" choice itself.
+Never use a question to collect the details of a job the person wants made, such as the product, who it is for, where it will run or the format: their own words, the links and the brand profile already carry what they said, and the board's Finish the brief form asks for the rest once the job exists.
+The questions this skill and new-job describe for diagnosing a job stay: which pipeline fits when two do, and which brand when the pipeline needs one.
+Free-text questions stay for genuinely open questions in the middle of a job.
 
 ## Housekeeping
 

@@ -311,14 +311,23 @@ function plannedStages() {
     if (!header) return null;
     const at = header.split('|').map(c => c.trim()).indexOf('State after');
     if (at < 0) return null;
+    const names = header.split('|').map(c => c.trim());
     const seen = [];
+    const rows = [];
+    let past = false;
     for (const line of plan.split(/\r?\n/)) {
       if (!line.trim().startsWith('|')) continue;
       const cells = line.split('|').map(c => c.trim());
+      if (line === header) { past = true; continue; }
+      if (!past) continue;
       const said = (cells[at] || '').replace(/`/g, '');
       if (states.exists(said)) seen.push(said);
+      const row = {};
+      names.forEach((name, i) => { if (name) row[name] = cells[i] || ''; });
+      rows.push(row);
     }
-    return stages.walkedStages(seen, routeRecord.workflowId);
+    // The same plan rows and route the board reads, so this progress list agrees with the job page.
+    return stages.walkedStages(seen, routeRecord.workflowId, { rows, route: routeRecord });
   } catch { return null; }
 }
 

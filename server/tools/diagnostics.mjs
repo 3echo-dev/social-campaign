@@ -424,7 +424,18 @@ function boardCheck(root, pipelineWorkspace) {
       fix: 'Ask Claude to publish and bind the board.',
     };
   }
-  const currentHtml = buildBoard({ config: { workspaceId, mode: 'artifact' } });
+  // The board page is built with the pipeline catalogue; one that does not line up with the registries fails the build.
+  let currentHtml;
+  try {
+    currentHtml = buildBoard({ config: { workspaceId, mode: 'artifact' } });
+  } catch (error) {
+    return {
+      ...base,
+      status: 'fail',
+      detail: `The board page cannot be built: ${error.message || error}`,
+      fix: 'Update Social Campaign, or report this to the plugin maintainers.',
+    };
+  }
   const currentSourceHash = createHash('sha256').update(currentHtml, 'utf8').digest('hex');
   const stale = Boolean(binding.sourceHash) && binding.sourceHash !== currentSourceHash;
   return {

@@ -1,8 +1,8 @@
 ---
 name: new-job
 description: >
-  Creates and resumes a local Social Campaign job for an onboarded brand.
-  Use when the user starts a new job, describes a campaign brief, or chooses a ready brand from the board.
+  Creates and resumes a local Social Campaign job from the person's own words, after picking the pipeline that fits them.
+  Use when the user starts a new job, describes what they want done, or sends the board's "What do you want to get done?" box.
 user-invocable: false
 metadata:
   version: 0.3.3
@@ -10,7 +10,7 @@ metadata:
 
 # New Job
 
-A job begins with a ready brand, a written brief, and a stable request ID.
+A job begins with the person's own words, the pipeline you picked from them, a ready brand when that pipeline needs one, and a stable request ID.
 
 The local job record is the authority for route, plan, stages, artifacts, decisions, and metrics.
 
@@ -32,22 +32,48 @@ Call pipeline_status only when no current workspace and brand snapshot is availa
 
 If there is no local workspace, return to the social-campaign setup flow.
 
-For a `research`, `creative_analysis`, or `video_breakdown` job, this brand gate does not apply: use a brand only when the person names one that already exists in the workspace, otherwise use `brand: "no-brand"`, and go straight to Capture the brief.
+For a pipeline that `pipelines_list` says needs no brand (`Needs a brand: no`), this brand gate does not apply: use a brand only when the person names one that already exists in the workspace, otherwise use `brand: "no-brand"`, and go straight to Capture the brief.
+Today those are `research`, `creative_analysis` and `video_breakdown`; read the list rather than this sentence.
 
-For every other kind, choose a brand whose onboardingStatus is complete.
+For every other pipeline, choose a brand whose onboardingStatus is complete.
+When exactly one brand is ready and the person chose none, use it without asking.
 
 If no such brand exists and the artifact board is ready, direct the user to its inline Brand onboarding form and wait for the resulting `onboard_brand` request.
 Use the onboard-brand adapter to route that request, or use `pipeline_brand_onboard` only when the user explicitly chooses chat intake or supplies the complete profile in chat.
 
 If the selected brand has onboardingStatus required, return to that same inline form and wait for its complete submission.
 
-Do not create a job before the brand gate is complete for a kind that needs one.
+Do not create a job before the brand gate is complete for a pipeline that needs one.
+
+## Pick the pipeline from the person's words
+
+The person describes what they want done in their own words, on the board or in chat.
+They never choose a job type: you read their words and choose the pipeline.
+
+Call `pipelines_list` once per session with `format` set to `markdown`, which has all the diagnosis needs, and reuse the answer; ask for one pipeline by its id when you need its stages.
+Match the words to each pipeline's description and its Examples, and rule out any whose Not for list fits them.
+The `kind` in the pipeline's heading is the kind you pass as `job.kind` below, and its Needs list and `Needs a brand` line say what must be known before the job can route.
+
+When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
+Board-sync's Questions in the Inbox describes how to ask it.
+
+Save one short sentence of why in `kindReason`, in plain words and in the person's terms, for example "You asked for one Instagram Reel."
+The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>", and the person can say it is wrong from there.
+
+### When to pick `publish_post`
+
+Pick `publish_post` ("Post something I already have") when the person already has the finished picture, set of pictures or video and only wants it posted as it is, for example "post this video on our Instagram tomorrow at 9" or "put these three pictures on Facebook with my caption".
+It needs a brand, the files, and the platforms (the platforms can come from the brand's own channels when they say none).
+Do not pick it when the person wants anything made, cut, resized, subtitled or reworded: a finished file that needs editing is `content_repurpose`, and a new picture or video is `organic_post` or `ugc_creative`.
+When the person gives a file but you cannot tell whether they want it posted as it is or reworked, ask one plain question: "Should I post it exactly as it is?"
+For `publish_post` never ask about the objective, the audience, the distribution, a product photo or what the post is about.
+None of them applies: nothing is researched, planned or made, and no credits are spent.
 
 ## 2. Capture the brief
 
 Collect the title and the user's brief.
 
-When the person asked for a job and has not written the brief yet, point them to the board's New job form (the "+ New job" button) and wait for its `create_job` request; never ask for the brief as a question in the Inbox.
+When the person asked for a job and has not said what they want yet, point them to the board's "What do you want to get done?" box and wait for its `create_job` request, or let them say it in chat; never ask for the brief as a question in the Inbox.
 
 Preserve the user's wording in the brief.
 
@@ -74,7 +100,7 @@ A retry with the same request ID must use the same brand and title.
 
 ### Extract the brief before creating the job
 
-Before calling pipeline_job_create, wherever the brief came from, the board's New job form or chat, read the brief and the brand's saved profile and extract every field they state or clearly imply.
+Before calling pipeline_job_create, wherever the brief came from, the board's box or chat, and after the pipeline is picked, read the brief and the brand's saved profile and extract every field they state or clearly imply.
 
 This step runs on its own, with no confirmation question first: do not ask the user whether to go ahead, just fill in what the brief and the brand profile already answer.
 
@@ -100,7 +126,8 @@ Fix quietly whatever can be fixed without changing what they meant; otherwise as
 Put everything extracted into the typed `job` object of the single pipeline_job_create call, with these exact field names and values:
 
 - `request`: the brief, in the person's words; the product or subject stays here.
-- `kind`: `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `research`, `creative_analysis` or `video_breakdown`.
+- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis` or `video_breakdown`.
+- `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms, with no tool, file or code names.
 - `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
@@ -114,19 +141,60 @@ Put everything extracted into the typed `job` object of the single pipeline_job_
 
 For `research`, `creative_analysis` or `video_breakdown`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
 
-A person can also attach a product photo file directly, on the New job form or, once the job exists and the router blocks on one, on the board's own Finish the brief photo field.
-Both arrive as a local file path already saved to disk (never bytes typed or pasted here): pass it as `photo` on `pipeline_job_create` for a new job, or call `pipeline_product_photo_attach` for an existing one.
+A person can also attach a product photo file directly, once the job exists and the router blocks on one, on the board's own Finish the brief photo field.
+It arrives as a local file path already saved to disk (never bytes typed or pasted here): call `pipeline_product_photo_attach` for the existing job, or pass the path as `photo` on `pipeline_job_create` when the picture came in chat.
 Either way the photo lands under that brand's own inputs and is recorded on the job as `productAsset`; never ask the person for a link when they can just add the picture.
 
 When the picture is of a character, ask once, in plain words, whether the character is theirs, for example "Is Mina your own mascot, or a person you have the rights to use?"
-Ask before the create call when you are passing the picture as `photo`, and after it when the picture arrived from the board.
+Ask before the create call when you are passing the picture as `photo`, and after it when the picture arrived on the board's Finish the brief photo field.
 If they say yes, attach it with `ownedByBrand` true, as `photo.ownedByBrand` on `pipeline_job_create` or as `ownedByBrand` on `pipeline_product_photo_attach` using the saved file in the job's inputs.
 If they say no or are not sure, leave it out: the picture is then treated as someone else's, and the post carries a disclosure.
 Never ask this for a product photo.
 
 Leave out anything the brief and the profile do not say.
 
+### The job for `publish_post`
+
+For `publish_post`, put only these in the typed `job` object, and leave out `objective`, `distribution`, `audience`, `deliverables` (unless the person named a post type), `subject`, `productAsset` and `sourceRefs`.
+The person's files never go in `sourceRefs`: they go in `files`, below.
+The fields are:
+
+- `request`: what they asked, in their words.
+- `kind`: `publish_post`.
+- `kindReason`: why, as above.
+- `platforms`: the platforms they named, from `facebook`, `instagram` and `tiktok`.
+  Leave it out when they named none: the plugin uses the brand's channels that can take the files.
+- `caption`: the caption they wrote, exactly as they wrote it, with every line break, emoji and hashtag kept.
+  Never shorten, fix, reword or add to it.
+  Leave `caption` out when they gave none: Claude then writes one from the brand voice and what the files show, and the person can change it at the final approval.
+- `schedule`: `{publishAt, timezone}`, only when they state a time.
+- `deliverables`: only when they named a post type for a platform, one object per platform, `{id: "D1", platform, count: 1, placement}` with `placement` the post type they said (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`).
+  The plugin fills in everything else, including the format and the shape, from the files.
+  When they name no post type, leave `deliverables` out and never guess one: the plugin chooses from the shape of the files, and asks only if what they named does not fit the file.
+
+Then call `pipeline_job_create` with these extra arguments:
+
+- `files`: the absolute paths of the pictures or video on their computer, in the order they should appear.
+  A post takes one video, or up to 35 pictures, never both.
+  Give a path they gave you or one you can see; never invent one, and never ask them to paste the file's contents.
+- `aiMade`: `true` or `false` once you know whether the files were made with AI.
+  Ask once, in plain words and in the same batch as any other question, "Were these made with AI?", unless they already said.
+  When they do not answer, leave `aiMade` out: it counts as no.
+  A yes puts the platform's AI label on the post.
+
+When the files arrive after the job exists (the answer said the files were missing, or the job came from the board's box, which takes no files), call `pipeline_post_files_add` with `brand`, `jobId` and `files`, and `aiMade` if it is new.
+`replace: true` swaps the files already on the post for the new ones.
+Both only work while the job is still being set up; once it is planned the files cannot change, and a different file means a new post.
+To change the caption, the platforms, a post type, the time or the AI answer before the plan is made, use `pipeline_intake_update` with `caption`, `platforms`, `deliverables`, `schedule` or `aiMade`.
+
+After the create call for `publish_post`, read the answer's `route`.
+When it is ROUTED, say in one plain line what will be posted and where, then carry on as for any job: the person approves the final post, then the posting plan.
+When it is NEEDS_CLARIFICATION, ask only for what `route.missingFields` says, one plain question per item, in the board's Inbox and in chat together.
+The usual ones are the files, the platforms when the brand lists none, and a post type that does not fit the file, for example a Reel that is not 9:16: offer the post types that do fit, and never change the file.
+Keep the caption word for word through every step.
+
 For a board `create_job` request, the same object goes into the request's `args.job` before it lands, as `board-sync` describes, and the apply passes it to the same create.
+The board's box sends no kind, so the `kind` and `kindReason` you picked above are what make the request routable.
 
 ### Create it
 

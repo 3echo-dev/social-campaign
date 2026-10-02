@@ -38,6 +38,8 @@ import { questionTools } from './questions.mjs';
 import { mediaHostTools } from './media-host.mjs';
 import { publishingConnectTools } from './publishing-connect.mjs';
 import { publishTools } from './publish.mjs';
+import { catalogueTools } from './catalogue.mjs';
+import { agentTools } from './agents.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -69,6 +71,8 @@ export const ALL_TOOL_MODULES = [
   mediaHostTools,
   publishingConnectTools,
   publishTools,
+  catalogueTools,
+  agentTools,
 ];
 
 /**

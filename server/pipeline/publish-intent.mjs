@@ -47,21 +47,20 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { imageInfo } from '../brand-kit/image-info.mjs';
 import { readJsonFile, updateJsonFile, writeJsonFile } from '../lib/json.mjs';
 import { sniffMagic } from '../media/mime.mjs';
+import { probeMedia } from './media-probe.mjs';
 import { THREE_ECHO, jobFromDir, legalChain, readLanded, readRecords } from './facts.mjs';
 import { HOSTED_MEDIA_FILE, PUBLISH_INTENT_FILE, hasPublishApproval, hostedAssetFor } from './media-host.mjs';
 import { hasSendRecords } from './publish-attempts.mjs';
 import { brandPublishingInfo, metricoolConnected, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
-import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
+import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
 import * as runtime from './runtime.mjs';
 import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-workspace.mjs';
 
-export { PUBLISH_INTENT_FILE, PUBLISH_ROUTES };
+export { PUBLISH_INTENT_FILE, PUBLISH_ROUTES, probeMedia };
 export const MEDIA_FACTS_FILE = 'publish/media-facts.json';
 export const SEND_LOG_FILE = 'publish/metricool.jsonl';
 
@@ -82,8 +81,6 @@ const ISO_OFFSET = /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(
 const LOCAL_ISO = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?$/;
 const PAID_WORDS = /paid partnership|branded content|sponsored|\badvertisement\b/i;
 const PAID_FLAGS = new Set(['paid_spend', 'paid_partnership', 'branded_content', 'sponsored']);
-const PROBE_TIMEOUT_MS = 30000;
-const HEAD_BYTES = 1024 * 1024;
 const NOT_APPROVED = 'The final post has not been approved yet. Approve it first.';
 const CHANGED_AFTER_APPROVAL = 'This post changed after you approved it; approve the final post again.';
 
@@ -189,41 +186,6 @@ function sha256Of(fd, size) {
     position += read;
   }
   return hash.digest('hex');
-}
-
-function ffprobe(file) {
-  const run = spawnSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
-  if (run.error || run.status !== 0) return null;
-  try { return JSON.parse(run.stdout); } catch { return null; }
-}
-
-/** `{ width, height, durationSeconds }` as the file shows on screen (a turned phone video swaps them), or null. */
-export function probeMedia(file, kind) {
-  let width = null;
-  let height = null;
-  let duration = null;
-  if (kind === 'image') {
-    let head = null;
-    try {
-      const fd = openSync(file, 'r');
-      try {
-        const buffer = Buffer.alloc(HEAD_BYTES);
-        head = buffer.subarray(0, readSync(fd, buffer, 0, HEAD_BYTES, 0));
-      } finally { closeSync(fd); }
-    } catch { head = null; }
-    const info = head ? imageInfo(head) : null;
-    if (info && info.width > 0 && info.height > 0) return { width: info.width, height: info.height, durationSeconds: null };
-  }
-  const raw = ffprobe(file);
-  const video = Array.isArray(raw?.streams) ? raw.streams.find(stream => stream.codec_type === 'video') : null;
-  if (!video) return null;
-  width = Number(video.width);
-  height = Number(video.height);
-  if (!(width > 0) || !(height > 0)) return null;
-  const rotation = Number(video.tags?.rotate ?? (Array.isArray(video.side_data_list) ? video.side_data_list.find(item => item?.rotation !== undefined)?.rotation : 0)) || 0;
-  if (Math.abs(rotation) % 180 === 90) [width, height] = [height, width];
-  duration = kind === 'video' ? Number(raw.format?.duration ?? video.duration) : null;
-  return { width, height, durationSeconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration * 1000) / 1000 : null };
 }
 
 const sizeFact = value => (Number.isFinite(value) && value > 0 ? value : null);
@@ -429,7 +391,8 @@ function composePost({ jobDir, realJob, job, deliverable, route, zones, flags, a
 
   const made = manifestFiles(jobDir, D);
   const aiMade = media.some(item => ai.shas.has(item.sha256) || ai.paths.has(item.path) || made.has(item.path));
-  const aiGenerated = flags.has('synthetic_person') || aiMade;
+  // A job whose person said the files they supplied were made with AI (job.aiMade) labels them like media made here.
+  const aiGenerated = flags.has('synthetic_person') || aiMade || job.aiMade === true || (Array.isArray(job.suppliedMedia) && job.suppliedMedia.some(file => file?.aiMade === true && media.some(item => item.sha256 === file.sha256)));
   const paid = ['paid', 'both'].includes(job.distribution) || [...flags].some(flag => PAID_FLAGS.has(flag)) || PAID_WORDS.test(String(sections.Disclosure || ''));
   // The time chosen on the posting card wins, then the time in the post's own Publish plan (as in the hand-off), then the job's schedule.
   const planned = planTime(sections);
@@ -592,6 +555,45 @@ export function evaluatePublishPlan({ root, brand, jobId, now = Date.now(), prob
   const failing = Object.values(checks.posts).flat().find(item => !item.ok);
   const reason = ready ? null : failing ? failing.text : changed ? 'The posting plan changed after it was shown, so it has to be shown again.' : 'There is nothing to post yet.';
   return { ready, changed, reason, checks, intent: fresh.intent, zone: fresh.zone };
+}
+
+/** The most pictures one Instagram post can hold. */
+const INSTAGRAM_PICTURES = 10;
+
+/**
+ * The checks on the posts of a publish_post job, run before its final approval and again when it is approved: the
+ * posting plan's own checks for the route "I'll post it myself" on a plan composed now (so every Metricool-only check
+ * is left out), without the two that say the final post is not approved yet, because this is what the approval is for.
+ * A supplied post also has to list exactly the files the person gave, as they were when they were copied (their
+ * sha256 at placement), so the approval can never cover a file that was swapped or left out. Never writes the plan.
+ *
+ * `measure` is 'approval' (the default: every file is measured again) or 'display' (the card: a remembered
+ * measurement is reused while the file is unchanged). Returns `{ ready, posts: { "D1-instagram": [{ ok, text }] }, labels: { "D1-instagram": "Instagram Reel" } }`.
+ */
+export function suppliedChecks({ root, brand, jobId, measure = 'approval', probe }) {
+  const fresh = compose({ root, brand, jobId, useCache: measure === 'display', ...(probe ? { probe } : {}) });
+  const approvalOnly = new Set([NOT_APPROVED, CHANGED_AFTER_APPROVAL]);
+  const posts = fresh.intent.posts.map(post => ({ ...post, problems: post.problems.filter(problem => !approvalOnly.has(problem)) }));
+  const checked = preflightIntent({ ...fresh.intent, route: 'self', posts }, { route: 'self', studioWorkspace: null });
+  const placed = new Map((Array.isArray(fresh.job.suppliedMedia) ? fresh.job.suppliedMedia : []).filter(item => plain(item) && typeof item.path === 'string').map(item => [item.path, item.sha256]));
+  const results = {};
+  for (const post of posts) {
+    const extra = [];
+    const listed = new Set(post.media.map(item => item.path));
+    if (post.media.some(item => !placed.has(item.path))) extra.push({ ok: false, text: 'A file in this post is not one you gave Claude.' });
+    else if (post.media.some(item => placed.get(item.path) !== item.sha256)) extra.push({ ok: false, text: 'A picture or video changed after Claude copied it, so it is no longer the file you gave.' });
+    if ([...placed.keys()].some(path => !listed.has(path))) extra.push({ ok: false, text: 'A file you gave Claude is missing from this post.' });
+    // The hand-off refuses a post with no caption (platform-check.js), so an empty one is stopped here, before it is approved.
+    if (!post.text.trim()) extra.push({ ok: false, text: 'This post has no caption yet.' });
+    const pictures = post.media.filter(item => item.kind === 'image').length;
+    if (post.platform === 'instagram' && pictures > INSTAGRAM_PICTURES) extra.push({ ok: false, text: `Instagram takes at most ${INSTAGRAM_PICTURES} pictures in one post, and this has ${pictures}.` });
+    results[post.id] = [...(checked.posts[post.id] || []), ...extra];
+  }
+  return {
+    ready: checked.ready && Object.values(results).every(list => list.every(item => item.ok)),
+    posts: results,
+    labels: Object.fromEntries(posts.map(post => [post.id, postLabel(post)])),
+  };
 }
 
 /**

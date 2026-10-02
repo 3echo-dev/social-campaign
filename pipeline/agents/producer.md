@@ -75,6 +75,9 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
 - Every `researcher` spawn prompt also carries the target market.
   Read `targetMarket` from `brand/profile.json`.
   Blank means Singapore, and so does a job with no brand.
+- Put `job:<jobId>` on the first line of every spawn prompt.
+  Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and add the block it returns, unchanged, at the end of the prompt; with no block, add nothing.
+  Answer every message addressed to the Director with `pipeline_agent_reply`.
 
 ## Editor and revisions
 
