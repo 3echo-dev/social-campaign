@@ -808,7 +808,10 @@ function openQuestionsByJob(root, { readOnly = false } = {}) {
   return byJob;
 }
 
+const NEEDS_ANSWER_IN_CHAT = 'Answer Claude in the chat';
+
 function questionItem(question, place) {
+  if (question.inChat) return { kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: false, inChat: true, need: NEEDS_ANSWER_IN_CHAT, questionId: question.questionId, options: [], allowText: false, at: inboxAt(question.askedAt) };
   return {
     kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: true,
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,

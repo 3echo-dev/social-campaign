@@ -246,6 +246,7 @@ The only chat line allowed while a gate is open is the one short summary this fi
 
 ## Stuck jobs
 
+Before asking the person anything in the chat, put the same question on the Director card first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.
 When a job is stuck for a reason the person can fix (missing information, an approval, a clarification, an outside account), ask with `pipeline_board_ask` so the question shows on the Director card, and say the same one-line question in chat.
 Take the answer from either place, the first one wins, and record a chat answer with `pipeline_board_answer`; `skills/board-sync/SKILL.md` has the steps under "Stuck jobs".
 Never ask the person to fix a code problem: say "Something went wrong on our side", leave the technical details out of chat (the board already keeps them with the job), and retry the failed step once.

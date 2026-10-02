@@ -11,6 +11,7 @@ export const ANSWER_TEXT_LIMIT = 1000;
 export const QUESTION_STATUSES = Object.freeze(['open', 'answered', 'withdrawn']);
 
 const NOT_FOUND = 'This question could not be found.';
+const CHAT_ONLY = 'This one is answered in the chat, not on the board.';
 const WITHDRAWN = 'This question was taken back, so it no longer needs an answer.';
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>"']+/gi;
 const FILE_NAME = /(?<![\w@#])[\w-]+\.(?:md|json|jsonl|js|mjs|cjs|ts|html?|css|png|jpe?g|webp|gif|mp4|mov|webm|mp3|wav|m4a|ogg|csv|txt|pdf|ya?ml|log|zip)\b/i;
@@ -119,13 +120,14 @@ function questionPlace(root, { brand, jobId }) {
   return { jobId: null, brand: wantedBrand };
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText }) {
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false }) {
   const place = questionPlace(root, { brand, jobId });
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
   const choices = questionOptions(options);
   if (allowText !== undefined && allowText !== null && typeof allowText !== 'boolean') throw new TypeError('allowText must be true or false.');
-  const typed = typeof allowText === 'boolean' ? allowText : true;
-  if (!choices.length && !typed) throw new TypeError('Give at least one option, or allow a typed answer.');
+  if (inChat !== undefined && inChat !== null && typeof inChat !== 'boolean') throw new TypeError('inChat must be true or false.');
+  const typed = inChat ? false : typeof allowText === 'boolean' ? allowText : true;
+  if (!inChat && !choices.length && !typed) throw new TypeError('Give at least one option, or allow a typed answer.');
   const record = {
     questionId: newQuestionId(root),
     jobId: place.jobId,
@@ -133,6 +135,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     text: question,
     options: choices,
     allowText: typed,
+    ...(inChat ? { inChat: true } : {}),
     askedAt: new Date().toISOString(),
     status: 'open',
     answer: null,
@@ -145,6 +148,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
 }
 
 function answerFor(question, { choice, text, via }) {
+  if (question.inChat && via === 'board') throw new TypeError(CHAT_ONLY);
   const answer = {};
   if (choice !== undefined && choice !== null) {
     if (typeof choice !== 'string' || !question.options.includes(choice)) throw new TypeError('Choose one of the options given.');
@@ -188,4 +192,9 @@ export function withdrawQuestion({ root, questionId }) {
   const next = { ...question, status: 'withdrawn' };
   writeAtomic(questionFile(root, questionId), next);
   return next;
+}
+
+/** Take back the questions Claude put on the board for the chat once the send they were about happens. */
+export function clearChatQuestions({ root, jobId }) {
+  for (const question of listQuestions({ root, jobId, status: 'open', readOnly: true })) if (question.inChat) withdrawQuestion({ root, questionId: question.questionId });
 }

@@ -3354,9 +3354,9 @@ export const PUBLISH_APPROVE_LABELS = Object.freeze({
   self: () => 'Approve and get the posting kit',
 });
 export const PUBLISH_SAFETY_LINES = Object.freeze({
-  metricool_schedule: 'Nothing goes out until you approve. You can cancel a scheduled post in Metricool until it goes out.',
-  metricool_draft: 'Nothing goes out until you approve. Drafts are saved in Metricool and stay there until you publish them.',
-  metricool_now: 'Nothing goes out until you approve. After that, each post goes out within a few minutes.',
+  metricool_schedule: 'Nothing goes out until you approve. You can cancel a scheduled post in Metricool until it goes out. Claude will ask you to confirm in the chat before it posts.',
+  metricool_draft: 'Nothing goes out until you approve. Drafts are saved in Metricool and stay there until you publish them. Claude will ask you to confirm in the chat before it posts.',
+  metricool_now: 'Nothing goes out until you approve. After that, each post goes out within a few minutes. Claude will ask you to confirm in the chat before it posts.',
   self: 'Nothing is posted for you. After you approve, the posting kit has each file, caption and step.',
 });
 export const PUBLISH_ROUTE_WORDS = Object.freeze({
@@ -4257,7 +4257,10 @@ function inboxSummary(item) {
   return item?.credits && typeof item.credits === 'object' ? priceWords(item.credits) : '';
 }
 
+const IN_CHAT_LINE = 'Answer this one in the chat. Claude only takes your go-ahead for posting or spending from the chat.';
+
 function questionCard(item, state = {}, signal = {}, index = 0) {
+  if (item.inChat) return `<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
   const key = String(item.questionId);
   const options = inboxOptions(item.options);
   const locked = Boolean(state.busy || state.submitted || state.needsReconciliation || state.answered);

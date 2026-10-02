@@ -89,6 +89,10 @@ Bad: "kind: missing field brand_profile".
 When a step fails on our side, say for example "Something went wrong on our side while saving your video. Press Try again, or tell me to."
 After a second failure, say "It didn't work again. We've saved the details for our team. There's nothing you need to do."
 
+Before asking the person anything in the chat, put the same question on the Director card first.
+Call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for posting, sending or spending), publish the returned documents to the board, then ask in chat.
+Record the answer wherever it comes from first (`pipeline_board_answer` for a chat answer), and publish the board again so the question clears.
+
 ## Editor and revisions
 
 Before Validate, run platform checks, hashes and the QC checklist. The editor performs one

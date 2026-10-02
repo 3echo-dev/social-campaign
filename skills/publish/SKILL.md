@@ -135,6 +135,11 @@ Publishing runs in this session, never in a subagent, because only this session 
 Find the Metricool tools by base name under any prefix: `createScheduledPost` and `getScheduledPosts`.
 Never use Metricool's reviewer tools (`createScheduledPostForReview`, `sendScheduledPostForReview`) or `updateScheduledPost`: the person approves on the board, a scheduled post is changed or cancelled by the person in Metricool, and the plugin refuses all three.
 
+Claude confirms the send in chat before it posts, schedules or saves a draft, and the board has to say so first.
+Call `pipeline_board_ask` for the job with `inChat` true and the same plain words you will say in chat (for example "Post these 2 posts now? Yes or No"), write the returned `documents` to the board, then ask in chat.
+After the answer, record it with `pipeline_board_answer` before sending, and write the documents again, so the board stops asking.
+On a no, nothing is sent.
+
 Send the plan's posts one at a time, each exactly as the plan has it:
 
 1. For each file, call 3echo `get_asset` for its asset id in the plan's workspace right before the send, and use `media.mediaUrl` exactly as returned, in the plan's order.
