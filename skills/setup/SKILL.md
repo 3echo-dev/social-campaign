@@ -83,9 +83,9 @@ If it answers, call `integration_probe` with provider `metricool`, `ok: true` an
 If it fails, call `integration_probe` with provider `metricool`, `ok: false` and one plain sentence, and save nothing.
 If no surface is present, make no Metricool call and do not push it: it stays an optional card on the board.
 When Metricool is missing and the person wants it, say in plain words that they can add Metricool from claude.ai Settings > Connectors, then come back and say done.
-When `pipeline_metricool_brands_save` reports `asked`, publish the workspace projection so the board's Inbox shows the question, and say in one plain line that Claude needs to know which Metricool brand each brand should post through.
+When `pipeline_metricool_brands_save` reports `asked`, publish the workspace projection so the board's Needs you shows the question, and say in one plain line that Claude needs to know which Metricool brand each brand should post through.
 When it reports `chosen`, say nothing; the brand card shows where posts go.
-When it reports `needsChoice`, a brand that already posted through one Metricool brand has lost it, and it is never replaced silently: say in one plain line which brand lost which Metricool brand (`was`) and that Claude needs to know which one to use now, after publishing the workspace projection so the Inbox shows the question.
+When it reports `needsChoice`, a brand that already posted through one Metricool brand has lost it, and it is never replaced silently: say in one plain line which brand lost which Metricool brand (`was`) and that Claude needs to know which one to use now, after publishing the workspace projection so the Needs you list shows the question.
 The same check runs again, without a second walkthrough, when a `connect_provider` request names `metricool` (the board's Connect or Refresh brands): repeat the detection, the read-only call, `integration_probe` and `pipeline_metricool_brands_save`, then apply the request only if the probe was `ok: true`, or decline it with one plain reason such as that Metricool is not connected yet.
 
 The board opens on its Connectors step and stays there, `setupStep: "connectors"`, until every required connector in its `connectors` list is `connected` or `skipped`.

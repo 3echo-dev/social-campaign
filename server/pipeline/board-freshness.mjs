@@ -4,7 +4,9 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../../scripts/build-board.mjs';
-import { factsFingerprint, isFinishedState, landingReport, listJobs } from './facts.mjs';
+import { factsFingerprint, isFinishedState, landingReport, listJobs, readSessionBinding } from './facts.mjs';
+import { readAgentLines } from './agent-log.mjs';
+import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
 const SAFE_ARTIFACT_ID = '[A-Za-z0-9_-]{8,128}';
@@ -44,6 +46,9 @@ export const BOARD_TEXT = Object.freeze({
   unsaved: "Some made files aren't saved yet; check them with pipeline_generation_land.",
   copies: 'A review is waiting on the board but its images or video have no viewable copy there yet. For each job below, call pipeline_review_copies_prepare, upload what it returns with the Artifact tool, then write the board again.',
   rearm: "Re-arm the board's wake-up by reading and republishing it before replying.",
+  agents: 'An agent finished since the board was written; call pipeline_board_job_documents for the jobs below and write them.',
+  replies: 'The person left a message for the Director on the board. For each job below, answer it with pipeline_agent_reply, then write the documents it returns.',
+  stuck: 'A job is stuck and the person has not been asked yet. For each job below, ask them in one plain line with pipeline_board_ask, say the same line in chat, then carry on.',
 });
 
 /** Shown without blocking when nobody is waiting on the job. */
@@ -395,6 +400,56 @@ export function jobsForSession(root, sessionId, jobs = listJobs(root), now = Dat
   }
 }
 
+const AGENT_ENDS = new Set(['finished', 'stopped', 'failed']);
+
+/**
+ * Jobs where an agent finished, stopped or failed after the board was last written: [{ref, at}] with the newest such line.
+ * A start alone never counts. Nothing is reported while no board has been written (the behind check covers that).
+ */
+export function agentFinishes(root, jobs) {
+  const written = Date.parse(readFreshness(root).published?.writtenAt ?? '');
+  if (!Number.isFinite(written)) return [];
+  const out = [];
+  for (const job of jobs) {
+    let newest = null;
+    for (const line of readAgentLines(job.dir)) {
+      const at = Date.parse(line.at ?? '');
+      if (AGENT_ENDS.has(line.kind) && Number.isFinite(at) && at > written && (newest === null || at > newest)) newest = at;
+    }
+    if (newest !== null) out.push({ ref: jobRef(job), at: new Date(newest).toISOString() });
+  }
+  return out;
+}
+
+/** Jobs where the person's message to the Director has no reply yet: [{ref, ids}]. A message waiting for another agent's next step is not one. */
+export function unansweredReplies(jobs) {
+  const out = [];
+  for (const job of jobs) {
+    const ids = pendingMessages(job.dir, DIRECTOR).map(message => message.id);
+    if (ids.length) out.push({ ref: jobRef(job), ids });
+  }
+  return out;
+}
+
+export const STUCK_RECENT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Stuck jobs whose question has not been asked yet: [{ref, kind, since}]. A problem on our side has no question to ask, so it never
+ * counts. Only a job bound to this session, or with activity in the last 24 hours, counts: an old idle job never blocks a stop.
+ */
+function unaskedStuck(board, root, jobs, questions, sessionId, now = Date.now()) {
+  try {
+    if (typeof board?.stuckJobs !== 'function') return [];
+    const bound = sessionId ? readSessionBinding(root, sessionId) : null;
+    const mine = bound ? `${bound.brand}/${bound.jobId}` : null;
+    return [...board.stuckJobs(root, jobs, { questions })]
+      .filter(([ref, item]) => item.kind !== 'internal' && !item.asked && (ref === mine || (Number.isFinite(item.activeAt) && now - item.activeAt <= STUCK_RECENT_MS)))
+      .map(([ref, item]) => ({ ref, kind: item.kind, since: item.since }));
+  } catch {
+    return [];
+  }
+}
+
 /** The board's own answer to "is a person needed here", or just the approval gates when it cannot load. */
 function waitingFor(board, root, job, questions) {
   try {
@@ -410,7 +465,7 @@ function waitingFor(board, root, job, questions) {
  * What the stop hook looks at for these jobs. Each finding is worked out per job, so it can be
  * matched to the job that owns it; `waiting` holds the refs of jobs a person is needed on.
  */
-export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard } = {}) {
+export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard, sessionId = null } = {}) {
   // A finished job never waits on anyone, so it is left out of everything except the board check:
   // a board that still shows a cancelled or completed job as open is behind, whoever it was for.
   const jobs = allJobs.filter(job => !isFinishedState(job.state));
@@ -426,7 +481,10 @@ export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: 
     if (waitingFor(board, root, job, questions)) waiting.add(jobRef(job));
   }
   const copies = reviewGaps(board, root, jobs).filter(entry => entry.missing.length).map(copyEntry);
-  return { behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting };
+  return {
+    behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting,
+    agents: agentFinishes(root, jobs), replies: unansweredReplies(jobs), stuck: unaskedStuck(board, root, jobs, questions, sessionId),
+  };
 }
 
 function sessionMap(value) {

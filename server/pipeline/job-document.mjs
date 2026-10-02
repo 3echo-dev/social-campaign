@@ -27,6 +27,7 @@ import { FIELDS as RECIPE_FIELDS, readJobRecipes } from './recipe.mjs';
 import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, validZone, whenText } from './publish-preflight.mjs';
 import { attemptState, projectPublishStatus, readAttempts } from './publish-attempts.mjs';
 import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
+import { agentBox, coreOnlyAgentBox } from './agent-box.mjs';
 
 const require = createRequire(import.meta.url);
 const recipeRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-recipe.js'));
@@ -1218,10 +1219,12 @@ function postOutputTitles(post, label, media) {
  *   publish-intent.mjs): connected, found, label, networks, coverage. Only read for the posting decision.
  * @param {boolean} [options.handoffOnly] a job routed before 0.8, whose posting decision was folded into the final
  *   approval: it ends with the hand-off package, and the document says so
+ * @param {object|null} [options.agents] what agentBox needs besides the document itself (snapshot, requests, retriedAt, blockedLine):
+ *   when given, the document carries `agents`, the Agent Box section; left out, it carries none
  * @param {number} [options.now] the clock the publish status is projected at (ms since 1970)
  * @param {number} [options.budgetBytes]
  */
-export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, publish = null, handoffOnly = false, now = Date.now(), budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
+export function buildJobDocument({ dir, root = null, workspaceId = null, project, job = null, gate = null, review = null, details = null, inbox = null, reviewUrl = null, thumbDir = null, studioWorkspace = null, publish = null, handoffOnly = false, agents = null, now = Date.now(), budgetBytes = JOB_DOCUMENT_BUDGET_BYTES }) {
   const artifacts = Array.isArray(project?.artifacts) ? project.artifacts : [];
   const shaOf = new Map(artifacts.map(item => [item.path, item.sha256]));
   const kindOf = new Map(artifacts.map(item => [item.path, item.kind || null]));
@@ -1585,6 +1588,21 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   }
   if (pinned.length) document.outputs = { pinned };
 
+  // The Agent Box goes in before the file list, so the files fill what is left of the budget. A file with a heading shows it as its title.
+  if (agents) {
+    const titles = new Map();
+    for (const item of Array.isArray(details?.artifacts) ? details.artifacts : []) {
+      if (typeof item?.path !== 'string' || extname(item.path).toLowerCase() !== '.md') continue;
+      const { raw } = load(item.path);
+      if (raw == null) continue;
+      const title = titleOf(item.path, splitFrontMatter(raw).body);
+      if (title !== basename(item.path)) titles.set(item.path, title);
+    }
+    try {
+      document.agents = agentBox({ ...agents, dir, details, inbox: document.inbox, now, pinned, titles });
+    } catch { /* the board still shows the job without its agents */ }
+  }
+
   // Add file entries in priority order while the document stays under budget.
   // An entry that no longer fits is kept as metadata only, flagged omitted, so
   // the board can still say the content is on this computer.
@@ -1704,6 +1722,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   if (byteSize(document) > budgetBytes && document.postingKit) {
     document.truncated = true;
     delete document.postingKit;
+  }
+  if (byteSize(document) > budgetBytes && document.agents) {
+    document.truncated = true;
+    document.agents = coreOnlyAgentBox(document.agents);
   }
   if (byteSize(document) > budgetBytes) document.files = [];
   if (byteSize(document) > budgetBytes && document.details?.artifacts.length) {

@@ -10,8 +10,9 @@
 //   agent = { id, name, model, state, task, since, files, filesMore, activity, messages, messagesMore, pendingMessages, needs, note? }
 //   state is one of AGENT_STATES. `note` (only when there is one) says why a card waits: "Starts after researching".
 //   Director only: `needs` lists what the person must act on (the inbox keys, with `from`, the agent that wrote the work behind it).
+//   Director only, and only when the job is stuck: `stuck` = { reason, kind, since, asked, canRetry, retry? }, see stuckOf below.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +110,9 @@ function nameOf(agent) {
   const words = String(agent).replace(/-/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** What the board calls an agent: "Director", "Strategist". */
+export const agentName = nameOf;
 
 function actionOf(agent) {
   if (agent === DIRECTOR) return DIRECTOR_TASK;
@@ -448,6 +452,147 @@ function personWaits({ inbox, state }) {
 }
 
 // ---------------------------------------------------------------------------
+// Stuck jobs
+// ---------------------------------------------------------------------------
+
+export const STUCK_KINDS = Object.freeze(['missing_info', 'approval', 'clarification', 'account', 'internal']);
+/** No change for this long, with nobody waiting on the person and no agent running, is a stuck job. */
+export const STUCK_QUIET_MS = 6 * 60 * 60 * 1000;
+/** A job quiet for longer than this is paused, not stuck, so old idle jobs never show as stuck. */
+export const STUCK_PAUSED_MS = 3 * 24 * 60 * 60 * 1000;
+/** After "Try again", the job shows "Trying this step again" for this long before a second failure is assumed. */
+export const RETRY_TRYING_MS = 30 * 60 * 1000;
+/** A retry older than this is forgotten: a new problem gets its own "Try again". */
+export const RETRY_MEMORY_MS = 12 * 60 * 60 * 1000;
+
+// Words in an error or a held-up line that mean a connected account, a login or credits, which only the person can sort out.
+const ACCOUNT_SIGNS = /credits?|log ?in|logged out|sign(?:ed)? in|expired|reconnect|not connected|unauthori[sz]ed|forbidden|api key|\btoken\b|\b40[13]\b/i;
+const REASONS = Object.freeze({
+  missing_info: "We're missing something from you to carry on.",
+  approval: 'Your approval is the next step.',
+  clarification: 'We need to check one thing with you.',
+});
+export const RETRY_TRYING_TEXT = 'Trying this step again.';
+export const RETRY_FAILED_TEXT = "It didn't work again. We've saved the details for our team. There's nothing you need to do.";
+
+function accountReason(said) {
+  if (/credits?/i.test(said)) return "You're out of credits. Top up, then say done.";
+  if (/metricool/i.test(said)) return "Metricool's login expired. Reconnect it, then say done.";
+  if (/elevenlabs/i.test(said)) return 'ElevenLabs needs you to sign in again. Reconnect it, then say done.';
+  if (/3 ?echo/i.test(said)) return '3echo needs you to sign in again. Reconnect it, then say done.';
+  return 'A connected account needs you. Reconnect it, then say done.';
+}
+
+function blockedKind(said, items) {
+  if (ACCOUNT_SIGNS.test(said)) return 'account';
+  if (items.some(item => item.kind === 'decision')) return 'approval';
+  if (items.some(item => item.kind === 'question')) return 'clarification';
+  if (items.some(item => item.kind === 'brief')) return 'missing_info';
+  if (/approv|decision|sign off/i.test(said)) return 'approval';
+  if (/unclear|clarif|not sure|which one|ambiguous|not right/i.test(said)) return 'clarification';
+  return 'missing_info';
+}
+
+/** The latest sign of life in a job: its status time, its agent lines, and the last write to its event log. Milliseconds, or null. */
+export function lastChangeAt({ dir, updatedAt, lines = [] } = {}) {
+  const times = [timeOf(updatedAt), ...lines.map(line => timeOf(line?.at))];
+  try {
+    if (dir) times.push(statSync(join(dir, 'events.jsonl')).mtimeMs);
+  } catch {
+    // a job with no event log has only its status time
+  }
+  const known = times.filter(time => Number.isFinite(time));
+  return known.length ? Math.max(...known) : null;
+}
+
+/**
+ * Is this job stuck, and for what reason the person can understand? Null when it is not. The signals, first match wins: the job is
+ * BLOCKED or ESCALATED; a board request needs reconciliation; an agent's last run failed or went stale and the job has not moved on since;
+ * nothing changed for six hours while nobody waits on the person and no agent runs.
+ *
+ * Each signal gets one kind: missing_info, approval, clarification, account, or internal. The person is never asked to fix an internal
+ * problem; they see "Something went wrong on our side" and a "Try again" that works once. A second failure shows a fixed
+ * "It didn't work again" line and no button. `asked` says the person already has the question on the board (an internal
+ * problem has none to ask). `since` is when the signal began. `reason` is one plain line; the board shows it after "Stuck:".
+ *
+ * Pure: every input is passed in. `runs` come from runsFrom, `requests` are the job's needs_reconciliation board requests as
+ * [{at, detail}], `retriedAt` is when "Try again" was last applied for this job (ms) and `changedAt` is lastChangeAt.
+ */
+export function stuckOf({ state, inboxItems = [], blockedLine = null, runs = [], requests = [], updatedAt = null, changedAt = null, stageLabel = null, retriedAt = null, now = Date.now() } = {}) {
+  if (!state || statesLib.isTerminal(state)) return null;
+  const items = (Array.isArray(inboxItems) ? inboxItems : []).filter(plain);
+  const updated = timeOf(updatedAt);
+  const live = runs.some(run => isOpen(run) && isFresh(run, now));
+  let signal = null;
+
+  if (BLOCKED_STATES.has(state)) {
+    const said = text(blockedLine) ?? '';
+    signal = { at: updated, said, kind: !said && !items.length ? 'internal' : blockedKind(said, items) };
+  }
+  if (!signal) {
+    const request = [...requests].filter(plain).sort((a, b) => (timeOf(a.at) ?? 0) - (timeOf(b.at) ?? 0))[0];
+    if (request) signal = { at: timeOf(request.at), said: text(request.detail) ?? '', kind: null };
+  }
+  if (!signal) {
+    const last = new Map();
+    for (const run of runs) if (run.agent !== DIRECTOR) last.set(run.agent, run);
+    for (const run of last.values()) {
+      const failed = run.ended === 'failed';
+      const lost = isOpen(run) && !isFresh(run, now);
+      const at = failed ? timeOf(run.endedAt) : startOf(run);
+      // A run the job has moved past is not what holds it up.
+      if ((failed || lost) && (updated === null || at === null || at >= updated)) {
+        signal = { at, said: failed ? (run.error ?? '') : '', kind: null };
+        break;
+      }
+    }
+  }
+  if (!signal && !live && changedAt !== null && now - changedAt > STUCK_QUIET_MS && now - changedAt <= STUCK_PAUSED_MS && !personWaits({ inbox: { items }, state })) {
+    signal = { at: changedAt, said: '', kind: null, quiet: true };
+  }
+  if (!signal) return null;
+
+  const kind = signal.kind ?? (ACCOUNT_SIGNS.test(signal.said) ? 'account' : 'internal');
+  const since = new Date(signal.at ?? now).toISOString();
+  let reason;
+  if (kind === 'account') reason = accountReason(signal.said);
+  else if (kind === 'internal') {
+    const where = stageLabel ? ` while ${lowerFirst(stageLabel)}` : '';
+    reason = signal.quiet ? 'This job stopped moving. Try again to get it going.' : `Something went wrong on our side${where}.`;
+  } else reason = REASONS[kind];
+
+  let retry = null;
+  if (kind === 'internal' && retriedAt !== null && now - retriedAt <= RETRY_MEMORY_MS) {
+    const same = (timeOf(since) ?? 0) <= retriedAt;
+    retry = same && now - retriedAt <= RETRY_TRYING_MS ? 'trying' : 'failed_again';
+    reason = retry === 'trying' ? RETRY_TRYING_TEXT : RETRY_FAILED_TEXT;
+  }
+  const asked = kind === 'internal' ? true
+    : kind === 'approval' ? items.some(item => item.kind === 'decision')
+      : kind === 'missing_info' ? items.some(item => item.kind === 'question' || item.kind === 'brief')
+        : items.some(item => item.kind === 'question');
+  return { reason, kind, since, asked, canRetry: kind === 'internal' && !retry, ...(retry ? { retry } : {}) };
+}
+
+function clockOf(now) {
+  return now instanceof Date ? now.getTime() : typeof now === 'string' ? (timeOf(now) ?? Date.now()) : Number.isFinite(now) ? now : Date.now();
+}
+
+/** stuckOf from what a job snapshot (full or light) holds and the job folder: reads agents.jsonl unless `lines` is given. */
+export function stuckFor({ dir, snapshot, inboxItems, requests = [], retriedAt = null, blockedLine = null, now, lines } = {}) {
+  const clock = clockOf(now);
+  const state = text(snapshot?.project?.state) ?? text(snapshot?.status?.state);
+  if (!state || statesLib.isTerminal(state)) return null;
+  const all = lines ?? (dir ? readAgentLines(dir) : []);
+  const updatedAt = text(snapshot?.status?.updatedAt);
+  const open = (Array.isArray(snapshot?.project?.stages) ? snapshot.project.stages : []).find(stage => plain(stage) && !stage.skipped && !DONE_STAGE.has(stage.status));
+  return stuckOf({
+    state, inboxItems, blockedLine, runs: runsFrom(all), requests, updatedAt, changedAt: lastChangeAt({ dir, updatedAt, lines: all }),
+    stageLabel: text(open?.label), retriedAt, now: clock,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The budget
 // ---------------------------------------------------------------------------
 
@@ -530,10 +675,13 @@ function eventModel(events) {
  * @param {Record<string, object[]>} [input.messages] messages by agent (read from messages/ when left out)
  * @param {Array<{path:string,title?:string}>} [input.pinned] the pinned final files, shown first
  * @param {object|Map} [input.titles] path to title, for the files the document already titled
+ * @param {Array<{at:string,detail?:string}>} [input.requests] the job's board requests that need reconciliation (a stuck signal)
+ * @param {number|null} [input.retriedAt] when "Try again" was last applied for this job, in ms
+ * @param {string|null} [input.blockedLine] the plain line the board shows for a held-up job (null when there is none)
  * @returns {{v:1, list:object[], unassigned:object, truncated:boolean}}
  */
-export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, dir, lines, contracts, messages, pinned, titles } = {}) {
-  const clock = now instanceof Date ? now.getTime() : typeof now === 'string' ? (timeOf(now) ?? Date.now()) : Number.isFinite(now) ? now : Date.now();
+export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, dir, lines, contracts, messages, pinned, titles, requests, retriedAt, blockedLine } = {}) {
+  const clock = clockOf(now);
   const folder = dir ?? (root && brand && jobId ? join(resolve(root), 'workspaces', brand, 'jobs', jobId) : null);
   const project = plain(snapshot?.project) ? snapshot.project : {};
   const state = text(project.state) ?? text(snapshot?.status?.state) ?? 'UNKNOWN';
@@ -584,7 +732,9 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
   }
 
   // Runs, messages and the gate the person is deciding.
-  const allRuns = runsFrom(lines ?? (folder ? readAgentLines(folder) : []));
+  const allLines = lines ?? (folder ? readAgentLines(folder) : []);
+  const allRuns = runsFrom(allLines);
+  const stuck = stuckFor({ dir: folder, snapshot, inboxItems, requests, retriedAt: retriedAt ?? null, blockedLine, now: clock, lines: allLines });
   const pendingPaths = new Set((Array.isArray(details?.pendingReviews) ? details.pendingReviews : []).flatMap(review => (Array.isArray(review?.artifacts) ? review.artifacts : [])).map(item => item?.path).filter(path => typeof path === 'string'));
   const waits = personWaits({ inbox: { items: inboxItems }, state });
   const oldestNeed = inboxItems.map(item => timeOf(item?.at)).filter(time => time !== null).sort((a, b) => a - b)[0];
@@ -660,6 +810,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
       needs: isDirector ? needsOf(inboxItems, rows) : [],
     };
     if (note) card.note = note;
+    if (isDirector && stuck) card.stuck = stuck;
     return card;
   });
 
@@ -684,4 +835,36 @@ export function agentLine(agents) {
   if (!names.length) return null;
   const who = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names[0]} and ${names.length - 1} more`;
   return clipOneLine(`${who} working`, AGENT_LINE_LIMIT);
+}
+
+/**
+ * The last resort when the whole job document is still over its budget: every card keeps only id, name, model, state, task, needs,
+ * pendingMessages (and its note, since and stuck line); files, activity and messages go and their counts stay in filesMore and
+ * messagesMore. Returns a new section.
+ */
+export function coreOnlyAgentBox(section) {
+  const list = (Array.isArray(section?.list) ? section.list : []).map(agent => {
+    const { id, name, model, state, task, since, note, needs, pendingMessages, stuck } = agent;
+    return {
+      id, name, model, state, task, since: since ?? null, files: [], filesMore: (agent.files?.length ?? 0) + (agent.filesMore ?? 0), activity: [],
+      messages: [], messagesMore: (agent.messages?.length ?? 0) + (agent.messagesMore ?? 0), pendingMessages, needs,
+      ...(note ? { note } : {}), ...(stuck ? { stuck } : {}),
+    };
+  });
+  return { v: 1, list, unassigned: { yours: [], records: [], other: [], yoursMore: 0, recordsMore: 0, otherMore: 0 }, truncated: true };
+}
+
+/**
+ * The home page's line for one job without building the whole box: the agents with a live run, as agentLine words them. Reads
+ * agents.jsonl from `dir` unless `lines` is given. Null when the job is finished or only the Director works.
+ */
+export function jobAgentLine({ dir, snapshot, lines, now } = {}) {
+  const state = text(snapshot?.project?.state) ?? text(snapshot?.status?.state);
+  if (!state || statesLib.isTerminal(state)) return null;
+  const clock = clockOf(now);
+  const runs = runsFrom(lines ?? (dir ? readAgentLines(dir) : []));
+  const list = rosterOf({ rows: snapshot?.plan?.rows, route: snapshot?.route })
+    .filter(id => id !== DIRECTOR && runs.some(run => run.agent === id && isOpen(run) && isFresh(run, clock)))
+    .map(id => ({ id, name: nameOf(id), state: 'working' }));
+  return agentLine({ list });
 }

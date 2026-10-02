@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.9.0.
+Current version: 0.10.0.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -357,7 +357,7 @@ Look over the card and click Save and continue.
 
 ### First job
 
-Type what you want to get done in the box on the home page or in the Inbox, or click **+ New job**.
+Type what you want to get done in the box on the home page or in Needs you, or click **+ New job**.
 Choose a brand if it is for one, and add links if you have them.
 Give Claude any files in chat after you send it.
 Claude reads your words and picks the pipeline that fits, and the job page says which one and why.
@@ -382,6 +382,18 @@ Each stage shows in plain words, and the current decision shows on the job.
 - **Approve the report**, for the three report kinds.
 
 Ask for changes on any of them and the job goes back to that stage with your note.
+
+### The Agent Box
+
+On a job page, **Agents on this job** lists the Director first, then each agent working on it.
+Each one shows its state (Needs you, Working, Waiting, Up next or Done), what it is doing, and its files.
+The Director card holds everything waiting on you: decisions, questions and anything stuck.
+Use **Message this agent** to write to one of them.
+The Director answers in a line, and the message shows as Sent, Delivered or Answered.
+A message never approves, spends or posts: use the board buttons for that.
+If a job gets stuck, the Director asks you in chat and on the board, and the first answer counts.
+If something goes wrong on our side, press **Try again**.
+The **Needs you** list on the home page shows what is waiting on you across every job.
 
 ### Where and when it goes out
 
@@ -425,7 +437,7 @@ An unfinished brief stays a draft under its own job, so continue it rather than 
 ### The board
 
 The board is the decision surface.
-It shows the Inbox, the brands, every job with its stages and outputs, the decision waiting on you, and the usage footer.
+It shows what needs you, the brands, every job with its stages and outputs, the decision waiting on you, and the usage footer.
 
 It is a private page on your claude.ai account.
 Your decisions come back to Claude as saved requests, and Claude applies them.

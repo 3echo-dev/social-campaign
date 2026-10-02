@@ -293,7 +293,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .empty{padding:28px 20px;color:var(--dim);text-align:center}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 #notice:not(:empty){position:fixed;z-index:40;left:50%;bottom:23px;max-width:calc(100% - 30px);padding:12px 18px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);border-radius:9px;box-shadow:0 10px 35px rgba(0,0,0,.4);color:var(--paper)}
-@media(max-width:950px){.layout{grid-template-columns:minmax(0,1fr)}.layout>.inbox{order:-1}}
+@media(max-width:950px){.layout{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:720px){body{padding-inline:16px}.form-grid,.channel-grid,.kit-grid{grid-template-columns:1fr}.page-head{align-items:flex-start;flex-direction:column}.start-card{padding:16px}.start-head{gap:10px}.connector-card{flex-direction:column;align-items:stretch}.connector-card-actions{width:100%}.connector-card-actions button{flex:1;min-height:40px}}
 @media(max-width:520px){.top{align-items:flex-start}.header-tools{width:100%;justify-content:flex-end;gap:8px 10px}.header-actions{gap:10px;margin-left:auto}.connection{flex:1 1 140px;min-width:140px}.connection i{flex:none}.connection b{white-space:nowrap}.connection small{min-width:0;overflow-wrap:anywhere}.brand{gap:9px}.brand img{height:23px}.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:1/-1}.stats.two .stat:last-child{grid-column:auto}.project-grid{grid-template-columns:1fr}}
 /* "Logo, colours and fonts": one more section of the onboarding card, not a panel inside
@@ -849,6 +849,100 @@ a.kit-download{font-size:13px}
 .page-head>.pill{flex:0 1 auto;max-width:min(44%,300px)}
 .card-art>.pill{max-width:72%}
 @media(max-width:720px){.page-head>.pill{max-width:100%;text-align:left}}
+
+/* Agent Box: the job page is the Director card, the pipeline and the rail of agents. DOM order is Director, pipeline, rail,
+   so focus order follows what is read; the grid only moves the Director card and the rail into one side column. */
+.job-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"main director" "main rail";grid-template-rows:auto 1fr;gap:var(--gap);align-items:start}
+.job-layout>.job-director{grid-area:director}
+.job-main{grid-area:main;display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.agent-rail{grid-area:rail;display:flex;flex-direction:column;gap:calc(var(--gap) * .75);min-width:0}
+.agent-rail>h2{margin:0;color:var(--faint);font-size:12px;font-weight:800;letter-spacing:.01em}
+.ab-solo,.ab-empty{margin:0;font-size:12.5px}
+.ab-note{margin:-4px 0 0;color:var(--faint);font-size:12px;line-height:1.4}
+.ab-card{display:flex;flex-direction:column;gap:10px;min-width:0;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow)}
+.ab-card.ab-working{border-color:var(--wait-dim);box-shadow:0 0 0 1px rgba(132,168,255,.15) inset}
+.ab-card.ab-needs{border-color:rgba(255,198,41,.5)}
+.ab-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ab-who{display:flex;align-items:center;gap:10px;min-width:0}
+.ab-who .avatar{width:30px;height:30px;border-radius:8px;background:var(--panel3);font-size:12px}
+.ab-who h3{font-size:14px;line-height:1.3;overflow-wrap:anywhere}
+.ab-who small{display:block;color:var(--faint);font-size:12px}
+.ab-task{margin:0;color:var(--dim);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.pill.ab-state{gap:6px;flex:none}
+.pill.ab-needs{color:var(--tape);border-color:rgba(255,198,41,.45);background:rgba(255,198,41,.08)}
+.pill.ab-working{color:var(--wait);border-color:var(--wait-dim);background:rgba(132,168,255,.08)}
+.pill.ab-waiting{color:var(--dim)}
+.pill.ab-next{color:var(--faint)}
+.pill.ab-done{color:var(--go);border-color:var(--go-dim);background:rgba(137,230,165,.06)}
+.ab-live{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;background:var(--wait);animation:ab-pulse 1.6s ease-in-out infinite}
+@keyframes ab-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.ab-chips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.ab-chip{min-height:28px;padding:3px 9px;gap:6px;border-color:var(--line2);border-radius:6px;background:var(--panel2);color:var(--paper);font-size:12px;font-weight:600;line-height:1.3;text-align:left}
+.ab-chip small{color:var(--faint);font-size:11px;font-weight:400}
+.ab-chip.is-pinned{border-color:rgba(255,198,41,.45)}
+.ab-chip:disabled{cursor:default;color:var(--dim)}
+.ab-chip:disabled:hover{border-color:var(--line2);background:var(--panel2)}
+.ab-more{align-self:center;color:var(--faint);font-size:12px}
+.ab-message{align-self:flex-start;min-height:30px;padding:4px 11px;border-color:var(--line2);color:var(--dim);font-size:12.5px}
+.ab-message:hover{color:var(--paper)}
+.ab-activity{padding-top:10px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
+.ab-activity>summary{display:flex;align-items:center;gap:8px;min-height:24px;cursor:pointer;list-style:none;color:var(--dim);font-weight:700}
+.ab-activity>summary::-webkit-details-marker{display:none}
+.ab-activity>summary::after{content:"";width:6px;height:6px;margin-left:2px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.ab-activity[open]>summary::after{transform:rotate(225deg)}
+.ab-activity>summary:focus-visible{outline:2px solid var(--tape);outline-offset:2px;border-radius:4px}
+.ab-activity ol{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ab-activity li{line-height:1.45;overflow-wrap:anywhere}
+.ab-activity time{margin-right:6px;color:var(--faint);font-variant-numeric:tabular-nums}
+.ab-files>.ab-chips{margin-top:8px}
+.ab-msgs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.ab-msg{display:flex;flex-direction:column;gap:3px;padding:8px 10px;background:var(--ink);border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px;line-height:1.45}
+.ab-msg p{margin:0;overflow-wrap:anywhere}
+.ab-msg-text{color:var(--paper)}
+.ab-msg-text span,.ab-msg-reply span{margin-right:6px;color:var(--faint);font-weight:700}
+.ab-msg-state{color:var(--faint);font-size:12px}
+.ab-msg-state strong{color:var(--dim)}
+.ab-msg[data-status="delivered"] .ab-msg-state strong{color:var(--wait)}
+.ab-msg[data-status="answered"] .ab-msg-state strong{color:var(--go)}
+.ab-msg-reply{margin-top:3px!important;padding-top:6px;border-top:1px solid var(--line);color:var(--dim)}
+.ab-director{gap:12px}
+.director-inbox{display:flex;flex-direction:column;gap:8px}
+.inbox-from{margin:0;color:var(--wait);font-size:12px;font-weight:700;line-height:1.35}
+.ab-stuck{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:11px 12px;background:rgba(255,198,41,.07);border:1px solid rgba(255,198,41,.4);border-radius:var(--radius)}
+.ab-stuck[data-kind="internal"]{background:rgba(255,138,133,.07);border-color:rgba(255,138,133,.4)}
+.ab-stuck-title{margin:0;color:var(--paper);font-size:13px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
+.ab-stuck-title strong{color:var(--tape);font-weight:800}
+.ab-stuck[data-kind="internal"] .ab-stuck-title strong{color:var(--hold)}
+.ab-stuck small{color:var(--faint);font-size:12px}
+.ab-stuck .notice{align-self:stretch;padding:8px 10px;gap:8px;font-size:12px}
+.ab-stuck .inline-error,.ab-stuck .inbox-note{margin:0}
+.ab-yours{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
+.ab-yours-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ab-label{color:var(--dim);font-size:12px;font-weight:700}
+.ab-yours-head button{min-height:28px;padding:3px 8px;font-size:12px}
+.ab-omitted{margin:0;font-size:12px}
+.ab-compose{display:flex;flex-direction:column;gap:10px;padding:12px;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--radius)}
+.ab-compose h3{font-size:14px}
+.ab-field{display:flex;flex-direction:column;gap:6px}
+.ab-field label{color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.02em}
+.ab-hint{margin:0;color:var(--faint);font-size:12px;line-height:1.4}
+.ab-compose textarea{min-height:88px;resize:vertical}
+.ab-compose [aria-invalid="true"]{border-color:var(--hold)}
+.ab-compose [aria-invalid="true"]:focus-visible{outline-color:var(--hold)}
+.ab-compose .field-count{margin:0}
+.ab-compose .notice{padding:8px 10px;gap:8px;font-size:12px}
+.ab-compose .inline-error{margin:0}
+.ab-send{display:flex;justify-content:flex-end}
+.ab-last{margin:0;color:var(--faint);font-size:12px;line-height:1.4}
+.ab-last strong{color:var(--dim)}
+.card-agent{display:flex;align-items:center;gap:7px;margin:0;color:var(--dim);font-size:12px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+@media(max-width:1100px){.job-layout{grid-template-columns:minmax(0,1fr) 300px}}
+@media(max-width:950px){.job-layout{grid-template-columns:minmax(0,1fr);grid-template-areas:"director" "main" "rail";grid-template-rows:none}}
+@media(max-width:720px){
+  .ab-card button,.ab-card .notice-actions button,.ab-compose button,.ab-compose select,.ab-director .inbox-options button,.ab-director .inbox-actions button{min-height:40px}
+  .ab-chip{padding-block:6px}
+  .ab-activity>summary{min-height:40px}
+}
 
 </style>
 </head>
@@ -4018,7 +4112,7 @@ export function reviewPanel(project, doc, state = {}, { docState = 'loaded', sig
 export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
-const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post']);
+const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
@@ -4076,17 +4170,28 @@ export function onboardingInboxItems(brands = [], drafts = []) {
   });
 }
 
+// A job that is stuck is a row of its own, unless the list already holds the question or decision that asks the person about it.
+export function stuckInboxItems(projects = [], items = []) {
+  const asked = new Set((Array.isArray(items) ? items : []).filter(item => item?.jobId && item.kind !== 'post').map(item => item.jobId));
+  return (Array.isArray(projects) ? projects : []).filter(project => project?.jobId && project.stuck && typeof project.stuck === 'object' && !asked.has(project.jobId)).map(project => ({
+    kind: 'stuck', jobId: project.jobId, jobTitle: trimmed(project.title), brandName: trimmed(project.brandName),
+    text: `Stuck: ${agentPlain(project.stuck.reason, project.stuck.kind === 'internal' ? 'Something went wrong on our side' : 'Claude needs your help to carry on')}`,
+  }));
+}
+
 export function workspaceInbox(snapshot, { drafts = [] } = {}) {
   const inbox = snapshot?.inbox && typeof snapshot.inbox === 'object' ? snapshot.inbox : null;
   const onboarding = onboardingInboxItems(snapshot?.brands, drafts);
   const asks = onboarding.filter(item => item.needsYou).length;
   if (inbox && Array.isArray(inbox.items)) {
     const rest = inbox.items.filter(item => item?.kind !== 'onboarding');
-    const items = inboxItemsOf([...onboarding, ...rest]);
-    return { items, count: (Number.isSafeInteger(inbox.count) ? Math.max(inbox.count, inboxItemsOf(rest).length) : inboxItemsOf(rest).length) + asks };
+    const stuck = stuckInboxItems(snapshot?.projects, rest);
+    const items = inboxItemsOf([...onboarding, ...stuck, ...rest]);
+    return { items, count: (Number.isSafeInteger(inbox.count) ? Math.max(inbox.count, inboxItemsOf(rest).length) : inboxItemsOf(rest).length) + asks + stuck.length };
   }
   const legacy = (snapshot?.projects || []).flatMap(legacySummaryInbox);
-  return { items: [...onboarding, ...legacy].slice(0, INBOX_LIMIT), count: legacy.length + asks };
+  const stuck = stuckInboxItems(snapshot?.projects, legacy);
+  return { items: [...onboarding, ...stuck, ...legacy].slice(0, INBOX_LIMIT), count: legacy.length + asks + stuck.length };
 }
 
 export function inboxOptions(options) {
@@ -4119,6 +4224,13 @@ export function answerArgs(item, { choice = null, text = null, requestId } = {})
   }
   if (trimmed(item.jobTitle)) args.title = trimmed(item.jobTitle);
   return { args };
+}
+
+// Which agent an item comes from ("From the Strategist"); the Director is the one the person already talks to, so it adds nothing.
+const agentWord = value => { const text = trimmed(value && typeof value === 'object' ? value.name || value.id : value); return /^(producer|director)$/i.test(text) ? '' : /^[a-z][a-z0-9_-]*$/.test(text) ? humanize(text) : text; };
+function inboxFromLine(item) {
+  const name = agentWord(item?.fromName) || agentWord(item?.from);
+  return name ? `<p class="inbox-from">${esc(`From the ${name}`)}</p>` : '';
 }
 
 function inboxJobLine(item) {
@@ -4330,6 +4442,10 @@ export function markPostHandled(key) {
 }
 const postHandled = item => item?.kind === 'post' && item.dismissible === true && (loadHandledPosts(), handledPosts.has(postDismissKey(item)));
 
+function stuckCard(item) {
+  return item.jobId ? `<div class="inbox-actions"><button type="button" class="primary" data-project="${esc(item.jobId)}">Open the job</button></div>` : '';
+}
+
 function postCard(item) {
   const jump = item.closing ? null : postJump(item);
   const summary = trimmed(item.summary) ? `<p class="inbox-summary">${esc(trimmed(item.summary))}</p>` : '';
@@ -4346,13 +4462,14 @@ export function inboxCard(item, ctx = {}) {
   const onboarding = item.kind === 'onboarding';
   const body = onboarding ? onboardingCard(item)
     : item.kind === 'post' ? postCard(item)
+    : item.kind === 'stuck' ? stuckCard(item)
     : item.kind === 'question' ? questionCard(item, ctx.question || {}, ctx.signal || {}, index)
       : item.kind === 'decision' ? decisionCard(item, ctx)
         : briefCard(item, ctx, index);
-  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}</li>`;
+  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}</li>`;
 }
 
-export function inboxPanel({ items = [], count = null, announcement = '', workspace = false, starter = '', signal = {}, context = () => ({}) } = {}) {
+export function inboxPanel({ items = [], count = null, announcement = '', workspace = false, starter = '', signal = {}, context = () => ({}), bare = false } = {}) {
   const list = inboxItemsOf(items);
   const contexts = list.map(item => context(item) || {});
   const answered = list.filter((item, at) => item.kind === 'question' && (contexts[at].question?.submitted || contexts[at].question?.answered)).length;
@@ -4368,7 +4485,8 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
   const body = list.length
     ? `<ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol>`
     : empty ? `<p class="inbox-announce">${esc(empty)}</p>` : '';
-  return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Inbox</h2>${tag}</div>${body}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
+  if (bare) return body ? `<div class="director-inbox">${body}</div>` : '';
+  return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Needs you</h2>${tag}</div>${body}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
 }
 
 const statusPill = state => `<span class="pill ${esc(String(state || 'pending').toLowerCase().split('_')[0])}">${esc(humanize(state))}</span>`;
@@ -4569,6 +4687,171 @@ export function outputsList(artifacts = [], doc = null, openKeys = new Set(), { 
   return `<div class="outputs-list">${rows(pinned)}${rows(main)}${groups}</div>`;
 }
 
+// The Agent Box: the Director card, the rail of agents on a job and the one composer that messages them. Everything here
+// reads `document.agents`; text the person sees is plain words, and a file is always shown by its title, never its path.
+export const AGENT_MESSAGE_LIMIT = 1000;
+const AGENT_PENDING_LIMIT = 20;
+const AGENT_STATES = Object.freeze({
+  needs_you: { label: 'Needs you', tone: 'needs' },
+  working: { label: 'Working', tone: 'working' },
+  waiting: { label: 'Waiting', tone: 'waiting' },
+  up_next: { label: 'Up next', tone: 'next' },
+  done: { label: 'Done', tone: 'done' },
+});
+const AGENT_JARGON = /\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\b[\w-]+\.(?:jsonl?|mjs|js|ts|md|html|png|jpe?g|mp4)\b|\b[A-Za-z]:\\/;
+const agentPlain = (text, fallback = '') => { const value = trimmed(text); return value && !AGENT_JARGON.test(value) && !CODE_TOKEN.test(value) ? value : fallback; };
+// "Strategist working" on a project card: one short line from the projection, with a pulse dot while an agent works.
+export function agentLineOf(project) {
+  const line = agentPlain(truncateText(project?.agentLine, 80));
+  return line ? `<p class="card-agent">${/\bworking\b/i.test(line) ? '<span class="ab-live" aria-hidden="true"></span>' : ''}${esc(line)}</p>` : '';
+}
+export function agentStateOf(value) {
+  const key = String(value || '').toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '');
+  return AGENT_STATES[key] ? key : 'waiting';
+}
+const isDirectorAgent = agent => agent?.id === 'producer';
+const agentNameOf = agent => trimmed(agent?.name) || humanize(agent?.id);
+// The Director first, then the others in the order the projection gives them; null when this job has no agents section.
+export function agentBoxOf(doc) {
+  const source = doc?.agents;
+  const all = (Array.isArray(source?.list) ? source.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
+  if (!all.length) return null;
+  const director = all.find(isDirectorAgent) || null;
+  return { all: director ? [director, ...all.filter(agent => agent !== director)] : all, director, others: all.filter(agent => !isDirectorAgent(agent)), unassigned: source.unassigned && typeof source.unassigned === 'object' ? source.unassigned : {} };
+}
+export function agentElapsed(since, now = Date.now()) {
+  const start = Date.parse(since);
+  if (!Number.isFinite(start) || start > now) return '';
+  const minutes = Math.floor((now - start) / 60000);
+  if (minutes < 1) return 'under a minute';
+  if (minutes < 60) return `${minutes} min`;
+  return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${Math.floor(minutes / 60)} h`;
+}
+function agentTime(value) {
+  const at = new Date(value);
+  if (!value || Number.isNaN(at.getTime())) return '';
+  const today = at.toDateString() === new Date().toDateString();
+  return at.toLocaleString(undefined, today ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+export function agentMessageProblem(text, agent) {
+  const clean = agentMessageText(text);
+  if (!clean) return 'Write your message first.';
+  if (clean.length > AGENT_MESSAGE_LIMIT) return `Keep your message to ${AGENT_MESSAGE_LIMIT} characters or fewer.`;
+  if ((Number(agent?.pendingMessages) || 0) >= AGENT_PENDING_LIMIT) return `The ${agentNameOf(agent)} has ${AGENT_PENDING_LIMIT} messages waiting. Wait for a reply before sending more.`;
+  return '';
+}
+export const agentMessageText = text => String(text ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim();
+/** The request the composer sends: exactly these fields (the transport adds the workspace). */
+export function agentMessageArgs({ project, agent, text, requestId }) {
+  return { requestId, brand: project.brand, jobId: project.jobId, agent, text: agentMessageText(text) };
+}
+/** The request "Try again" sends, for a job that went wrong on our side. */
+export function retryStepArgs({ project, requestId }) {
+  return { requestId, brand: project.brand, jobId: project.jobId };
+}
+
+function agentMessageStatus(agent, message) {
+  const name = agentNameOf(agent);
+  if (message.status === 'answered') return { word: 'Answered', note: '' };
+  if (message.status === 'delivered') return { word: `Delivered${message.deliveredAt ? ' ' + agentTime(message.deliveredAt) : ''}`, note: '' };
+  if (isDirectorAgent(agent)) return { word: 'Sent', note: 'The Director replies here.' };
+  return { word: 'Sent', note: agentStateOf(agent.state) === 'done' ? `The ${name} has finished, so the Director will answer.` : `Passed on at the ${name}'s next step.` };
+}
+
+function agentChips(files, more, { artifacts, doc, label, by }) {
+  const list = (Array.isArray(files) ? files : []).filter(file => file && trimmed(file.path));
+  const extra = Number.isSafeInteger(more) && more > 0 ? more : 0;
+  if (!list.length && !extra) return '';
+  const chip = file => {
+    const index = artifacts.findIndex(item => item?.path === file.path);
+    const known = index >= 0 ? artifacts[index] : null;
+    const given = trimmed(file.title);
+    const title = given && !FILE_EXTENSION.test(given) && !CODE_TOKEN.test(given) ? given : outputLabel(known || { path: file.path }, doc).title;
+    return known
+      ? `<li><button type="button" class="ab-chip${file.pinned ? ' is-pinned' : ''}" data-artifact="${index}" aria-label="${esc(`Open ${title}${by ? `, ${by}` : ''}`)}">${esc(title)}</button></li>`
+      : `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${title}, on your computer`)}">${esc(title)}<small>On your computer</small></button></li>`;
+  };
+  return `<ul class="ab-chips" aria-label="${esc(label)}">${list.map(chip).join('')}${extra ? `<li class="ab-more">${esc(`+${extra} more`)}</li>` : ''}</ul>`;
+}
+
+function agentActivity(agent, { jobId, openKeys }) {
+  const rows = (Array.isArray(agent.activity) ? agent.activity : []).map(row => ({ at: row?.at, text: agentPlain(row?.text) })).filter(row => row.text)
+    .sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)).slice(-5);
+  if (!rows.length) return '';
+  const key = `agent-activity:${jobId}:${agent.id}`;
+  return `<details class="ab-activity" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary>Activity <span class="count">${rows.length}</span></summary><ol>${rows.map(row => `<li><time datetime="${esc(row.at || '')}">${esc(agentTime(row.at))}</time><span>${esc(row.text)}</span></li>`).join('')}</ol></details>`;
+}
+
+function agentMessages(agent) {
+  const list = (Array.isArray(agent.messages) ? agent.messages : []).filter(message => message && trimmed(message.text)).slice(-3);
+  if (!list.length) return '';
+  return `<ol class="ab-msgs" aria-label="${esc(`Your messages to the ${agentNameOf(agent)}`)}">${list.map(message => {
+    const status = agentMessageStatus(agent, message);
+    const reply = message.status === 'answered' ? agentPlain(message.reply) : '';
+    return `<li class="ab-msg" data-status="${esc(message.status === 'answered' || message.status === 'delivered' ? message.status : 'sent')}"><p class="ab-msg-text"><span>You</span>${esc(truncateText(message.text, 240))}</p><p class="ab-msg-state"><strong>${esc(status.word)}</strong>${status.note ? ` ${esc(status.note)}` : ''}</p>${reply ? `<p class="ab-msg-reply"><span>${esc(agentNameOf(agent))}</span>${esc(reply)}</p>` : ''}</li>`;
+  }).join('')}</ol>`;
+}
+
+function agentStuckBanner(stuck, retry = {}, signal = {}, project = null) {
+  if (!stuck || typeof stuck !== 'object') return '';
+  const internal = stuck.kind === 'internal';
+  const reason = agentPlain(stuck.reason, internal ? 'Something went wrong on our side' : 'Claude needs your help to carry on');
+  const since = agentTime(stuck.since);
+  // Try again is only for a job that went wrong on our side, and only while the server says it can be tried (not mid-retry, not after a second failure).
+  const mine = Boolean(retry.applied && retry.sinceSeen === stuck.since && !retry.submitted);
+  const waiting = Boolean(retry.busy || retry.submitted || retry.needsReconciliation || mine);
+  const button = stuck.canRetry === true && internal ? `<button type="button" class="ab-retry" data-ab-retry="${esc(project?.jobId || '')}" ${waiting ? 'disabled' : ''}>${retry.busy ? 'Trying again...' : 'Try again'}</button>` : '';
+  const status = button ? (mine ? '<p class="inbox-note" role="status">Trying that step again. This updates when it is done.</p>' : inboxStatus(retry, signal)) + inboxError(retry) : '';
+  return `<section class="ab-stuck" data-kind="${internal ? 'internal' : 'help'}" aria-labelledby="ab-stuck-title"><p class="ab-stuck-title" id="ab-stuck-title"><strong>Stuck:</strong> ${esc(reason)}</p>${since ? `<small>Since ${esc(since)}</small>` : ''}${button}${status}</section>`;
+}
+
+// One card. The Director's carries the stuck banner, the "Needs you" items and the person's own files in `body`.
+function agentCard(agent, { chipContext, jobId, openKeys, now, canMessage, body = '', foot = '', director = false }) {
+  const name = agentNameOf(agent);
+  const known = agent.state !== undefined && agent.state !== null;
+  const state = agentStateOf(agent.state);
+  const meta = AGENT_STATES[state];
+  const working = known && state === 'working';
+  const elapsed = working ? agentElapsed(agent.since, now) : '';
+  const pill = known ? `<span class="pill ab-state ab-${meta.tone}">${working ? '<span class="ab-live" aria-hidden="true"></span>' : ''}<span>${meta.label}${working ? `<span data-ab-since="${esc(agent.since || '')}">${elapsed ? esc(`, ${elapsed}`) : ''}</span>` : ''}</span></span>` : '';
+  const id = String(agent.id).replace(/[^A-Za-z0-9_-]/g, '');
+  const task = agentPlain(agent.task, director ? 'Runs the job and talks to you' : '');
+  const chips = agentChips(agent.files, agent.filesMore, { ...chipContext, label: `Files from the ${name}`, by: `by the ${name}` });
+  const model = trimmed(agent.model);
+  return `<article class="ab-card${director ? ' ab-director' : ''}${known ? ` ab-${meta.tone}` : ''}" aria-labelledby="ab-name-${esc(id)}" data-agent="${esc(agent.id)}"><div class="ab-top"><div class="ab-who"><span class="avatar" aria-hidden="true">${esc(name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())}</span><div><h3 id="ab-name-${esc(id)}">${esc(name)}</h3>${model ? `<small>${esc(model)}</small>` : ''}</div></div>${pill}</div>${task ? `<p class="ab-task">${esc(task)}</p>` : ''}${agentPlain(agent.note) && !director ? `<p class="ab-note">${esc(agentPlain(agent.note))}</p>` : ''}${body}${chips}${foot}${agentMessages(agent)}${agentActivity(agent, { jobId, openKeys })}${canMessage ? `<button type="button" class="ab-message" data-ab-message="${esc(agent.id)}" aria-label="${esc(`Message the ${name}`)}">Message</button>` : ''}</article>`;
+}
+
+function agentFilesBody(box, { chipContext, jobId, openKeys, omitted }) {
+  const part = (key, title, files, { by = '' } = {}) => {
+    const list = Array.isArray(files) ? files.slice(0, 8) : [];
+    const more = (Array.isArray(files) && files.length > 8 ? files.length - 8 : 0) + (Number(box?.unassigned?.[`${key}More`]) || 0);
+    const chips = agentChips(list, more, { ...chipContext, label: title, by });
+    if (!chips) return '';
+    const open = `agent-files:${jobId}:${key}`;
+    return `<details class="ab-activity ab-files" data-open-key="${esc(open)}"${openKeys.has(open) ? ' open' : ''}><summary>${esc(title)} <span class="count">${list.length + more}</span></summary>${chips}</details>`;
+  };
+  const yours = agentChips(Array.isArray(box?.unassigned?.yours) ? box.unassigned.yours.slice(0, 8) : [], Number(box?.unassigned?.yoursMore) || 0, { ...chipContext, label: 'Your files', by: 'one of your files' }) || '<p class="muted ab-empty">Files you add show here.</p>';
+  return `<div class="ab-yours"><div class="ab-yours-head"><span class="ab-label">Your files</span><button type="button" class="quiet" data-action="source">Add source files</button></div>${yours}</div>${part('records', 'Records', box?.unassigned?.records)}${part('other', 'Other files', box?.unassigned?.other)}${omitted ? `<p class="muted ab-omitted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : ''}`;
+}
+
+function agentComposer(box, ui, { signal }) {
+  const agents = box.all;
+  const picked = agents.find(agent => agent.id === ui.to) || box.director || agents[0];
+  const name = agentNameOf(picked);
+  const hint = isDirectorAgent(picked) ? 'The Director answers here.' : `The Director passes this on at the ${name}'s next step.`;
+  const draft = ui.draft || '';
+  const last = agents.flatMap(agent => (Array.isArray(agent.messages) ? agent.messages : []).filter(message => message && trimmed(message.text)).map(message => ({ agent, message })))
+    .sort((a, b) => (Date.parse(a.message.at) || 0) - (Date.parse(b.message.at) || 0)).at(-1);
+  const status = last ? agentMessageStatus(last.agent, last.message) : null;
+  const send = ui.send || {};
+  return `<form class="ab-compose" data-ab-form novalidate aria-labelledby="ab-compose-title"><h3 id="ab-compose-title">Message this agent</h3><div class="ab-field"><label for="ab-to">To</label><select id="ab-to" name="to" aria-describedby="ab-hint">${agents.map(agent => `<option value="${esc(agent.id)}"${agent === picked ? ' selected' : ''}>${esc(agentNameOf(agent))}</option>`).join('')}</select><p class="ab-hint" id="ab-hint">${esc(hint)}</p></div><div class="ab-field"><label for="ab-text">Your message</label><textarea id="ab-text" name="text" maxlength="${AGENT_MESSAGE_LIMIT}" rows="4" placeholder="Say what you want changed or checked"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}<div class="ab-send"><button type="submit" class="primary" ${send.busy ? 'disabled' : ''}>${send.busy ? 'Sending...' : 'Send'}</button></div>${inboxStatus(send, signal)}${inboxError(send)}${status ? `<p class="ab-last">Last message, to the ${esc(agentNameOf(last.agent))}: <strong>${esc(status.word)}</strong></p>` : ''}</form>`;
+}
+
+function agentRail(box, ui, ctx) {
+  const cards = box.others.map(agent => agentCard(agent, ctx)).join('');
+  return `<aside class="agent-rail" aria-labelledby="ab-rail-title"><h2 id="ab-rail-title">Agents on this job</h2>${cards || '<p class="muted ab-solo">The Director is the only agent on this job so far.</p>'}${agentComposer(box, ui, ctx)}</aside>`;
+}
+
 // Subscribe to the workspace projection and recover from exactly one class of
 // failure: a terminal "unavailable" from a dead platform bridge. Per db.d.ts a
 // fresh onSnapshot is the only recovery for that code, so clear the dead
@@ -4700,6 +4983,12 @@ function requestComment(operation, args = {}) {
       return args?.link ? `Marked a post as posted, with its link.` : 'Marked a post as posted.';
     case 'choose_studio_workspace':
       return `Studio workspace${quotedTitle(args?.title)} set to ${args?.workspaceName || 'a different workspace'}.`;
+    case 'agent_message': {
+      const who = agentWord(args?.agent) || 'Director';
+      return `Message for the ${who}: "${truncateText(args?.text, 80)}".`;
+    }
+    case 'retry_step':
+      return 'Try the stuck step again.';
     case 'answer_question': {
       const choice = truncateText(String(args?.choiceLabel ?? args?.choice ?? ''), 80);
       const typed = truncateText(args?.text, 80);
@@ -5098,7 +5387,7 @@ if (typeof document !== 'undefined') {
     const { done, total } = stageProgress(project);
     const progress = total ? Math.round(done / total * 100) : 0;
     const mark = project.brand === NO_BRAND ? REPORT_MARK : esc(brand.slice(0,2).toUpperCase());
-    return `<button class="project-card" data-project="${esc(project.jobId)}"><div class="card-art"><span class="avatar" aria-hidden="true">${mark}</span>${pill(project.state, project.stateLabel)}</div><div class="card-body"><span class="eyebrow">${esc(`${kindLabelOf(project)} · ${brand}`)}</span><h3>${esc(project.title || 'Untitled job')}</h3><p class="muted">${esc(project.nextAction || humanize(project.state))}</p><div class="progress"><span style="width:${progress}%"></span></div><div class="card-meta"><span>${esc(`${total || 0} ${total === 1 ? 'stage' : 'stages'} in this plan`)}</span><span>${esc(project.ownershipStatus === 'unbound' ? 'Local draft' : 'Resume job')}</span></div></div></button>`;
+    return `<button class="project-card" data-project="${esc(project.jobId)}"><div class="card-art"><span class="avatar" aria-hidden="true">${mark}</span>${pill(project.state, project.stateLabel)}</div><div class="card-body"><span class="eyebrow">${esc(`${kindLabelOf(project)} · ${brand}`)}</span><h3>${esc(project.title || 'Untitled job')}</h3><p class="muted">${esc(project.nextAction || humanize(project.state))}</p>${agentLineOf(project)}<div class="progress"><span style="width:${progress}%"></span></div><div class="card-meta"><span>${esc(`${total || 0} ${total === 1 ? 'stage' : 'stages'} in this plan`)}</span><span>${esc(project.ownershipStatus === 'unbound' ? 'Local draft' : 'Resume job')}</span></div></div></button>`;
   }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
@@ -5127,11 +5416,11 @@ if (typeof document !== 'undefined') {
     const docState = jobDocStates.get(view.jobId) || (watched ? 'loading' : 'loaded');
     return { project: view, doc: docFor(view), docState, review: ui.review, intake: ui.intake };
   }
-  function inboxAside(inbox, { project = null, workspace = false, starter = '' } = {}) {
+  function inboxAside(inbox, { project = null, workspace = false, starter = '', bare = false } = {}) {
     inboxQuestions.clear();
     inboxDecisions.clear();
     inboxBriefs.clear();
-    return inboxPanel({ ...inbox, workspace, starter, signal: signalInfo(), context: item => inboxContext(item, project) });
+    return inboxPanel({ ...inbox, workspace, starter, bare, signal: signalInfo(), context: item => inboxContext(item, project) });
   }
   const answeredInPlace = item => item.kind === 'decision' && item.jobId && !inboxDecisionArgs(item).error;
   function syncInboxDocuments(jobIds = []) {
@@ -5263,9 +5552,9 @@ if (typeof document !== 'undefined') {
       const status = String(acknowledgement.status || receipt.status || 'requested');
       if (status === 'applied') {
         stopJobRequestWatch(key);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null, ...(part === 'answer' ? { answered: true } : {}) });
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
-        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? 'Claude has your answer.' : 'Claude applied your decision.');
+        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? 'Claude has your answer.' : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'Claude is trying that step again.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
@@ -5376,8 +5665,21 @@ if (typeof document !== 'undefined') {
     const storyboard = pendingGate === 'sample' || pendingGate === 'storyboard' ? '' : storyboardPanel(doc);
     const omitted = project.artifactsOmitted || 0;
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
-    const inbox = inboxAside(jobInbox(project, doc), { project });
-    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="layout"><div>${rail}${intakePanel}${report}${review}${sentPanel}${kitPanel}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}${jobFlowPanel(project)}<section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section></div>${inbox}</div>`;
+    // The Director card and the agent rail replace the Inbox and the Outputs list. A job document with no agents section
+    // keeps its files in the old Outputs list so nothing becomes unreachable.
+    const agentBox = agentBoxOf(doc);
+    const boxUi = agentBoxState(project);
+    const boxContext = { chipContext: { artifacts: project.artifacts || [], doc }, jobId: project.jobId, openKeys, now: Date.now(), canMessage: Boolean(agentBox), signal: signalInfo() };
+    const fromKey = new Map((Array.isArray(agentBox?.director?.needs) ? agentBox.director.needs : []).filter(need => need && typeof need === 'object' && need.key && need.from).map(need => [need.key, agentNameOf((agentBox?.all || []).find(item => item.id === need.from) || { id: need.from })]));
+    const inboxView = jobInbox(project, doc);
+    const needItems = fromKey.size ? inboxView.items.map(item => (item.fromName || item.from || !fromKey.has(inboxKey(item)) ? item : { ...item, fromName: fromKey.get(inboxKey(item)) })) : inboxView.items;
+    const needs = inboxAside({ ...inboxView, items: needItems }, { project, bare: true });
+    const directorBody = agentStuckBanner(agentBox?.director?.stuck, boxUi.retry, signalInfo(), project) + needs;
+    const directorFoot = agentBox ? agentFilesBody(agentBox, { chipContext: boxContext.chipContext, jobId: project.jobId, openKeys, omitted }) : '';
+    const directorCard = agentCard(agentBox?.director || { id: 'producer', name: 'Director', state: null }, { ...boxContext, body: directorBody, foot: directorFoot, director: true });
+    const railHtml = agentBox ? agentRail(agentBox, boxUi, boxContext) : '';
+    const outputsPanel = agentBox ? '' : `<section class="panel outputs-panel"><div class="section-head"><h2>Outputs</h2><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</section>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}${jobStats(project)}${metricDetails(metrics)}<div class="job-layout">${directorCard}<div class="job-main">${rail}${intakePanel}${report}${review}${sentPanel}${kitPanel}${recipeStandalone}${storyboard}${documentPanels(doc, openKeys)}${jobFlowPanel(project)}${outputsPanel}</div>${railHtml}</div>`;
   }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
@@ -5519,6 +5821,7 @@ if (typeof document !== 'undefined') {
     if (inline) inline.kitFocus = null;
     app.querySelectorAll('.sb-strip').forEach((strip, index) => { if (stripScroll[index]) strip.scrollLeft = stripScroll[index]; });
     restoreJobFocus(jobFocus);
+    announceAgents(project);
     // A caption that fits in its two lines has nothing to open, so it shows no Show all control.
     app.querySelectorAll('.publish-text:not(.is-open)').forEach(item => {
       const preview = item.querySelector('.publish-text-preview');
@@ -5898,6 +6201,8 @@ if (typeof document !== 'undefined') {
     if(target.dataset.connect){void submitConnectorAction('connect_provider', target.dataset.connect);return;}
     if(target.dataset.skip){void submitConnectorAction('skip_provider', target.dataset.skip);return;}
     if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
+    if(target.dataset.abMessage!==undefined){const shown=current();if(shown){agentBoxState(shown).to=target.dataset.abMessage;render();app.querySelector('#ab-text')?.focus();}return;}
+    if(target.dataset.abRetry!==undefined){const shown=current();if(shown)void submitRetryStep(shown);return;}
     if(target.dataset.artifact!==undefined){returnFocus=target;returnSelector=`[data-artifact="${CSS.escape(target.dataset.artifact)}"]`;drawer=current()?.artifacts?.[Number(target.dataset.artifact)];drawerTab='output';render();app.querySelector('.drawer button')?.focus();return;}
     if(target.dataset.tab){drawerTab=target.dataset.tab;render();app.querySelector(`[data-tab="${drawerTab}"]`)?.focus();return;}
     if(target.dataset.viewMedia){const src=safePreviewUrl(target.dataset.viewMedia);if(!src)return;captureInlineValues();returnFocus=target;returnSelector=`[data-view-media="${CSS.escape(target.dataset.viewMedia)}"]`;viewer={src,alt:target.dataset.viewAlt || ''};render();app.querySelector('.viewer-close')?.focus();return;}
@@ -6084,6 +6389,8 @@ if (typeof document !== 'undefined') {
       if (ui?.intake?.requestId === requestId) return ui.intake;
       if (ui?.review?.requestId === requestId) return ui.review;
       if (ui?.route?.requestId === requestId) return ui.route;
+      if (ui?.agentBox?.send?.requestId === requestId) return ui.agentBox.send;
+      if (ui?.agentBox?.retry?.requestId === requestId) return ui.agentBox.retry;
       for (const post of Object.values(ui?.posts || {})) { if (post?.requestId === requestId) return post; }
     }
     for (const state of questionUi.values()) { if (state.requestId === requestId) return state; }
@@ -6329,6 +6636,104 @@ if (typeof document !== 'undefined') {
       return;
     }
     void submitPublishRoute(project, field.value);
+  }
+  // The Agent Box's own page state: who the composer is addressed to, the unsent draft, and the two requests it can send.
+  function agentBoxState(project) {
+    const ui = uiFor(project);
+    return (ui.agentBox ||= { to: '', draft: '', error: '', send: {}, retry: {} });
+  }
+  const AGENT_SEND_FAILED = 'Your message was not saved. Try again.';
+  async function submitAgentMessage(project, form) {
+    const box = agentBoxState(project);
+    const agents = agentBoxOf(docFor(project))?.all || [];
+    box.to = form.elements.namedItem('to')?.value || box.to;
+    box.draft = form.elements.namedItem('text')?.value ?? box.draft;
+    const agent = agents.find(item => item.id === box.to) || agents[0];
+    const state = box.send;
+    if (!transport || !agent || state.busy) return;
+    box.error = agentMessageProblem(box.draft, agent);
+    if (box.error) { render(); focusQuietly('#ab-text'); return; }
+    const requestId = randomId(globalThis);
+    const args = agentMessageArgs({ project, agent: agent.id, text: box.draft, requestId });
+    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, error: '', message: 'Saved. Claude picks this up and passes it on.', operation: 'agent_message', args });
+    render();
+    focusQuietly('#ab-text');
+    try {
+      const result = await transport.call('agent_message', args);
+      if (state.requestId !== requestId) return;
+      box.draft = '';
+      state.busy = false;
+      if (artifactMode()) {
+        Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });
+        watchJobRequest(project.jobId, 'agent-msg', state);
+        scheduleReminderWake(state);
+      } else {
+        await refresh();
+      }
+      render();
+    } catch {
+      if (state.requestId !== requestId) return;
+      Object.assign(state, { busy: false, submitted: false, requestId: null, operation: null, args: null });
+      box.error = AGENT_SEND_FAILED;
+      render();
+      focusQuietly('#ab-text');
+    }
+  }
+  async function submitRetryStep(project) {
+    const box = agentBoxState(project);
+    const state = box.retry;
+    const stuck = agentBoxOf(docFor(project))?.director?.stuck;
+    if (!transport || !stuck || stuck.kind !== 'internal' || state.busy || state.submitted) return;
+    const requestId = randomId(globalThis);
+    const args = retryStepArgs({ project, requestId });
+    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, applied: false, sinceSeen: stuck.since, error: '', message: 'Saved. Claude will try that step again.', operation: 'retry_step', args });
+    render();
+    try {
+      const result = await transport.call('retry_step', args);
+      if (state.requestId !== requestId) return;
+      state.busy = false;
+      if (artifactMode()) {
+        Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });
+        watchJobRequest(project.jobId, 'retry', state);
+        scheduleReminderWake(state);
+      } else {
+        await refresh();
+      }
+      render();
+    } catch {
+      if (state.requestId !== requestId) return;
+      Object.assign(state, { busy: false, requestId: null, operation: null, args: null, error: 'Could not ask Claude to try again. Try once more.' });
+      render();
+    }
+  }
+  // One polite live region that outlives every redraw, so a change between two renders (an agent finishing, a reply
+  // arriving) is said once.
+  const agentSeen = new Map();
+  function announceAgents(project) {
+    const list = project ? agentBoxOf(docFor(project))?.all : null;
+    if (!list) return;
+    const now = new Map(list.map(agent => [agent.id, { name: agentNameOf(agent), state: agentStateOf(agent.state), answered: (agent.messages || []).filter(message => message?.status === 'answered').length }]));
+    const before = agentSeen.get(project.jobId);
+    agentSeen.set(project.jobId, now);
+    if (!before) return;
+    const lines = [];
+    for (const [id, agent] of now) {
+      const was = before.get(id);
+      if (!was) continue;
+      if (was.state !== agent.state) lines.push(`The ${agent.name} is now ${AGENT_STATES[agent.state].label.toLowerCase()}.`);
+      if (agent.answered > was.answered) lines.push(`The ${agent.name} answered your message.`);
+    }
+    if (!lines.length) return;
+    let live = document.getElementById('agent-live');
+    if (!live) {
+      live = document.createElement('div');
+      live.id = 'agent-live';
+      live.className = 'visually-hidden';
+      live.setAttribute('role', 'status');
+      live.setAttribute('aria-live', 'polite');
+      document.body.append(live);
+    }
+    live.textContent = lines.join(' ');
   }
   function postStateOf(project, postId) {
     const ui = uiFor(project);
@@ -6652,6 +7057,15 @@ if (typeof document !== 'undefined') {
     const field = event.target;
     const answerForm = field.closest?.('[data-inbox-form]');
     if (answerForm) { questionState(answerForm.dataset.inboxForm).draft = field.value; return; }
+    if (field.closest?.('[data-ab-form]') && field.name === 'text') {
+      const shown = current();
+      if (!shown) return;
+      const box = agentBoxState(shown);
+      box.draft = field.value;
+      document.getElementById('ab-count')?.replaceChildren(`${field.value.length} / ${AGENT_MESSAGE_LIMIT}`);
+      if (box.error) { box.error = ''; field.removeAttribute('aria-invalid'); document.getElementById('ab-error')?.remove(); }
+      return;
+    }
     if (intakeEdit(field)) return;
     if (inline?.kind === 'onboard' && field.closest?.('#inline-form')) {
       markContextEdited(inline, field.name);
@@ -6782,13 +7196,13 @@ if (typeof document !== 'undefined') {
   });
   function captureJobFocus() {
     const element = document.activeElement;
-    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit,#starter-form') : null;
+    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit,#starter-form,.ab-compose') : null;
     if (!scope) return null;
     const box = element.type === 'checkbox' || element.type === 'radio';
     let start = null;
     let end = null;
     try { start = typeof element.selectionStart === 'number' ? element.selectionStart : null; end = typeof element.selectionEnd === 'number' ? element.selectionEnd : null; } catch { start = end = null; }
-    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name], #starter-form [name]';
+    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name], #starter-form [name], .ab-compose [name]';
     return { within, name: element.name, value: box ? element.value : null, start, end };
   }
   function restoreJobFocus(focus) {
@@ -6802,6 +7216,11 @@ if (typeof document !== 'undefined') {
     }
   }
   app.addEventListener('change', event => {
+    if (event.target?.name === 'to' && event.target.closest?.('[data-ab-form]')) {
+      const shown = current();
+      if (shown) { agentBoxState(shown).to = event.target.value; render(); app.querySelector('#ab-to')?.focus({ preventScroll: true }); }
+      return;
+    }
     const checkbox = event.target;
     if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== 'checkbox' || !checkbox.name.endsWith('_unavailable')) return;
     const name = checkbox.name.slice(0, -'_unavailable'.length);
@@ -6868,6 +7287,12 @@ if (typeof document !== 'undefined') {
       void answerQuestion(questionId, { text });
       return;
     }
+    if (event.target.dataset?.abForm !== undefined) {
+      event.preventDefault();
+      const shown = current();
+      if (shown) void submitAgentMessage(shown, event.target);
+      return;
+    }
     if (event.target.dataset?.inboxIntake !== undefined) {
       event.preventDefault();
       const project = viewOf(event.target.dataset.inboxIntake);
@@ -6885,6 +7310,7 @@ if (typeof document !== 'undefined') {
     if (event.target.open) openKeys.add(key); else openKeys.delete(key);
   }, true);
   addEventListener('hashchange',()=>{drawer=null;viewer=null;connectorsView=false;render();});
+  setInterval(() => app.querySelectorAll('[data-ab-since]').forEach(item => { const words = agentElapsed(item.dataset.abSince); item.textContent = words ? `, ${words}` : ''; }), 30000);
   void refresh();
 }
 

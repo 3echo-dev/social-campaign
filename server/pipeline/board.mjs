@@ -18,6 +18,9 @@ import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceLi
 import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
+import { agentName, gateAuthor, jobAgentLine, lastChangeAt, rosterOf, stuckFor } from './agent-box.mjs';
+import { agentLabel, readAgentLines } from './agent-log.mjs';
+import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
@@ -687,6 +690,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
   const questionsByJob = openQuestionsByJob(root);
   const metricoolBrands = readMetricoolBrands(root);
   const metricoolOn = metricoolConnected(root);
+  const stuckCtx = stuckContext(root);
   return runtime.listJobs({ root }).filter(job => !jobIds || jobIds.includes(job.jobId)).map(job => {
     const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
@@ -702,7 +706,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
       try { publish.evaluation = evaluatePublishPlan({ root, brand: job.brand, jobId: job.jobId, measure: 'display' }); }
       catch { publish.evaluation = { ready: false, changed: false, reason: REVIEW_NOT_READY, checks: null }; }
     }
-    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot) });
+    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot), agents: { snapshot, requests: stuckCtx.requests.get(job.jobId) || [], retriedAt: stuckCtx.retriedAt(job), blockedLine: blockedReason(snapshot) } });
     if (gate === 'content' && document.review && kinds.suppliesMedia(snapshot.job?.kind)) suppliedCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
   });
@@ -1149,6 +1153,7 @@ export function boardSnapshot({ root } = {}) {
       ? 'ready'
       : 'brand_onboarding';
   const questionsByJob = openQuestionsByJob(root);
+  const stuckCtx = stuckContext(root);
   const projectEntries = runtime.listJobs({ root }).map(job => {
     const snapshot = runtime.readJobSnapshot({ root, brand:job.brand, jobId:job.jobId });
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
@@ -1158,6 +1163,14 @@ export function boardSnapshot({ root } = {}) {
     const kind = typeof snapshot.job?.kind === 'string' ? snapshot.job.kind : null;
     const report = isReportKind(kind);
     const reason = blockedReason(snapshot);
+    const agentLines = readAgentLines(job.path);
+    const agentLine = jobAgentLine({ dir: job.path, snapshot, lines: agentLines });
+    const stuck = stuckFor({ dir: job.path, snapshot, inboxItems: inbox.items, requests: stuckCtx.requests.get(job.jobId) || [], retriedAt: stuckCtx.retriedAt(job), blockedLine: reason, lines: agentLines });
+    // The agent that wrote the work behind a decision, so "Needs you" can say who it is from.
+    const inboxItems = inbox.items.map(item => {
+      const from = item.kind === 'decision' ? gateAuthor(snapshot.plan?.rows, item.gate) : null;
+      return from ? { ...item, from, fromName: agentName(from) } : item;
+    });
     const project = {
       jobId:snapshot.project.jobId,
       brand:snapshot.project.brand,
@@ -1173,6 +1186,8 @@ export function boardSnapshot({ root } = {}) {
       nextAction:jobLine(inbox),
       blockerCount:jobBlockers(snapshot).length,
       ...(reason ? { blockedReason:reason } : {}),
+      ...(agentLine ? { agentLine } : {}),
+      ...(stuck ? { stuck } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
@@ -1187,7 +1202,7 @@ export function boardSnapshot({ root } = {}) {
         ...(report ? {} : {generation:usage.generation}),
       },
     };
-    return { project, rawEventCount: snapshot.events.length, inboxItems: inbox.items };
+    return { project, rawEventCount: snapshot.events.length, inboxItems };
   });
   const projects = projectEntries.map(entry => entry.project);
   const localEventCount = projectEntries.reduce((sum,entry) => sum + entry.rawEventCount,0);
@@ -1239,7 +1254,7 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question'].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step'].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
@@ -1247,6 +1262,8 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   if (operation === 'choose_post_time') validatePostTime(root, args);
   if (operation === 'resolve_post') checkResolvePost(root, args);
   if (operation === 'mark_posted') checkMarkPosted(root, args);
+  if (operation === 'agent_message') checkAgentMessage(root, args);
+  if (operation === 'retry_step') checkRetryStep(root, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
   const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
@@ -1308,6 +1325,127 @@ function validatePostTime(root, args) {
   if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
   if (typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
   checkPostTime({ root, brand: args.brand.trim(), jobId: args.jobId.trim(), deliverable: args.deliverable, dateTime: args.dateTime });
+}
+
+// ---------------------------------------------------------------------------
+// Agent Box requests: a message to an agent, and "Try again" on a stuck job
+// ---------------------------------------------------------------------------
+
+// Exactly these fields and the workspace the board belongs to, nothing else and nothing missing.
+const AGENT_MESSAGE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'agent', 'text', 'workspaceId']);
+const RETRY_STEP_FIELDS = new Set(['requestId', 'brand', 'jobId', 'workspaceId']);
+const MESSAGE_COMMENT_CHARS = 80;
+const RETRY_MEMORY = 100;
+const retriesFile = root => join(root, '.social-pipeline', 'board', 'stuck-retries.json');
+
+function validateJobRequest(root, args, fields, what) {
+  if (!plainObject(args)) throw new Error('Say which job this is for.');
+  const keys = Object.keys(args);
+  if (keys.some(key => !fields.has(key)) || [...fields].some(key => !keys.includes(key))) throw new Error(`This request is not shaped like ${what}, so it was not accepted.`);
+  if (args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.brand !== 'string' || !args.brand.trim() || typeof args.jobId !== 'string' || !args.jobId.trim()) throw new Error('Say which job this is for.');
+  const job = facts.jobAt(root, args.brand.trim(), args.jobId.trim());
+  if (!job) throw new Error('That job could not be found for that brand.');
+  return job;
+}
+
+/**
+ * A message to an agent, checked as it is now, before anything is claimed or saved: the job is open, the agent is on its roster, the
+ * text is 1 to 1000 plain characters, and the agent has fewer than 20 messages waiting (a message already saved for this request passes,
+ * so a replay is answered the way the first try was). Returns the job and its roster.
+ */
+function checkAgentMessage(root, args) {
+  const job = validateJobRequest(root, args, AGENT_MESSAGE_FIELDS, 'a message to an agent');
+  if (typeof args.agent !== 'string' || typeof args.text !== 'string' || typeof args.requestId !== 'string') throw new Error('Choose who the message is for and write it first.');
+  if (facts.isFinishedState(job.state)) throw new Error('This job is finished, so it can no longer take messages.');
+  const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
+  const roster = rosterOf({ rows: snapshot.plan?.rows, route: snapshot.route });
+  if (!roster.includes(args.agent)) throw new Error('That agent is not part of this job.');
+  const problem = messageTextProblem(args.text);
+  if (problem) throw new Error(problem);
+  const id = messageId(args.requestId);
+  const saved = readAgentMessages(job.dir, args.agent);
+  if (!saved.some(message => message.id === id) && saved.filter(message => isPending(message, args.agent)).length >= PENDING_LIMIT) {
+    throw new Error(`${PENDING_LIMIT} messages are already waiting for the ${agentLabel(args.agent)}. They will be passed on at its next step.`);
+  }
+  return { job, roster };
+}
+
+function readRequestRecords(root) {
+  const dir = join(root, '.social-pipeline', 'board', 'requests');
+  let names = [];
+  try { names = readdirSync(dir).filter(name => name.endsWith('.json')); } catch { return []; }
+  const out = [];
+  for (const name of names) {
+    try { const record = read(join(dir, name)); if (plainObject(record)) out.push(record); } catch { /* an unreadable record is skipped */ }
+  }
+  return out;
+}
+
+/** What the stuck check needs from the workspace: each job's board requests that need reconciliation, and when "Try again" was last used. */
+function stuckContext(root) {
+  const requests = new Map();
+  for (const record of readRequestRecords(root)) {
+    const jobId = record.args?.jobId;
+    if (record.status !== 'needs_reconciliation' || typeof jobId !== 'string') continue;
+    if (!requests.has(jobId)) requests.set(jobId, []);
+    requests.get(jobId).push({ at: record.createdAt ?? null, detail: typeof record.detail === 'string' ? record.detail : null });
+  }
+  const saved = readJsonFile(retriesFile(root), {});
+  const jobs = plainObject(saved?.jobs) ? saved.jobs : {};
+  const retriedAt = job => {
+    const at = Date.parse(jobs[`${job.brand}/${job.jobId}`]?.at ?? '');
+    return Number.isFinite(at) ? at : null;
+  };
+  return { requests, retriedAt };
+}
+
+function recordRetry(root, job) {
+  updateJsonFile(retriesFile(root), current => {
+    const jobs = plainObject(current?.jobs) ? current.jobs : {};
+    jobs[`${job.brand}/${job.jobId}`] = { at: new Date().toISOString() };
+    const kept = Object.entries(jobs).sort((a, b) => String(a[1]?.at).localeCompare(String(b[1]?.at))).slice(-RETRY_MEMORY);
+    return { v: 1, jobs: Object.fromEntries(kept) };
+  }, {});
+}
+
+/**
+ * The stuck jobs among `jobs` (as listJobs gives them), by "brand/jobId", each with what stuckFor says. Built from the same light
+ * snapshot as personWaiting, so the stop hook never reads media. Pass the map from openQuestionsForWaiting when asking about several jobs.
+ */
+export function stuckJobs(root, jobs, { questions = null } = {}) {
+  root = rootOf(root);
+  const context = stuckContext(root);
+  const open = questions || openQuestionsForWaiting(root);
+  const out = new Map();
+  for (const job of jobs) {
+    try {
+      const snapshot = lightSnapshot(job);
+      if (states.isTerminal(snapshot.project.state)) continue;
+      const dir = job.dir || job.path;
+      const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
+      const inbox = jobInbox({ root, snapshot, gate, review, intake: projectIntake(snapshot, null), questions: open.get(job.jobId), dir });
+      const lines = readAgentLines(dir);
+      const stuck = stuckFor({ dir, snapshot, inboxItems: inbox.items, requests: context.requests.get(job.jobId) || [], retriedAt: context.retriedAt(job), blockedLine: blockedReason(snapshot), lines });
+      // `activeAt` (ms) is the job's last sign of life, for the stop hook's "recent activity" rule.
+      if (stuck) out.set(`${job.brand}/${job.jobId}`, { ...stuck, activeAt: lastChangeAt({ dir, updatedAt: snapshot.status?.updatedAt, lines }) });
+    } catch { /* a job that cannot be read is not reported as stuck */ }
+  }
+  return out;
+}
+
+/**
+ * "Try again" checked as it is now, before anything is claimed or saved: the job is stuck for a reason on our side, the retry has not
+ * been used yet, and no other retry for this job is waiting. Returns the job and what is stuck.
+ */
+function checkRetryStep(root, args) {
+  const job = validateJobRequest(root, args, RETRY_STEP_FIELDS, 'a retry');
+  const stuck = stuckJobs(root, [job]).get(`${job.brand}/${job.jobId}`);
+  if (!stuck || stuck.kind !== 'internal') throw new Error('Nothing on our side needs trying again.');
+  if (!stuck.canRetry) throw new Error(stuck.retry === 'trying' ? 'Claude is already trying this again.' : "It didn't work again. The details are saved for our team. There's nothing you need to do.");
+  const waiting = readRequestRecords(root).find(record => record.operation === 'retry_step' && record.status === 'requested' && record.args?.jobId === job.jobId && record.args?.brand === job.brand && record.requestId !== args.requestId);
+  if (waiting) throw new Error('Claude is already trying this again.');
+  return { job, stuck };
 }
 
 // A post's own request from the status list or the posting kit. Like a route choice it carries exactly its own fields
@@ -1834,6 +1972,20 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const result = markPostedOnBoard({root,brand:args.brand,jobId:args.jobId,postId:args.postId,...(typeof args.link==='string' && args.link.trim() ? {link:args.link.trim()} : {}),requestId:args.requestId});
     return {...result,message:result.allMarked ? (result.closed ? 'Every post is marked as posted, so this job is finished.' : 'Every post is marked as posted. Claude will finish closing the job.') : 'Marked as posted.'};
   }
+  if(operation==='agent_message') {
+    const { job, roster } = checkAgentMessage(root,args);
+    const saved = saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.agent,text:args.text,requestId:args.requestId,roster});
+    const said = args.text.replace(/\s+/g,' ').trim().slice(0,MESSAGE_COMMENT_CHARS);
+    return {jobId:saved.jobId,agent:saved.agent,messageId:saved.messageId,message:`Message for the ${agentLabel(saved.agent)}: "${said}".`};
+  }
+  if(operation==='retry_step') {
+    const { job, stuck } = checkRetryStep(root,args);
+    recordRetry(root,job);
+    // The team's copy: the retry goes into the job's events. The failure itself stays in agents.jsonl and in the request records.
+    const retriedAt = new Date().toISOString();
+    appendFileSync(join(job.dir,'events.jsonl'),`${JSON.stringify(pipelineEvents.makeEvent(job.jobId,'retry.recorded',retriedAt,{type:'job',id:job.jobId},{reason:'stuck_internal',attempt:1,status:'requested',since:stuck.since},{jobId:job.jobId,source:'local'}))}\n`);
+    return {jobId:job.jobId,brand:job.brand,retry:{reason:stuck.reason,since:stuck.since},message:'Trying this step again.'};
+  }
   if(operation==='submit_decision') {
     validateDecision({...args,root});
     return saveBoardRequest({root,operation,args,source});
@@ -1872,6 +2024,8 @@ function safeAppliedResult(operation, result) {
   if (operation === 'choose_post_time') return result.dateTime ? { jobId: result.jobId, ...(result.deliverable ? { deliverable: result.deliverable } : {}), dateTime: result.dateTime } : null;
   if (operation === 'resolve_post') return result.postId ? { jobId: result.jobId, postId: result.postId, outcome: result.outcome } : null;
   if (operation === 'mark_posted') return result.postId ? { jobId: result.jobId, postId: result.postId, allMarked: result.allMarked, closed: result.closed } : null;
+  if (operation === 'agent_message') return result.messageId ? { jobId: result.jobId, agent: result.agent, messageId: result.messageId } : null;
+  if (operation === 'retry_step') return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
 }
@@ -2137,6 +2291,8 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   // claim, so the request stays unclaimed and can be declined with the reason.
   if(record.operation==='resolve_post') checkResolvePost(root,record.args);
   if(record.operation==='mark_posted') checkMarkPosted(root,record.args);
+  if(record.operation==='agent_message') checkAgentMessage(root,record.args);
+  if(record.operation==='retry_step') checkRetryStep(root,record.args);
   const claimed=claimBoardRequest(file);
   if(claimed) return claimed;
   let result;

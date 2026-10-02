@@ -21,6 +21,14 @@ When the person is needed, ask one plain question in their terms, for example "W
 
 Progress updates are one short line in plain words, for example "Researching SK-II's audience and competitors now."
 
+Whenever you talk to the person, in chat or on the board, use short, simple words a child could follow.
+This covers questions, clarifications, approvals, stuck notices, replies and status.
+Never show jargon, code, field names, schema names, tool names, file paths or ids.
+Good: "Which product is this post for?"
+Bad: "kind: missing field brand_profile".
+When a step fails on our side, say for example "Something went wrong on our side while saving your video. Press Try again, or tell me to."
+After a second failure, say "It didn't work again. We've saved the details for our team. There's nothing you need to do."
+
 Use the local workspace as the source of truth for setup, brands, jobs, inputs, plans, stages, approvals, artifacts, and metrics.
 
 The local files and runner work without network access.
@@ -101,7 +109,7 @@ Retrying the same request ID with the same arguments must return the existing re
 ## What does the person want to get done
 
 A job starts from the person's own words, never from a job type they pick.
-The board asks one question, "What do you want to get done?", in a box on the home page and in the Inbox.
+The board asks one question, "What do you want to get done?", in a box on the home page and in Needs you.
 The person writes it in their own words, may choose a brand and add links, and sends it.
 It arrives as a `create_job` request that carries no kind: `brief` is their words, `title` is the first line of them, and `brand` and `sourceRefs` are there only when they chose a brand or gave links.
 In chat, what the person says is the same thing: treat their words as the brief.
@@ -122,8 +130,8 @@ Diagnose in this order:
 4. Create the job and route it as new-job describes, with the `kind` you picked and, in `kindReason`, one short plain sentence of why.
    The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>".
 
-When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
-Board-sync's Questions in the Inbox describes how to ask it.
+When two or more pipelines fit, or none does, ask one plain question in Needs you and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
+Board-sync's Questions on the board describes how to ask it.
 
 Parse every link already in the request into `sourceRefs` before asking anything else, each `{uri, mediaType}`: a web link is `url`, a video file link is `video`.
 The files of a `publish_post` are never `sourceRefs`: they go in `files`, as new-job describes.
@@ -134,11 +142,11 @@ The box says so ("Have files? Add them in chat after you send this.").
 
 A pipeline needs a brand when `pipelines_list` says `Needs a brand: yes`.
 A pipeline that lists no brand runs with `brand: "no-brand"`, unless the person names a brand that already exists in the workspace.
-When the pipeline needs a brand and the request carries none, use the brand without asking when exactly one brand is ready; otherwise ask which one in the Inbox and in chat together, with the ready brands as the options, and wait for whichever answer arrives first.
-When no brand is ready, go through the brand gate below first, and let the board's onboarding card and its Inbox item lead.
+When the pipeline needs a brand and the request carries none, use the brand without asking when exactly one brand is ready; otherwise ask which one in Needs you and in chat together, with the ready brands as the options, and wait for whichever answer arrives first.
+When no brand is ready, go through the brand gate below first, and let the board's onboarding card and its Needs you item lead.
 A request whose brand you have had to ask for is landed with the brand the person chose, as board-sync describes.
 
-When the person says in a comment that the planned pipeline is not right, ask what they want in the Inbox and in chat together, as board-sync describes, and carry on from their answer.
+When the person says in a comment that the planned pipeline is not right, ask what they want in Needs you and in chat together, as board-sync describes, and carry on from their answer.
 
 ## Brand gate
 
@@ -208,7 +216,7 @@ Show decision saved and decision applied as separate states.
 Every decision, from the concept pick to going live, is presented on the board from the job document and summarised once in chat with the same options; follow `board-sync` under Decisions on the board and in chat.
 Every decision summary and every result line, in chat or in a board comment reply, names the job's brand and title in plain words, for example 'SK-II "Anna Sawai serum Reel": price approved.'
 An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is applied with the same decision tools and the board is written again.
-When the person types a decision in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Inbox and in chat together, as board-sync's Questions in the Inbox describes, with each waiting job's brand and title as an option, and wait for whichever answer arrives first.
+When the person types a decision in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each waiting job's brand and title as an option, and wait for whichever answer arrives first.
 Never apply a chat decision to a guessed job.
 When only one job is waiting on a decision, apply the chat answer to that job, and still name it in the reply.
 Never ask a decision twice, and never leave the board showing a decision that chat already resolved, or the reverse.
@@ -235,6 +243,12 @@ Those are all the same mistake: giving up on the board and falling back to chat 
 A decision that is still open is normal and expected; it is not a signal to stop waiting, and it is not an error.
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
+
+## Stuck jobs
+
+When a job is stuck for a reason the person can fix (missing information, an approval, a clarification, an outside account), ask with `pipeline_board_ask` so the question shows on the Director card, and say the same one-line question in chat.
+Take the answer from either place, the first one wins, and record a chat answer with `pipeline_board_answer`; `skills/board-sync/SKILL.md` has the steps under "Stuck jobs".
+Never ask the person to fix a code problem: say "Something went wrong on our side", leave the technical details out of chat (the board already keeps them with the job), and retry the failed step once.
 
 ## Stage behavior
 

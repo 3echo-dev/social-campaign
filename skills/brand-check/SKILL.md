@@ -34,7 +34,7 @@ Follow these steps exactly and never read plugin code while doing them.
    If it lists frames with no reading, open those frames and call it again with every reading.
    If it says a file changed, start again from step 1.
 5. When the result has no flags, say nothing about the check.
-6. For each flag, tell the person in one plain line what the frame shows and where, then ask what to do in the board's Inbox and in chat together, as board-sync's Questions in the Inbox describes, with the options "Keep it" and "Swap the shot".
+6. For each flag, tell the person in one plain line what the frame shows and where, then ask what to do in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with the options "Keep it" and "Swap the shot".
    For example: "The pack in 0:04 reads 'TRTATMENT'. Keep it, or swap the shot?"
    Name the image instead of a time for a still.
 7. Take whichever answer arrives first: "Keep it", chosen on the board or in chat, or "Accept as is" clicked directly on the board, is the acceptance of that item.

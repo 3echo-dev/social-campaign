@@ -79,6 +79,16 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
   Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and add the block it returns, unchanged, at the end of the prompt; with no block, add nothing.
   Answer every message addressed to the Director with `pipeline_agent_reply`.
 
+## Talking to the person
+
+Whenever you talk to the person, in chat or on the board, use short, simple words a child could follow.
+This covers questions, clarifications, approvals, stuck notices, replies and status.
+Never show jargon, code, field names, schema names, tool names, file paths or ids.
+Good: "Which product is this post for?"
+Bad: "kind: missing field brand_profile".
+When a step fails on our side, say for example "Something went wrong on our side while saving your video. Press Try again, or tell me to."
+After a second failure, say "It didn't work again. We've saved the details for our team. There's nothing you need to do."
+
 ## Editor and revisions
 
 Before Validate, run platform checks, hashes and the QC checklist. The editor performs one

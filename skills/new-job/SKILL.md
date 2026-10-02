@@ -54,8 +54,8 @@ Call `pipelines_list` once per session with `format` set to `markdown`, which ha
 Match the words to each pipeline's description and its Examples, and rule out any whose Not for list fits them.
 The `kind` in the pipeline's heading is the kind you pass as `job.kind` below, and its Needs list and `Needs a brand` line say what must be known before the job can route.
 
-When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
-Board-sync's Questions in the Inbox describes how to ask it.
+When two or more pipelines fit, or none does, ask one plain question in Needs you and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
+Board-sync's Questions on the board describes how to ask it.
 
 Save one short sentence of why in `kindReason`, in plain words and in the person's terms, for example "You asked for one Instagram Reel."
 The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>", and the person can say it is wrong from there.
@@ -73,7 +73,7 @@ None of them applies: nothing is researched, planned or made, and no credits are
 
 Collect the title and the user's brief.
 
-When the person asked for a job and has not said what they want yet, point them to the board's "What do you want to get done?" box and wait for its `create_job` request, or let them say it in chat; never ask for the brief as a question in the Inbox.
+When the person asked for a job and has not said what they want yet, point them to the board's "What do you want to get done?" box and wait for its `create_job` request, or let them say it in chat; never ask for the brief as a question in Needs you.
 
 Preserve the user's wording in the brief.
 
@@ -121,7 +121,7 @@ The router falls back to the brand profile's own audience on its own; the job on
 This extraction pass is not a guessed default: a guessed default invents a fact the brief never gave; this only restates, in typed fields, what the brief already says in words.
 
 Talk to the person in plain marketing language only: never mention limits, character counts, validation, routing, blocked states, file paths or tool names.
-Fix quietly whatever can be fixed without changing what they meant; otherwise ask one plain question in the board's Inbox and in chat together, as board-sync's Questions in the Inbox describes, and take whichever answer arrives first.
+Fix quietly whatever can be fixed without changing what they meant; otherwise ask one plain question in the board's Needs you and in chat together, as board-sync's Questions on the board describes, and take whichever answer arrives first.
 
 Put everything extracted into the typed `job` object of the single pipeline_job_create call, with these exact field names and values:
 
@@ -189,7 +189,7 @@ To change the caption, the platforms, a post type, the time or the AI answer bef
 
 After the create call for `publish_post`, read the answer's `route`.
 When it is ROUTED, say in one plain line what will be posted and where, then carry on as for any job: the person approves the final post, then the posting plan.
-When it is NEEDS_CLARIFICATION, ask only for what `route.missingFields` says, one plain question per item, in the board's Inbox and in chat together.
+When it is NEEDS_CLARIFICATION, ask only for what `route.missingFields` says, one plain question per item, in the board's Needs you and in chat together.
 The usual ones are the files, the platforms when the brand lists none, and a post type that does not fit the file, for example a Reel that is not 9:16: offer the post types that do fit, and never change the file.
 Keep the caption word for word through every step.
 

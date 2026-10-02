@@ -114,9 +114,9 @@ It carries no `kind`: the person never picks a job type, so you diagnose it.
 Before landing a kind-less `create_job`:
 
 1. Read `brief`, the links and the chosen brand's saved profile against `pipelines_list`, and pick the one pipeline that fits, as new-job's Pick the pipeline from the person's words describes.
-   When two or more pipelines fit, or none does, ask one plain question in the Inbox and in chat together, with the likeliest pipelines' names as options and a typed answer, and land nothing until it is answered.
+   When two or more pipelines fit, or none does, ask one plain question in Needs you and in chat together, with the likeliest pipelines' names as options and a typed answer, and land nothing until it is answered.
 2. Put the pipeline's `kind` and, in `kindReason`, one short plain sentence of why into `args.job`, with every other field the words, the links and the brand profile state or clearly imply, so the job routes the moment it is created.
-3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in the Inbox and in chat together, with the ready brands as options.
+3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in Needs you and in chat together, with the ready brands as options.
    Land the request with `args.brand` set to the brand's slug and `args.brandName` to its name, from the person's answer or the one ready brand, and nothing else.
    A pipeline that lists no brand needs none: land without one.
    A landing that fails with the brand line ("A post or campaign needs a brand") means this step was skipped: ask the brand question, then land again.
@@ -170,7 +170,7 @@ After a successful apply, publish, then continue the job as for `continue_job`.
 A comment that says the job is not the kind the person meant, for example 'This is not the kind of job I meant for "Serum Reel". Please ask me what I want.', comes from the "Not right? Tell Claude" button under a job's title.
 The comment names the job and carries its id in brackets: find the job by that id.
 Hold that job: do no further work on it (no research, drafting, making, checking or posting) until the person decides, and answer any decision it is waiting on only if the person asks.
-Ask what they want in the Inbox and in chat together, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
+Ask what they want in Needs you and in chat together, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
 When the answer is a pipeline and the job has not been planned yet, call `pipeline_intake_update` with a patch of `kind` and a new `kindReason`, then let the job carry on.
 When it has been planned, its pipeline cannot change: only after the person has chosen another pipeline, create a new job from the same words with it, as new-job describes, and say in one plain line that the first job stays on the board as it was and is not being worked on.
 Never start a second job without that answer, and never cancel or edit the first.
@@ -197,7 +197,7 @@ Call `getBrandSettings` (read-only), then `integration_probe` with provider `met
 Apply the request only when the probe was `ok: true`; when Metricool is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
 Never call a Metricool tool that creates, updates or sends a post while handling a connection request.
 
-For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions in the Inbox below.
+For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions on the board below.
 
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.
 Keep the original request envelope and `args` unchanged for idempotent retries.
@@ -223,20 +223,53 @@ If either write fails, keep the local request and result intact and leave the re
 
 After every apply, list the board's saved `requests` again before moving on to anything else; a click made mid-turn can arrive while this turn is still running, and it must be handled now rather than left for the next comment or session start.
 
-## Questions in the Inbox
+## Questions on the board
 
 When Claude needs something from the person that is not one of the fixed approvals or brief fields, call `pipeline_board_ask` with one plain question, up to 6 short options, and `allowText` when a typed answer also makes sense.
-Write the returned `documents` in the one batch call, so the board's Inbox shows the question right away.
+Write the returned `documents` in the one batch call, so the board's Needs you shows the question right away.
 Post the same question in chat too, as plain numbered options, and say it can be answered here or on the board.
 Take whichever answer arrives first, the same as any other decision, and never ask the same thing twice.
 A board answer arrives as an `answer_question` request: land and apply it with `pipeline_board_request_land` and `pipeline_board_request_apply` like any other non-decision request, then call `pipeline_board_questions` with that `questionId` to read the saved answer.
 A chat answer is recorded with `pipeline_board_answer`, passing `choice` when the person picked one of the options word for word or `text` for anything else they said, then write the documents again so the board stops asking it.
 An already answered question returns its saved answer instead of an error, from either tool; act on that saved answer rather than asking again.
 When the question is no longer needed, for example the person answered some other way or the job moved on, call `pipeline_board_withdraw` with its `questionId`.
-Fixed approvals and intake fields keep their existing flow, since the Inbox already shows them without a separate question.
+Fixed approvals and intake fields keep their existing flow, since Needs you already shows them without a separate question.
 Never use a question to collect the details of a job the person wants made, such as the product, who it is for, where it will run or the format: their own words, the links and the brand profile already carry what they said, and the board's Finish the brief form asks for the rest once the job exists.
 The questions this skill and new-job describe for diagnosing a job stay: which pipeline fits when two do, and which brand when the pipeline needs one.
 Free-text questions stay for genuinely open questions in the middle of a job.
+
+## Plain words
+
+Whenever you talk to the person, in chat or on the board, use short, simple words a child could follow.
+This covers questions, clarifications, approvals, stuck notices, replies and status.
+Never show jargon, code, field names, schema names, tool names, file paths or ids.
+Good: "Which product is this post for?"
+Bad: "kind: missing field brand_profile".
+When a step fails on our side, say for example "Something went wrong on our side while saving your video. Press Try again, or tell me to."
+After a second failure, say "It didn't work again. We've saved the details for our team. There's nothing you need to do."
+
+## Agent Box
+
+After an agent starts or returns, call `pipeline_board_job_documents` with the brand and jobId, and write its documents in one ArtifactData batch, as Publish current state describes.
+Say nothing in chat about it.
+A message the person sends to an agent arrives as an `agent_message` request, and a "Try again" click arrives as a `retry_step` request.
+Land and apply both with `pipeline_board_request_land` and `pipeline_board_request_apply` like any other non-decision request, then write the job's documents again.
+For `retry_step`, re-run the failed step once, then say in one plain line how it went.
+When a message asks to approve, spend or post, never act on it: answer with one line through `pipeline_agent_reply` that points to the board control, for example "Use the Approve button on the board for that."
+The Director must answer every message addressed to the Director with `pipeline_agent_reply`, one plain line.
+Messages for other agents reach them through `pipeline_agent_brief` at their next spawn, as the Director's role says.
+
+## Stuck jobs
+
+A job is stuck when it cannot move and nothing it waits on is already an open decision on the board.
+When the person can fix the cause, which means missing information, an approval, a clarification or an outside account:
+
+1. Call `pipeline_board_ask` for that job with one plain question, with options when they fit, and write the returned `documents`, so the question shows on the Director card.
+2. Say the same one-line question in chat.
+3. Take the answer from either place, and the first one wins: a board answer arrives as `answer_question`, a chat answer is recorded with `pipeline_board_answer`, as Questions on the board describes.
+
+Never ask the person to fix a code problem, such as an error or an unexpected failure.
+Say "Something went wrong on our side", leave the technical details out of chat (the board already keeps them with the job), and retry the failed step once; a `retry_step` request does the same.
 
 ## Housekeeping
 
@@ -282,7 +315,7 @@ Apply it immediately with `pipeline_decision_apply` as described above, write th
 
 Before landing a decision typed in chat, work out which job it answers.
 List every job whose latest `pipeline_status` line has `waitingOn` set, since that is what "waiting on a decision" means.
-When more than one job is waiting and the person did not say which one, ask which job it's for in the board's Inbox and in chat together, as Questions in the Inbox below describes, with each waiting job's brand and title as an option, for example 'SK-II "Anna Sawai serum Reel"' and 'Olay "Retinol24 launch teaser"', and wait for whichever answer arrives first before landing anything.
+When more than one job is waiting and the person did not say which one, ask which job it's for in the board's Needs you and in chat together, as Questions on the board below describes, with each waiting job's brand and title as an option, for example 'SK-II "Anna Sawai serum Reel"' and 'Olay "Retinol24 launch teaser"', and wait for whichever answer arrives first before landing anything.
 Never apply a chat decision to a guessed job.
 When only one job is waiting, apply the answer to that job.
 An answer in chat is applied with the same tools: land a `submit_decision` with `pipeline_board_request_land` and the workspace's `workspaceId`, using the `brand`, `jobId`, `revision` and `artifacts` from the `pipeline_review_present` result, `reviewId` set to its `gate`, a new `requestId`, `decision` set to `approve` or `request_changes`, the person's words in `note`, `chosen` for a concept letter, `credits` for a concept approval, and `totals` matching the saved quote for a price approval.
@@ -368,7 +401,7 @@ When several workspaces exist and the job has no choice yet, the price panel ask
 ## Which Metricool brand posts
 
 Each brand card shows where that brand's posts go, "Posts go out through Metricool, brand <name>", with a chip per platform: linked, not linked, a different handle than the brand card lists, or one that cannot be told apart (check it in Metricool), and a "Change" control listing every Metricool brand saved with `pipeline_metricool_brands_save`.
-`pipeline_metricool_brands_save` chooses the brand by itself when Metricool has exactly one, and otherwise asks one Inbox question per brand that has none, or whose saved brand Metricool no longer lists, worded "Which Metricool brand should <brand> post through?".
+`pipeline_metricool_brands_save` chooses the brand by itself when Metricool has exactly one, and otherwise asks one Needs you question per brand that has none, or whose saved brand Metricool no longer lists, worded "Which Metricool brand should <brand> post through?".
 Write the documents again after it, so the board shows the answer or the question.
 A brand whose saved Metricool brand is gone is reported as `needsChoice` and gets the question even when only one Metricool brand is left; tell the person in one plain line, and apply their answer as below.
 A board answer to that question arrives as an `answer_question` request and applies the pick when the request is applied.
