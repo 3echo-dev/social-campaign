@@ -437,15 +437,21 @@ export const STUCK_RECENT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Stuck jobs whose question has not been asked yet: [{ref, kind, since}]. A problem on our side has no question to ask, so it never
- * counts. Only a job bound to this session, or with activity in the last 24 hours, counts: an old idle job never blocks a stop.
+ * counts. A job whose board already shows the person what is needed (an open question, a blocked reason, a Needs-you item, the same
+ * answer personWaiting gives) has been asked, so it never counts either. Only a job bound to this session, or with activity in the
+ * last 24 hours, counts: an old idle job never blocks a stop.
  */
 function unaskedStuck(board, root, jobs, questions, sessionId, now = Date.now()) {
   try {
     if (typeof board?.stuckJobs !== 'function') return [];
     const bound = sessionId ? readSessionBinding(root, sessionId) : null;
     const mine = bound ? `${bound.brand}/${bound.jobId}` : null;
+    const shown = ref => {
+      const job = jobs.find(item => jobRef(item) === ref);
+      return Boolean(job && typeof board.personWaiting === 'function' && waitingFor(board, root, job, questions));
+    };
     return [...board.stuckJobs(root, jobs, { questions })]
-      .filter(([ref, item]) => item.kind !== 'internal' && !item.asked && (ref === mine || (Number.isFinite(item.activeAt) && now - item.activeAt <= STUCK_RECENT_MS)))
+      .filter(([ref, item]) => item.kind !== 'internal' && !item.asked && !shown(ref) && (ref === mine || (Number.isFinite(item.activeAt) && now - item.activeAt <= STUCK_RECENT_MS)))
       .map(([ref, item]) => ({ ref, kind: item.kind, since: item.since }));
   } catch {
     return [];
