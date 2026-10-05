@@ -183,6 +183,22 @@ function madeVideo(dir) {
   return null;
 }
 
+// Post-production's sound step shortlists three music tracks and cannot pass its picture and sound sign-off without one
+// chosen, so a video is only offered when the brand's music shelf has three tracks to send with it. The job's own
+// chosen track goes first. A job folder sits at <brand>/jobs/<id>, so the brand folder is two levels up.
+export const POST_MUSIC_TRACKS = 3;
+function postMusic(dir) {
+  const shelf = join(dirname(dirname(dir)), 'music');
+  const index = readJsonFile(join(shelf, 'index.json'), []);
+  const tracks = (Array.isArray(index) ? index : []).map(entry => (text(entry?.file) ? join(shelf, basename(entry.file)) : null)).filter(file => file && fileSize(file));
+  const chosen = readJsonFile(join(dir, 'media', 'music', 'choice.json'), null);
+  const mine = text(chosen?.file) ? join(dir, ...chosen.file.split('/')) : null;
+  const list = mine && fileSize(mine) ? [mine] : [];
+  const seen = new Set(list.map(file => basename(file)));
+  for (const file of tracks) if (!seen.has(basename(file))) { seen.add(basename(file)); list.push(file); }
+  return list;
+}
+
 export function shouldSuggest(job, options = {}) {
   try {
     const dir = dirOf(job);
@@ -190,6 +206,7 @@ export function shouldSuggest(job, options = {}) {
     const { state } = readJobState(dir);
     if (!SUGGEST_STATES.includes(state)) return false;
     if (!postAvailable(options)) return false;
+    if (postMusic(dir).length < POST_MUSIC_TRACKS) return false;
     return madeVideo(dir) !== null;
   } catch {
     return false;
@@ -382,6 +399,8 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
   const ratioWanted = text(made.deliverable.aspectRatios?.[0]);
   const ratio = POST_RATIOS.has(ratioWanted) ? ratioWanted : null;
   if (!ratio) throw new UserFacingError('Post-production does not take this video shape yet, so this video finishes here.');
+  const music = postMusic(job.dir);
+  if (music.length < POST_MUSIC_TRACKS) throw new UserFacingError(`Post-production needs ${POST_MUSIC_TRACKS} music tracks to choose from, and this brand has ${music.length}. Add music to the brand, or finish this video here.`);
   const python = findPython();
   if (!python.name) throw new UserFacingError(EXCEL_REFUSAL, { fix: python.anyPython ? 'Install the Python package openpyxl, then try again.' : 'Install Python and its openpyxl package, then try again.' });
 
@@ -418,6 +437,17 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
     script.push(`Scene ${n}: ${caption}${clip.dialogue ? ` VO: "${clip.dialogue}"` : ''}`);
   });
   writeFileSync(join(release, 'script.md'), `${script.join('\n')}\n`);
+  // The music and any voice-over go where Post-production's ingest looks for them: audio/bgm and audio/vo.
+  const bgm = join(shoot, 'audio', 'bgm');
+  mkdirSync(bgm, { recursive: true });
+  for (const file of music) copyFileSync(file, join(bgm, basename(file)));
+  const manifest = readJsonFile(join(job.dir, 'drafts', made.id, 'generation-manifest.json'), {});
+  const takes = (Array.isArray(manifest?.voiceover) ? manifest.voiceover : []).map(line => (text(line?.file) ? join(job.dir, ...line.file.split('/')) : null)).filter(file => file && fileSize(file));
+  if (takes.length) {
+    const vo = join(shoot, 'audio', 'vo');
+    mkdirSync(vo, { recursive: true });
+    for (const file of takes) copyFileSync(file, join(vo, basename(file)));
+  }
   writeFileSync(join(release, 'storyboard.json'), `${JSON.stringify({ schemaVersion: '1.0', title, client: brand, width, height, panels }, null, 2)}\n`);
 
   const input = join(tmpdir(), `social-campaign-breakdown-${process.pid}-${Date.now()}.json`);

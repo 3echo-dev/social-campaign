@@ -10,6 +10,8 @@ metadata:
 
 This is optional.
 It only applies when Post-production is installed, and the job never waits on it unless the person says yes.
+It is only offered when the brand's music shelf has at least three tracks, because Post-production picks the music from a shortlist of three and cannot sign off the sound without it; the tracks and any voice-over go with the video.
+If the person asks why it was not offered, say that in one plain line: adding three music tracks to the brand makes it available.
 
 ## Talking to the person
 
