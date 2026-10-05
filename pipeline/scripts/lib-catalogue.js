@@ -40,6 +40,7 @@ const TAG_WORDS = Object.freeze({
   sources: { if: 'when you give links or files', unless: 'when you give no links or files' },
   reference_video: { if: 'when you give a reference video', unless: 'when you give no reference video' },
   social_post: { if: 'when Claude writes the caption', unless: 'when you give the caption' },
+  carousel: { if: 'when the post is a carousel', unless: 'when the post is not a carousel' },
 });
 
 // What each field a kind requires means to a person.
