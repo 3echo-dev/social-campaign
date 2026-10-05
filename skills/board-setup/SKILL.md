@@ -60,7 +60,7 @@ On a version conflict, read the document once more and write once more.
 Confirm every write before reporting that the board is ready.
 Publishing the board above already re-arms this session's wake-up, the same way a later read-then-republish does; there is nothing further to observe before reporting the board ready.
 Open the returned artifact URL through the host's artifact view.
-Tell the user, in one plain sentence, that clicking a button on the board sends Claude a note, and that the first time, their browser may ask to allow comments, which they should allow.
+Tell the user, in one plain sentence, that when the board opens claude.ai asks once whether the board may send their clicks to Claude, and that they should press Allow so board buttons reach Claude.
 Use the final summary from the shared document write, its `setupStep`, `brands` and `jobs`, for the readiness route.
 The board requires brand onboarding before the first job.
 If artifact publishing or database capabilities are unavailable, explain the unavailable host capability and stop the setup flow.

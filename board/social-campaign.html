@@ -5817,6 +5817,22 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+// claude.ai asks each viewer once before a page may message Claude. Asking the moment the board opens keeps that
+// prompt out of the middle of a click. permissions is built in (never declared); a "no" just leaves clicks to ask later.
+let consentAsked = false;
+export async function askBoardConsent(host = globalThis) {
+  if (consentAsked) return null;
+  consentAsked = true;
+  try {
+    const perms = await host.claude?.use?.('permissions');
+    if (!perms || typeof perms.state !== 'function' || typeof perms.request !== 'function') return null;
+    const state = await perms.state('comments');
+    if (state !== 'prompt') return state;
+    const answer = await perms.request(['comments']);
+    return answer?.comments ?? null;
+  } catch { return null; }
+}
+
 export async function createTransport(config = {}, host = globalThis) {
   const mode = config.mode || 'artifact';
   if (mode !== 'artifact') throw new Error('This board only works as a Claude artifact. Ask Claude to open it for you.');
@@ -6826,6 +6842,7 @@ if (typeof document !== 'undefined') {
     loading=true; render();
     try {
       transport ||= await createTransport(config);
+      void askBoardConsent();
       if (!unsubscribe) {
         unsubscribe = watchWorkspace(transport, {
           onSnapshot: next => { captureInlineValues(); data = next; error = ''; render(); },
