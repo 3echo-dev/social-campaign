@@ -77,6 +77,7 @@ Keep local events intact: replacing a projection never acknowledges, truncates, 
 If a write fails, retain all local data and report that the artifact is waiting for sync.
 
 Write the documents again whenever research or strategy lands, whenever a stage produces reviewable output, and after every applied request or decision, so the board always shows the current stage and its output.
+For each video job, call `pipeline_handoff_post_status` before writing, and follow `skills/send-to-post/SKILL.md` when it says to offer, wait or bring the final video back.
 
 When `pipeline_board_open` reports `sourceStatus: needs_refresh`, call `pipeline_board_source`, read the existing board with the Artifact tool's `read` action, then publish the returned `filePath` with that same `url` and the returned `capabilities`, which declare the `jobDocs` collection.
 Call `pipeline_board_bind` with the same URL and the new publish receipt only after the host update succeeds.

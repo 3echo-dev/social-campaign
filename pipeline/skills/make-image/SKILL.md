@@ -54,6 +54,18 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 11. A redo is one panel: price and approve it again exactly as a first generation, per "Redoing a picture the person sent back" in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`. Only the ids in `regenerate`, the note verbatim in its prompt, a fresh job key with `v` increased, then the grid again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A redo of the sample panel carries `sample: true` on that new version's `pipeline_quote_save` entry too, the same as the first time.
 12. Cutting a panel returns to the storyboard gate. Stills for a video job is a change of deliverable: `change-deliverable.js`, in their words.
 
+<!-- BEGIN labelled references (0.14 task 3) -->
+## Labelled references
+
+Every reference attached to an image job carries a short label and what to keep, and the prompt opens with a legend of them in attachment order.
+
+1. The manifest item's `references` has one `{ ref, label, keep }` per entry of its `assetIds`, in the same order; `ref` is that asset id.
+2. `label` is short: the product, the persona or mascot name, or the location ("Mealbox box", "Mina", "Mina's kitchen"). `keep` is one phrase ("the exact box and logo", "her face and black bob").
+3. The prompt starts with the legend, one line per attachment, numbered the way the model counts them, before the subject: `[Image 1] Mina: keep her face and black bob. [Image 2] Mealbox box: keep the exact box and logo.` A character reference picture `R{k}` is labelled with the character's name.
+4. Upload in that order and record the ids in `assetIds` in that order, so the legend and the attachments cannot drift apart.
+5. `preflight-generation.js` refuses an item whose `references` do not match its `assetIds` (a different count, a missing label, or a different order). An old job with no `references` still runs.
+<!-- END labelled references -->
+
 ## Output contract
 
 `media/D{n}/P{id}.png` per panel, `P{id}-r{k}.png` per archived regeneration, `media/D{n}/contact-sheet.png` rebuilt on every change. The hooks record every paid call, its credits and its landed file, and move the job's state; nothing here updates the manifest `status` or `file`, the job state, or a credit tally by hand.

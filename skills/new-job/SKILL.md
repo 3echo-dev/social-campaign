@@ -307,6 +307,7 @@ Import only paths selected by the user.
 
 Imported files are recorded as not owned by the brand; pass `ownedByBrand` true only when the person says the files belong to the brand.
 Pass `usedInPost` true only for a file that will appear directly in a finished post; a file used only as reference is never shipped.
+A music file the person gives for a video job goes to `pipeline_music_add`, not to the import.
 
 The local runner rejects paths that overlap the workspace or escape through a symlink or junction.
 

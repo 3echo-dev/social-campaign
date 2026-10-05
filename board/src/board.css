@@ -953,6 +953,8 @@ a.kit-download{font-size:13px}
 .minimap i.s-running{background:var(--wait)}
 .minimap i.s-waiting,.minimap i.s-awaiting{background:var(--tape)}
 .job-progress-text{flex:none;font-size:var(--t1);color:var(--dim);font-variant-numeric:tabular-nums}
+.handoff-chip{max-width:100%;white-space:normal;text-align:left}
+.music-line{margin:8px 0 0}
 @media (max-width:720px){.page-head{grid-template-columns:minmax(0,1fr);align-items:start}.job-head-chips{justify-content:flex-start;max-width:100%}.job-progress{flex-wrap:wrap;gap:8px}.minimap{flex-basis:100%}}
 /* A pipeline page: its own door as a header, its jobs, then the composer. */
 .pipeline-composer{max-width:880px;scroll-margin-top:var(--gap)}

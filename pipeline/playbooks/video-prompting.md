@@ -5,6 +5,7 @@
 - The tool
 - The rule that saves the most money
 - Prompt order
+- Reference legend
 - Camera vocabulary
 - Rules
 - Motion budget
@@ -41,6 +42,15 @@ Five parts, in this order, each its own sentence or short block:
 5. Camera: height, angle, focus, steadiness, then the move.
 
 Then the voice paragraph, the dialogue, and the negative constraints. Prompt length: 200 to 400 words for a hero shot, 80 to 150 for an insert.
+
+<!-- BEGIN labelled references (0.14 task 3) -->
+## Reference legend
+
+Before the five parts, the prompt opens with a legend: one line per attached reference, in attachment order, so the model knows which picture is which person, product or place.
+Each line is `[Image n] {label}: keep {what}.` Label is short (the product, the persona or mascot name, the location); keep is one phrase.
+Example: `[Image 1] Mina: keep her face and black bob. [Image 2] Mealbox box: keep the exact box and logo.`
+Images are `[Image n]`, reference clips `[Video n]` and sound `[Audio n]`, each numbered in its own kind. The manifest item's `references` lists the same `{ ref, label, keep }` entries in the same order as its `assetIds`; preflight refuses a mismatch.
+<!-- END labelled references -->
 
 ## Camera vocabulary
 
@@ -99,6 +109,8 @@ No panel is shorter than 4 s, because the tool will not render a shorter clip. `
 ## Stitching the cut
 
 Read before the concat, in `make-video` step 9.
+
+0. **The hook clip has headroom.** The first clip in the cut is asked for its beat length plus 1 s (whole seconds, 4 to 15), and the stitch starts 0.5 s in and keeps the beat length, so the weak first frames of a generated clip never reach the hook. The manifest item says `headroom: { askSec, inSec, useSec }` and the quote and the length check use `askSec`. No other clip gets this.
 
 1. **Normalise before you concat**: one resolution, frame rate, pixel format and codec.
 2. Concat same-codec clips with the concat demuxer over a file list, not a filter graph; re-encode only the non-conforming.

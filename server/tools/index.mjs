@@ -40,6 +40,8 @@ import { publishingConnectTools } from './publishing-connect.mjs';
 import { publishTools } from './publish.mjs';
 import { catalogueTools } from './catalogue.mjs';
 import { agentTools } from './agents.mjs';
+import { musicTools } from './music.mjs';
+import { handoffTools } from './handoff.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -73,6 +75,8 @@ export const ALL_TOOL_MODULES = [
   publishTools,
   catalogueTools,
   agentTools,
+  musicTools,
+  handoffTools,
 ];
 
 /**

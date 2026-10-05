@@ -15,4 +15,7 @@ Call pipeline_job_read only when no fresh snapshot is supplied or an external st
 Write only the output paths named by the active plan.
 Do not repeat research, repeat provider probes, use gate-app transport, use Drive configuration, or create a second job authority.
 Preserve approval, revision, ownership, and state protections.
+<!-- BEGIN labelled references (0.14 task 3) -->
+Every manifest item that attaches pictures also gets `references: [{ ref, label, keep }]` in attachment order, and its prompt opens with the matching legend (the nested contract's Labelled references section).
+<!-- END labelled references -->
 Return the output paths, reused evidence, blockers, and next action.

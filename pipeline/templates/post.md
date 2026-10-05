@@ -45,6 +45,12 @@ Which file, and what it must show or must not show. For video: which script and 
 
 # CTA
 
+## Variants
+
+<!-- VIDEO posts only, two lines, a different hook and call to action each. Delete this section for any other post.
+v2 | hook: {opening line} | cta: {call to action}
+v3 | hook: {a different opening line} | cta: {a different call to action} -->
+
 
 ## Details
 

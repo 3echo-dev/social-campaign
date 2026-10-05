@@ -132,6 +132,30 @@
           "generateAudio": {
             "type": "boolean"
           },
+          "headroom": {
+            "type": "object",
+            "description": "Hook clip only: askSec = durationSeconds (the beat length plus 1 s, 4 to 15); the stitch starts inSec in and keeps useSec (the beat length).",
+            "required": [
+              "askSec",
+              "inSec",
+              "useSec"
+            ],
+            "properties": {
+              "askSec": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 15
+              },
+              "inSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "useSec": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
           "dialogue": {
             "type": [
               "object",
@@ -157,6 +181,30 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "references": {
+            "type": "array",
+            "description": "One entry per attached asset, in attachment order: the asset id, a short label (product, persona or mascot name, location) and one phrase on what to keep. The prompt opens with the matching legend. Absent on jobs made before labelled references.",
+            "items": {
+              "type": "object",
+              "required": [
+                "ref",
+                "label"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "keep": {
+                  "type": "string"
+                }
+              }
             }
           },
           "seedFromPanelImage": {
@@ -208,6 +256,37 @@
         },
         "captions": {
           "type": "string"
+        }
+      }
+    },
+    "voiceover": {
+      "type": "array",
+      "description": "Voice-over lines placed at the start of their beat by finish-video.py. beat counts from 1 in the stitch order (2 or \"B2\").",
+      "items": {
+        "type": "object",
+        "required": [
+          "beat",
+          "file"
+        ],
+        "properties": {
+          "beat": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "string",
+                "pattern": "^B?[0-9]+$"
+              }
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
         }
       }
     }

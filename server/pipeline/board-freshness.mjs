@@ -8,6 +8,7 @@ import { factsFingerprint, isFinishedState, landingReport, listJobs, readSession
 import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
+import { handoffSent } from './handoff.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
 const SAFE_ARTIFACT_ID = '[A-Za-z0-9_-]{8,128}';
@@ -519,6 +520,7 @@ function yourTurnJobs(board, root, jobs, questions, sessionId, now = Date.now())
     for (const job of jobs) {
       const state = job.state;
       if (!state || isFinishedState(state) || NOT_YOUR_TURN.has(state) || gateOfState(state) || lifecycle?.isDeliveryBoundary?.(state)) continue;
+      if (handoffSent(job.dir)) continue; // with Post-production: waiting on them, not Claude's turn
       const ref = jobRef(job);
       const lines = readAgentLines(job.dir);
       const at = lastActiveAt(job, lines);

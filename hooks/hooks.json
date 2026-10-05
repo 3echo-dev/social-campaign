@@ -42,7 +42,7 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
       },
       {
-        "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_inputs_import|pipeline_post_files_add|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare)$",
+        "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_inputs_import|pipeline_post_files_add|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare|pipeline_music_add|pipeline_music_choose|pipeline_handoff_post_prepare|pipeline_handoff_post_return)$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-bind.mjs\"" }]
       },
       {

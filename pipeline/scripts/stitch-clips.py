@@ -7,6 +7,9 @@ on-screen text over the cut.
 Captions come from the file --captions or stitch.captions names, else the deliverable's
 script.md, else its storyboard.md. An empty stitch.captions, or "none", asks for none.
 
+A clip with headroom: {askSec, inSec, useSec} (the hook clip) is cut from inSec in and
+keeps useSec, so the extra second asked for at the start is dropped.
+
 Each clip's own audio, dialogue included, is kept: loudness-normalised per clip, never
 replaced or ducked. A clip with no audio track gets silence.
 
@@ -40,6 +43,22 @@ def probe(path):
     return {"duration": float(d.get("format", {}).get("duration") or v.get("duration") or 0),
             "width": v.get("width"), "height": v.get("height"),
             "codec": v.get("codec_name"), "fps": v.get("r_frame_rate"), "audio": a is not None}
+
+
+def headroom_window(item):
+    """(inSec, useSec) when a clip carries headroom, else None. The hook clip is asked for
+    one second more than its beat; the cut starts inSec in and keeps useSec, so the weak
+    first frames never reach the hook."""
+    h = item.get("headroom")
+    if not isinstance(h, dict):
+        return None
+    try:
+        in_sec, use_sec = float(h.get("inSec")), float(h.get("useSec"))
+    except (TypeError, ValueError):
+        return None
+    if in_sec < 0 or use_sec <= 0:
+        return None
+    return in_sec, use_sec
 
 
 def esc_path(p):
@@ -249,17 +268,29 @@ def main():
                 print("  note: %s trimToSeconds %.2fs exceeds the clip's %.2fs; using the whole clip"
                       % (sid, trim, info["duration"]), file=sys.stderr)
                 trim = None
+            window = headroom_window(item)
+            seek = None
+            if window:
+                seek, trim = window
+                if seek + trim > info["duration"] + 0.05:
+                    print("  note: %s headroom window %.2fs + %.2fs runs past the clip's %.2fs; using what is there"
+                          % (sid, seek, trim, info["duration"]), file=sys.stderr)
+                    trim = max(0.1, info["duration"] - seek)
             kept = trim if trim is not None else info["duration"]
             print("  %-4s %s  %sx%s  %s  %.2fs  audio=%s%s" % (
                 sid, os.path.basename(path), info["width"], info["height"],
                 info["codec"], info["duration"], "yes" if info["audio"] else "no",
-                "  trim -> %.2fs" % trim if trim is not None else ""))
+                ("  window %.2fs in, %.2fs kept" % (seek, trim)) if window
+                else "  trim -> %.2fs" % trim if trim is not None else ""))
             total += kept
             clip_audio.append(bool(info["audio"]))
             dst = os.path.join(tmp, "%s.mp4" % sid)
             vf = ("scale=w=%d:h=%d:force_original_aspect_ratio=decrease,"
                   "pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,format=yuv420p" % (W, H, W, H, FPS))
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", path]
+            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+            if seek:
+                cmd += ["-ss", "%.3f" % seek]
+            cmd += ["-i", path]
             if not info["audio"]:
                 cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-shortest"]
             cmd += ["-map", "0:v:0", "-map", "0:a:0" if info["audio"] else "1:a:0"]

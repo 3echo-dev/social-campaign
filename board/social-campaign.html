@@ -963,6 +963,8 @@ a.kit-download{font-size:13px}
 .minimap i.s-running{background:var(--wait)}
 .minimap i.s-waiting,.minimap i.s-awaiting{background:var(--tape)}
 .job-progress-text{flex:none;font-size:var(--t1);color:var(--dim);font-variant-numeric:tabular-nums}
+.handoff-chip{max-width:100%;white-space:normal;text-align:left}
+.music-line{margin:8px 0 0}
 @media (max-width:720px){.page-head{grid-template-columns:minmax(0,1fr);align-items:start}.job-head-chips{justify-content:flex-start;max-width:100%}.job-progress{flex-wrap:wrap;gap:8px}.minimap{flex-basis:100%}}
 /* A pipeline page: its own door as a header, its jobs, then the composer. */
 .pipeline-composer{max-width:880px;scroll-margin-top:var(--gap)}
@@ -4046,6 +4048,16 @@ function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ct
 // A job planned before posting through Metricool says plainly that it ends with the hand-off package.
 export const publishNoteLine = note => (typeof note === 'string' && note.trim() ? `<p class="publish-note muted">${esc(note.trim())}</p>` : '');
 
+// The music the video was finished with, at the final approval: document.music is { title, source, licence } or { none: true }.
+export function musicLine(music) {
+  if (!music || typeof music !== 'object') return '';
+  if (music.none === true) return '<p class="publish-note music-line muted">No music</p>';
+  const title = trimmed(music.title);
+  if (!title) return '';
+  const where = music.source === 'brand' ? ' (your library)' : music.source === 'job' ? ' (added for this post)' : '';
+  return `<p class="publish-note music-line muted">${esc(`Music: ${title}${where}`)}</p>`;
+}
+
 export function publishCard(publish, routeState = {}, { disabled = false, openKeys = new Set(), note = '', jobId = '', signal = {}, now = Date.now(), previews = null, postStates = {} } = {}) {
   if (!publish || typeof publish !== 'object') return '';
   const posts = Array.isArray(publish.posts) ? publish.posts : [];
@@ -4208,6 +4220,41 @@ export function publishStatusPanel(status, postStates = {}, { signal = {}, now =
   return `<section class="panel post-status-panel" aria-labelledby="post-status-title"><div class="section-head"><h2 id="post-status-title">Where your posts stand</h2></div><ul class="post-status-list" role="list">${rows}</ul></section>`;
 }
 
+// BEGIN test versions and social check (0.14 task 4)
+// The four social checks at the final approval (review.socialCheck = { items: [{ id, ok, line }] }): plain lines, never a block.
+export function socialCheckSection(check, openKeys = new Set()) {
+  const items = (Array.isArray(check?.items) ? check.items : []).filter(item => item && typeof item.line === 'string' && item.line.trim());
+  if (!items.length) return '';
+  const list = publishChecks({ checks: items.map(item => ({ ok: item.ok !== false, text: item.line })) }, 'social-check', openKeys);
+  return `<section class="supplied-checks social-check" aria-label="Social check"><h3>Social check</h3><div class="publish-check-list">${list}</div></section>`;
+}
+
+// The test versions of the video (doc.variants = [{ id, hook, cta, file, media }]): each plays in the usual media tile,
+// with its own hook and call to action. The posting plan still posts the main video only.
+export function testVersionsSection(variants) {
+  const list = (Array.isArray(variants) ? variants : []).filter(item => item && item.media && typeof item.media === 'object');
+  if (!list.length) return '';
+  const rows = list.map(item => {
+    const hook = trimmed(item.hook);
+    const cta = trimmed(item.cta);
+    const fields = `${hook ? `<div><dt>Hook</dt><dd class="post-hook">${esc(hook)}</dd></div>` : ''}${cta ? `<div><dt>Call to action</dt><dd>${esc(cta)}</dd></div>` : ''}`;
+    return `<article class="post-preview test-version"><div class="post-head"><div class="post-title"><h4>${esc(`Test version ${String(item.id || '').replace(/^v/i, '')}`.trim())}</h4></div></div><div class="media-grid">${mediaTile({ ...item.media, title: `Test version ${String(item.id || '').replace(/^v/i, '')}` })}</div>${fields ? `<dl class="review-fields">${fields}</dl>` : ''}</article>`;
+  }).join('');
+  return `<section class="test-versions" aria-label="Test versions"><h3>Test versions</h3><p class="muted">The same video with a different hook and call to action, for ads or A/B tests. Only the main video is posted.</p><div class="post-list">${rows}</div></section>`;
+}
+
+// A post's test versions inside its posting kit, with the one plain line that says what they are for.
+function kitVariants(post) {
+  const list = (Array.isArray(post?.variants) ? post.variants : []).filter(item => item && typeof item === 'object');
+  if (!list.length) return '';
+  const rows = list.map(item => {
+    const lines = [trimmed(item.hook) ? `Hook: ${trimmed(item.hook)}` : '', trimmed(item.cta) ? `Call to action: ${trimmed(item.cta)}` : ''].filter(Boolean);
+    return `<li class="kit-file-row"><span class="kit-file-name">${esc(item.name || item.id || 'Test version')}</span>${lines.length ? `<span class="muted">${esc(lines.join(' · '))}</span>` : ''}</li>`;
+  }).join('');
+  return `<div class="kit-section kit-variants"><h5>Test versions</h5><p class="muted">Test versions for ads or A/B tests</p><ul class="kit-files">${rows}</ul></div>`;
+}
+// END test versions and social check
+
 function kitFiles(post) {
   const media = Array.isArray(post.media) ? post.media.filter(item => item && typeof item === 'object') : [];
   if (!media.length) return '';
@@ -4260,7 +4307,7 @@ function kitPost(post, state, ctx) {
   const items = lines.join('');
   const when = typeof post.when === 'string' && post.when ? `<dl class="publish-facts"><div><dt>When</dt><dd>${esc(post.when)}</dd></div></dl>` : '';
   const preview = kitPreviews(post);
-  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
+  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitVariants(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
 }
 
 /**
@@ -4328,6 +4375,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   if (gate === 'publish') parts.push(publishCard(review.publish, routeState, { disabled: locked, openKeys, postStates, note: doc.publishNote, jobId: project?.jobId || doc.jobId || '', signal, previews: planned ? post => publishPreviews(review, post, used) : null }));
   // The deliverable cards repeat the text in another split, so the publish gate leaves them out once it has the plan.
   if (review.posts?.length && !planned) parts.push(`<div class="post-list">${review.posts.map(post => postPreview(post)).join('')}</div>`);
+  if (gate === 'content') parts.push(testVersionsSection(doc.variants));
   // A file the post cards above already show is not shown a second time, even when the review also lists a copy of it
   // under another path (a post made from supplied files keeps the person's file in media/supplied/): same bytes, same tile.
   const shaOfPath = new Map((doc.files || []).filter(file => file?.path && file.sha256).map(file => [file.path, file.sha256]));
@@ -4336,8 +4384,10 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   const looseMedia = (review.media || []).filter(ref => !used.has(ref.path) && !(shaOfPath.has(ref.path) && shown.has(shaOfPath.get(ref.path))));
   if (looseMedia.length) parts.push(`<div class="media-grid">${looseMedia.map(ref => mediaTile(ref)).join('')}</div>`);
   if (gate === 'content' && doc.publishNote) parts.unshift(publishNoteLine(doc.publishNote));
+  if (gate === 'content' && doc.music) parts.push(musicLine(doc.music));
   if (gate === 'content' && review.checks) parts.push(suppliedChecksCard(review.checks, openKeys));
   if (gate === 'content') parts.push(labelCheckSection(review.labelCheck, state.accepted || {}, { disabled: locked }));
+  if (gate === 'content') parts.push(socialCheckSection(review.socialCheck, openKeys));
   const covered = new Set([review.concepts?.path, ...(review.storyboards || []).map(item => item.path), ...(review.posts || []).map(item => item.path), review.quote?.path, review.sample?.path, ...(review.media || []).map(item => item.path)].filter(Boolean));
   // The posting plan (publish/intent.json and the rest of publish/) is shown by the publish card, never as a file panel.
   const rest = (review.paths || []).filter(path => !covered.has(path) && !/^publish\//i.test(path) && !/\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)$/i.test(path));
@@ -4514,7 +4564,7 @@ export function reviewPanel(project, doc, state = {}, { docState = 'loaded', sig
 export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
-const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck']);
+const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
@@ -4851,6 +4901,23 @@ function stuckCard(item) {
   return item.jobId ? `<div class="inbox-actions"><button type="button" class="primary" data-project="${esc(item.jobId)}">Open the job</button></div>` : '';
 }
 
+// The Post-production round trip: an offer to send the video for a full edit, and the call to bring the final video back.
+const HANDOFF_BUTTONS = Object.freeze({
+  handoff_offer: [['handoff_send', 'Send to Post-production', 'primary'], ['handoff_decline', 'Finish it here', 'quiet']],
+  handoff_return: [['handoff_return', 'Bring the final video back', 'primary']],
+});
+export const isHandoffItem = item => item?.kind === 'handoff_offer' || item?.kind === 'handoff_return';
+export const handoffArgs = ({ project, requestId }) => ({ requestId, brand: project.brand, jobId: project.jobId });
+export const handoffStatusLine = project => (project?.handoff?.status === 'sent' ? trimmed(project.handoff.line) : '');
+export function handoffButtons(item, state = {}) {
+  const buttons = HANDOFF_BUTTONS[item?.kind];
+  if (!buttons || !item.jobId) return '';
+  const locked = Boolean(state.busy || state.sent);
+  const row = buttons.map(([operation, label, tone]) => `<button type="button" class="${tone}" data-handoff="${operation}" data-handoff-job="${esc(item.jobId)}"${locked ? ' disabled' : ''}>${esc(label)}</button>`).join('');
+  const note = state.sent ? '<p class="inbox-note" role="status">Saved. Claude will carry on.</p>' : '';
+  return `<div class="inbox-actions">${row}</div>${note}${inboxError(state)}`;
+}
+
 function postCard(item) {
   const jump = item.closing ? null : postJump(item);
   const summary = trimmed(item.summary) ? `<p class="inbox-summary">${esc(trimmed(item.summary))}</p>` : '';
@@ -4868,6 +4935,7 @@ export function inboxCard(item, ctx = {}) {
   const body = onboarding ? onboardingCard(item)
     : item.kind === 'post' ? postCard(item)
     : item.kind === 'stuck' ? stuckCard(item)
+    : isHandoffItem(item) ? handoffButtons(item, ctx.handoff || {})
     : item.kind === 'question' ? questionCard(item, ctx.question || {}, ctx.signal || {}, index)
       : item.kind === 'decision' ? decisionCard(item, ctx)
         : briefCard(item, ctx, index);
@@ -5350,8 +5418,9 @@ export function agentInbox(agents, { now = Date.now(), need = '', needText = '',
 }
 
 /** "What you need to do": the top thing waiting on the person, with the button that goes to it. */
-export function inboxNeed(parts, jobId, item = null) {
+export function inboxNeed(parts, jobId, item = null, handoff = {}) {
   if (!parts) return '';
+  if (isHandoffItem(item)) return `<div class="in-need"><span class="eyebrow">What you need to do</span><p>${esc(parts.need)}</p>${handoffButtons({ ...item, jobId: item.jobId || jobId }, handoff)}</div>`;
   const jump = parts.jump && jobId
     ? `<button type="button" class="primary" data-inbox-jump="${esc(jobId)}" data-inbox-target="${esc(parts.jump.target)}">${esc(parts.jump.label)}</button>`
     : item?.kind === 'question' ? '<button type="button" class="primary" data-ab-open="producer">Answer in the chat</button>' : '';
@@ -5701,6 +5770,12 @@ function requestComment(operation, args = {}) {
     }
     case 'retry_step':
       return 'Try the stuck step again.';
+    case 'handoff_send':
+      return 'Send this to Post-production.';
+    case 'handoff_decline':
+      return 'Finish this one here, without Post-production.';
+    case 'handoff_return':
+      return 'Bring the final video back from Post-production.';
     case 'answer_question': {
       const choice = truncateText(String(args?.choiceLabel ?? args?.choice ?? ''), 80);
       const typed = truncateText(args?.text, 80);
@@ -6139,7 +6214,7 @@ if (typeof document !== 'undefined') {
     const ui = uiFor(view);
     const watched = inboxDocWatches.has(view.jobId) || jobDocWatch.jobId === view.jobId;
     const docState = jobDocStates.get(view.jobId) || (watched ? 'loading' : 'loaded');
-    return { project: view, doc: docFor(view), docState, review: ui.review, intake: ui.intake };
+    return { project: view, doc: docFor(view), docState, review: ui.review, intake: ui.intake, ...(isHandoffItem(item) ? { handoff: agentBoxState(view).handoff } : {}) };
   }
   function inboxAside(inbox, { project = null, workspace = false, starter = '', bare = false, strip = false } = {}) {
     inboxQuestions.clear();
@@ -6351,7 +6426,7 @@ if (typeof document !== 'undefined') {
     const nextLine = project.nextAction || humanize(project.state);
     const railParts = stepRailParts(project, doc);
     const subtitle = [brandLabel, railParts?.here || trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}</div>${jobProgress(project)}</div>`;
+    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
@@ -6443,13 +6518,14 @@ if (typeof document !== 'undefined') {
       const waiting = Boolean(decision) && (director ? !author : holders.length ? holders.some(item => item.id === chatAgent.id) : chatAgent.id === author);
       side = agentChat(chatAgent, {
         now, tasks: steps, chipContext, needs, openKeys, jobId: project.jobId,
+        status: director ? handoffStatusLine(project) : '',
         stuck: director ? agentStuckBanner(agentBox?.director?.stuck, boxUi.retry, signalInfo(), project) : '',
         item: waiting ? { gate: pendingGate, jobId: project.jobId, title: GATE_TITLES[pendingGate] || humanize(pendingGate), line: trimmed(decision.summary) } : null,
         compose: agentBox ? agentComposer(chatAgent, { about: director ? 'the job' : todo?.name || 'its work', ui: boxUi, signal: signalInfo() }) : '',
       });
     } else {
       const top = needItems[0] || null;
-      const need = inboxNeed(railParts, project.jobId, top);
+      const need = inboxNeed(railParts, project.jobId, top, boxUi.handoff);
       if (need && !need.includes('class="in-need is-idle"')) needTop = `<div class="need-top">${need}</div>`;
       side = agentInbox(box.all, { now, need, needText: railParts && top ? railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
@@ -7014,6 +7090,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
     if(target.dataset.nav){location.hash=target.dataset.nav;return;}
     if(target.dataset.abRetry!==undefined){const shown=current();if(shown)void submitRetryStep(shown);return;}
+    if(target.dataset.handoff&&target.dataset.handoffJob){void submitHandoff(target.dataset.handoffJob,target.dataset.handoff);return;}
     if(target.dataset.artifact!==undefined){returnFocus=target;returnSelector=`[data-artifact="${CSS.escape(target.dataset.artifact)}"]`;drawer=current()?.artifacts?.[Number(target.dataset.artifact)];drawerTab='output';render();app.querySelector('.drawer button')?.focus();return;}
     if(target.dataset.tab){drawerTab=target.dataset.tab;render();app.querySelector(`[data-tab="${drawerTab}"]`)?.focus();return;}
     if(target.dataset.viewMedia){const src=safePreviewUrl(target.dataset.viewMedia);if(!src)return;captureInlineValues();returnFocus=target;returnSelector=`[data-view-media="${CSS.escape(target.dataset.viewMedia)}"]`;viewer={src,alt:target.dataset.viewAlt || ''};render();app.querySelector('.viewer-close')?.focus();return;}
@@ -7452,7 +7529,7 @@ if (typeof document !== 'undefined') {
   // The Agent Box's own page state: which chat is open, who the composer is addressed to, the unsent draft, and the two requests it can send.
   function agentBoxState(project) {
     const ui = uiFor(project);
-    return (ui.agentBox ||= { to: '', draft: '', drafts: {}, chat: null, error: '', send: {}, retry: {} });
+    return (ui.agentBox ||= { to: '', draft: '', drafts: {}, chat: null, error: '', send: {}, retry: {}, handoff: {} });
   }
   // ---- the Inbox and the chats: opening and closing a chat, a draft for each agent, and keeping each list where it was scrolled ----
   let onboardChat = null;
@@ -7541,6 +7618,28 @@ if (typeof document !== 'undefined') {
       box.error = AGENT_SEND_FAILED;
       render();
       focusQuietly('#ab-text');
+    }
+  }
+  // The Post-production offer and return: one request, then the skill does the work. The buttons stay locked once it is saved.
+  async function submitHandoff(jobId, operation) {
+    const project = viewOf(jobId);
+    if (!transport || !project || !HANDOFF_BUTTONS.handoff_offer.concat(HANDOFF_BUTTONS.handoff_return).some(([name]) => name === operation)) return;
+    const state = agentBoxState(project).handoff;
+    if (state.busy || state.sent) return;
+    const requestId = randomId(globalThis);
+    const args = handoffArgs({ project, requestId });
+    Object.assign(state, { requestId, busy: true, error: '', operation, args });
+    render();
+    try {
+      const result = await transport.call(operation, args);
+      if (state.requestId !== requestId) return;
+      Object.assign(state, { busy: false, sent: operation });
+      if (artifactMode()) { state.signal = result?.signal || null; } else { await refresh(); }
+      render();
+    } catch {
+      if (state.requestId !== requestId) return;
+      Object.assign(state, { busy: false, requestId: null, operation: null, args: null, error: 'Could not save that. Try once more.' });
+      render();
     }
   }
   async function submitRetryStep(project) {

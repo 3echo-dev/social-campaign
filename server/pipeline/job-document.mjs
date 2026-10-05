@@ -28,6 +28,7 @@ import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, vali
 import { attemptState, projectPublishStatus, readAttempts } from './publish-attempts.mjs';
 import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
 import { agentBox, coreOnlyAgentBox } from './agent-box.mjs';
+import { musicSection } from './music.mjs';
 
 const require = createRequire(import.meta.url);
 const recipeRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-recipe.js'));
@@ -248,6 +249,13 @@ function kitAppUrl(dir, item, planWorkspace) {
   return hit && hit[1] === found.assetId && hit[2] === planWorkspace ? link : null;
 }
 
+// A video posted by hand with no music in it: one plain line before the last step (music, A2).
+const kitSoundLine = (lines, post, dir) => {
+  const music = musicSection(dir);
+  if ((music && !music.none) || !(Array.isArray(post.media) ? post.media : []).some(item => item?.kind === 'video')) return lines;
+  return [...lines.slice(0, -1), 'Add a sound in the app when you post, if you like.', ...lines.slice(-1)];
+};
+
 // What the person has to do about the AI label when they post by hand.
 const kitAiLabel = post => (post.aiGenerated ? (post.platform === 'tiktok' ? 'Turn on the AI-generated label when you post' : 'Mark it as made with AI when you post') : null);
 
@@ -290,7 +298,8 @@ export function postingKitSection(dir, publish, now, state = null, previewOf = n
         text: typeof post.text === 'string' ? post.text : '',
         firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
         aiLabel: kitAiLabel(post),
-        checklist: kitChecklist(post.platform, post.placement),
+        ...(kitVariants(dir, post).length ? { variants: kitVariants(dir, post) } : {}),
+        checklist: kitSoundLine(kitChecklist(post.platform, post.placement), post, dir),
         media: (Array.isArray(post.media) ? post.media : []).slice(0, MAX_POST_FILES).map(item => {
           let preview = null;
           try { preview = typeof previewOf === 'function' ? previewOf(item) : null; } catch { preview = null; }
@@ -738,9 +747,73 @@ export function parsePublishPlan(body) {
 }
 
 /** drafts/D*\/post.md: the hook, caption, hashtags, CTA, media and publish plan a person approves. */
+// BEGIN test versions (0.14 task 4)
+// `## Variants` in post.md: one line per test version, `v2 | hook: <text> | cta: <text>`. The section is not part of the
+// caption or the CTA, so the readable parts drop it.
+const VARIANT_LINE = /^(?:[-*]\s*)?(v\d{1,2})\s*\|\s*hook:\s*(.*?)\s*\|\s*cta:\s*(.*?)\s*$/i;
+const MAX_VARIANTS = 4;
+
+function withoutVariants(body) {
+  const lines = String(body ?? '').split(/\r?\n/);
+  const start = lines.findIndex(line => /^(#{1,6})\s+Variants\s*$/i.test(line.trim()));
+  if (start < 0) return body;
+  const level = /^(#{1,6})/.exec(lines[start].trim())[1].length;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const heading = /^(#{1,6})\s/.exec(lines[index]);
+    if (heading && heading[1].length <= level) { end = index; break; }
+  }
+  return [...lines.slice(0, start), ...lines.slice(end)].join('\n');
+}
+
+export function parseVariants(text) {
+  const { body } = splitFrontMatter(text);
+  const section = (sectionText(readablePart(body), 'Variants') || '').replace(/<!--[\s\S]*?-->/g, '');
+  if (!section.trim()) return [];
+  const found = [];
+  for (const line of section.split(/\r?\n/)) {
+    const hit = VARIANT_LINE.exec(line.trim());
+    if (!hit || found.some(item => item.id === hit[1].toLowerCase())) continue;
+    found.push({ id: hit[1].toLowerCase(), hook: clip(hit[2], 300), cta: clip(hit[3], 300) });
+    if (found.length >= MAX_VARIANTS) break;
+  }
+  return found;
+}
+
+// The test versions of one post: its `## Variants` lines whose finished file is there (media/D{n}/final-<id>.mp4).
+function variantFiles(dir, postText, deliverable) {
+  if (!deliverable) return [];
+  return parseVariants(postText)
+    .map(item => ({ ...item, file: `media/${deliverable}/final-${item.id}.mp4` }))
+    .filter(item => withinJob(dir, item.file));
+}
+
+// validation/social-check.json as the board shows it: four plain lines, each a pass or a heads-up. Null when it is missing,
+// or was made for a different video than the one in the job now.
+function socialCheckSection(value, shaOf) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.items)) return null;
+  if (typeof value.video === 'string' && typeof value.sha256 === 'string' && shaOf.get(value.video) && shaOf.get(value.video) !== value.sha256) return null;
+  const items = value.items
+    .filter(item => item && ['hook', 'captions', 'cta', 'length'].includes(item.id) && typeof item.line === 'string' && item.line.trim())
+    .map(item => ({ id: item.id, ok: item.ok === true, line: clip(item.line, 240) }));
+  return items.length ? { items } : null;
+}
+// The posting kit lists a video post's test versions beside its files, for ads or A/B tests. The posting plan never carries them.
+function kitVariants(dir, post) {
+  try {
+    const deliverable = canonicalDeliverable(post?.deliverable);
+    const file = deliverable ? withinJob(dir, `drafts/${deliverable}/post.md`) : null;
+    if (!file) return [];
+    return variantFiles(dir, readFileSync(file, 'utf8'), deliverable).map(item => ({ id: item.id, hook: item.hook, cta: item.cta, name: basename(item.file) }));
+  } catch {
+    return [];
+  }
+}
+// END test versions
+
 export function parsePost(text) {
   const { meta, body } = splitFrontMatter(text);
-  const readable = readablePart(body);
+  const readable = withoutVariants(readablePart(body));
   const hashtagsSection = sectionText(readable, 'Hashtags');
   const hashtags = Array.isArray(meta.hashtags) && meta.hashtags.length
     ? meta.hashtags
@@ -1269,6 +1342,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   }
   const sent = publishStatusSection(dir, now);
   if (sent) document.publishStatus = sent;
+  const music = musicSection(dir);
+  if (music) document.music = music;
   const recipes = recipesSection(root, project.brand, project.jobId);
   if (recipes) { document.recipes = recipes; document.recipeCatalog = RECIPE_CATALOG; }
 
@@ -1310,14 +1385,16 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       if (item?.kind !== 'video' || typeof item.file !== 'string') continue;
       clipByStem.set(basename(item.file, extname(item.file)), item);
       if (panelImage.has(item.panel)) posterOf.set(item.file, panelImage.get(item.panel));
-      if (Number.isFinite(Number(item.durationSeconds))) durationOf.set(item.file, Number(item.durationSeconds));
+      // The hook clip is generated one second long; the cut keeps headroom.useSec of it.
+      const shownSeconds = Number(item.headroom?.useSec) > 0 ? Number(item.headroom.useSec) : Number(item.durationSeconds);
+      if (Number.isFinite(shownSeconds)) durationOf.set(item.file, shownSeconds);
     }
     const output = manifest.stitch?.output;
     const order = Array.isArray(manifest.stitch?.order) ? manifest.stitch.order : [];
     if (typeof output === 'string' && order.length) {
       const firstClip = clipByStem.get(order[0]);
       if (firstClip && posterOf.has(firstClip.file)) posterOf.set(output, posterOf.get(firstClip.file));
-      const seconds = order.map(stem => Number(clipByStem.get(stem)?.durationSeconds)).filter(Number.isFinite);
+      const seconds = order.map(stem => durationOf.get(clipByStem.get(stem)?.file)).filter(Number.isFinite);
       if (seconds.length === order.length) durationOf.set(output, seconds.reduce((sum, value) => sum + value, 0));
     }
   }
@@ -1523,11 +1600,27 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
         return { path, sha256: registered.get(path), changed: changedSince(path), ...post, ...(label ? { label } : {}), media: mediaPaths.map(item => mediaRef(item)) };
       });
     }
+    // Test versions (0.14 task 4): at the final approval, each video post's `## Variants` whose finished file exists.
+    if (gate === 'content') {
+      const variants = [];
+      for (const path of posts) {
+        const raw = load(path).raw;
+        if (raw == null) continue;
+        const deliverable = postDeliverable(path, parsePost(raw));
+        for (const item of variantFiles(dir, raw, deliverable)) {
+          variants.push({ id: item.id, deliverable, hook: item.hook, cta: item.cta, file: item.file, media: mediaRef(item.file) });
+          shownMedia.add(item.file);
+        }
+      }
+      if (variants.length) document.variants = variants;
+    }
     // Media registered for the review that no post already shows.
     document.review.media = gate === 'sample' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
     if (gate === 'content') {
       const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job, review.artifacts);
       if (labelCheck) document.review.labelCheck = labelCheck;
+      const socialCheck = socialCheckSection(json('validation/social-check.json'), shaOf);
+      if (socialCheck) document.review.socialCheck = socialCheck;
     }
     if (gate === 'publish' || gate === 'content') {
       const schedule = job?.schedule && typeof job.schedule === 'object' ? job.schedule : null;
@@ -1705,6 +1798,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       strip(panel.frame);
     }));
     (document.review.labelCheck?.flags || []).forEach(flag => { delete flag.still; });
+    (document.variants || []).forEach(item => { if (item.media) { delete item.media.thumb; delete item.media.poster; } });
   }
   if (byteSize(document) > budgetBytes && document.report?.stills.some(still => still.thumb)) {
     document.truncated = true;

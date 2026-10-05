@@ -34,6 +34,9 @@ const wording = createRequire(import.meta.url)(join(runtime.runtimeConstants.pip
 const deliverableRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-deliverable.js'));
 const handoffRules = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-handoff-validation.js'));
 const REQUEST_ID = /^[a-zA-Z0-9_-]{8,100}$/;
+// TODO(B1): handoff.mjs is written in parallel (handoffState(job) -> { status, line } | null). Until it lands the board works without it.
+let handoffLib = null;
+try { handoffLib = await import('./handoff.mjs'); } catch { /* no hand-off module yet: no offer, no status line */ }
 const catalogueLib = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-catalogue.js'));
 const POST_OR_CAMPAIGN = 'Post or campaign';
 // The words for each kind (the short label on a job card, the pipeline's own name) come from the pipeline catalogue, so a new
@@ -934,21 +937,42 @@ function postingState(dir, state, jobId, place, at) {
   }
 }
 
+// The Post-production round trip (handoff.mjs): the job's hand-off status and the plain line for it, or null. Never throws.
+function handoffOf(dir, project) {
+  if (!dir || typeof handoffLib?.handoffState !== 'function') return null;
+  try {
+    const state = handoffLib.handoffState({ dir, path: dir, jobDir: dir, jobId: project?.jobId, brand: project?.brand });
+    return state && typeof state.status === 'string' ? { status: state.status, line: typeof state.line === 'string' ? state.line : '' } : null;
+  } catch { return null; }
+}
+
+const HANDOFF_OFFER_TEXT = 'Send this to Post-production for a full edit, or finish it here?';
+const HANDOFF_RETURN_TEXT = 'The edit is released. Bring the final video back?';
+// Owned by the Director (no `from`), and like every item here it counts as needing the person.
+function handoffItems(handoff, place, at) {
+  if (handoff?.status === 'suggested') return [{ kind: 'handoff_offer', ...place, text: HANDOFF_OFFER_TEXT, inline: false, at }];
+  if (handoff?.status === 'released') return [{ kind: 'handoff_return', ...place, text: HANDOFF_RETURN_TEXT, inline: false, at }];
+  return [];
+}
+
 function jobInbox({ root, snapshot, gate, review, intake, questions, dir }) {
   const place = { jobId: snapshot.project.jobId, jobTitle: snapshot.project.title || null, brandName: snapshot.brand?.name || null };
   const at = inboxAt(snapshot.status?.updatedAt, snapshot.job?.createdAt);
   const posting = postingState(dir, snapshot.project.state, snapshot.project.jobId, place, at);
+  const handoff = handoffOf(dir, snapshot.project);
   const items = [
     ...(questions || []).map(question => questionItem(question, place)),
     ...(gate ? [decisionItem({ root, snapshot, gate, review, place, dir })] : []),
     ...briefItems({ intake, place, revision: snapshot.project.revision, at }),
     ...posting.items,
+    ...handoffItems(handoff, place, at),
   ].sort(newestFirst);
   const state = snapshot.project.state;
   const pricedJob = state === 'STORYBOARD_APPROVED' ? facts.jobAt(root, snapshot.project.brand, snapshot.project.jobId) : null;
   const priceApproved = Boolean(pricedJob && facts.currentPriceApproval(pricedJob));
   const held = state === 'INTAKE_PENDING' && snapshot.job?.pipelineUnsure === true;
-  const announcement = blockedReason(snapshot) || posting.line || (held ? 'Waiting for one answer from you.' : null) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
+  const withPost = handoff?.status === 'sent' && handoff.line ? handoff.line : null;
+  const announcement = blockedReason(snapshot) || posting.line || withPost || (held ? 'Waiting for one answer from you.' : null) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
   return { items, announcement };
 }
 
@@ -1194,6 +1218,7 @@ export function boardSnapshot({ root } = {}) {
       const from = item.kind === 'decision' ? gateAuthor(snapshot.plan?.rows, item.gate) : null;
       return from ? { ...item, from, fromName: agentName(from) } : item;
     });
+    const handoffState = handoffOf(job.path, snapshot.project);
     const project = {
       jobId:snapshot.project.jobId,
       brand:snapshot.project.brand,
@@ -1211,6 +1236,7 @@ export function boardSnapshot({ root } = {}) {
       ...(reason ? { blockedReason:reason } : {}),
       ...(agentLine ? { agentLine } : {}),
       ...(stuck ? { stuck } : {}),
+      ...(handoffState ? { handoff: handoffState } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
@@ -1277,7 +1303,7 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step'].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
@@ -1287,6 +1313,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   if (operation === 'mark_posted') checkMarkPosted(root, args);
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
+  if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
   const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
@@ -1469,6 +1496,27 @@ function checkRetryStep(root, args) {
   const waiting = readRequestRecords(root).find(record => record.operation === 'retry_step' && record.status === 'requested' && record.args?.jobId === job.jobId && record.args?.brand === job.brand && record.requestId !== args.requestId);
   if (waiting) throw new Error('Claude is already trying this again.');
   return { job, stuck };
+}
+
+// ---------------------------------------------------------------------------
+// Post-production round trip requests. Applying one only records the request; the send-to-post skill does the work.
+// ---------------------------------------------------------------------------
+
+const HANDOFF_OPERATIONS = ['handoff_send', 'handoff_decline', 'handoff_return'];
+const HANDOFF_FIELDS = new Set(['requestId', 'brand', 'jobId', 'workspaceId']);
+// The hand-off status each request needs the job to be in.
+const HANDOFF_NEEDS = Object.freeze({ handoff_send: 'suggested', handoff_decline: 'suggested', handoff_return: 'released' });
+const HANDOFF_DONE = Object.freeze({
+  handoff_send: 'Sending this to Post-production.',
+  handoff_decline: 'Finishing this one here.',
+  handoff_return: 'Bringing the final video back.',
+});
+
+function checkHandoffRequest(root, operation, args) {
+  const job = validateJobRequest(root, args, HANDOFF_FIELDS, 'a Post-production choice');
+  const state = handoffOf(job.dir, { jobId: job.jobId, brand: job.brand });
+  if (state?.status !== HANDOFF_NEEDS[operation]) throw new Error(operation === 'handoff_return' ? 'There is no released edit to bring back right now.' : 'There is no Post-production offer waiting on this job.');
+  return job;
 }
 
 // A post's own request from the status list or the posting kit. Like a route choice it carries exactly its own fields
@@ -2011,6 +2059,11 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     appendFileSync(join(job.dir,'events.jsonl'),`${JSON.stringify(pipelineEvents.makeEvent(job.jobId,'retry.recorded',retriedAt,{type:'job',id:job.jobId},{reason:'stuck_internal',attempt:1,status:'requested',since:stuck.since},{jobId:job.jobId,source:'local'}))}\n`);
     return {jobId:job.jobId,brand:job.brand,retry:{reason:stuck.reason,since:stuck.since},message:'Trying this step again.'};
   }
+  if(HANDOFF_OPERATIONS.includes(operation)) {
+    // Records the request only: the send-to-post skill reads it and does the work.
+    const job = checkHandoffRequest(root,operation,args);
+    return {jobId:job.jobId,brand:job.brand,handoff:operation.replace('handoff_',''),message:HANDOFF_DONE[operation]};
+  }
   if(operation==='submit_decision') {
     validateDecision({...args,root});
     return saveBoardRequest({root,operation,args,source});
@@ -2051,6 +2104,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'mark_posted') return result.postId ? { jobId: result.jobId, postId: result.postId, allMarked: result.allMarked, closed: result.closed } : null;
   if (operation === 'agent_message') return result.messageId ? { jobId: result.jobId, agent: result.agent, messageId: result.messageId } : null;
   if (operation === 'retry_step') return result.jobId ? { jobId: result.jobId } : null;
+  if (HANDOFF_OPERATIONS.includes(operation)) return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
 }
@@ -2329,6 +2383,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   if(record.operation==='mark_posted') checkMarkPosted(root,record.args);
   if(record.operation==='agent_message') checkAgentMessage(root,record.args);
   if(record.operation==='retry_step') checkRetryStep(root,record.args);
+  if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);
   if(claimed) return claimed;
   let result;

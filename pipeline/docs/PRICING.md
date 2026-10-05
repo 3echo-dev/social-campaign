@@ -22,6 +22,9 @@ Every clip in a plan is estimated on its own, and the plan's price is the sum of
 A clip is a whole number of seconds, 4 to 15, from the tool schema.
 `scripts/lib-deliverable.js` holds that pair, and `preflight-generation.js` and `price-options.js` both read it, so the quote and the pre-spend gate cannot drift apart.
 
+The hook clip, the first in the cut, is the one exception to "the clip is its beat": it is asked for and priced at its beat plus 1 second (still 4 to 15), because the stitch drops its first half second and the last half second beyond the beat.
+Its `headroom.askSec` equals the `durationSeconds` that is estimated and generated, and `price-options.js` refuses a clip priced at a different length than it is generated at.
+
 A beat longer than 15 seconds splits into two clips at a hard cut.
 **A short total runtime is never a reason to give up on video.**
 The floor is whatever the job asked for in the deliverable's `durationSeconds.min`, and a 15 second TikTok is a finished TikTok.

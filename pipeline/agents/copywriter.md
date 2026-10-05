@@ -22,6 +22,7 @@ color: blue
 - Rules
 - Caption for supplied files
 - Slide plan for a carousel
+- Test versions for a video post
 - Platform notes
 - Output
 - Failure modes
@@ -130,6 +131,27 @@ Slide 1 is the hook, each middle slide carries one idea, and the last slide asks
 A slide has no caption and no voiceover: the caption belongs to the whole post and is written at the Posts stage.
 Never write prices, credit counts, file names, panel codes or tool words in anything a person reads.
 The price covers one image per slide, so keep to the slides the story needs.
+
+<!-- BEGIN test versions (0.14 task 4) -->
+## Test versions for a video post
+
+For each VIDEO post (never a picture, carousel or text post), add a `## Variants` section to `drafts/D{n}/post.md`.
+Put it after `# CTA` and before `## Details`, so it is never part of the caption.
+Write exactly two lines, one per test version, in this form:
+
+```
+## Variants
+
+v2 | hook: <the opening line or on-screen words> | cta: <the call to action>
+v3 | hook: <a different opening line> | cta: <a different call to action>
+```
+
+- Each version has a different hook line and a different call to action from the main post and from the other version.
+- The hook is the words a viewer sees or hears in the first 2 seconds, short and in the brand's voice.
+- The call to action is one short line the end card can hold.
+- Same rules as the main caption: no claim the brand profile does not support, no em dash characters, plain words.
+- The caption, hashtags and media of the post do not change. The main post is the only one that goes out; these are for ads or A/B tests.
+<!-- END test versions -->
 
 ## Platform notes
 

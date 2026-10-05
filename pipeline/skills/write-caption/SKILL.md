@@ -33,6 +33,15 @@ user-invocable: false
 10. Count against `caption.max_chars` and the cutoff.
 11. Next platform: back to step 2, rewritten never pasted.
 
+<!-- BEGIN test versions (0.14 task 4) -->
+## Test versions (video posts only)
+
+For a VIDEO post, add a `## Variants` section after `# CTA` and before `## Details` with two lines, each `v2 | hook: <text> | cta: <text>` (then `v3 | ...`).
+Each line has a different hook line and a different call to action from the main post and from each other, in the same voice and under the same claim rules.
+The caption, hashtags and media do not change, and the main post is the only one that is posted; the test versions are for ads or A/B tests.
+Skip the section for a picture, carousel or text post.
+<!-- END test versions -->
+
 ## Objective to structure
 
 CTA style: see write-cta. Each opens on the hook, then:

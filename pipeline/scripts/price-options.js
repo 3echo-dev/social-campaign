@@ -118,7 +118,13 @@ const priced = plans.map((p, idx) => {
     if (!Number.isInteger(d) || d < del.CLIP_SECONDS.min || d > del.CLIP_SECONDS.max)
       refuse(where + ' clip ' + (i + 1) + ' is ' + c.durationSeconds + ' seconds; a clip is a whole ' +
         del.CLIP_SECONDS.min + ' to ' + del.CLIP_SECONDS.max + ' seconds');
-    else seconds += d;
+    else if (c.headroom) {
+      // The hook clip is generated, and so priced, one second longer than the part that is used.
+      if (c.headroom.askSec !== d)
+        refuse(where + ' clip ' + (i + 1) + ' is priced at ' + d + ' seconds but is generated at ' + c.headroom.askSec +
+          ' seconds; the price has to be for the length that is generated');
+      seconds += Number(c.headroom.useSec) > 0 ? Number(c.headroom.useSec) : d;
+    } else seconds += d;
   });
   const total = imagesCounted + clipTotal;
   // The one arithmetic check that matters: what the person is shown equals the parts under it.

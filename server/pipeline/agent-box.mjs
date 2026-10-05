@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import { STALE_RUN_MS, clipOneLine, readAgentLines } from './agent-log.mjs';
 import { plainWordsProblem } from './questions.mjs';
+import { handoffSent } from './handoff.mjs';
 
 const require = createRequire(import.meta.url);
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -585,6 +586,8 @@ export function stuckFor({ dir, snapshot, inboxItems, requests = [], retriedAt =
   const clock = clockOf(now);
   const state = text(snapshot?.project?.state) ?? text(snapshot?.status?.state);
   if (!state || statesLib.isTerminal(state)) return null;
+  // A video with Post-production is waiting on them, not stuck.
+  if (handoffSent(dir)) return null;
   const all = lines ?? (dir ? readAgentLines(dir) : []);
   const updatedAt = text(snapshot?.status?.updatedAt);
   const open = (Array.isArray(snapshot?.project?.stages) ? snapshot.project.stages : []).find(stage => plain(stage) && !stage.skipped && !DONE_STAGE.has(stage.status));

@@ -17,6 +17,8 @@ Do not repeat research, repeat provider probes, use gate-app transport, use Driv
 Preserve approval, revision, ownership, and state protections.
 Return the output paths, reused evidence, blockers, and next action.
 
+For a video post, also write the `## Variants` section described in `pipeline/skills/write-caption/SKILL.md` (two lines, `v2 | hook: <text> | cta: <text>`, after `# CTA` and before `## Details`).
+
 ## Work only from the chosen recipe
 
 A caption is written only from the person's choice in `drafts/D<n>/recipe.json` and a finished `brand/brand-voice.md`.

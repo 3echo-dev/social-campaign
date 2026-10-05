@@ -29,6 +29,7 @@ const execution = require('./lib-execution-availability.js');
 // 3echo tool limits. These come from the tool schemas, not from any repo. The clip length
 // lives in lib-deliverable.js so the quote and this gate cannot drift apart.
 const { CLIP_SECONDS } = require('./lib-deliverable.js');
+const { headroomProblems } = require('./lib-headroom.js');
 const VIDEO_MIN_S = CLIP_SECONDS.min, VIDEO_MAX_S = CLIP_SECONDS.max;
 const IMAGE_MAX_REFS = 16;   // create_image_job assetIds
 // Check 8. Narrow on purpose: each pattern is one thing seen on a real job, not a style guide.
@@ -142,11 +143,30 @@ for (const D of dels) {
       const d = it.durationSeconds;
       if (!Number.isInteger(d) || d < VIDEO_MIN_S || d > VIDEO_MAX_S)
         fail(where + ': durationSeconds must be a whole number from ' + VIDEO_MIN_S + ' to ' + VIDEO_MAX_S + '; this says ' + d);
+      const firstClip = String(((man.stitch || {}).order || [])[0] || '');
+      const thisClip = it.file ? path.basename(String(it.file)).replace(/\.[^.]+$/, '') : '';
+      for (const p of headroomProblems(it, thisClip !== '' && thisClip === firstClip)) fail(where + ': ' + p);
       if (refs > VIDEO_MAX_IMAGE_REFS) fail(where + ': ' + refs + ' image references, the video tool accepts at most ' + VIDEO_MAX_IMAGE_REFS);
       if (it.seedFromPanelImage && !refs) note(where + ': seedFromPanelImage is set but no assetId is listed yet; the panel image must be uploaded and its id recorded before submission');
       if (it.credits == null) note(where + ': credits are null until estimate_video_job returns a quote');
     }
     if (typeof it.credits === 'number') totalCredits += it.credits;
+    // BEGIN labelled references (0.14 task 3). A job made before this has no `references`: skip it.
+    if (it.references !== undefined) {
+      const ids = Array.isArray(it.assetIds) ? it.assetIds : [];
+      const labelled = Array.isArray(it.references) ? it.references : [];
+      if (labelled.length !== ids.length)
+        fail(where + ': it attaches ' + ids.length + ' picture(s) but labels ' + labelled.length + '; give every attached picture a label, in the same order.');
+      else {
+        labelled.forEach((r, i) => {
+          if (!r || !String(r.label || '').trim())
+            fail(where + ': attached picture ' + (i + 1) + ' has no label, so the model cannot tell what it shows.');
+          else if (String(r.ref) !== String(ids[i]))
+            fail(where + ': label ' + (i + 1) + ' ("' + String(r.label).trim() + '") is not on attached picture ' + (i + 1) + '; list the labels in the same order as the attachments.');
+        });
+      }
+    }
+    // END labelled references
   }
 
   // 8. What the prompts say. Each of these was watched happening on a real job: a clip

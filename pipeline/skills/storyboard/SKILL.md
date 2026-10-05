@@ -42,6 +42,15 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 11. Regeneration after approval targets one panel by ID; a cut or insert returns to this gate. What a job delivers changes only at a gate.
 12. Shot, on-screen text and voiceover are written in plain words for a person: no task numbers, stage codes, file names or production notes. Production notes belong in `generation-manifest.json` only.
 
+<!-- BEGIN labelled references (0.14 task 3) -->
+## Labelled references
+
+Each manifest item that attaches pictures (`assetIds`) also gets `references: [{ ref, label, keep }]`, one per attachment, in attachment order, `ref` being the asset id.
+`label` is short: the product, the persona or mascot name, or the location. `keep` is one phrase on what must stay the same ("the exact box and logo").
+The item's prompt opens with the legend, one line per attachment, before the preamble: `[Image 1] Mina: keep her face and black bob. [Image 2] Mealbox box: keep the exact box and logo.`
+`make-image` and `playbooks/video-prompting.md` say how it is numbered; preflight refuses a mismatch and skips a manifest with no `references`.
+<!-- END labelled references -->
+
 ## Carousel
 
 A carousel (an Instagram carousel, a Facebook post with several pictures, a TikTok photo post) is one post of 3 to 10 slides, never more than the job names.
@@ -69,7 +78,7 @@ A person may call a panel by its ID, its position, or a plain description: "P2",
 ## Output contract
 
 `templates/storyboard.md` filled: `aspect_ratio` confirmed, Sequence line, panel table, Not in frame, Continuity, Revision log, Decision empty.
-`templates/generation-manifest.json` filled: `boardVersion` equals `revision`; one image item per panel and one clip item per generated video panel, `durationSeconds` a whole 4 to 15; `stitch.order` matches the Sequence line; files by panel ID, never display number.
+`templates/generation-manifest.json` filled: `boardVersion` equals `revision`; one image item per panel and one clip item per generated video panel, `durationSeconds` a whole 4 to 15; `stitch.order` matches the Sequence line; files by panel ID, never display number; the first clip in `stitch.order` (the hook) also carries `headroom: { askSec, inSec: 0.5, useSec }` with `askSec` = its beat plus 1 s (4 to 15) = its `durationSeconds`, and `make-video` explains it.
 
 ## Boundary
 
