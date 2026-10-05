@@ -2343,6 +2343,13 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     const workflowId=snapshot.route?.workflowId || null;
     const aimed=requested ?? current ?? inferredGate(snapshot.project.state,paths,workflowId);
     if(aimed && !current) assertReviewFits(aimed,workflowId);
+    // Post-production comes before the final approval: never ask for both at once, and never ask while the edit is away.
+    if(aimed==='content') {
+      const job=facts.jobAt(root,brand,jobId);
+      const handoff=job && typeof handoffLib?.handoffState==='function' ? handoffLib.handoffState(job) : null;
+      if(handoff?.status==='suggested') throw new Error('Ask the Post-production question first: call pipeline_handoff_post_status and ask it once. Ask for the final approval after the person answers.');
+      if(handoff?.status==='sent' || handoff?.status==='released') throw new Error('The video is with Post-production. Ask for the final approval once the edit is back.');
+    }
     if(aimed===FINDINGS_GATE && (!current || current===FINDINGS_GATE)) paths=reportReviewPaths(jobDirectory(root,brand,jobId));
     // The final post of a job made from supplied files needs no list: it is every post file, and the supplied files are added below.
     if((!Array.isArray(paths) || !paths.length) && aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=postFilePaths(jobDirectory(root,brand,jobId));

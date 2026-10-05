@@ -59,6 +59,7 @@ Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `j
 
 Per pending row, read its `task-contracts.json` entry, pass only `contextRefs`, enforce capabilities,
 then run producer rows or spawn the named agent and wait.
+Wait for a spawned agent's own hand-back, which arrives by itself when it finishes; never poll for its output files with a sleep loop, and never add a fixed sleep after a file appears.
 
 Report the stage before and after each row; report long stages as they run:
 

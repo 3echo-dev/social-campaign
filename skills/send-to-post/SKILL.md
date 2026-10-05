@@ -55,5 +55,6 @@ A button press arrives as a board request; apply it with `pipeline_board_request
 
 A yes or no said in chat counts the same; never ask twice.
 
+Ask this before the final approval, never alongside it: `pipeline_review_present` refuses the final approval while the offer is unanswered or the video is with Post-production.
 Never change anything in the Post-production folders.
 Never send a video that is not finished being made.
