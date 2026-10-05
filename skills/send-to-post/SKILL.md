@@ -32,6 +32,8 @@ Never show file paths, tool names, ids or technical words, in chat or on the boa
 3. On yes, call `pipeline_handoff_post_prepare`.
    If it refuses, say why in one plain line and finish the video here.
    Otherwise run the skill it names (`startSkill`) with exactly the arguments it returns, with the Skill tool.
+   Post-production works in its own folder, the `studioRoot` the prepare step returns (by default `~/3echo/production-studio`), never in this workspace: run every Post-production script with `--root "<studioRoot>"`.
+   If Post-production has no board in that folder yet, run its own board setup there once (production-studio's `board-setup`, with the same root), because its sign-offs happen on its board.
    Post-production's scripts live in its plugin's `post/scripts/` folder: when one of its steps names a script with no folder, or under a `scripts/` folder that does not exist, run it from `post/scripts/` and never change any Post-production file.
    Then call `pipeline_handoff_post_started` with the job id and folder that skill made, and sync the board.
    Say in one line: "It is with Post-production now. I will tell you when the edit is released."

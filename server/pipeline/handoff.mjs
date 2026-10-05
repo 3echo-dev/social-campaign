@@ -445,11 +445,15 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
     client: brand, title, footageFolder: shoot, releaseFolder: release, aspectRatio: ratio, deliverableDurationSec: duration,
     audioLed, footageSource: 'generated', referenceCutPath: join(release, 'reference-cut.mp4'),
   };
+  // Post-production works in its own folder, never in this workspace: both use workspaces/<name>/, so a shared folder would mix
+  // Studio clients with Social brands. Its scripts take --root first, then CREATIVE_STUDIO_POST_ROOT.
+  const studioRoot = resolve(process.env.CREATIVE_STUDIO_POST_ROOT || join(resolve(home), '3echo', 'production-studio'));
+  mkdirSync(join(studioRoot, 'workspaces'), { recursive: true });
   writeHandoff(job.dir, { status: 'suggested', plugin: found.plugin, packDir: pack, deliverable: deliverableId, suggestedAt: record?.suggestedAt || nowIso(), declinedAt: null });
   return {
-    ok: true, plugin: found.plugin, startSkill: found.startSkill, packDir: pack, args,
+    ok: true, plugin: found.plugin, startSkill: found.startSkill, packDir: pack, studioRoot, args,
     startArguments: `--client "${brand}" --title "${title}" --drive-folder "${shoot}" --pre-release "${release}" --aspect-ratio ${ratio} --deliverable-duration-sec ${duration} --audio-led ${audioLed} --footage-source generated --reference-cut-path "${args.referenceCutPath}"`,
-    next: 'Run the start skill with these arguments, then record the Post-production job it makes with the started tool.',
+    next: `Run the start skill with these arguments, running every Post-production script with --root "${studioRoot}" (or CREATIVE_STUDIO_POST_ROOT set to it), never in this workspace; then record the Post-production job it makes with the started tool.`,
   };
 }
 
