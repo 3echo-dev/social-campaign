@@ -747,10 +747,27 @@ function blockedReason(snapshot) {
   return reason && !plainWordsProblem(reason) ? reason : null;
 }
 
+// A stage goes to the board with its plan rows in plain words: the row's short name and summary line, who has it, its status,
+// and the files it makes (shown only as titles of files the job already lists). The raw task text of a plan row never goes.
+function boardTask(task) {
+  if (!plainObject(task)) return null;
+  const outputs = String(task.artifact ?? '').split(',').map(part => part.replace(/`/g, '').trim()).filter(Boolean).slice(0, 8);
+  return {
+    name: String(task.label || '').trim() || 'Step',
+    ...(task.line ? { line: String(task.line) } : {}),
+    agent: String(task.agent ?? '').replace(/`/g, '').trim() || null,
+    ...(String(task.gate ?? '').replace(/`/g, '').trim() ? { gate: String(task.gate).replace(/`/g, '').trim() } : {}),
+    status: task.status || 'pending',
+    ...(task.gateStatus ? { gateStatus: task.gateStatus } : {}),
+    ...(outputs.length ? { outputs } : {}),
+  };
+}
+
 function boardStage(stage) {
   if (!plainObject(stage)) return stage;
   const { tasks, ...rest } = stage;
-  return rest;
+  const list = Array.isArray(tasks) ? tasks.map(boardTask).filter(Boolean) : [];
+  return list.length ? { ...rest, tasks: list } : rest;
 }
 
 const SETTLED_STAGE_STATUSES = new Set(['complete', 'pending', 'cancelled']);

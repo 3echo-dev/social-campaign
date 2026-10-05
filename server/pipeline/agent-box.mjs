@@ -7,7 +7,8 @@
 //
 // Shape of the result (the value of document.agents), see docs/PLAN-0.10-AGENT-BOX.md section 2:
 //   { v: 1, list: [agent], unassigned: { yours, records, other, yoursMore, recordsMore, otherMore }, truncated }
-//   agent = { id, name, model, state, task, since, files, filesMore, activity, messages, messagesMore, pendingMessages, needs, note? }
+//   agent = { id, name, model, state, task, role, since, files, filesMore, activity, runs, messages, messagesMore, pendingMessages, needs, note? }
+//   `role` is what the agent does, in one plain line, whatever it is doing now. `runs` are its finished runs, oldest first: { at, tookMs }.
 //   state is one of AGENT_STATES. `note` (only when there is one) says why a card waits: "Starts after researching".
 //   Director only: `needs` lists what the person must act on (the inbox keys, with `from`, the agent that wrote the work behind it).
 //   Director only, and only when the job is stuck: `stuck` = { reason, kind, since, asked, canRetry, retry? }, see stuckOf below.
@@ -36,6 +37,7 @@ export const AGENT_BOX_BUDGET_BYTES = 32 * 1024;
 export const TASK_LIMIT = 120;
 export const ACTIVITY_SHOWN = 5;
 export const ACTIVITY_SHED = 2;
+export const RUNS_SHOWN = 6;
 export const FILES_SHOWN = 12;
 export const FILES_SHED = 4;
 export const UNASSIGNED_SHOWN = 24;
@@ -631,7 +633,7 @@ export function fitAgentBox(section, budget = AGENT_BOX_BUDGET_BYTES) {
         }
       }
     },
-    () => section.list.forEach(agent => { agent.activity = []; }),
+    () => section.list.forEach(agent => { agent.activity = []; if (Array.isArray(agent.runs)) agent.runs = agent.runs.slice(-1); }),
     () => section.list.forEach(agent => {
       if (agent.messages.length > 1) {
         agent.messagesMore += agent.messages.length - 1;
@@ -800,10 +802,12 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
       model,
       state: agentState,
       task,
+      role: actionOf(agent),
       since: at,
       files: files.slice(0, FILES_SHOWN),
       filesMore: Math.max(0, files.length - FILES_SHOWN),
       activity: newestFirst(activity, ACTIVITY_SHOWN),
+      runs: isDirector ? [] : runs.filter(run => run.ended === 'finished' && text(run.endedAt)).slice(-RUNS_SHOWN).map(run => ({ at: run.endedAt, tookMs: Number.isFinite(run.durationMs) ? run.durationMs : null })),
       messages: shown,
       messagesMore: Math.max(0, sent.length - shown.length),
       pendingMessages: sent.filter(message => isPending(message, agent)).length,
@@ -844,9 +848,9 @@ export function agentLine(agents) {
  */
 export function coreOnlyAgentBox(section) {
   const list = (Array.isArray(section?.list) ? section.list : []).map(agent => {
-    const { id, name, model, state, task, since, note, needs, pendingMessages, stuck } = agent;
+    const { id, name, model, state, task, role, since, note, needs, pendingMessages, stuck } = agent;
     return {
-      id, name, model, state, task, since: since ?? null, files: [], filesMore: (agent.files?.length ?? 0) + (agent.filesMore ?? 0), activity: [],
+      id, name, model, state, task, role, since: since ?? null, files: [], filesMore: (agent.files?.length ?? 0) + (agent.filesMore ?? 0), activity: [], runs: [],
       messages: [], messagesMore: (agent.messages?.length ?? 0) + (agent.messagesMore ?? 0), pendingMessages, needs,
       ...(note ? { note } : {}), ...(stuck ? { stuck } : {}),
     };
@@ -902,8 +906,8 @@ export function onboardingAgents({ brandDir, brandName, usage, onboardingStatus,
   const runs = runsFrom(lines ?? (brandDir ? readAgentLines(join(brandDir, 'onboarding')) : []));
   const brand = clipOneLine(brandName, 60) || 'your brand';
   const card = (id, fields) => ({
-    id, name: nameOf(id), model: shortModel(registry.get(id)?.model), state: 'waiting', task: actionOf(id), since: null, files: [], filesMore: 0,
-    activity: [], messages: [], messagesMore: 0, pendingMessages: 0, ...fields,
+    id, name: nameOf(id), model: shortModel(registry.get(id)?.model), state: 'waiting', task: actionOf(id), role: actionOf(id), since: null, files: [], filesMore: 0,
+    activity: [], runs: [], messages: [], messagesMore: 0, pendingMessages: 0, ...fields,
   });
 
   const waitsOnPerson = phase === 'failed'

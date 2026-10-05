@@ -2244,6 +2244,113 @@ function namesOf(gates) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '';
 }
 
+// What the board calls each plan row and says about it: the row's Stage column is already short, but a few of its words are
+// shop talk ("QC", "Hand-off"). Anything not listed keeps its own Stage words in sentence case and has no summary line.
+const STEP_INFO = Object.freeze({
+  intake: ['Reading your request', 'Understanding what you asked for.'],
+  plan: ['Setting the plan', 'Choosing the steps for this job.'],
+  'watch the reference': ['Watching the reference video', 'Taking in the video you pointed at.'],
+  'break down the reference': ['Breaking down the reference', 'What the video does, beat by beat.'],
+  research: ['Research', 'The facts and sources behind the post.'],
+  'research (lite)': ['Quick research', 'A short check of the facts the post needs.'],
+  'keep the words': ['Saving the key phrases', 'Keeping the best phrases for next time.'],
+  brief: ['Strategy', 'One clear direction for the post.'],
+  'lite brief': ['Short brief', 'One clear direction for the post.'],
+  concepts: ['Ideas', 'A few ideas to pick from.'],
+  'script and board': ['Script and storyboard', 'What is said and shown, shot by shot.'],
+  'media spec': ['Shot plan', 'The pictures and clips to make.'],
+  'media spec (carousel)': ['Slide plan', 'The slides, in swiping order.'],
+  media: ['Making the pictures and video', 'The pictures and clips themselves.'],
+  'video qa': ['Checking the video', 'Making sure the video matches the plan.'],
+  posts: ['Captions', 'The words that go with each post.'],
+  'brand marks': ['Logo and label check', 'Checking logos and labels in every picture.'],
+  'qc and mechanical checks': ['Quality checks', 'Length, size and format checks.'],
+  'qc and platform checks': ['Quality checks', 'Length, size and format checks.'],
+  validate: ['Final checks', 'Facts, brand fit and platform rules.'],
+  'content gate': ['Final post', 'Your go-ahead on the finished post.'],
+  'publish gate': ['Posting plan', 'Where and when it goes out.'],
+  'hand-off': ['Getting it ready to post', 'The finished files, ready to go out.'],
+  sources: ['Finding sources', 'Where the facts will come from.'],
+  'watch the video': ['Watching the video', 'Taking in the video.'],
+  'break down the video': ['Breaking down the video', 'What the video does, beat by beat.'],
+  'read the posts': ['Reading the posts', 'What the posts say and how people reacted.'],
+  'write the report': ['Writing the report', 'Everything found, in one short report.'],
+  'report review': ['Your review of the report', 'Read it, then approve it or ask for changes.'],
+  done: ['Finishing up', 'The job is wrapped up.'],
+  stills: ['Picking still frames', 'Key moments from the video as pictures.'],
+  'caption as given': ['Your caption', 'Your own words, checked for each platform.'],
+  caption: ['Caption', 'The words that go with the post.'],
+  'watch source': ['Watching your video', 'Taking in your video.'],
+  'analyse source': ['Breaking down your video', 'What your video does, beat by beat.'],
+  'cut plan': ['Cut plan', 'Which parts of the video to keep.'],
+  'ad requirements': ['Ad requirements', 'What each ad platform asks for.'],
+  proposal: ['Campaign plan', 'The plan for the ad campaign.'],
+  'activation checklist': ['Going live checklist', 'What happens when the ads go live.'],
+  'ad copy': ['Ad copy', 'The words for each ad.'],
+});
+
+function stepInfo(row) {
+  const stage = String(row.Stage || '').trim();
+  const known = STEP_INFO[stage.toLowerCase()];
+  if (known) return { label: known[0], line: known[1] };
+  const lower = stage.toLowerCase();
+  return { label: lower ? lower[0].toUpperCase() + lower.slice(1) : 'Step', line: null };
+}
+
+function planCell(value) {
+  return String(value ?? '').replace(/`/g, '').trim();
+}
+
+// Each plan row's own status: done, running, waiting or pending. Rows up to the last one whose "State after" the job has
+// reached (or is in now) are done. The row after that is waiting when it is the person's gate and the job waits on that gate
+// (or on the person at its stage), and running while Claude has it, unless the job is held up or over. Everything later is pending.
+function applyTaskStatuses(stages, planRows, state, reached) {
+  const after = planRows.map((row) => planCell(row['State after']));
+  const order = statesRuntime.ids();
+  const nowAt = order.indexOf(state);
+  const onFlow = nowAt >= 0 && !OFF_FLOW_STATES.has(state);
+  const seen = new Set((reached || []).map(planCell).filter((id) => !onFlow || (order.indexOf(id) >= 0 && order.indexOf(id) <= nowAt)));
+  if (!OFF_FLOW_STATES.has(state) || state === 'COMPLETE') seen.add(state);
+  let lastDone = -1;
+  const firstOfNow = onFlow || state === 'COMPLETE' ? after.indexOf(state) : -1;
+  if (firstOfNow >= 0) lastDone = firstOfNow;
+  after.forEach((id, index) => { if (id && seen.has(id) && id !== state && index > lastDone) lastDone = index; });
+  if (state === 'COMPLETE') lastDone = Math.max(lastDone, planRows.length - 1);
+  const held = state === 'BLOCKED' || state === 'ESCALATED' || state === 'CANCELLED';
+  const finished = state === 'COMPLETE';
+  const waitingGate = statesRuntime.gateOf(state) || (stages.some((stage) => stage.id === 'your-approval-of-the-price' && stage.status === 'waiting') ? 'price' : null);
+  const personWaiting = Boolean(waitingGate) || stages.some((stage) => stage.status === 'waiting');
+  const gateStatus = new Map();
+  for (const stage of stages) for (const gate of stage.gates || []) gateStatus.set(gate.gate, gate.status);
+  // A stage the job is past has all its rows done, whatever the log remembers (an older job may not log every state).
+  for (const stage of stages) {
+    if (stage.status !== 'complete' && stage.status !== 'done') continue;
+    for (const task of stage.tasks || []) lastDone = Math.max(lastDone, task._row);
+  }
+  const next = lastDone + 1;
+  for (const stage of stages) {
+    for (const task of stage.tasks || []) {
+      const index = task._row;
+      const gate = planCell(task.gate) || null;
+      const human = planCell(task.agent) === 'human';
+      let status;
+      if (index <= lastDone) status = 'done';
+      else if (index === next && !held && !finished) {
+        if (personWaiting) status = (gate && gate === waitingGate) || (!gate && stage.status === 'waiting') ? 'waiting' : 'pending';
+        else status = 'running';
+      } else status = 'pending';
+      if (gate) {
+        const fromStage = gateStatus.get(gate);
+        const own = fromStage || (gate === waitingGate ? 'waiting' : seen.has(statesRuntime.APPROVED_STATE[gate]) ? 'done' : 'pending');
+        task.gateStatus = own;
+        if (human) status = own === 'waiting' && !held ? 'waiting' : own === 'done' ? 'done' : 'pending';
+      }
+      task.status = status;
+      delete task._row;
+    }
+  }
+}
+
 function deriveStages(stages, state, planRows, { dir = null, decisions = [], workflowId = null, reached = [] } = {}) {
   const referenceOnly = Boolean(dir) && facts.referenceArtOnly({ dir });
   const priced = priceFacts(dir);
@@ -2253,6 +2360,9 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
   const gates = planGates(planRows);
   if (statesRuntime.gateOf(state)) gates.add(statesRuntime.gateOf(state));
   const held = new Set(['blocked', 'cancelled']);
+  const orderIds = statesRuntime.ids();
+  const nowAt = orderIds.indexOf(state);
+  const flowing = nowAt >= 0 && !OFF_FLOW_STATES.has(state);
   const currentIndex = stages.findIndex((stage) => stage.id === stagesRuntime.forState(state, workflowId)?.stage);
   const making = stages.find((stage) => stage.id === 'making-the-images-and-video');
   const pastMaking = Boolean(making) && (making.status === 'complete' || making.status === 'done');
@@ -2293,6 +2403,13 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
     const approved = stageGates.filter((gate) => decided.has(gate));
     stage.approvals = approved.map((gate) => decided.get(gate));
+    stage.gates = stageGates.filter((gate) => gate !== 'sample' || decided.has('sample')).map((gate) => ({
+      gate,
+      name: GATE_NAMES[gate] || stageLabel(gate),
+      status: decided.has(gate) ? 'done'
+        : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'
+          : (flowing && statesRuntime.APPROVED_STATE[gate] && orderIds.indexOf(statesRuntime.APPROVED_STATE[gate]) <= nowAt) || stage.status === 'complete' ? 'done' : 'pending',
+    }));
     const waiting = stageGates.filter((gate) => !decided.has(gate));
     if (approved.length && waiting.length && !(currentIndex >= 0 && index < currentIndex)) {
       stage.note = `${namesOf(waiting)} still to approve.`;
@@ -2340,11 +2457,14 @@ function snapshotStages(state, planRows, route, context = {}) {
       tasks: rows.map((row) => ({
         number: row['#'] || null,
         name: row.Task || null,
+        label: stepInfo(row).label,
+        line: stepInfo(row).line,
         agent: row.Agent || null,
         role: row.Role || null,
         stateAfter: row['State after'] || null,
         gate: row.Gate || null,
         artifact: row.Artifact || null,
+        _row: planRows.indexOf(row),
       })),
     };
   });
@@ -2358,7 +2478,9 @@ function snapshotStages(state, planRows, route, context = {}) {
       tasks: [],
     }];
   }
-  return deriveStages(routeStages, state, planRows, { ...context, workflowId });
+  const derived = deriveStages(routeStages, state, planRows, { ...context, workflowId });
+  applyTaskStatuses(derived, planRows, state, context.reached);
+  return derived;
 }
 
 function hashFile(filePath) {

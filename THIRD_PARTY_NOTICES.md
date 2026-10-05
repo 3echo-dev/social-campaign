@@ -25,6 +25,7 @@ Each work below is covered by the MIT License text that follows the list.
 - claude-marketing (https://github.com/thatrebeccarae/claude-marketing): Copyright (c) 2026 Rebecca Rae Barton
 - agents (https://github.com/wshobson/agents): Copyright (c) 2024 Seth Hobson
 - knowledge-work-plugins, partner-built/brand-voice folder, which carries its own MIT LICENSE (https://github.com/anthropics/knowledge-work-plugins): Copyright (c) 2025 Tribe AI
+- Fluent Emoji (https://github.com/microsoft/fluentui-emoji), the 3D pictures shown on the job page's step cards: Copyright (c) 2022 Microsoft Corporation
 
 ```text
 MIT License
