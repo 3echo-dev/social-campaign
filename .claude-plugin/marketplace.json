@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Private marketplace for the Social Campaign plugin.",
-    "version": "0.14.6"
+    "version": "0.14.7"
   },
   "plugins": [
     {
       "name": "social-campaign",
       "source": "./",
       "description": "Social Campaign - social media research, strategy, creative and publishing orchestration with a local workspace and a private board.",
-      "version": "0.14.6",
+      "version": "0.14.7",
       "author": {
         "name": "3echo"
       },

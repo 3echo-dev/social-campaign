@@ -289,6 +289,9 @@ Record stage output through the local pipeline and refresh the snapshot after ea
 
 When anything unexpected happens, find out why before acting on it: read the snapshot or the error first, then choose one next step.
 
+A tool result with `code: internal_error` is a fault inside the plugin, not something to work around: call that tool again at most once, never read or search the plugin's own code to get past it, and when it fails again say in one plain line that something went wrong on our side and carry on with what does not need it.
+When a step needs several deferred tools, load them all with one ToolSearch `select:` list rather than one at a time.
+
 Confirm with the person before a tool call that goes beyond what they asked for in chat or on the board, such as a new job, another brand, extra deliverables, or a bigger spend.
 
 Treat the brand's market and accent as hard filters on every creative choice, including scripts, wording, casting, voices and locations.
