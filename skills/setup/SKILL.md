@@ -13,9 +13,9 @@ metadata:
 
 - Talking to the person
 - Select the workspace
+- Permissions
 - Normal artifact setup
 - Explicit replacement with `--new`
-- Permissions
 - Route after readiness
 
 ## Talking to the person
@@ -59,13 +59,24 @@ Keep the selected absolute root for every later tool call in this conversation.
 An existing `Social Campaign Workspace` child beside the current project is already the selected workspace after restart, so reuse it without creating a nested child.
 If a project binding points to a missing or invalid folder, show that exact path and ask whether to choose another folder or explicitly reconnect by listing with `workspace_switch_open` and then calling `workspace_activate` with the chosen root; do not silently discover a different workspace.
 
+## Permissions
+
+Once the selected workspace is ready, and before the board is opened, published or linked in chat, call `setup_permissions_preview`, so the person answers this question first and the board publish does not ask again.
+If every rule it lists is already present and nothing blocks one, move on without telling the person.
+Otherwise tell the person in one or two plain sentences what the rules allow, for example: "So board clicks work without extra prompts, I'd let Social Campaign's tools run and let Claude read and update your board without asking each time. OK to add that to this project's local settings?"
+Ask once and wait for a plain yes or no.
+On yes, call `setup_permissions_apply` with the same `rulesHash` `setup_permissions_preview` returned.
+When the result is `manual`, show the person the returned lines and ask them to add those lines to their local settings themselves.
+When the result still names a blocking rule, or the person says no, say once in plain words that board clicks may still ask for approval, then move on.
+Never narrate rule names, file paths, hashes, or any other internal detail in this step; keep every sentence plain.
+
 ## Normal artifact setup
 
 The research helper installs on its own in the background as soon as `workspace_initialize` returns.
 Say so to the user in one line.
 Do not wait for it and do not call a research helper tool here.
 
-For normal setup, call `pipeline_board_open` once after the selected workspace is ready.
+For normal setup, call `pipeline_board_open` once after the selected workspace is ready and the Permissions step above is done.
 If the main entry already has a board result for this selected workspace from this same turn, reuse that result and do not repeat status, source, or open calls.
 Before doing anything else with whichever successful `pipeline_board_open`, `pipeline_status` or `pipeline_board_source` result this turn sees first, apply social-campaign/SKILL.md's "Check for a finished update before anything else": when it finds the server superseded, deliver its one plain line and stop without publishing, refreshing, or binding anything with this server; a result already checked this same turn by the caller does not need checking again.
 Pass the result to `board-setup` so a current binding opens directly, a routine source refresh updates the same artifact, and `needs_publication` follows the shared first-publication lifecycle.
@@ -122,17 +133,6 @@ The shared lifecycle must seed metadata and the final route from those handed-of
 Use the host's actual Artifact, ArtifactData, and ArtifactComments schemas, and report the capability that is unavailable when any required native capability is missing.
 Stop setup when the host cannot publish or persist the private artifact, and name the missing host tool.
 Do not claim metadata access, a watch, notification delivery, or automatic wake until the host result or an observed board comment proves it in this session.
-
-## Permissions
-
-After the board is published for this setup, call `setup_permissions_preview`.
-If every rule it lists is already present and nothing blocks one, move on without telling the person.
-Otherwise tell the person in one or two plain sentences what the rules allow, for example: "So board clicks work without extra prompts, I'd let Social Campaign's tools run and let Claude read and update your board without asking each time. OK to add that to this project's local settings?"
-Ask once and wait for a plain yes or no.
-On yes, call `setup_permissions_apply` with the same `rulesHash` `setup_permissions_preview` returned.
-When the result is `manual`, show the person the returned lines and ask them to add those lines to their local settings themselves.
-When the result still names a blocking rule, or the person says no, say once in plain words that board clicks may still ask for approval, then move on.
-Never narrate rule names, file paths, hashes, or any other internal detail in this step; keep every sentence plain.
 
 ## Route after readiness
 
