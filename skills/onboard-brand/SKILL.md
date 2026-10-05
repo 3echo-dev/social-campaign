@@ -145,10 +145,12 @@ Otherwise, dispatch the researcher once with workstream `brand-onboarding`, pass
 The file at `draftPath` already holds the right keys for the researcher to fill in.
 Put `brand:<slug>` alone on the first line of the researcher's spawn prompt, on every dispatch including a second round, so the board can show the Researcher working.
 
+Dispatch it in the background, then write the board documents right away (call `pipeline_status` and write its `documents`), so the onboarding page shows the Researcher working while it runs; write them again when it reports back.
 Then call `pipeline_brand_research_save` with the brand and `runId`.
 
 When the save returns `needs_changes`, never close the run and never tell the person about it.
 Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems` and `draftPath`, then save again.
+Never add, change or date a source, URL or piece of evidence yourself: anything about sources goes back to the researcher.
 Do this for at most two rounds.
 When `needsAudience` is true, the researcher either finds the brand's own audience or suggests one from the top competitors' audiences in the target market.
 If audience alone still remains after the two rounds, save once more with `audienceUnavailable: true` and tell the person plainly that no audience could be found and that they can add one on the board.

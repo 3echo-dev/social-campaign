@@ -125,7 +125,8 @@ function normalizeCompetitorDetails(value) {
       if (!COMPETITOR_ORIGINS.has(origin)) throw new Error('Competitor origin must be declared or research.');
       out.origin = origin;
     }
-    if (item.evidence !== undefined) out.evidence = normalizeSources(item.evidence);
+    // An empty evidence list means nothing could be fetched for this competitor: the same as leaving it out, never a refusal.
+    if (item.evidence !== undefined && !(Array.isArray(item.evidence) && item.evidence.length === 0)) out.evidence = normalizeSources(item.evidence);
     return out;
   });
 }

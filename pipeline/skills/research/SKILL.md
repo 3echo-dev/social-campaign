@@ -121,6 +121,7 @@ An empty value means not filled.
 A source is `{url, observedAt, kind, title}`.
 An evidence row is `{id, question, finding, confidence, source, observedAt, semantics}`.
 A competitor detail is `{name, rationale, origin: "research", evidence}`.
+`evidence` is 1 to 3 sources, each with its public `url` and the `observedAt` date you fetched it; when nothing could be fetched for a competitor, leave `evidence` out and add a gap instead.
 Add at least one dated source.
 
 Each fill is board content for a marketer to read, not a research note.
