@@ -32,6 +32,7 @@ Never show file paths, tool names, ids or technical words, in chat or on the boa
 3. On yes, call `pipeline_handoff_post_prepare`.
    If it refuses, say why in one plain line and finish the video here.
    Otherwise run the skill it names (`startSkill`) with exactly the arguments it returns, with the Skill tool.
+   Post-production's scripts live in its plugin's `post/scripts/` folder: when one of its steps names a script with no folder, or under a `scripts/` folder that does not exist, run it from `post/scripts/` and never change any Post-production file.
    Then call `pipeline_handoff_post_started` with the job id and folder that skill made, and sync the board.
    Say in one line: "It is with Post-production now. I will tell you when the edit is released."
 4. While it is with Post-production, each board sync calls `pipeline_handoff_post_status` again so the board line stays current.
