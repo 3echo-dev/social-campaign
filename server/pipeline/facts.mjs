@@ -1154,7 +1154,8 @@ export function buildQuote(job, input, { drop = [] } = {}) {
     if (seen && stableStringify(seen) !== stableStringify(item)) throw new InvalidInputError(`${itemLabel(item)} is listed twice with different details. List it once.`);
     incoming.set(item.key, item);
   });
-  const made = new Set(readRecords(job).filter(record => record.type === 'create').map(record => canonicalJobKey(record.key)).filter(Boolean));
+  // Made or still being made, the same as the spend guard sees it: a create whose 3Echo job failed or was cancelled made nothing.
+  const made = new Set(readRecords(job).filter(record => record.type === 'create' && (record.provider !== THREE_ECHO || earlierCreateState(job, canonicalJobKey(record.key)))).map(record => canonicalJobKey(record.key)).filter(Boolean));
   const dropped = new Set();
   for (const raw of dropList) {
     const parsed = parseJobKey(raw);
