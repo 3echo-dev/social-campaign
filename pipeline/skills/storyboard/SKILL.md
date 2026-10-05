@@ -9,6 +9,10 @@ user-invocable: false
 
 # Skill: Storyboard
 
+The Creative Director writes the storyboard, the picture and clip prompts and the generation manifest for the media spec rows (organic post and paid campaign).
+The Director never writes them; it verifies the files, then runs the gate.
+The copywriter or scriptwriter uses this skill only where a workflow row still names one of them, for example a UGC concept's storyboard.
+
 ## Inputs
 
 - The approved `script.md`, or for static media the brief's deliverable map row.
@@ -82,7 +86,7 @@ A person may call a panel by its ID, its position, or a plain description: "P2",
 
 ## Boundary
 
-Does not generate or validate frames (`make-image`, `make-video`), write lines (`write-script`), apply disclosure (`policy-check`) or send the board.
+Does not generate or validate frames (`make-image`, `make-video`, run by the Director), write lines (`write-script`), apply disclosure (`policy-check`) or send the board.
 
 ## Failure modes
 

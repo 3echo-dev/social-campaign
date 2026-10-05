@@ -11,6 +11,9 @@ metadata:
 Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/make-image/SKILL.md.
 
 
+The Creative Director writes the picture prompts and the manifest items that hold them, and rewrites the one prompt of a picture the person sends back.
+The Director never writes a prompt; it prices, makes the sample, makes the rest, lands and checks.
+
 Run only after the active plan and current spending decision authorize the request.
 `pipeline_quote_save` adds to the existing price rather than replacing it; an optional `drop` removes an item not yet made when the person asks for changes.
 The hero panel's item carries `sample: true`.

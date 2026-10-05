@@ -421,7 +421,7 @@ Send it back through the price gate with `pipeline_review_present` and `gate: "p
 The person answers on the board or in chat.
 A redo costs money, so the first approval does not cover it.
 3. **Regenerate only those panels.** When the new file lands, the landing step promotes it to `P{id}` and archives the old `P{id}.png` as `P{id}-r{k}.png`, `k` from 1; never archive or move media files by hand.
-4. **The note is the instruction, and it goes into the prompt.** Append it verbatim as its own line under the panel's existing prompt, so the model is told what was wrong in the person's own words. A redo that drops the note reruns the same prompt and returns the same picture, and the person sends it back again.
+4. **The note is the instruction, and it goes into the prompt.** The Director spawns the Creative Director once, with the person's note and that one panel or clip, and the Creative Director writes the new prompt: it appends the note verbatim as its own line under the item's existing prompt in the generation manifest and touches no other item. The Director never writes the prompt itself, and makes the redo only after the new prompt is written. The model is told what was wrong in the person's own words. A redo that drops the note reruns the same prompt and returns the same picture, and the person sends it back again.
 5. **Reopen the gate** with `open-review.js` once the new frames are on disk. It rebuilds every card from what is there now, approved panels included.
 
 `reject` is not this: it is the whole set sent back, and it rolls the stage over, it does not regenerate panel by panel.

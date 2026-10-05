@@ -4,7 +4,7 @@ const INPUT_LIMIT = 16 * 1024 * 1024;
 const BIND_TOOLS = new Set([
   'pipeline_job_read', 'pipeline_job_create', 'pipeline_review_present',
   'pipeline_decision_apply', 'pipeline_intake_update', 'pipeline_board_request_apply',
-  'pipeline_quote_save', 'pipeline_generation_land', 'pipeline_inputs_import', 'pipeline_post_files_add',
+  'pipeline_quote_save', 'pipeline_generation_land', 'pipeline_generation_retry', 'pipeline_inputs_import', 'pipeline_post_files_add',
   'pipeline_product_photo_attach', 'pipeline_recipe_choose', 'pipeline_review_copies_prepare',
   'pipeline_music_add', 'pipeline_music_choose', 'pipeline_handoff_post_prepare', 'pipeline_handoff_post_return',
 ]);

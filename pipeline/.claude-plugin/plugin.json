@@ -1,7 +1,7 @@
 {
   "name": "social-pipeline",
   "displayName": "Social Pipeline",
-  "description": "Runs social media content and ads production: a router turns a request into a typed job, eight role agents (producer, researcher, strategist, copywriter, scriptwriter, media-buyer, videographer, editor) share atomic skills, and media is generated through 3echo after an approved quote. Delivers approved posts for Facebook, Instagram and TikTok, scheduled through Metricool or as a posting kit, with time, token and cost receipts.",
+  "description": "Runs social media content and ads production: a router turns a request into a typed job, nine role agents (producer, researcher, strategist, copywriter, scriptwriter, creative-director, media-buyer, videographer, editor) share atomic skills, and media is generated through 3echo after an approved quote. Delivers approved posts for Facebook, Instagram and TikTok, scheduled through Metricool or as a posting kit, with time, token and cost receipts.",
   "version": "0.12.13",
   "keywords": [
     "social media",

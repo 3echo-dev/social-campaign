@@ -8,6 +8,9 @@ user-invocable: false
 
 # Skill: Make video
 
+The Creative Director writes every clip prompt, the script and the manifest items that hold them (Step 2, the Talking character lines, the Labelled references and the Hook clip headroom below say what goes in them).
+The Director prices, makes the sample, makes the rest, lands, stitches, finishes and checks; the Director never writes or rewrites a prompt.
+
 ## Inputs
 
 - `drafts/D{n}/generation-manifest.json`: its `kind: video` items and `stitch`; for a talking character deliverable also `characters` and each clip's `dialogue`.
@@ -17,7 +20,7 @@ user-invocable: false
 ## Steps
 
 1. `preflight-generation.js {brand} {job-id} {D}`; exit 0 permits quoting. Confirm a validated `P{id}.png` per `seedFromPanelImage` item.
-2. Each clip prompt stands alone, from its panel, in the five-part order of `playbooks/video-prompting.md`: whose hand and how much arm, the shot size, one motion idea, one named camera move. Preflight refuses "same as above". On a talking character deliverable every clip that has a `dialogue` carries the line as `{Character} says: "line"` and that character's voice description verbatim (see Talking character below).
+2. The Creative Director has written each clip prompt; it stands alone, from its panel, in the five-part order of `playbooks/video-prompting.md`: whose hand and how much arm, the shot size, one motion idea, one named camera move. Preflight refuses "same as above". On a talking character deliverable every clip that has a `dialogue` carries the line as `{Character} says: "line"` and that character's voice description verbatim (see Talking character below).
 3. Find the 3Echo tools by their base name under any prefix. `list_workspaces` for the id and balance of every workspace the account can charge, then `pipeline_studio_workspaces_save` with that list. `pipeline_studio_workspace_get` for the job's current choice; pass its `workspaceId`. With no choice and more than one workspace, the person picks once on the board's price panel, or through an Inbox question asked in chat too, as board-sync's Questions in the Inbox describes; save whichever answer arrives first with `pipeline_studio_workspace_choose`. Then `check-3echo.js {brand} {job-id} --credits {balance}` (or `--unreachable`).
 4. For every clip, call `estimate_video_job` with exactly the fields the create call will use: its `ratio`, `resolution`, `durationSeconds`, `generateAudio` and `assetIds`.
 A clip that starts from its storyboard picture has no picture to attach yet at pricing time: once that picture is made, call `estimate_video_job` again with its `assetIds`, right before `create_video_job`, because the guard checks the estimate for that exact call. When it costs no more than the approved item, the approval stands; when it costs more, the guard refuses and the new price needs the person's yes.
@@ -31,7 +34,7 @@ Then the price gate: `pipeline_review_present` with `gate: "price"` and no files
 7. `node "${CLAUDE_PLUGIN_ROOT}/scripts/preflight-media.js" "<media-url>"` once, on an existing asset; exit 3 stops the spend.
 8. **Hero clip first:** submit the peak beat, `idempotencyKey` set to the job key `{job-id}-D{n}-S{k}-v1`, poll `wait_for_job` (`timeoutSeconds` caps at 30). The hook lands the file and records the credit the moment a download link comes back; call `get_asset` yourself only when one did not. Publish it with `pipeline_status`, say what you saw, and present the sample for approval on the board and in chat, the same as every other decision.
 End the turn: the batch waits for their yes.
-9. Batch the rest, same job key pattern with `v1`. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. A clip or picture whose 3Echo job failed or was cancelled made nothing and spent nothing: make it again under the same key, still `v1`, as it is still in the approved price; a new version (`v2`) is only for a redo the person asked for, and needs its own price.
+9. Batch the rest, same job key pattern with `v1`. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. A picture or clip whose 3Echo job failed or was cancelled made nothing and spent nothing. Never make it again under the same key (3Echo hands back the same failed job) and never price a new version of it yourself. Tell the person at once, on the board with `pipeline_board_ask` (options "Try again" and "Leave it out") so it shows on the Director card, and in chat, in one plain line such as "Clip 4 did not come out because 3Echo had a problem. It cost nothing. Try it again?". On "Try again", call `pipeline_generation_retry` with that item and the answer as `confirmedBy`: it swaps in the next version under the price already approved, so make that key next (pricing a seeded clip again first). On "Leave it out", carry on without it and say what changes.
 10. ffprobe every clip: duration within 1 s of the manifest's `durationSeconds` (for the hook clip that is its `headroom.askSec`, not the beat), board ratio, a video stream, non-zero size. QC the **final 2 seconds** for intruders and drift.
 11. `python "${CLAUDE_PLUGIN_ROOT}/scripts/stitch-clips.py" "drafts/D{n}/generation-manifest.json"` stitches `stitch.order` and burns the on-screen text; `stitch.captions` in the manifest decides, so pass no `--captions`. It names the file to read, else the deliverable's `script.md`, then `storyboard.md` is used (its Duration and Spoken / on-screen columns, panels marked Cut skipped; with no `script.md`, plain text in that cell is read as on-screen text and quoted text as speech). An empty or `none` `stitch.captions` means no captions, and a script with no on-screen text burns none and exits 0. Exit 4 means captions were wanted but none were burned: the cut is written, the reason is printed, so say so plainly and fix the source or ask.
 12. Right after the stitch and before the logo and label check, finish the video: `python "${CLAUDE_PLUGIN_ROOT}/scripts/finish-video.py" "drafts/D{n}/generation-manifest.json"`. It keeps the stitched cut as `final-raw.mp4`, then writes the finished `final.mp4` with captions for the spoken lines, the job's music from `media/music/choice.json` (quieter under speech, skipped when it is `none` or the file is missing), a logo and call to action over the last 2 seconds, and the loudness set to -14 LUFS. The stitch's burned on-screen text stays. Anything it has no input for is skipped, so exit 0 with no captions or no music is normal. Exit 2 means there was no stitched cut to finish; exit 3 means ffmpeg or Pillow is missing; exit 5 means finishing failed. On exit 3 or 5 the plain cut stays as `final.mp4`: say in one line that the video went out without its finishing, and carry on to the logo and label check.
@@ -49,7 +52,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 7. Watch every clip and say what you saw in one line: warped hands, changed framing, a redesigned product, unrequested brands. The person decides what is redone.
 8. Stitching, loudness and drawtext escaping: `playbooks/video-prompting.md`, before the concat.
 9. **The deliverable stays a video.** A price, a failure or a refusal is a gate, never a swap to stills, as fallback or as recommendation (`${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`).
-10. **Regenerate one clip, never the set**, only one they sent back. Price and approve the redo on its own, then generate with a fresh job key (`v` increased), land, validate, restitch. Landing promotes the new version to `S{k}.mp4` and archives the old one as `S{k}-r{n}.mp4` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A redo of the sample clip carries `sample: true` on that new version's `pipeline_quote_save` entry too, the same as the first time.
+10. **Regenerate one clip, never the set**, only one they sent back. The Director spawns the Creative Director once with the person's note and that clip, which rewrites that one prompt in the manifest. Then price and approve the redo on its own, then generate with a fresh job key (`v` increased), land, validate, restitch. Landing promotes the new version to `S{k}.mp4` and archives the old one as `S{k}-r{n}.mp4` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A redo of the sample clip carries `sample: true` on that new version's `pipeline_quote_save` entry too, the same as the first time.
 
 ## Talking character
 
@@ -125,7 +128,7 @@ A clip that speaks keeps its own speech; never add a voice-over on top of it.
 
 ## Boundary
 
-Does not write the script or board, generate stills, judge the render (`videographer`) or approve.
+Does not write the script, the board or the prompts (the Creative Director does), generate stills, judge the render (`videographer`) or approve.
 
 ## Failure modes
 

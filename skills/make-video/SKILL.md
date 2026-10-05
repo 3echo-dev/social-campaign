@@ -11,6 +11,9 @@ metadata:
 Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/make-video/SKILL.md.
 
 
+The Creative Director writes the clip prompts, the script and the manifest items that hold them (labels, legend and hook clip headroom included), and rewrites the one prompt of a clip the person sends back.
+The Director never writes a prompt; it prices, makes the sample, makes the rest, lands, stitches, finishes and checks.
+
 Run only after the active plan and current spending decision authorize the request.
 `pipeline_quote_save` adds to the existing price rather than replacing it; an optional `drop` removes an item not yet made when the person asks for changes.
 The hero clip's item carries `sample: true`, unless the clips start from the storyboard pictures: then the hero picture is the sample, as make-image says, and no clip is, because the clips need their pictures first.

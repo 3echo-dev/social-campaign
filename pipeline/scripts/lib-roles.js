@@ -4,7 +4,7 @@
 // A state change knows the plan too, and the plan names an agent on every row, so the pane
 // can show the workers on every stage of every route without a run remembering to say so.
 
-// What a person reads instead of an agent name or a workstream id. The eight production roles are the
+// What a person reads instead of an agent name or a workstream id. The nine production roles are the
 // agents under agents/; the rest are the research workstreams, which are spawns of one agent
 // but separate workers as far as anybody watching is concerned.
 const ROLES = {
@@ -13,6 +13,7 @@ const ROLES = {
   strategist: { label: 'Strategist', action: 'Turning the research into one clear direction.' },
   copywriter: { label: 'Copywriter', action: 'Writing the post copy and the call to action.' },
   scriptwriter: { label: 'Scriptwriter', action: 'Writing the script and the storyboard.' },
+  'creative-director': { label: 'Creative Director', action: 'Planning the pictures and clips and writing their prompts.' },
   'media-buyer': { label: 'Media buyer', action: 'Planning where the budget goes and how it is measured.' },
   videographer: { label: 'Videographer', action: 'Checking the video against the approved storyboard.' },
   editor: { label: 'Editor', action: 'Checking facts, brand fit, policy and platform rules.' },
@@ -43,7 +44,7 @@ const ALIASES = {
   estimate: 'estimator', quote: 'estimator', pricing: 'estimator', cost: 'estimator',
   images: 'image-maker', 'make-image': 'image-maker',
   clips: 'video-maker', 'make-video': 'video-maker',
-  writer: 'copywriter', script: 'scriptwriter', buyer: 'media-buyer', qa: 'editor',
+  writer: 'copywriter', script: 'scriptwriter', 'creative-direction': 'creative-director', 'art-director': 'creative-director', buyer: 'media-buyer', qa: 'editor',
 };
 
 // The pane has three words for a worker; a workflow row has more.

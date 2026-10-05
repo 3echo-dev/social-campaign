@@ -56,6 +56,7 @@ The stepper also names the roles working under the current stage, so a long stag
 | `strategist` | Strategist |
 | `copywriter` | Copywriter |
 | `scriptwriter` | Scriptwriter |
+| `creative-director` | Creative Director |
 | `media-buyer` | Media buyer |
 | `videographer` | Videographer |
 | `editor` | Editor |

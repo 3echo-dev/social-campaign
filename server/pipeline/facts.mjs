@@ -978,7 +978,7 @@ function sampleApproved(job, key) {
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key
 // that was made, or is being made, could be billed again. A create that ended released with no outputs
 // (failed or cancelled) made nothing, so its key can be tried again; a redo is a new version with its own price.
-function earlierCreateState(job, key) {
+export function earlierCreateState(job, key) {
   const records = readRecords(job);
   const creates = records.filter(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key);
   if (!creates.length) return null;

@@ -8,6 +8,9 @@ user-invocable: false
 
 # Skill: Make image
 
+The Creative Director writes every picture prompt and the manifest items that hold them (Rules 1 to 4 and 9, and the Labelled references below, say how).
+The Director prices, makes the sample, makes the rest, lands and checks; the Director never writes or rewrites a prompt.
+
 ## Inputs
 
 - `drafts/D{n}/generation-manifest.json`: `kind: image` items, `style`, `continuity`, `negative`, `referenceAssets`.
@@ -30,7 +33,7 @@ Then the price gate: `pipeline_review_present` with `gate: "price"` and no files
 5. Upload the board's reference assets with `import_asset_from_url` or the connector's own upload tool; record the ids in `manifest.referenceAssets` and each item's `assetIds`.
 6. **Hero panel first:** `create_image_job` (`workspaceId`, `prompt`, `aspectRatio`, `assetIds`, `idempotencyKey` set to the job key `{job-id}-D{n}-P{id}-v1`), then `wait_for_job`. The hook lands the file and records the credit the moment a download link comes back; call `get_asset` yourself only when one did not. Publish it with `pipeline_status`, say what you saw, and present the sample for approval on the board and in chat, the same as every other decision.
 End the turn: wait for yes before batching, in chat or on the board.
-7. Batch the rest, same job key pattern with `v1`, same preamble, continuity and negatives. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. A clip or picture whose 3Echo job failed or was cancelled made nothing and spent nothing: make it again under the same key, still `v1`, as it is still in the approved price; a new version (`v2`) is only for a redo the person asked for, and needs its own price. Then `pipeline_status` again: the whole grid goes to the person at once, and the turn ends there.
+7. Batch the rest, same job key pattern with `v1`, same preamble, continuity and negatives. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. A picture or clip whose 3Echo job failed or was cancelled made nothing and spent nothing. Never make it again under the same key (3Echo hands back the same failed job) and never price a new version of it yourself. Tell the person at once, on the board with `pipeline_board_ask` (options "Try again" and "Leave it out") so it shows on the Director card, and in chat, in one plain line such as "Clip 4 did not come out because 3Echo had a problem. It cost nothing. Try it again?". On "Try again", call `pipeline_generation_retry` with that item and the answer as `confirmedBy`: it swaps in the next version under the price already approved, so make that key next (pricing a seeded clip again first). On "Leave it out", carry on without it and say what changes. Then `pipeline_status` again: the whole grid goes to the person at once, and the turn ends there.
 8. `python "${CLAUDE_PLUGIN_ROOT}/scripts/contact-sheet.py" "media/D{n}" --cols 4`.
 
 A carousel is made the same way: one `kind: image` item per slide, so the quote counts one credit per slide and the one price approval covers all of them.
@@ -51,7 +54,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 8. Verify what a real place or landmark looks like first.
 9. UGC stills name camera physics, not quality: front phone camera, 26 mm lens, deep focus, unbalanced exposure, mild grain, awkward crop; no studio lighting, stock look, perfect skin, centred framing or grading.
 10. `assetIds` takes 16 references. `aspectRatio` is one of `1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9`.
-11. A redo is one panel: price and approve it again exactly as a first generation, per "Redoing a picture the person sent back" in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`. Only the ids in `regenerate`, the note verbatim in its prompt, a fresh job key with `v` increased, then the grid again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A redo of the sample panel carries `sample: true` on that new version's `pipeline_quote_save` entry too, the same as the first time.
+11. A redo is one panel: the Director spawns the Creative Director once with the person's note and that panel, which rewrites that one prompt in the manifest, then the Director prices and approves it again exactly as a first generation, per "Redoing a picture the person sent back" in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`. Only the ids in `regenerate`, the note verbatim in its prompt (the Creative Director puts it there), a fresh job key with `v` increased, then the grid again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A redo of the sample panel carries `sample: true` on that new version's `pipeline_quote_save` entry too, the same as the first time.
 12. Cutting a panel returns to the storyboard gate. Stills for a video job is a change of deliverable: `change-deliverable.js`, in their words.
 
 <!-- BEGIN labelled references (0.14 task 3) -->
@@ -72,7 +75,7 @@ Every reference attached to an image job carries a short label and what to keep,
 
 ## Boundary
 
-Does not write the board, animate (`make-video`) or approve.
+Does not write the board or the prompts (the Creative Director does), animate (`make-video`) or approve.
 
 ## Failure modes
 

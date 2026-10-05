@@ -13,6 +13,7 @@ Use this adapter only when the active route and task contract name this skill.
 Reuse the current job snapshot, input revision, accepted artifact hashes, and capability results.
 Call pipeline_job_read only when no fresh snapshot is supplied or an external state change occurred.
 Write only the output paths named by the active plan.
+For the media spec rows the Creative Director writes the storyboard and the generation manifest; the Director never does.
 Do not repeat research, repeat provider probes, use gate-app transport, use Drive configuration, or create a second job authority.
 Preserve approval, revision, ownership, and state protections.
 <!-- BEGIN labelled references (0.14 task 3) -->

@@ -5324,7 +5324,10 @@ const icon = name => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${IC
 // you, and beams when it is done.
 const BLOB_MOODS = new Set(['happy', 'sleepy', 'surprised', 'sad', 'thinking']);
 const BLOB_SHAPES = ['34%', '50%', '46% 54% 52% 48% / 54% 46% 54% 46%', '50% 50% 36% 36% / 56% 56% 40% 40%', '38% 38% 50% 50% / 40% 40% 56% 56%'];
-const BLOB_ORDER = ['producer', 'researcher', 'strategist', 'copywriter', 'scriptwriter', 'media-buyer', 'videographer', 'editor', 'publisher'];
+// Each agent's place here sets its colour (47 degrees round the wheel per place) and its shape. A newer agent goes at the end so
+// nobody else changes colour; BLOB_HUES gives it a hue of its own in the widest gap left.
+const BLOB_ORDER = ['producer', 'researcher', 'strategist', 'copywriter', 'scriptwriter', 'media-buyer', 'videographer', 'editor', 'publisher', 'creative-director'];
+const BLOB_HUES = Object.freeze({ 'creative-director': 322 });
 function faceSvg(mood) {
   const eye = (x, rx, ry, py) => `<g class="eye"><ellipse cx="${x}" cy="18" rx="${rx}" ry="${ry}" fill="#fff"/><g class="pu"><circle cx="${x}" cy="${py}" r="2.2" fill="#14161b"/><circle cx="${x + 0.9}" cy="${py - 1}" r=".75" fill="#fff"/></g></g>`;
   const open = (rx, ry, py) => eye(14, rx, ry, py) + eye(26, rx, ry, py);
@@ -5343,7 +5346,7 @@ export function blob(name, mood, size = 34) {
   const known = BLOB_ORDER.indexOf(name);
   const index = known >= 0 ? known : BLOB_ORDER.length + (hueOf(name) % 7);
   const face = BLOB_MOODS.has(mood) ? mood : 'idle';
-  return `<span class="av face m-${face}" style="width:${size}px;height:${size}px;--h:${(205 + index * 47) % 360};--d:-${((index * 0.83) % 4).toFixed(2)}s;border-radius:${BLOB_SHAPES[index % BLOB_SHAPES.length]}" aria-hidden="true"><svg viewBox="0 0 40 40">${faceSvg(face)}</svg></span>`;
+  return `<span class="av face m-${face}" style="width:${size}px;height:${size}px;--h:${BLOB_HUES[name] ?? (205 + index * 47) % 360};--d:-${((index * 0.83) % 4).toFixed(2)}s;border-radius:${BLOB_SHAPES[index % BLOB_SHAPES.length]}" aria-hidden="true"><svg viewBox="0 0 40 40">${faceSvg(face)}</svg></span>`;
 }
 
 // What an agent's row and chat say about it. A card waiting for the person's decision reads "Waiting on you"; an agent
@@ -5486,7 +5489,7 @@ function messageBubbles(agent) {
 const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
 // The picture for a step is picked from what the step is: its short name says it.
 const STEP_PICTURES = Object.freeze([
-  [/request|setting the plan/, 'folder'], [/price|cost/, 'money'], [/storyboard|shot plan|slide plan|cut plan|still frames/, 'picture'],
+  [/request|setting the plan/, 'folder'], [/price|cost/, 'money'], [/storyboard|media spec|shot plan|slide plan|cut plan|still frames/, 'picture'],
   [/report|strategy|brief|campaign plan|ad requirements|finishing/, 'memo'], [/caption|copy|words/, 'script'], [/idea/, 'sparkles'],
   [/research|sources|watching|breaking down|reading the posts|key phrases/, 'magnifier'], [/making/, 'clapper'],
   [/check|logo|review|quality/, 'eyes'], [/going live|posting|post plan/, 'calendar'], [/ready to post|hand/, 'package'],

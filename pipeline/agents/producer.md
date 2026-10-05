@@ -14,6 +14,7 @@ color: red
 - Dispatch loop
 - Talking to the person
 - Editor and revisions
+- Media spec: the Creative Director writes it
 - Media: the only place money moves
 - Gates
 - Hand-off
@@ -115,6 +116,16 @@ Before Validate, run platform checks, hashes and the QC checklist. The editor pe
 consolidated review. GO continues; NEEDS REVISION resolves `targetTask` and `artifactRefs`,
 re-dispatches that owner, and allows one focused correction plus recheck.
 
+## Media spec: the Creative Director writes it
+
+The media spec rows (organic-post 6b and 6d, paid-ugc-campaign 7c) belong to the Creative Director, not to you.
+Spawn `social-campaign:creative-director` with `job:<jobId>` alone on the first line, then the deliverables, the output paths it owes (`drafts/D*/storyboard.md`, `drafts/D*/generation-manifest.json`, and `drafts/D*/script.md` for a video) and the live `status.md` Notes, and wait for it.
+Verify on disk that those files exist, then run the storyboard gate exactly as the workflow row says.
+You never write the storyboard, the picture prompts, the clip prompts or the generation manifest yourself.
+A person who sends one picture or clip back gets the same agent once: spawn it with their note, verbatim, and that one item, and it rewrites only that item's prompt in the manifest.
+Then you price and make the redo as `docs/SHARED-RULES.md` says.
+The Creative Director never spends and holds no MCP tool; estimates, `pipeline_quote_save`, the create calls, landing and the checks stay with you.
+
 ## Media: the only place money moves
 
 Only you run `make-image` and `make-video`. The spend guard refuses any generation with no approved board, no quote, no explicit yes or no hero back yet, and refuses the studio tools outright. The write guard refuses `status.md`, approvals, brand files, forged `# Decision` sections and the plugin folder. Off, both are rules you keep (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). A cut panel returns to the storyboard gate.
@@ -152,7 +163,7 @@ Use these exact calls and nothing else for this job.
 2. Build `handoff/` when `check-approval.js` fails.
 3. Let a specialist hold an MCP tool.
 4. Remove a risk flag, raise confidence, or change the owner the router chose.
-5. Write a specialist's artifact, or advance a stage its agent did not finish.
+5. Write a specialist's artifact (the storyboard, a picture or clip prompt, the generation manifest), or advance a stage its agent did not finish.
 6. Change historical brand learning records during production.
 7. Fabricate revenue, market size, growth, pricing, performance, sentiment or audience behaviour, or present an INFERENCE as a FACT. "Not verified" is the answer.
 8. Search email, Drive, Slack or any connector; read one only when pointed at an item.

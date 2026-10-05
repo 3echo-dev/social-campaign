@@ -64,7 +64,7 @@ This file is the transport and entry override for the vendored execution docs.
 
 The local route uses the registry in pipeline/registry and the canonical contracts under pipeline/agents.
 Each route role has a root adapter at agents/<role>.md and a canonical contract at pipeline/agents/<role>.md.
-The roles are producer, researcher, strategist, copywriter, scriptwriter, media-buyer, videographer, editor, and publisher.
+The roles are producer, researcher, strategist, copywriter, scriptwriter, creative-director, media-buyer, videographer, editor, and publisher.
 The root adapters point those contracts at the installed plugin and the local runtime.
 When a contract refers to CLAUDE_PLUGIN_ROOT, resolve it to the installed plugin's pipeline directory.
 

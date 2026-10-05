@@ -2605,7 +2605,7 @@ const LANDING_NEXT = Object.freeze({
   [facts.THREE_ECHO]: {
     making: item => `${item.item} is still being made. Check it with wait_for_job${item.providerJobId ? ` for job ${item.providerJobId}` : ''}; it is saved automatically when it finishes.`,
     save: item => `Call get_asset for ${item.assetIds?.length ? item.assetIds.join(', ') : 'its output'}; ${item.item} is saved automatically.`,
-    not_made: item => `${item.item} could not be made. Make it again with the same job key.`,
+    not_made: item => `${item.item} could not be made and cost nothing. 3Echo returns the same failed job for the same job key, so ask the person on the board and in chat whether to try it again; on yes, call pipeline_generation_retry.`,
   },
   [facts.ELEVEN_LABS]: {
     making: item => `${item.item} is still being made. Check the voice run again; it is saved automatically when it finishes.`,

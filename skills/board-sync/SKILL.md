@@ -270,6 +270,7 @@ A chat answer is recorded with `pipeline_board_answer`, passing `choice` when th
 An already answered question returns its saved answer instead of an error, from either tool; act on that saved answer rather than asking again.
 When the question is no longer needed, for example the person answered some other way or the job moved on, call `pipeline_board_withdraw` with its `questionId`.
 A go-ahead for posting, sending or spending is asked in chat only, so ask it with `pipeline_board_ask` and `inChat` true, with the same words you will say in chat.
+Trying a failed picture or clip again is not new spending, since it stays inside the price already approved, so it is a normal board question with "Try again" and "Leave it out" buttons; its answer goes to `pipeline_generation_retry` as described in make-image and make-video.
 The board shows that question with no buttons, tells the person to answer in the chat, and reads "Answer Claude in the chat" under What you need to do.
 Publish the board before asking in chat, take the answer from the chat only, and record it with `pipeline_board_answer` (`choice` or `text`), then write the documents again so the notice clears.
 The notice also clears by itself when the send happens; call `pipeline_board_withdraw` if the person says no and nothing is sent.
