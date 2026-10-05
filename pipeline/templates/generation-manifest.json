@@ -52,6 +52,8 @@
   "_notes": {
     "durationSeconds": "What the tool is asked for and what the beat actually is. A whole number from 4 to 15. write-script floors beats at 4 s so these are the same number.",
     "headroom": "Hook clip only (the first in stitch.order), on its video item: {\"askSec\": 5, \"inSec\": 0.5, \"useSec\": 4}. askSec is the beat length plus 1 s, 4 to 15, and equals durationSeconds, so the quote and the generation match. The stitch starts inSec in and keeps useSec (the beat length).",
+    "references": "On any item with assetIds: [{\"ref\": \"<the asset id>\", \"label\": \"Mealbox box\", \"keep\": \"the exact box and logo\"}], one per asset id, in the same order as assetIds. The prompt starts with the legend: [Image 1] Mealbox box: keep the exact box and logo. Leave it out when there are no assetIds.",
+    "voiceover": "Top level, only when the script has voice-over lines and nobody speaks on camera: [{\"beat\": 2, \"file\": \"media/D1/vo/B2.mp3\", \"text\": \"...\"}].",
     "characters": "Only for a talkingCharacter deliverable: [{\"id\": \"MINA\", \"description\": \"\", \"voice\": \"one voice description, pasted verbatim into every prompt where she speaks\"}].",
     "dialogue": "Only for a talkingCharacter deliverable, on a video item that speaks: {\"character\": \"MINA\", \"line\": \"...\"}. The line and the voice go in the prompt and generateAudio stays true; a silent beat has no dialogue.",
     "credits": "Images are 1 each. Video is null until estimate_video_job returns a quote; the concept approval's maxSpendCredits is the ceiling."

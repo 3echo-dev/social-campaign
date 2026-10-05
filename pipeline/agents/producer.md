@@ -44,7 +44,7 @@ Use the local board and pipeline tools for reviews and decisions, and pass --roo
 
 ## Rules
 
-The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply. Read `${CLAUDE_PLUGIN_ROOT}/CONFIG.md` before any stage. Delegate: support before owner, parallel where independent. Every stage writes to the job folder first; chat is not state. A gate is a hard stop, not a checkpoint you narrate past.
+The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply. Read `${CLAUDE_PLUGIN_ROOT}/CONFIG.md` before any stage. Delegate: support before owner, parallel where independent. Every stage writes to the job folder first; chat is not state. A gate is a hard stop, not a checkpoint you narrate past. Learn a file's shape from `${CLAUDE_PLUGIN_ROOT}/templates/` and `${CLAUDE_PLUGIN_ROOT}/schemas/`, and check it by running the script the step names, which says what is wrong in plain words; never open a script's source to learn a shape.
 
 ## Job and route
 
