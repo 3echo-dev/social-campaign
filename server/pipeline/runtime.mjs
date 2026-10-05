@@ -1146,6 +1146,8 @@ function defaultJobInput(options, jobId, brand) {
   if (typeof caption === 'string' && caption.trim()) job.caption = caption;
   const aiMade = supplied.aiMade ?? options.aiMade;
   if (typeof aiMade === 'boolean') job.aiMade = aiMade;
+  // The words fit more than one pipeline: the job keeps the likeliest kind but waits, unplanned, for the person's answer.
+  if ((supplied.pipelineUnsure ?? options.pipelineUnsure) === true && job.kind) job.pipelineUnsure = true;
   return job;
 }
 
@@ -1263,6 +1265,9 @@ function refreshRiskFlags(root, brand, jobId) {
 function runRouteAndPlan(root, brand, jobId, { allowBlocked = true } = {}) {
   const dir = jobPath(root, brand.slug, jobId);
   const jobFile = join(dir, 'job.json');
+  // A job made from words that fit more than one pipeline is held at intake until the person's answer sets the kind
+  // (applyIntakePatch clears the flag then): it is not routed, planned or started, whatever the likeliest pipeline needs.
+  if (readJson(jobFile, {})?.pipelineUnsure === true) return { route: null, routeRun: null, plan: null, held: true };
   const routeFile = join(dir, 'route.json');
   const planFile = join(dir, 'plan.md');
   const contractsFile = join(dir, 'task-contracts.json');
@@ -1722,6 +1727,8 @@ function applyIntakePatch(current, patch) {
   }
   // The reason belongs to the pipeline it was written for: a new kind with no new reason leaves the old one behind, so it goes.
   if (seen.has('kind') && !seen.has('kindReason') && jobKindOf(next.kind) !== jobKindOf(current?.kind)) delete next.kindReason;
+  // Setting the kind is the person's answer to which pipeline they meant, even when it is the one first guessed: the hold ends.
+  if (seen.has('kind')) delete next.pipelineUnsure;
   return next;
 }
 

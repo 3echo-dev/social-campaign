@@ -147,7 +147,7 @@ Diagnose in this order:
 4. Create the job and route it as new-job describes, with the `kind` you picked and, in `kindReason`, one short plain sentence of why.
    The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>".
 
-When two or more pipelines fit, or none does, ask one plain question in Needs you and in chat together, with the likeliest pipelines' names as options and a typed answer, and start no job until it is answered.
+When two or more pipelines fit, or none does, never ask before the job exists: create the job right away with the likeliest pipeline and ask which one on that job, as new-job describes, so the person lands on the job and the Director asks there.
 Board-sync's Questions on the board describes how to ask it.
 
 Parse every link already in the request into `sourceRefs` before asking anything else, each `{uri, mediaType}`: a web link is `url`, a video file link is `video`.

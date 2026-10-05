@@ -947,7 +947,8 @@ function jobInbox({ root, snapshot, gate, review, intake, questions, dir }) {
   const state = snapshot.project.state;
   const pricedJob = state === 'STORYBOARD_APPROVED' ? facts.jobAt(root, snapshot.project.brand, snapshot.project.jobId) : null;
   const priceApproved = Boolean(pricedJob && facts.currentPriceApproval(pricedJob));
-  const announcement = blockedReason(snapshot) || posting.line || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
+  const held = state === 'INTAKE_PENDING' && snapshot.job?.pipelineUnsure === true;
+  const announcement = blockedReason(snapshot) || posting.line || (held ? 'Waiting for one answer from you.' : null) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
   return { items, announcement };
 }
 
@@ -969,7 +970,7 @@ function jobDocumentInbox(inbox) {
  * never lists or hashes the job's artifacts, so it stays cheap when a job holds large media.
  */
 function lightSnapshot(job) {
-  const dir = job.dir || job.path;
+  const dir = job.dir || job.path || job.jobDir;
   const readJsonOr = (name, fallback) => {
     try { return JSON.parse(readFileSync(join(dir, name), 'utf8')); } catch { return fallback; }
   };
@@ -1444,7 +1445,7 @@ export function stuckJobs(root, jobs, { questions = null } = {}) {
     try {
       const snapshot = lightSnapshot(job);
       if (states.isTerminal(snapshot.project.state)) continue;
-      const dir = job.dir || job.path;
+      const dir = job.dir || job.path || job.jobDir;
       const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
       const inbox = jobInbox({ root, snapshot, gate, review, intake: projectIntake(snapshot, null), questions: open.get(job.jobId), dir });
       const lines = readAgentLines(dir);
@@ -1793,7 +1794,7 @@ function sameRequesterData(operation, left, right) {
 // Identity, owners and local file references never come from a request: a
 // product photo is kept only as an http(s) link, and inputs are imported with
 // pipeline_inputs_import.
-const BOARD_JOB_FIELDS = ['request', 'kind', 'kindReason', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject', 'caption', 'aiMade'];
+const BOARD_JOB_FIELDS = ['request', 'kind', 'kindReason', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject', 'caption', 'aiMade', 'pipelineUnsure'];
 const webUrl = value => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 const LINK_MEDIA_TYPES = new Set(['video', 'image', 'document', 'url']);
 
@@ -1820,6 +1821,8 @@ function boardJobFields(value) {
   // A caption stays exactly as the person wrote it; whether their files were made with AI is a yes or a no. Anything else is dropped.
   if (job.caption !== undefined && !(typeof job.caption === 'string' && job.caption.trim())) delete job.caption;
   if (job.aiMade !== undefined && typeof job.aiMade !== 'boolean') delete job.aiMade;
+  // Only a plain true holds a job for the pipeline question; anything else is dropped.
+  if (job.pipelineUnsure !== undefined && job.pipelineUnsure !== true) delete job.pipelineUnsure;
   // The one line Claude saves when it picks the kind: a short plain sentence, kept only when it is one.
   if (job.kindReason !== undefined) {
     const reason = runtime.kindReasonOf(job.kindReason);

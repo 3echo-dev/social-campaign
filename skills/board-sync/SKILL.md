@@ -142,7 +142,10 @@ It carries no `kind`: the person never picks a job type, so you diagnose it.
 Before landing a kind-less `create_job`:
 
 1. Read `brief`, the links and the chosen brand's saved profile against `pipelines_list`, and pick the one pipeline that fits, as new-job's Pick the pipeline from the person's words describes.
-   When two or more pipelines fit, or none does, ask one plain question in Needs you and in chat together, with the likeliest pipelines' names as options and a typed answer, and land nothing until it is answered.
+   When two or more pipelines fit, or none does, never ask before the job exists and never leave a question with no job on the home page.
+   Pick the likeliest pipeline, add `pipelineUnsure: true` to `args.job`, and land and apply the request as below, so the person lands on the new job at once with their words as the brief.
+   Right after the apply, ask the pipeline question on that job with `pipeline_board_ask` and its `jobId`, with the likeliest pipelines' plain names or answers as options and a typed answer, write the returned `documents`, and say the same question in chat, as new-job's Pick the pipeline from the person's words describes.
+   Nothing is planned or started until the answer sets the pipeline with `pipeline_intake_update`.
 2. Put the pipeline's `kind` and, in `kindReason`, one short plain sentence of why into `args.job`, with every other field the words, the links and the brand profile state or clearly imply, so the job routes the moment it is created.
 3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in Needs you and in chat together, with the ready brands as options.
    Land the request with `args.brand` set to the brand's slug and `args.brandName` to its name, from the person's answer or the one ready brand, and nothing else.
@@ -166,6 +169,7 @@ Use these exact `job` field names and values:
 - `request`: the brief, in the person's words.
 - `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis` or `video_breakdown`.
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms; the board shows it under the job's title.
+- `pipelineUnsure`: `true` only when the words fit more than one pipeline; it holds the job unplanned until `pipeline_intake_update` sets the kind. Leave it out otherwise.
 - `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
   Never use it for the files of a `publish_post`: those go in `files`, as new-job describes.
 - `caption` and `aiMade`: for `publish_post` only, exactly as new-job's "The job for `publish_post`" describes; the caption word for word, `aiMade` a yes or a no.
