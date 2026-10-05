@@ -93,7 +93,7 @@ If it answers, call `integration_probe` with that provider, `ok: true`, and the 
 If it fails, call `integration_probe` with `ok: false` and one plain sentence.
 If no surface is present, make no provider call.
 When 3Echo is missing, say in plain words that they can add the 3Echo Studio connector from claude.ai Settings > Connectors; the plugin has no sign-in of its own.
-Then refresh the board projection as this skill already does, so a connected provider shows as Connected and the Connectors step is skipped entirely once both are connected.
+Then refresh the board projection as this skill already does, so a connected provider shows as Connected on the Connectors step.
 Only the providers still not connected are asked about, through the board.
 Do this check once per setup; do not repeat it on every board refresh.
 
@@ -108,7 +108,11 @@ When it reports `chosen`, say nothing; the brand card shows where posts go.
 When it reports `needsChoice`, a brand that already posted through one Metricool brand has lost it, and it is never replaced silently: say in one plain line which brand lost which Metricool brand (`was`) and that Claude needs to know which one to use now, after publishing the workspace projection so the Needs you list shows the question.
 The same check runs again, without a second walkthrough, when a `connect_provider` request names `metricool` (the board's Connect or Refresh brands): repeat the detection, the read-only call, `integration_probe` and `pipeline_metricool_brands_save`, then apply the request only if the probe was `ok: true`, or decline it with one plain reason such as that Metricool is not connected yet.
 
-The board opens on its Connectors step and stays there, `setupStep: "connectors"`, until every required connector in its `connectors` list is `connected` or `skipped`.
+A new workspace's board always opens on its Connectors step, `setupStep: "connectors"`, even when every connector already answered, so the person sees what is connected.
+It stays there until the person presses Continue (a `connectors_continue` request), which skips for now anything not connected yet.
+After that, the step comes back only when a required connector is neither `connected` nor `skipped`.
+When you give the board link, say in one plain line which connectors are already connected and that they can connect the rest or skip, then press Continue to set up their brand.
+If they say in chat to carry on, record it through the same `connectors_continue` board request path a board click would use: land the request, then apply it immediately.
 A connector marked `optional`, which is Metricool, never holds the step back and stays reachable from the board's Connectors link.
 A Skip the person gives in chat is recorded through the same `skip_provider` board request path a board click would use: land the request, then apply it immediately, the same as a board click; the person's answer in chat is the approval.
 A connector the user skips is not asked again during this setup.

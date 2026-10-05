@@ -4495,6 +4495,8 @@ function requestComment(operation, args = {}) {
       return `Source files requested${quotedTitle(args?.title)}.`;
     case 'skip_provider':
       return `Skip ${args?.providerName || 'this connector'} for now.`;
+    case 'connectors_continue':
+      return 'Connectors done. On to your brand.';
     case 'connect_provider':
       return `Connect ${args?.providerName || 'this connector'}.`;
     case 'choose_recipe':
@@ -4800,6 +4802,8 @@ if (typeof document !== 'undefined') {
   let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {};
   let signalAvailability = null, signalAvailabilityPending = false;
   let connectorsView = false;
+  // Continue was pressed on the setup Connectors step: move on at once, before Claude records it.
+  let connectorsContinued = false;
   let viewer = null;
   let returnSelector = null;
   let downloadsApi;
@@ -4876,7 +4880,23 @@ if (typeof document !== 'undefined') {
     const back = forced ? '' : '<div class="toolbar"><button class="quiet" data-action="connectors-close">&larr; Back</button></div>';
     const optional = connectors.some(connector => connector.optional) ? ' Metricool is optional: it schedules your posts, and setup does not wait for it.' : '';
     const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional} You can skip and connect later from Connectors at the top.</p>`;
-    return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key) })).join('')}</section>`;
+    const busy = connectorPending.size > 0;
+    const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected is skipped for now.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
+    return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key) })).join('')}</section>${next}`;
+  }
+  async function continueConnectors() {
+    if (!transport || connectorsContinued) return;
+    connectorsContinued = true;
+    render();
+    try {
+      const result = await transport.call('connectors_continue', { requestId: randomId(globalThis) });
+      notify(result?.message || 'Saved. Claude moves on to your brand.');
+      await refresh();
+    } catch (e) {
+      connectorsContinued = false;
+      notify(e.message);
+      render();
+    }
   }
   async function submitConnectorAction(operation, provider) {
     if (!transport || connectorPending.has(provider)) return;
@@ -5325,8 +5345,9 @@ if (typeof document !== 'undefined') {
     return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div></section>`;
   }
   function overview() {
-    const showConnectors = Array.isArray(data.connectors) && data.connectors.length && (data.setupStep === 'connectors' || connectorsView);
-    if (showConnectors) return connectorsPanel(data.setupStep === 'connectors');
+    const setupConnectors = data.setupStep === 'connectors' && !connectorsContinued;
+    const showConnectors = Array.isArray(data.connectors) && data.connectors.length && (setupConnectors || connectorsView);
+    if (showConnectors) return connectorsPanel(setupConnectors);
     const projects = data.projects || [];
     const firstRun = readyBrands().length === 0 && projects.length === 0;
     const onboarding = inlineStart();
@@ -5871,6 +5892,7 @@ if (typeof document !== 'undefined') {
       case'compose':{const box=app.querySelector('#starter-text,#new-text')||app.querySelector('#pipeline-composer');const still=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;if(box){box.scrollIntoView({behavior:still?'auto':'smooth',block:'center'});box.focus({preventScroll:true});}break;}
       case'connectors':connectorsView=true;render();break;
       case'connectors-close':connectorsView=false;render();break;
+      case'connectors-continue':await continueConnectors();break;
       case'signal':try{const result=await transport?.signal?.('Notify Claude');notify(result?.message || 'The board could not notify Claude.');render();}catch(e){notify(e.message);}break;
       case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'Claude has been told. Watch the Inbox for its question.':(result?.message || 'The board could not notify Claude.'));render();}catch(e){notify(e.message);}break;}
       case'remind':await remindRequest(target.dataset.requestId);break;

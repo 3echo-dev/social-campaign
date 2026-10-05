@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IMAGE_CREDITS_EACH } from '../generation/estimate.mjs';
+import { InvalidInputError } from '../lib/errors.mjs';
 import { defaultWorkspaceRoot, expandUserPath, globalConfigDir, globalConfigPath, workspaceConfigPath } from '../lib/paths.mjs';
 import {
   ELEVEN_LABS_MEDIA, FACT_FILE_DENY, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
@@ -338,6 +339,18 @@ export function readSessionBinding(root, sessionId) {
     return binding && !binding.invalid ? { brand: binding.brand, jobId: binding.jobId } : null;
   } catch {
     return null;
+  }
+}
+
+/** Every saved session binding as [{ref, own, at}]: the job, whether it is this session's, and when it was last touched. */
+export function sessionBindings(root, sessionId = null) {
+  if (!root) return [];
+  try {
+    const sessions = lib('lib-session.js');
+    const own = sessionId ? basename(sessions.file(String(sessionId), rootArgv(root)) || '', '.json') : null;
+    return sessions.list(rootArgv(root)).map(binding => ({ ref: `${binding.brand}/${binding.jobId}`, own: binding.key === own, at: Date.parse(binding.touchedAt || binding.selectedAt || '') }));
+  } catch {
+    return [];
   }
 }
 
@@ -1132,22 +1145,22 @@ function quoteItemFrom(job, raw, index, estimates) {
 export function buildQuote(job, input, { drop = [] } = {}) {
   const list = Array.isArray(input) ? input : [];
   const dropList = Array.isArray(drop) ? drop : [];
-  if (!list.length && !dropList.length) throw new Error('List at least one item to price.');
+  if (!list.length && !dropList.length) throw new InvalidInputError('List at least one item to price.');
   const estimates = readEstimates(job);
   const incoming = new Map();
   list.forEach((raw, index) => {
     const item = quoteItemFrom(job, raw, index, estimates);
     const seen = incoming.get(item.key);
-    if (seen && stableStringify(seen) !== stableStringify(item)) throw new Error(`${itemLabel(item)} is listed twice with different details. List it once.`);
+    if (seen && stableStringify(seen) !== stableStringify(item)) throw new InvalidInputError(`${itemLabel(item)} is listed twice with different details. List it once.`);
     incoming.set(item.key, item);
   });
   const made = new Set(readRecords(job).filter(record => record.type === 'create').map(record => canonicalJobKey(record.key)).filter(Boolean));
   const dropped = new Set();
   for (const raw of dropList) {
     const parsed = parseJobKey(raw);
-    if (!parsed || parsed.jobId !== job.jobId) throw new Error(`${String(raw)} is not an item of this job.`);
-    if (made.has(parsed.key)) throw new Error(`${itemLabel(parsed)} is already made, so it stays in the price.`);
-    if (incoming.has(parsed.key)) throw new Error(`${itemLabel(parsed)} cannot be added and dropped at once.`);
+    if (!parsed || parsed.jobId !== job.jobId) throw new InvalidInputError(`${String(raw)} is not an item of this job.`);
+    if (made.has(parsed.key)) throw new InvalidInputError(`${itemLabel(parsed)} is already made, so it stays in the price.`);
+    if (incoming.has(parsed.key)) throw new InvalidInputError(`${itemLabel(parsed)} cannot be added and dropped at once.`);
     dropped.add(parsed.key);
   }
   const byKey = new Map();
@@ -1157,7 +1170,7 @@ export function buildQuote(job, input, { drop = [] } = {}) {
     const next = incoming.get(key);
     const oldCredits = finite(old.credits);
     if (next && made.has(key) && (next.provider !== old.provider || next.kind !== old.kind || oldCredits === null || Math.abs(next.credits - oldCredits) > EPSILON)) {
-      throw new Error(`${itemLabel(key)} is already made, so its price cannot change. A redo needs its own version, such as v${(parseJobKey(key)?.version || 1) + 1}.`);
+      throw new InvalidInputError(`${itemLabel(key)} is already made, so its price cannot change. A redo needs its own version, such as v${(parseJobKey(key)?.version || 1) + 1}.`);
     }
     byKey.set(key, next || { ...old, key });
   }
@@ -1166,7 +1179,7 @@ export function buildQuote(job, input, { drop = [] } = {}) {
   const sampled = new Set();
   for (const item of items) {
     if (item.sample !== true || isReferenceItem(item)) continue;
-    if (sampled.has(item.deliverable)) throw new Error(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`);
+    if (sampled.has(item.deliverable)) throw new InvalidInputError(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`, { fix: 'Mark one item per post as the sample: the hero picture when the clips start from the storyboard pictures, otherwise the hero clip.' });
     sampled.add(item.deliverable);
   }
   return { quote: { items, totals: quoteTotals(items) }, made: items.filter(item => made.has(item.key)).length, dropped: dropped.size };

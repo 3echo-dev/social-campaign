@@ -1149,6 +1149,20 @@ function recordPillarsConfirmed(root, brandSlug, profile) {
   );
 }
 
+// The person pressed Continue on the first setup's Connectors step. Every connector that is not connected yet is skipped for
+// now, so it reads Skipped on the Connectors page and can still be connected from there later.
+function recordConnectorsContinue(root) {
+  const states = connectorsSnapshot(root);
+  const skipped = states.filter(connector => connector.state === 'not_connected').map(connector => connector.key);
+  for (const provider of skipped) recordConnectorSkip(root, provider);
+  updateJsonFile(
+    integrationsPath(root),
+    (current) => ({ ...(current && typeof current === 'object' && !Array.isArray(current) ? current : {}), connectorsReviewedAt: new Date().toISOString() }),
+    { providers: {}, connectorSkips: {} },
+  );
+  return { state: 'continued', skipped };
+}
+
 function connectorsSnapshot(root) {
   const file = readIntegrationsFile(root);
   const providers = integrationProviders(file);
@@ -1194,11 +1208,6 @@ export function boardSnapshot({ root } = {}) {
     return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
-  const setupStep = connectors.some(connector => !connector.optional && connector.state !== 'connected' && connector.state !== 'skipped')
-    ? 'connectors'
-    : brands.some(brand => brand.readyForJobs)
-      ? 'ready'
-      : 'brand_onboarding';
   const questionsByJob = openQuestionsByJob(root);
   const stuckCtx = stuckContext(root);
   const projectEntries = runtime.listJobs({ root }).map(job => {
@@ -1257,6 +1266,15 @@ export function boardSnapshot({ root } = {}) {
   const localEventCount = projectEntries.reduce((sum,entry) => sum + entry.rawEventCount,0);
   const brandNames = new Map(runtime.listBrands({ root, includeGeneral: true }).map(brand => [brand.slug, brand.name]));
   const inbox = workspaceInbox(projectEntries.flatMap(entry => entry.inboxItems), questionsByJob.get(null) || [], brandNames);
+  // A new workspace (no brand and no job yet) opens on the Connectors step until the person presses Continue there, so they
+  // see what is connected even when every connector already answers. After that, only a required connector that is neither
+  // connected nor skipped brings the step back.
+  const firstRun = !readIntegrationsFile(root).connectorsReviewedAt && !brands.length && !projectEntries.length;
+  const setupStep = firstRun || connectors.some(connector => !connector.optional && connector.state !== 'connected' && connector.state !== 'skipped')
+    ? 'connectors'
+    : brands.some(brand => brand.readyForJobs)
+      ? 'ready'
+      : 'brand_onboarding';
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolBrands:metricoolBrands.map(({id,label,timezone})=>({id,label,timezone})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   return applyProjectionBudget(projection);
 }
@@ -1303,7 +1321,7 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
@@ -1999,6 +2017,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     recordConnectorSkip(root,args.provider);
     return {provider:args.provider,state:'skipped'};
   }
+  if(operation==='connectors_continue') return recordConnectorsContinue(root);
   if(operation==='connect_provider') {
     if(!CONNECTOR_KEYS.includes(args.provider)) throw new Error('Unsupported connector.');
     const record = integrationProviders(readIntegrationsFile(root))[args.provider];
@@ -2094,6 +2113,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'connect_provider' || operation === 'skip_provider') {
     return typeof result.provider === 'string' && typeof result.state === 'string' ? { provider: result.provider, state: result.state } : null;
   }
+  if (operation === 'connectors_continue') return result.state === 'continued' ? { state: result.state, skipped: result.skipped } : null;
   if (operation === 'choose_recipe') return result.deliverable ? { deliverable: result.deliverable } : null;
   if (operation === 'choose_studio_workspace') return result.workspaceId ? { workspaceId: result.workspaceId, scope: result.scope } : null;
   if (operation === 'choose_metricool_brand') return result.blogId ? { brand: result.brand, blogId: result.blogId } : null;

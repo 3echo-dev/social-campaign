@@ -23,7 +23,7 @@ user-invocable: false
 The hook names the saved `estimateId` in one line after the call ("Price saved as est-…"); use that id in the matching quote item.
 5. Put the price beside what they last agreed, never against it, with ways to **keep** it: fewer or shorter clips, audio off, 480p (`${CLAUDE_PLUGIN_ROOT}/docs/PRICING.md`).
 Call `pipeline_quote_save` with one item per clip: `{ key, provider: "threeEcho", kind: "video", deliverable, panel, credits, estimateId }`.
-The hero clip's item also carries `sample: true`, so the plugin holds every other item until that sample is approved.
+The hero clip's item also carries `sample: true`, so the plugin holds every other item until that sample is approved. When the clips start from the storyboard pictures, the hero picture is the sample instead and no clip is: one sample per post.
 `pipeline_quote_save` adds to the existing price rather than replacing it: items already priced stay, saving the same key again re-prices an item not yet made, and an optional `drop` with those keys removes items not yet made when the person asks for changes.
 Then the price gate: `pipeline_review_present` with `gate: "price"` and no files; it presents the saved quote.
 6. **Wait for the price approval.** The guard refuses `create_video_job` without that yes and that estimate (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). Stills instead is a change of deliverable: `change-deliverable.js`, in their words.

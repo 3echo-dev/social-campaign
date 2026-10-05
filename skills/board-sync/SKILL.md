@@ -217,6 +217,9 @@ Local imports use a source folder selected on the runner's computer, never a Dri
 For `skip_provider`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request.
 It records the choice in the workspace's `integrations.json` and never touches the other connector.
 
+For `connectors_continue` (the Continue on the setup Connectors step), apply it immediately the same way, then publish the workspace projection so the board moves on to the brand.
+It skips for now every connector that is not connected yet.
+
 For `connect_provider`, walking the person through connecting that provider is not a chat confirmation prompt; it is real work the apply depends on, and stays.
 When the provider's tools are already present in this session, verify the connection with the same read-only probe instead of walking the person through connecting.
 Otherwise, first walk the person through connecting that provider in chat: 3Echo Studio through the person's claude.ai connector (Settings > Connectors), ElevenLabs through their Claude connector.

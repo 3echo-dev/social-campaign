@@ -252,6 +252,8 @@ small,.muted{color:var(--faint)}
 /* Cards take the full content width and stack, one per row, instead of a two-column grid
    that squeezed their actions and left the rest of the page empty. */
 .connectors-grid{display:flex;flex-direction:column;gap:var(--gap)}
+.connectors-next{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:var(--gap);flex-wrap:wrap}
+.connectors-next p{margin:0}
 .connector-card{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:space-between;gap:var(--gap);flex-wrap:wrap;width:100%;min-width:0;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05);transition:background-color 150ms ease}
 @media (hover:hover){.connector-card:hover{background:var(--surface-hi)}}
 .connector-card-main{display:flex;align-items:flex-start;gap:12px;min-width:0}

@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../../scripts/build-board.mjs';
-import { factsFingerprint, isFinishedState, landingReport, listJobs, readSessionBinding } from './facts.mjs';
+import { factsFingerprint, isFinishedState, landingReport, listJobs, readSessionBinding, sessionBindings } from './facts.mjs';
 import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
@@ -435,6 +435,8 @@ export function unansweredReplies(jobs) {
 }
 
 export const STUCK_RECENT_MS = 24 * 60 * 60 * 1000;
+// Another Claude window that worked on a job this recently, and more recently than this one, is still the one carrying it on.
+export const OTHER_WINDOW_MS = 30 * 60 * 1000;
 
 /**
  * Stuck jobs whose question has not been asked yet: [{ref, kind, since}]. A problem on our side has no question to ask, so it never
@@ -516,6 +518,11 @@ function yourTurnJobs(board, root, jobs, questions, sessionId, now = Date.now())
     if (typeof board?.personWaiting !== 'function') return [];
     const bound = sessionId ? readSessionBinding(root, sessionId) : null;
     const mine = bound ? `${bound.brand}/${bound.jobId}` : null;
+    const bindings = sessionBindings(root, sessionId);
+    const elsewhere = ref => {
+      const ownAt = Math.max(0, ...bindings.filter(item => item.own && item.ref === ref && Number.isFinite(item.at)).map(item => item.at));
+      return bindings.some(item => !item.own && item.ref === ref && Number.isFinite(item.at) && item.at > ownAt && now - item.at <= OTHER_WINDOW_MS);
+    };
     const out = [];
     for (const job of jobs) {
       const state = job.state;
@@ -525,6 +532,7 @@ function yourTurnJobs(board, root, jobs, questions, sessionId, now = Date.now())
       const lines = readAgentLines(job.dir);
       const at = lastActiveAt(job, lines);
       if (ref !== mine && !(at !== null && now - at <= STUCK_RECENT_MS)) continue;
+      if (elsewhere(ref)) continue;
       if (waitingFor(board, root, job, questions) || hasOpenRun(lines, now)) continue;
       const title = readJson(join(job.dir, 'job.json'))?.title;
       out.push({ ref, jobId: job.jobId, title: typeof title === 'string' && title.trim() ? title.trim() : job.jobId, state, revision: job.revision ?? 0, next: nextStageName(job, state) });
