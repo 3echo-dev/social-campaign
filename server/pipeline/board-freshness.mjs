@@ -574,14 +574,15 @@ export function asksPerson(message) {
 
 /**
  * The question Claude just asked in chat that the job bound to this session does not have on its board card yet: {ref, jobId, hash}, else null.
- * "On the card" means an open question for the job asked in the last 10 minutes. Without the board's questions nothing is reported.
+ * "On the card" means an open question for the job asked in the last 10 minutes, or anything else the board already asks the person on
+ * that job (a decision, the Post-production offer), which the chat question is about. Without the board's questions nothing is reported.
  */
-function chatQuestion(root, jobs, questions, sessionId, message, now = Date.now()) {
+function chatQuestion(root, jobs, questions, sessionId, message, waiting = new Set(), now = Date.now()) {
   try {
     if (!questions || !asksPerson(message)) return null;
     const bound = sessionId ? readSessionBinding(root, sessionId) : null;
     const job = bound ? jobs.find(item => item.brand === bound.brand && item.jobId === bound.jobId) : null;
-    if (!job || isFinishedState(job.state)) return null;
+    if (!job || isFinishedState(job.state) || waiting.has(jobRef(job))) return null;
     if ((questions.get(job.jobId) || []).some(question => now - Date.parse(question.askedAt ?? '') <= CHAT_ASK_RECENT_MS)) return null;
     return { ref: jobRef(job), jobId: job.jobId, hash: sha256(Buffer.from(String(message), 'utf8')) };
   } catch {
@@ -613,7 +614,7 @@ export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: 
     behind: boardBehind(root, allJobs), unsaved: unsavedOutputs(jobs), copies, waiting,
     agents: agentFinishes(root, jobs), replies: unansweredReplies(jobs), stuck: unaskedStuck(board, root, jobs, questions, sessionId),
     yourTurn: backgroundWork(backgroundTasks) ? [] : yourTurnJobs(board, root, jobs, questions, sessionId),
-    chatAsk: chatQuestion(root, allJobs, questions, sessionId, lastMessage),
+    chatAsk: chatQuestion(root, allJobs, questions, sessionId, lastMessage, waiting),
   };
 }
 
