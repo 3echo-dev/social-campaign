@@ -140,10 +140,12 @@ for (const D of dels) {
 
   // A carousel is one post of several pictures: three to ten, the same kind of file, one shape. The platform's own
   // limit can only lower the ten. The pictures keep the order of the media list, which is the order of the slides.
+  // The three is the slide plan Claude makes; the person's own pictures are held to the two the posting check takes.
   if (kind.planned === 'carousel') {
     const room = del.slideRange(platform);
     const most = Math.min(room.max, m.carousel_max_items || room.max);
-    if (media.length < room.min || media.length > most) fail('R-LIMIT', 'A carousel needs ' + room.min + ' to ' + most + ' pictures on ' + platform + ', and this has ' + media.length);
+    const least = supplied ? Math.min(room.min, 2) : room.min;
+    if (media.length < least || media.length > most) fail('R-LIMIT', 'A carousel needs ' + least + ' to ' + most + ' pictures on ' + platform + ', and this has ' + media.length);
     if (media.some(f => !/\.(png|jpe?g|webp)$/i.test(String(f)))) fail('R-SCOPE', 'every slide of a carousel must be a picture');
     const shapes = media.map(f => pngSize(path.join(jobDir, String(f)))).filter(Boolean);
     if (shapes.length > 1 && shapes.some(z => Math.abs(z.w / z.h - shapes[0].w / shapes[0].h) > 0.02))

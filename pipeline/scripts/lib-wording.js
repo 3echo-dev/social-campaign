@@ -97,7 +97,7 @@ const BRIEF_QUESTIONS = Object.freeze({
   objective: 'What is the main goal?',
   distribution: 'Should this run as organic posts, paid ads, or both?',
   platforms: 'Which social platforms is this for?',
-  deliverables: 'Which posts do you need: the platform, the post type (Reel, post or Story, or a TikTok video or photo post), and how many?',
+  deliverables: 'Which posts do you need: the platform, the post type (Reel, post, Story or carousel, or a TikTok video or photo post), and how many?',
   audience: 'Who is this for?',
   budget: 'What is the most you want to spend?',
   landingPageUrl: 'Which web page should people go to?',
