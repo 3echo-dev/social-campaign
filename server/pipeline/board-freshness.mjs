@@ -582,7 +582,8 @@ function chatQuestion(root, jobs, questions, sessionId, message, waiting = new S
     if (!questions || !asksPerson(message)) return null;
     const bound = sessionId ? readSessionBinding(root, sessionId) : null;
     const job = bound ? jobs.find(item => item.brand === bound.brand && item.jobId === bound.jobId) : null;
-    if (!job || isFinishedState(job.state) || waiting.has(jobRef(job))) return null;
+    // While the job is with Post-production, its questions live on the Production Studio board, not on this Director card.
+    if (!job || isFinishedState(job.state) || waiting.has(jobRef(job)) || handoffSent(job.dir)) return null;
     if ((questions.get(job.jobId) || []).some(question => now - Date.parse(question.askedAt ?? '') <= CHAT_ASK_RECENT_MS)) return null;
     return { ref: jobRef(job), jobId: job.jobId, hash: sha256(Buffer.from(String(message), 'utf8')) };
   } catch {
