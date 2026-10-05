@@ -2385,7 +2385,8 @@ function usageFooterRow(label, tokens, elapsedMs, { note = '', cls = '' } = {}) 
 // running brand research run) carries openSince and its shown time is
 // topped up live via liveMs; now is a parameter so a test can render it
 // deterministically. Returns '' when there is nothing to show.
-export function usageFooter({ project, brands = [], projects = [], now = Date.now() } = {}) {
+// `bare` is the job page's Usage fold: the stage rows and brand research only, as the totals sit just above it.
+export function usageFooter({ project, brands = [], projects = [], now = Date.now(), bare = false } = {}) {
   const rows = [];
   let credits = '';
   if (project) {
@@ -2393,7 +2394,7 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
     for (const stage of usage.stages || []) {
       rows.push(usageFooterRow(stage.label || humanize(stage.id), stage.tokens, liveMs(stage.elapsedMs, stage.openSince, now), { cls: stage.kind === 'waiting' ? 'usage-waiting' : '' }));
     }
-    rows.push(usageFooterRow('Total', usage.tokens, liveMs(usage.elapsedMs, usage.openSince, now), { cls: 'usage-total' }));
+    if (!bare) rows.push(usageFooterRow('Total', usage.tokens, liveMs(usage.elapsedMs, usage.openSince, now), { cls: 'usage-total' }));
     const brand = (brands || []).find(item => item.slug === project.brand);
     const brandStage = brand?.usage?.stages?.[0];
     if (brandStage) {
@@ -2402,7 +2403,7 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
     const generation = usage.generation || {};
     const studio = creditFraction(generation.threeEchoCredits);
     const voice = creditFraction(generation.elevenLabsCredits);
-    credits = (studio || voice) && !isReportJob(project) ? `<dl class="price-facts usage-credits"><div><dt>3Echo Studio credits used</dt><dd>${esc(studio || '0')}</dd></div><div><dt>ElevenLabs voice credits used</dt><dd>${esc(voice || '0')}</dd></div></dl>` : '';
+    credits = !bare && (studio || voice) && !isReportJob(project) ? `<dl class="price-facts usage-credits"><div><dt>3Echo Studio credits used</dt><dd>${esc(studio || '0')}</dd></div><div><dt>ElevenLabs voice credits used</dt><dd>${esc(voice || '0')}</dd></div></dl>` : '';
   } else {
     for (const job of projects || []) {
       const usage = job.usage || {};
@@ -2415,7 +2416,9 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
     }
   }
   if (!rows.length) return '';
-  return `<section class="panel usage-footer"><div class="section-head"><h2>Usage by stage</h2></div><table><thead><tr><th>Stage</th><th class="num">Tokens</th><th class="num">Time</th></tr></thead><tbody>${rows.join('')}</tbody></table>${credits}</section>`;
+  const table = `<table><thead><tr><th>Stage</th><th class="num">Tokens</th><th class="num">Time</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  if (bare) return `<div class="usage-footer usage-stages">${table}</div>`;
+  return `<section class="panel usage-footer"><div class="section-head"><h2>Usage by stage</h2></div>${table}${credits}</section>`;
 }
 
 // A small, safe markdown renderer for job documents: everything is escaped
@@ -5530,6 +5533,8 @@ function chatDetails(agent, { openKeys, jobId }) {
 
 // Step statuses as the server projects them: done, running, waiting (on the person) or pending.
 const STEP_STATUS_WORDS = Object.freeze({ done: 'Done', running: 'Working', waiting: 'Waiting on you', pending: 'Not started' });
+// The stage turns running as soon as the one before it is done, a moment before the Director calls its agent.
+const STEP_STARTING_WORD = 'Starting';
 const STEP_STATUSES = new Set(Object.keys(STEP_STATUS_WORDS));
 const planWord = value => String(value ?? '').replace(/`/g, '').trim();
 function stepStatusFallback(stage, index) {
@@ -5580,9 +5585,10 @@ export function stageItems(project, { pendingGate = null } = {}) {
 function stepCard(item, prev, who) {
   const person = who(item.agent) || { name: humanize(item.agent), mood: 'sleepy' };
   const status = item.status;
-  const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : item.line || (status === 'done' ? 'Finished' : 'Working on it');
+  const starting = status === 'running' && person.called === false;
+  const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : starting ? `The Director is calling the ${person.name}` : item.line || (status === 'done' ? 'Finished' : 'Working on it');
   const glyph = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : status === 'running' ? '<span class="pip"></span>' : '';
-  return `<li class="step s-${status}"><span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span></li>`;
+  return `<li class="step s-${status}"><span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span></li>`;
 }
 
 function gateSection(item, { jobId, body, open, isOpen }) {
@@ -6431,7 +6437,6 @@ if (typeof document !== 'undefined') {
     return blockers.length ? `<section class="panel intake"><div class="section-head"><h2>Finish the brief</h2></div><div class="intake-other"><span class="intake-label-text">Still needed</span><ul>${blockers.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div></section>` : '';
   }
   function details(project) {
-    const metrics = project.metrics || {};
     ensureJobDocument(project);
     ensurePlanNote(project);
     syncInboxDocuments();
@@ -6496,7 +6501,7 @@ if (typeof document !== 'undefined') {
     const chatAgent = boxUi.chat ? box.all.find(item => item.id === boxUi.chat) || null : null;
     if (boxUi.chat && !chatAgent) boxUi.chat = null;
     // Who is on a step card, and how they look: from the agents of this job.
-    const who = id => { const agent = box.all.find(item => item.id === id); return agent ? { name: agentNameOf(agent), mood: agentView(agent).mood } : null; };
+    const who = id => { const agent = box.all.find(item => item.id === id); if (!agent) return null; const view = agentView(agent); return { name: agentNameOf(agent), mood: view.mood, called: view.called }; };
     // What opens inside each gate section: the review for the gate waiting on the person, and what belongs to a gate once it is past.
     const bodies = {};
     if (pendingGate && review) bodies[pendingGate] = { html: review, open: true };
@@ -6510,7 +6515,7 @@ if (typeof document !== 'undefined') {
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
-    const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}</div></details>`;
+    const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
     // The right column: the Inbox, or the chat with one agent.
@@ -6545,7 +6550,7 @@ if (typeof document !== 'undefined') {
       if (need && !need.includes('class="in-need is-idle"')) needTop = `<div class="need-top">${need}</div>`;
       side = agentInbox(box.all, { now, need, needText: railParts && top ? railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
-    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${metricDetails(metrics)}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
@@ -6629,10 +6634,7 @@ if (typeof document !== 'undefined') {
     const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
     return `<div class="slate-head"><h1>${esc(door.title)}</h1></div>${doorHtml(door, { hero: true })}${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
   }
-  function metricDetails(metrics) {
-    const tokens=metrics.tokens || {};
-    return `<details class="panel" data-open-key="tokens"${openKeys.has('tokens') ? ' open' : ''}><summary>Token details</summary><div class="stats">${metric('Input tokens',number(tokens.inputTokens),'Observed usage')}${metric('Output tokens',number(tokens.outputTokens),'Observed usage')}${metric('Cache read tokens',number(tokens.cacheReadTokens),'Observed usage')}${metric('Cache creation tokens',number(tokens.cacheCreationTokens),'Observed usage')}</div><p class="muted">Token coverage: ${esc(metrics.coverage?.tokens || 'missing')}. Totals leave out reused context.</p></details>`;
-  }
+
   function drawerOutput(a) {
     const doc = docFor(current());
     const file = docFileFor(doc, a);
@@ -6697,7 +6699,7 @@ if (typeof document !== 'undefined') {
     const jumped = Object.values(JUMP_TARGETS).find(selector => document.activeElement?.matches?.(`${selector}[tabindex="-1"]`)) || null;
     const stripScroll = [...app.querySelectorAll('.sb-strip')].map(strip => strip.scrollLeft);
     const paneScroll = capturePaneScroll();
-    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(project?details(project):routeOf(location.hash).page === 'pipeline' ? pipelinePage(routeOf(location.hash).group) : overview())+(project?.detailsLoaded === false ? '' : usageFooter({project, brands: data.brands || [], projects: data.projects || []}))+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
+    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(project?details(project):routeOf(location.hash).page === 'pipeline' ? pipelinePage(routeOf(location.hash).group) : overview())+(project ? '' : usageFooter({brands: data.brands || [], projects: data.projects || []}))+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
     const inlineForm = app.querySelector('#inline-form');
     restoreForm(inlineForm, inline?.values);
     if (inlineForm && document.activeElement === document.body) {
