@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { globalConfigDir, integrationsPath } from '../lib/paths.mjs';
@@ -28,13 +28,88 @@ export const RESEARCH_HELPER_ENVIRONMENT_KIND = 'venv';
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 
 /**
+ * The plugin's own data folder, when Claude Code gave the server one.
+ *
+ * `.mcp.json` passes `${CLAUDE_PLUGIN_DATA}` as SOCIAL_CAMPAIGN_DATA_DIR. That
+ * folder is the documented home for installed dependencies and is removed when
+ * the plugin is uninstalled. A missing, relative or unsubstituted value (the
+ * literal `${CLAUDE_PLUGIN_DATA}` an older host leaves in place) means there is
+ * no such folder, and the caller falls back to the per machine folder.
+ * @returns {string|null}
+ */
+export function pluginDataDir() {
+  for (const name of ['SOCIAL_CAMPAIGN_DATA_DIR', 'CLAUDE_PLUGIN_DATA']) {
+    const value = process.env[name]?.trim();
+    if (!value || value.includes('${') || !isAbsolute(value)) continue;
+    return resolve(value);
+  }
+  return null;
+}
+
+/**
+ * Where releases up to 0.15.6 put the environment. Still used when an install is
+ * already there, and when there is no plugin data folder.
+ * @returns {string}
+ */
+export function legacyEnvironmentRoot() {
+  return join(globalConfigDir(), 'research-helper', 'venv');
+}
+
+/**
+ * The environment inside the plugin data folder, or null without one.
+ * @returns {string|null}
+ */
+export function pluginDataEnvironmentRoot() {
+  const data = pluginDataDir();
+  return data ? join(data, 'research-helper', 'venv') : null;
+}
+
+/**
  * The machine managed environment is shared by workspaces, but enabled by an
  * explicit record in each workspace. This keeps provider data portable while
  * avoiding a user site or system Python install.
+ *
+ * An environment that already exists wins, so a person who installed the helper
+ * with an earlier release keeps using it. A new install goes into the plugin data
+ * folder when there is one, and into the per machine folder otherwise.
  * @returns {string}
  */
 export function managedEnvironmentRoot() {
-  return join(globalConfigDir(), 'research-helper', 'venv');
+  const preferred = pluginDataEnvironmentRoot();
+  const legacy = legacyEnvironmentRoot();
+  if (preferred && existsSync(managedPythonPath(preferred))) return preferred;
+  if (existsSync(managedPythonPath(legacy))) return legacy;
+  return preferred ?? legacy;
+}
+
+/**
+ * Where Playwright keeps its browser for an environment, or null to leave
+ * Playwright's own default alone.
+ *
+ * Only an environment inside the plugin data folder gets a browsers folder beside
+ * it. An environment in the old per machine location was installed with the
+ * browser in Playwright's default cache, and pointing it anywhere else would make
+ * a working install look broken.
+ * @param {string|null|undefined} environmentRoot
+ * @returns {string|null}
+ */
+export function managedBrowsersPath(environmentRoot) {
+  const preferred = pluginDataEnvironmentRoot();
+  if (!environmentRoot || !preferred || resolve(environmentRoot) !== preferred) return null;
+  return join(dirname(preferred), 'browsers');
+}
+
+/**
+ * The environment for a child process that runs the managed Python: the parent's
+ * own, plus PLAYWRIGHT_BROWSERS_PATH when the environment has its own browsers
+ * folder. Install, detection, smoke read and production reads all use this, so
+ * they agree on where Chromium is.
+ * @param {string|null|undefined} environmentRoot
+ * @returns {NodeJS.ProcessEnv|undefined} undefined to inherit unchanged.
+ */
+export function researchHelperChildEnv(environmentRoot) {
+  const browsers = managedBrowsersPath(environmentRoot);
+  return browsers ? { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers } : undefined;
 }
 
 /**

@@ -1,8 +1,8 @@
 /** Optional research helper setup. */
 
 import { defineTool } from '../mcp/registry.mjs';
-import { CRAWL4AI_VERSION, detect, installProgress, readRecord, startInstall, writeRecord } from '../setup/research-helper.mjs';
-import { hasUsableResearchHelperRecord } from '../setup/research-helper-record.mjs';
+import { CRAWL4AI_VERSION, detect, installPlan, installProgress, readRecord, startInstall, writeRecord } from '../setup/research-helper.mjs';
+import { hasUsableResearchHelperRecord, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[]} */
 export const setupTools = [
@@ -17,7 +17,7 @@ export const setupTools = [
       const existing = readRecord(workspace);
       const usable = hasUsableResearchHelperRecord(existing);
       const candidates = usable ? [[existing.python, ...(Array.isArray(existing.python_args) ? existing.python_args : [])]] : undefined;
-      const found = await detect(candidates);
+      const found = await detect(candidates, usable ? researchHelperChildEnv(existing.environment_path) : undefined);
       const state = usable && found.state === 'connected' && found.crawl4ai.compatible ? 'connected' : found.state === 'degraded' ? 'degraded' : 'not_connected';
       // Detection is the truth about this computer, so the recorded state is brought
       // back in line with it here: a helper uninstalled outside Social Campaign stops
@@ -52,11 +52,32 @@ export const setupTools = [
   defineTool({
     name: 'research_helper_install',
     description:
-      'Install the browser based research helper: a recent Python, the page reader package and the browser ' +
-      'it drives. Only call this when the user has asked for it, typically from the doctor. Returns straight ' +
-      'away; poll research_helper_status to watch each step, and nothing else waits on it.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: async (_args, { workspace }) => {
+      'Install the optional browser based research helper: the page reader package and the browser it ' +
+      'drives (several hundred MB). Needs Python 3.10 or newer already installed; never installs Python. ' +
+      'Without confirm: true it installs nothing and returns what it would install, how big it is and where, ' +
+      'to put to the user. Pass confirm: true only after the user has said yes. Returns straight away; poll ' +
+      'research_helper_status to watch each step, and nothing else waits on it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        confirm: {
+          type: 'boolean',
+          description: 'true only after the user has agreed to install the research helper. Anything else installs nothing.',
+        },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args, { workspace }) => {
+      // The person's yes is the only thing that starts this: it downloads a browser
+      // and Python packages onto their computer.
+      if (args?.confirm !== true) {
+        return {
+          started: false,
+          confirmation_required: true,
+          plan: installPlan(),
+          next: 'Tell the user in plain words what this installs, what it is for and how big it is, and call again with confirm: true only if they say yes.',
+        };
+      }
       const state = startInstall(workspace);
       return { started: true, install: state };
     },

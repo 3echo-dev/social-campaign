@@ -73,6 +73,7 @@ If `repairable` is not empty, offer to fix those items, in one sentence each, an
 
 - Ask before each repair. Never repair without being asked to.
 - On yes, call `doctor_repair({check: "<id>"})` once per item, one at a time.
+  For `research_helper`, first tell the person what it installs and how big it is, and pass `confirm: true` only after their yes to that; without it nothing is installed.
 - `doctor_repair` returns `repaired`, a `detail` to read out, sometimes `restart_needed`, and a fresh `checks` list.
   Report the `detail` in the user's words, and if `restart_needed` is true tell them to close this Claude session and start a new one.
 - If `repaired` is false, read the `detail` and stop. Do not try the same repair again.
@@ -83,7 +84,7 @@ What the repairs actually do, in case the user asks:
 - `workspace_folders` creates folders that went missing. Nothing already there is touched.
 - `storage` finishes an interrupted storage update, after copying everything aside first.
 - `storage_integrity` puts back the most recent good copy of the user's work and keeps the damaged one.
-- `research_helper` sets up the optional research helper, or finishes a half done one. It returns straight away and carries on in the background, so tell the user it is running and that nothing waits on it, rather than waiting for it yourself.
+- `research_helper` sets up the optional research helper, or finishes a half done one, when called with `confirm: true`. It never installs Python; when Python is missing, its `fix` names the command the person runs themselves. It returns straight away and carries on in the background, so tell the user it is running and that nothing waits on it, rather than waiting for it yourself.
 - `legacy_publishing_credentials` removes an old publishing key that an earlier version stored on this computer.
   The key still works at the provider, so tell the person to revoke it there.
 - Pipeline workspace, `board` and `board_requests` are not repaired automatically.

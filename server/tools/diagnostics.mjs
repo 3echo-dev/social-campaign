@@ -43,8 +43,8 @@ import { readArtifactBinding } from '../pipeline/artifact.mjs';
 import { listBoardRequests } from '../pipeline/board.mjs';
 import { buildBoard } from '../../scripts/build-board.mjs';
 import { YtDlpBackend } from '../social/backends/ytdlp.mjs';
-import { detect as detectResearchHelper, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
-import { hasUsableResearchHelperRecord } from '../setup/research-helper-record.mjs';
+import { detect as detectResearchHelper, installPlan, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
+import { hasUsableResearchHelperRecord, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
 import {
   YTDLP_STALE_DAYS,
   installKindOf,
@@ -154,6 +154,11 @@ export const diagnosticsTools = [
           type: 'string',
           description: 'The check id to repair: workspace_pointer, workspace_folders, storage, storage_integrity, research_helper or legacy_publishing_credentials.',
         },
+        confirm: {
+          type: 'boolean',
+          description:
+            'research_helper only: true after the user has agreed to install it. Without it nothing is installed and the result describes what would be.',
+        },
       },
       required: ['check'],
       additionalProperties: false,
@@ -167,7 +172,7 @@ export const diagnosticsTools = [
           fix: 'Run the check first and use one of the items it says can be repaired.',
         });
       }
-      const outcome = repair(workspace, context);
+      const outcome = repair(workspace, context, args);
       log.info('doctor repair', { check: id, repaired: outcome.repaired });
       const checks = await runChecks(workspace);
       return {
@@ -542,7 +547,10 @@ async function researchHelperCheck(workspace) {
   const recordedCommand = recordUsable
     ? [[record.python, ...(Array.isArray(record.python_args) ? record.python_args : [])]]
     : null;
-  const found = await detectResearchHelper(recordedCommand ?? undefined);
+  const found = await detectResearchHelper(
+    recordedCommand ?? undefined,
+    recordUsable ? researchHelperChildEnv(record.environment_path) : undefined,
+  );
   if (recordUsable && found.state === 'connected' && found.crawl4ai.compatible) {
     return {
       ...base,
@@ -584,7 +592,9 @@ async function researchHelperCheck(workspace) {
     detail: lastFailure
       ? `${detail} Research still runs on public pages and web search. Last time: ${lastFailure}`
       : `${detail} Research still runs on public pages and web search.`,
-    fix: `Say yes and I will set it up: a recent Python, the page reader and the browser it drives. To do it yourself: ${second} then ${third}`,
+    fix: !found.python.found
+      ? `It needs Python 3.10 or newer first, which Social Campaign does not install. Run ${manualCommands()[0]} yourself, then say yes and I will add the page reader and the browser it drives (several hundred MB). Or do it all yourself: ${second} then ${third}`
+      : `Say yes and I will set it up: the page reader and the browser it drives (several hundred MB). To do it yourself: ${second} then ${third}`,
   };
 }
 
@@ -805,7 +815,18 @@ const REPAIRS = {
     };
   },
 
-  research_helper(workspace) {
+  research_helper(workspace, _options = {}, args = {}) {
+    // It downloads a browser and Python packages onto the person's computer, so it
+    // only runs after their explicit yes. Without it, say what would happen.
+    if (args?.confirm !== true) {
+      const plan = installPlan();
+      return {
+        repaired: false,
+        confirmation_required: true,
+        plan,
+        detail: `Nothing was installed. ${plan.summary} ${plan.size} ${plan.needs} Say yes if you want it.`,
+      };
+    }
     // Kicked off, not waited on: the install takes minutes and no tool call is
     // allowed to sit on one. Running the doctor again is how a person watches it
     // finish.

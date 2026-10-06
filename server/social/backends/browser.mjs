@@ -31,6 +31,7 @@ import {
   normalizeResearchHelperRecord,
   researchHelperWorkerSha256,
   readResearchHelperRecord,
+  researchHelperChildEnv,
 } from '../../setup/research-helper-record.mjs';
 import { adRecord, pageRecord, parseHumanCount, postRecord, profileRecord, toIso } from '../records.mjs';
 
@@ -189,13 +190,16 @@ export class BrowserBackend {
       timeout_ms: timeoutMs,
       extract: request.extract ?? 'text',
     });
+    // An environment in the plugin data folder keeps Chromium beside it; the
+    // installer downloaded it there with the same variable.
+    const env = researchHelperChildEnv(entry.environment_path);
     let stdout;
     try {
       stdout = await new Promise((resolvePromise, rejectPromise) => {
         const child = execFile(
           entry.python,
           [...(Array.isArray(entry.python_args) ? entry.python_args : []), scriptPath],
-          { timeout: timeoutMs + this.killGraceMs, maxBuffer: this.maxOutputBytes, windowsHide: true },
+          { timeout: timeoutMs + this.killGraceMs, maxBuffer: this.maxOutputBytes, windowsHide: true, ...(env ? { env } : {}) },
           (error, out) => {
             if (error) rejectPromise(error);
             else resolvePromise(out);

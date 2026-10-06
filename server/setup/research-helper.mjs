@@ -2,10 +2,16 @@
  * The browser based research helper: detect it, install it, report on it.
  *
  * Some sites show almost nothing to a plain page fetch. A real browser driving the
- * page reads them properly, so Social Campaign can optionally install one: a Python
- * runtime, the Crawl4AI package, and the Chromium that package drives. All three are
- * somebody else's software living on the person's computer, so none of it is
- * installed without them choosing to, and none of it is ever required.
+ * page reads them properly, so Social Campaign can optionally install one: the
+ * Crawl4AI package, in its own virtual environment, and the Chromium that package
+ * drives. Both are somebody else's software living on the person's computer, so
+ * neither is installed without them choosing to (every install entry point needs
+ * `confirm: true`), and neither is ever required. Python itself must already be
+ * there: it is never installed for the person, who gets the command instead.
+ *
+ * The environment and its browser go in the plugin data folder when Claude Code
+ * provides one (removed on uninstall), and in `~/.social-campaign/research-helper`
+ * otherwise. An install already in that older place keeps being used.
  *
  * Three rules hold this file together.
  *
@@ -31,15 +37,18 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 import { newId, nowIso } from '../lib/ids.mjs';
 import { log } from '../lib/log.mjs';
 import {
+  managedBrowsersPath,
   managedEnvironmentRoot,
   managedPythonPath,
+  pluginDataEnvironmentRoot,
+  researchHelperChildEnv,
   hasUsableResearchHelperRecord,
   researchHelperWorkerSha256,
   readResearchHelperRecord,
@@ -79,7 +88,9 @@ export const SMOKE_URL = 'https://example.com';
  */
 export const INSTALL_STEPS = [
   { id: 'detecting', label: 'Checking what is already on this computer', percent: 8 },
-  { id: 'python', label: 'Installing Python', percent: 30 },
+  // Python is never installed for the person; this step only finds it, and is where
+  // the install stops with the manual command when there is none.
+  { id: 'python', label: 'Looking for Python', percent: 30 },
   { id: 'crawl4ai', label: 'Installing the page reader', percent: 60 },
   { id: 'browser', label: 'Installing the browser it drives', percent: 85 },
   { id: 'smoke', label: 'Reading a test page', percent: 96 },
@@ -161,15 +172,16 @@ const VERSION_SCRIPT = 'import sys;print("SCPY",sys.version_info[0],sys.version_
  * @param {string[]} command the program followed by its fixed arguments.
  * @param {string[]} args
  * @param {number} timeoutMs
+ * @param {NodeJS.ProcessEnv} [env] the child's environment; omitted inherits this process's.
  * @returns {Promise<{ok: boolean, code: number|string|null, stdout: string, stderr: string, spawnFailed: boolean, timedOut: boolean}>}
  */
-export function run(command, args, timeoutMs) {
+export function run(command, args, timeoutMs, env) {
   const [program, ...fixed] = command;
   return new Promise((resolvePromise) => {
     execFile(
       program,
       [...fixed, ...args],
-      { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...(env ? { env } : {}) },
       (error, stdout, stderr) => {
         const rawCode = error ? /** @type {any} */ (error).code : 0;
         const code = error && (typeof rawCode === 'number' || typeof rawCode === 'string') ? rawCode : error ? null : 0;
@@ -209,10 +221,10 @@ function canRunInstallCommand(command, options = {}) {
  * @param {string[]} command
  * @param {string[]} args
  * @param {number} timeoutMs
- * @param {{allowRealInstall?: boolean}} [options]
+ * @param {{allowRealInstall?: boolean, env?: NodeJS.ProcessEnv}} [options]
  */
 function runInstallCommand(command, args, timeoutMs, options = {}) {
-  if (canRunInstallCommand(command, options)) return run(command, args, timeoutMs);
+  if (canRunInstallCommand(command, options)) return run(command, args, timeoutMs, options.env);
   return Promise.resolve({
     ok: false,
     code: 'test_install_blocked',
@@ -356,10 +368,11 @@ const CRAWL4AI_SCRIPT =
 /**
  * Is Crawl4AI importable by this Python?
  * @param {string[]} command
+ * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<{found: boolean, version: string|null, compatible: boolean}>}
  */
-export async function detectCrawl4ai(command) {
-  const result = await run(command, ['-c', CRAWL4AI_SCRIPT], STEP_TIMEOUT_MS.probe);
+export async function detectCrawl4ai(command, env) {
+  const result = await run(command, ['-c', CRAWL4AI_SCRIPT], STEP_TIMEOUT_MS.probe, env);
   const line = String(result.stdout)
     .split(/\r?\n/)
     .map((entry) => entry.trim())
@@ -374,15 +387,16 @@ export async function detectCrawl4ai(command) {
  * nothing about whether the browser itself is on disk. This asks for the executable
  * path and then asks the filesystem, through Python, whether it is really there.
  * @param {string[]} command
+ * @param {NodeJS.ProcessEnv} [env] carries PLAYWRIGHT_BROWSERS_PATH for an environment with its own browsers folder.
  * @returns {Promise<{found: boolean}>}
  */
-export async function detectChromium(command) {
+export async function detectChromium(command, env) {
   const script =
     'import os\n' +
     'from playwright.sync_api import sync_playwright\n' +
     'with sync_playwright() as p:\n' +
     '    print("SCCR|" + str(os.path.exists(p.chromium.executable_path)))\n';
-  const result = await run(command, ['-c', script], STEP_TIMEOUT_MS.probe);
+  const result = await run(command, ['-c', script], STEP_TIMEOUT_MS.probe, env);
   const line = String(result.stdout)
     .split(/\r?\n/)
     .map((entry) => entry.trim())
@@ -393,13 +407,14 @@ export async function detectChromium(command) {
 /**
  * Everything detection knows, in one object.
  * @param {string[][]} [candidates]
+ * @param {NodeJS.ProcessEnv} [env] from `researchHelperChildEnv`, for a managed environment's own command.
  * @returns {Promise<{python: Awaited<ReturnType<typeof detectPython>>, crawl4ai: {found: boolean, version: string|null, compatible: boolean}, chromium: {found: boolean}, state: 'connected'|'degraded'|'not_connected'}>}
  */
-export async function detect(candidates = pythonCandidates()) {
-  const key = JSON.stringify(candidates);
+export async function detect(candidates = pythonCandidates(), env) {
+  const key = JSON.stringify([candidates, env?.PLAYWRIGHT_BROWSERS_PATH ?? null]);
   const cached = DETECT_CACHE.get(key);
   if (cached && Date.now() - cached.at < DETECT_CACHE_MS) return cached.value;
-  const value = await detectUncached(candidates);
+  const value = await detectUncached(candidates, env);
   DETECT_CACHE.set(key, { at: Date.now(), value });
   return value;
 }
@@ -417,14 +432,15 @@ export function clearDetectCache() {
 
 /**
  * @param {string[][]} candidates
+ * @param {NodeJS.ProcessEnv} [env]
  */
-async function detectUncached(candidates) {
+async function detectUncached(candidates, env) {
   const python = await detectPython(candidates);
   if (!python.found || !python.command) {
     return { python, crawl4ai: { found: false, version: null, compatible: false }, chromium: { found: false }, state: 'not_connected' };
   }
-  const crawl4ai = await detectCrawl4ai(python.command);
-  const chromium = crawl4ai.found ? await detectChromium(python.command) : { found: false };
+  const crawl4ai = await detectCrawl4ai(python.command, env);
+  const chromium = crawl4ai.found ? await detectChromium(python.command, env) : { found: false };
   const state = crawl4ai.compatible && chromium.found ? 'connected' : crawl4ai.found ? 'degraded' : 'not_connected';
   return { python, crawl4ai, chromium, state };
 }
@@ -513,7 +529,7 @@ function jobFor(root) {
 /**
  * A connected state is useful only when the complete versioned record points at
  * files that still exist. This is the guard shared by progress projection and the
- * automatic start path, so a legacy `connected` flag cannot suppress repair.
+ * setup summary, so a legacy `connected` flag cannot suppress repair.
  * @param {Record<string, any>|null} record
  * @returns {boolean}
  */
@@ -619,6 +635,8 @@ function step(job, id, extra = {}) {
 
 /**
  * The commands a person can paste in themselves, for when this cannot do it for them.
+ * The first one installs Python, which Social Campaign never does on its own: it is
+ * system software with its own licence, so the person runs that one themselves.
  * @returns {string[]}
  */
 export function manualCommands() {
@@ -635,56 +653,59 @@ export function manualCommands() {
   const py = process.platform === 'win32' ? 'py -3' : 'python3';
   const environment = managedEnvironmentRoot();
   const runtime = managedPythonPath(environment);
+  // An environment in the plugin data folder keeps its browser beside it, so the
+  // pasted command has to put it in the same place the reader will look.
+  const browsers = managedBrowsersPath(environment);
+  const browsersPrefix = !browsers
+    ? ''
+    : process.platform === 'win32'
+      ? `$env:PLAYWRIGHT_BROWSERS_PATH=${JSON.stringify(browsers)}; `
+      : `PLAYWRIGHT_BROWSERS_PATH=${JSON.stringify(browsers)} `;
   return [
     install,
     `${py} -m venv ${JSON.stringify(environment)} && ${JSON.stringify(runtime)} -m pip install crawl4ai==${CRAWL4AI_VERSION}`,
-    `${JSON.stringify(runtime)} -m playwright install chromium`,
+    `${browsersPrefix}${JSON.stringify(runtime)} -m playwright install chromium`,
   ];
 }
 
 /**
- * The package manager this computer has, if it has one.
- * @returns {Promise<{found: boolean, name: string|null, command: string[]|null, args: string[]}>}
+ * The failure text for a computer with no recent enough Python. Social Campaign
+ * does not install Python itself on any platform, so this names the exact
+ * commands for the person to run.
+ * @returns {string}
  */
-async function packageManager() {
-  if (isNodeTestProcess() && !realInstallAllowed()) {
-    return { found: false, name: null, command: null, args: [] };
-  }
-  if (process.platform === 'win32') {
-    const probe = await run(['winget'], ['--version'], STEP_TIMEOUT_MS.probe);
-    return probe.ok
-      ? {
-          found: true,
-          name: 'winget',
-          command: ['winget'],
-          args: ['install', '--id', 'Python.Python.3.12', '-e', '--accept-package-agreements', '--accept-source-agreements'],
-        }
-      : { found: false, name: null, command: null, args: [] };
-  }
-  if (process.platform === 'darwin') {
-    const probe = await run(['brew'], ['--version'], STEP_TIMEOUT_MS.probe);
-    return probe.ok
-      ? { found: true, name: 'Homebrew', command: ['brew'], args: ['install', 'python@3.12'] }
-      : { found: false, name: null, command: null, args: [] };
-  }
-  return { found: false, name: null, command: null, args: [] };
+export function noPythonReason() {
+  const [first, second, third] = manualCommands();
+  const opener =
+    process.platform === 'darwin'
+      ? 'The research helper needs Python 3.10 or newer, and Social Campaign does not install Python for you. ' +
+        'If Homebrew is not installed yet, get it first from https://brew.sh.'
+      : 'The research helper needs Python 3.10 or newer, and Social Campaign does not install Python for you.';
+  return `${opener} To set it up yourself, open a terminal and run these three, in order: ${first} then ${second} then ${third}`;
 }
 
 /**
- * The failure text for a computer with nothing to install Python with. It names the
- * exact commands, because at that point the person really does have to do it by hand.
- * @returns {string}
+ * What installing the helper would put on this computer, in plain words, for the
+ * person to say yes or no to. Returned by every install entry point that was
+ * called without `confirm: true`, and by `workspace_initialize`.
+ * @returns {{summary: string, needs: string, size: string, location: string, removal: string}}
  */
-export function noPackageManagerReason() {
-  const [first, second, third] = manualCommands();
-  const opener =
-    process.platform === 'win32'
-      ? 'Social Campaign could not find winget on this computer, so it cannot install Python for you.'
-      : process.platform === 'darwin'
-        ? 'Social Campaign could not find Homebrew on this computer, so it cannot install Python for you. ' +
-          'Install Homebrew first from https://brew.sh, then run this again.'
-        : 'Social Campaign does not install Python on Linux for you.';
-  return `${opener} To set it up yourself, open a terminal and run these three, in order: ${first} then ${second} then ${third}`;
+export function installPlan() {
+  const environment = managedEnvironmentRoot();
+  const home = dirname(environment);
+  const inPluginData = pluginDataEnvironmentRoot() !== null && resolve(environment) === pluginDataEnvironmentRoot();
+  return {
+    summary:
+      'An optional research helper lets Social Campaign read web pages that show almost nothing to a plain ' +
+      'page reader, such as some social profiles and shops. It installs the Crawl4AI page reader (a Python ' +
+      'package) and a private copy of the Chromium browser it drives. Research works without it, on public pages and web search.',
+    needs: 'Python 3.10 or newer already on this computer. Social Campaign never installs Python itself.',
+    size: 'Chromium alone is about 150 MB, and the page reader\'s Python packages add a few hundred MB more. It takes several minutes.',
+    location: home,
+    removal: inPluginData
+      ? 'Uninstalling the Social Campaign plugin removes it.'
+      : `To remove it later, delete the folder ${home}${managedBrowsersPath(environment) ? '' : ' and Playwright\'s browser cache'}.`,
+  };
 }
 
 /**
@@ -852,26 +873,18 @@ export function whenInstallSettles(workspace) {
 }
 
 /**
- * Start the install unless it is already installed, already running, or has already
- * failed once. This is the one place workspace creation calls into, so the install
- * begins the moment a workspace exists. Idempotent and never blocking, like `startInstall` itself.
+ * Where the helper stands for one workspace, for `workspace_initialize` to report
+ * so setup can ask the person whether they want it. Never starts anything: the
+ * install runs only from `research_helper_install` or `doctor_repair` with
+ * `confirm: true`, after the person has said yes.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[]}} [options]
- * @returns {boolean} true when this call actually started a new install.
+ * @returns {{installed: boolean, state: InstallProgress['state'], offer: ReturnType<typeof installPlan>|null}}
  */
-export function startInstallIfNeeded(workspace, options = {}) {
-  if (!workspace.root) return false;
-  const live = installProgress(workspace);
-  const record = readRecord(workspace);
-  const install = record?.install && typeof record.install === 'object' ? record.install : null;
-  if (live.state === 'installing' && installOwnerAlive(install?.owner_id)) return false;
-  if (live.state === 'failed') return false;
-  if (healthyResearchHelperRecord(record)) return false;
-  // A legacy or incomplete connected/installed record is intentionally ignored here
-  // and repaired by the normal install path. A failed current record remains opt in
-  // to avoid an automatic retry loop after a user has already seen the failure.
-  startInstall(workspace, options);
-  return true;
+export function researchHelperSummary(workspace) {
+  const progress = installProgress(workspace);
+  const installed = healthyResearchHelperRecord(readRecord(workspace));
+  const state = installed ? 'installed' : progress.state;
+  return { installed, state, offer: installed || state === 'installing' ? null : installPlan() };
 }
 
 /**
@@ -932,10 +945,16 @@ function updateProgress(job, patch) {
  * virtual environment at once. A process crash rolls the transaction back and
  * leaves the next process free to resume the persisted job.
  * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null} [job]
+ * @param {string} [environmentRoot] the environment being installed.
  * @returns {Promise<{close: () => void}>}
  */
-async function acquireInstallLease(job) {
-  const lockDir = join(globalConfigDir(), 'research-helper');
+async function acquireInstallLease(job, environmentRoot) {
+  // The lease lives beside the environment it guards when that is the plugin data
+  // folder, so nothing is left in the per machine folder by a new install.
+  const preferred = pluginDataEnvironmentRoot();
+  const lockDir = preferred && environmentRoot && resolve(environmentRoot) === preferred
+    ? dirname(preferred)
+    : join(globalConfigDir(), 'research-helper');
   const lockPath = join(lockDir, 'install.lock.db');
   mkdirSync(lockDir, { recursive: true });
   const started = Date.now();
@@ -985,7 +1004,7 @@ async function acquireInstallLease(job) {
  * @returns {Promise<InstallProgress>}
  */
 async function runInstall(job, options) {
-  const lease = await acquireInstallLease(job);
+  const lease = await acquireInstallLease(job, options.environmentRoot ?? managedEnvironmentRoot());
   try {
     return await runInstallWithLease(job, options);
   } finally {
@@ -1002,6 +1021,10 @@ async function runInstallWithLease(job, options) {
   const candidates = options.candidates ?? pythonCandidates();
   const environmentRoot = options.environmentRoot ?? managedEnvironmentRoot();
   const workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
+  // Every command run with the managed Python sees the same browsers folder, so
+  // the browser is downloaded to, and looked for in, one place.
+  const env = researchHelperChildEnv(environmentRoot);
+  const installOptions = { ...options, env };
 
   step(job, 'detecting');
   clearDetectCache();
@@ -1020,7 +1043,7 @@ async function runInstallWithLease(job, options) {
     recorded?.worker_path === workerPath
   ) {
     clearDetectCache();
-    const checked = await detect(recordedCommand);
+    const checked = await detect(recordedCommand, env);
     if (checked.python.found && checked.crawl4ai.compatible && checked.chromium.found) {
       python = recordedCommand;
       runtimeProbe = checked;
@@ -1034,7 +1057,7 @@ async function runInstallWithLease(job, options) {
   const managedPath = managedPythonPath(environmentRoot);
   if (!python && existsSync(managedPath)) {
     clearDetectCache();
-    const checked = await detect([[managedPath]]);
+    const checked = await detect([[managedPath]], env);
     if (checked.python.found && checked.crawl4ai.compatible && checked.chromium.found) {
       python = [managedPath];
       runtimeProbe = checked;
@@ -1046,25 +1069,10 @@ async function runInstallWithLease(job, options) {
   if (!python) {
     found = await detect(candidates);
     if (!found.python.found) {
+      // Python is system software with its own licence terms, so it is never
+      // installed on the person's behalf. They get the exact commands instead.
       step(job, 'python');
-      const manager = await packageManager();
-      if (!manager.found || !manager.command) {
-        return fail(job, noPackageManagerReason());
-      }
-      const installed = await runInstallCommand(manager.command, manager.args, STEP_TIMEOUT_MS.python, options);
-      if (!installed.ok) return fail(job, reasonFor('python', installed));
-      // A freshly installed Python is not on this process's PATH yet on Windows, where
-      // PATH is read at process start. Detection runs again so a `py -3` that now works
-      // is picked up; if it still is not visible, say so plainly rather than failing on
-      // the next step with something about pip.
-      clearDetectCache();
-      found = await detect(candidates);
-      if (!found.python.found) {
-        return fail(
-          job,
-          'Python was installed, but this session cannot see it yet. Close Claude, open it again, and choose Try again.',
-        );
-      }
+      return fail(job, noPythonReason());
     }
     basePython = /** @type {string[]} */ (found.python.command);
     updateProgress(job, { pythonVersion: found.python.version });
@@ -1072,7 +1080,8 @@ async function runInstallWithLease(job, options) {
 
   if (!python) {
     step(job, 'crawl4ai');
-    const created = await runInstallCommand(/** @type {string[]} */ (basePython), ['-m', 'venv', environmentRoot], STEP_TIMEOUT_MS.crawl4ai, options);
+    mkdirSync(dirname(environmentRoot), { recursive: true });
+    const created = await runInstallCommand(/** @type {string[]} */ (basePython), ['-m', 'venv', environmentRoot], STEP_TIMEOUT_MS.crawl4ai, installOptions);
     if (!created.ok) return fail(job, reasonFor('crawl4ai', created, 'managed environment'));
     python = Array.isArray(options.runtimeCommand) && options.runtimeCommand.length > 0
       ? [...options.runtimeCommand]
@@ -1080,16 +1089,16 @@ async function runInstallWithLease(job, options) {
     if (!options.runtimeCommand && !existsSync(managedPath)) {
       return fail(job, 'Python did not create the managed virtual environment. Remove its folder and try again.');
     }
-    const pipReady = await ensurePipReady(python, options);
+    const pipReady = await ensurePipReady(python, installOptions);
     if (!pipReady.ok) return fail(job, /** @type {string} */ (pipReady.reason));
     const installed = await runInstallCommand(
       python,
       ['-m', 'pip', 'install', `crawl4ai==${CRAWL4AI_VERSION}`],
       STEP_TIMEOUT_MS.crawl4ai,
-      options,
+      installOptions,
     );
     if (!installed.ok) return fail(job, reasonFor('crawl4ai', installed));
-    const after = await detectCrawl4ai(python);
+    const after = await detectCrawl4ai(python, env);
     if (!after.found || !after.compatible) {
       return fail(
         job,
@@ -1100,7 +1109,7 @@ async function runInstallWithLease(job, options) {
     }
     updateProgress(job, { crawl4aiVersion: after.version });
     clearDetectCache();
-    runtimeProbe = await detect([python]);
+    runtimeProbe = await detect([python], env);
   } else {
     updateProgress(job, { crawl4aiVersion: runtimeProbe?.crawl4ai.version ?? null });
   }
@@ -1112,10 +1121,10 @@ async function runInstallWithLease(job, options) {
 
   if (!runtimeProbe?.chromium.found) {
     step(job, 'browser');
-    const installed = await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, options);
+    const installed = await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
     if (!installed.ok) return fail(job, reasonFor('browser', installed));
     clearDetectCache();
-    runtimeProbe = await detect([python]);
+    runtimeProbe = await detect([python], env);
     if (!runtimeProbe.crawl4ai.compatible || !runtimeProbe.chromium.found) {
       return fail(job, 'The browser install finished, but the managed environment still cannot load the pinned page reader and Chromium. Try the install again.');
     }

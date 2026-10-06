@@ -12,7 +12,7 @@ import { defaultWorkspaceRoot } from '../lib/paths.mjs';
 import { PROBE_ONLY_PROVIDERS, RESOLVER_PROVIDER_KEY } from '../capabilities/registry.mjs';
 import { recordBoot } from '../workspace/version.mjs';
 import { listKnownWorkspaces, removeKnownWorkspace } from '../workspace/index.mjs';
-import { startInstallIfNeeded } from '../setup/research-helper.mjs';
+import { researchHelperSummary } from '../setup/research-helper.mjs';
 
 /**
  * The providers a user signs in to, read by the capability resolver. Social and ad
@@ -132,10 +132,10 @@ export const workspaceTools = [
       // A workspace created mid session has not been through boot, so stamp the
       // plugin version and open its boot log here.
       recordBoot(workspace);
-      // The research helper install is part of approving the workspace: it starts
-      // the moment the workspace exists. Idempotent, so calling this on an already set up workspace does
-      // nothing.
-      const researchHelperInstallStarted = startInstallIfNeeded(workspace);
+      // The research helper is optional software the person has to choose, so it is
+      // only reported here. When it is not installed, `offer` says what it is and how
+      // big, and setup asks before calling research_helper_install with confirm: true.
+      const researchHelper = researchHelperSummary(workspace);
       return {
         ok: true,
         workspaceRoot: result.root,
@@ -144,7 +144,7 @@ export const workspaceTools = [
         storageVersion: result.version,
         backupPath: result.backupPath,
         health: workspace.status(),
-        researchHelperInstallStarted,
+        researchHelper,
       };
     },
   }),

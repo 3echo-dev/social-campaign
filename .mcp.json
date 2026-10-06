@@ -6,7 +6,10 @@
       "args": [
         "--no-warnings=ExperimentalWarning",
         "${CLAUDE_PLUGIN_ROOT}/server/index.mjs"
-      ]
+      ],
+      "env": {
+        "SOCIAL_CAMPAIGN_DATA_DIR": "${CLAUDE_PLUGIN_DATA}"
+      }
     }
   }
 }
