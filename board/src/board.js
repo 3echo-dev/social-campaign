@@ -4600,6 +4600,20 @@ export async function createTransport(config = {}, host = globalThis) {
   const savedRequestIds = new Set();
   let signalState = { status: 'idle', message: 'Notify Claude when there is a saved board request to process.' };
   let forbiddenForVisit = false;
+  let viewerId;
+
+  // Who is making requests: the viewer's opaque id on this artifact from the user
+  // capability, asked once per visit. null when the page has no identity for them,
+  // and the request then carries no `by`.
+  async function requesterId() {
+    if (viewerId === undefined) {
+      try {
+        const user = await host.claude.use('user');
+        viewerId = typeof user?.id === 'function' ? (await user.id()) || null : null;
+      } catch { viewerId = null; }
+    }
+    return viewerId;
+  }
 
   async function readSnapshot() {
     const saved = await workspaceRef.get();
@@ -4753,6 +4767,7 @@ export async function createTransport(config = {}, host = globalThis) {
         return active.promise;
       }
       const work = (async () => {
+        const by = await requesterId();
         const request = {
           requestId,
           operation,
@@ -4761,6 +4776,7 @@ export async function createTransport(config = {}, host = globalThis) {
           source: 'artifact',
           createdAt: new Date().toISOString(),
           status: 'requested',
+          ...(by ? { by } : {}),
         };
         const ref = db.doc(`requests/${requestId}`);
         // Only resubmitting a request ID this transport already saved needs a

@@ -39,20 +39,23 @@ function deepFreeze(value) {
 
 /**
  * Capabilities requested when the host publishes the source file.
- * The socialCampaign projection and the per-job jobDocs documents are
- * owner-written only; requests and the single meta document stay
- * interact-writable so the board and its relay keep working for every
- * viewer who can interact.
+ * Every collection is owner-written only. board-sync applies a saved request
+ * as the owner's own approval (spend and publish included), so a person the
+ * board is shared with must not be able to queue one; the meta bell log and
+ * the per-job planNotes are owner-written for the same reason. `user` lets
+ * the page stamp each request with the viewer's opaque id (`by`).
  */
 export const ARTIFACT_CAPABILITIES = deepFreeze({
   db: {
     rules: [
       { path: 'socialCampaign', read: 'interact', write: 'owner' },
       { path: JOB_DOCUMENT_COLLECTION, read: 'interact', write: 'owner' },
-      { path: 'requests', read: 'interact', write: 'interact' },
-      { path: 'meta', read: 'interact', write: 'interact' },
+      { path: 'requests', read: 'interact', write: 'owner' },
+      { path: 'meta', read: 'interact', write: 'owner' },
+      { path: 'planNotes', read: 'interact', write: 'owner' },
     ],
   },
+  user: {},
   comments: {},
   // Transit-only: a writer-side upload of a downscaled logo (and its thumb) that
   // board-sync downloads to a local file and then deletes, so bytes never sit in

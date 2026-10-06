@@ -66,7 +66,8 @@ The board requires brand onboarding before the first job.
 If artifact publishing or database capabilities are unavailable, explain the unavailable host capability and stop the setup flow.
 
 The artifact contains a workspace metadata projection.
-Local paths, source file bytes, prompts, and credentials are not included by default.
+Each job's board document also carries that job's text files (trimmed), small image thumbnails, and the prompts used to make its pictures and clips.
+The workspace's folder path and credentials are not included.
 Any preview upload needs a deliberate selection of the intended output.
 Studio database sync stays `not_configured` until its authenticated API contract is implemented.
 The artifact database is a separate relay and must not be presented as the live Studio database.

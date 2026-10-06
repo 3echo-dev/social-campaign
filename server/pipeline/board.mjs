@@ -1319,7 +1319,12 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
   return next;
 }
 
-export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
+// The board stamps each request with the viewer's opaque artifact user id. It is optional (older pages send
+// none) and kept only when it is a short printable token; it records who clicked and authorizes nothing.
+const REQUESTER_ID = /^[\x21-\x7e]{1,200}$/;
+const requesterIdOf = by => (typeof by === 'string' && REQUESTER_ID.test(by) ? by : null);
+
+export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null }) {
   root = rootOf(root);
   if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
@@ -1334,7 +1339,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact' }) {
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
-  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString()};
+  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString(),...(requesterIdOf(by) ? {by:requesterIdOf(by)} : {})};
   const file = requestFile(root,requestId);
   try { writeFileSync(file,JSON.stringify(record,null,2),{flag:'wx'}); }
   catch(error) {
@@ -2499,7 +2504,7 @@ export function applyBoardDecision({root,requestId,confirmedBy,maxCredits}) {
   const appliedAt = new Date().toISOString();
   const status = result.status===0?'applied':'needs_reconciliation';
   const reopened = result.status===0 && args.reviewId===FINDINGS_GATE && args.decision!=='approve' ? reopenReport(root,validated.snapshot.brand.slug,args.jobId) : null;
-  const next = {...record,status,confirmedBy,actorUserId:null,ownershipStatus:'unbound',appliedAt,detail:result.error?.message || result.stderr || result.stdout,...(labelCheck?.required ? {labelCheck:{checkedAt:labelCheck.checkedAt,accepted:labelCheck.accepted}} : {}),...(reopened ? {reopened} : {}),artifactReceipt:artifactReceipt(record,{status,appliedAt})};
+  const next = {...record,status,confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt,detail:result.error?.message || result.stderr || result.stdout,...(labelCheck?.required ? {labelCheck:{checkedAt:labelCheck.checkedAt,accepted:labelCheck.accepted}} : {}),...(reopened ? {reopened} : {}),artifactReceipt:artifactReceipt(record,{status,appliedAt})};
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp,JSON.stringify(next,null,2));renameSync(temp,file);
   if(result.status!==0) throw new Error('The decision needs reconciliation. Inspect the request and local approval before retrying.');
@@ -2534,7 +2539,7 @@ function applySampleDecision({file,record,args,validated,confirmedBy}) {
   const summary = approve ? 'Sample approved' : `Changes asked on the sample${note ? `: ${note}` : ''}`;
   const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:SAMPLE_GATE},{gate:SAMPLE_GATE,decision:args.decision,note:summary},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
   appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
-  const next = {...record,status:'applied',confirmedBy,actorUserId:null,ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
+  const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
   writeJsonAtomic(file,next);
   return next;
 }
@@ -2576,7 +2581,7 @@ function applyPriceDecision({root,file,record,args,validated,confirmedBy}) {
   const summary = approve ? `Price approved: ${facts.priceWords(totals)}` : `Changes asked on the price${note ? `: ${note}` : ''}`;
   const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:PRICE_GATE},{gate:PRICE_GATE,decision:args.decision,totals,approval:saved.n,note:summary},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
   appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
-  const next = {...record,status:'applied',confirmedBy,actorUserId:null,ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
+  const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
   writeJsonAtomic(file,next);
   return next;
 }

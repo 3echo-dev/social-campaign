@@ -21,7 +21,7 @@ export const WORKSPACE_DOCUMENT = Object.freeze({ collection: 'socialCampaign', 
 export const REARM_AFTER_MS = 3 * 60 * 60 * 1000;
 
 /** The board source changes only when its source contract changes. */
-export const ARTIFACT_SOURCE_VERSION = 'social-campaign-board-v3';
+export const ARTIFACT_SOURCE_VERSION = 'social-campaign-board-v4';
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
 const requireScript = name => {

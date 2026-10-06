@@ -73,10 +73,10 @@ export const pipelineTools = [
     const projection = writeBoardDocuments({root,snapshot:boardSnapshot({root}),jobIds:[args.jobId]});
     return {...record,projectionFile:projection.projectionFile,documents:projection.documents,reviewCopies:reviewCopiesFor(root,record)};
   }),
-  tool('pipeline_board_request_land','Persist an artifact request for review by the local runner. This does not execute it or authenticate its author.',{operation:string,args:object,workspaceId:string},['operation','args','workspaceId'],(args,{workspace})=>{
+  tool('pipeline_board_request_land','Persist an artifact request for review by the local runner. This does not execute it or authenticate its author. Pass the request record\'s by field when it has one; it is kept as the actor on the saved request.',{operation:string,args:object,workspaceId:string,by:{...string,description:'Optional: the by field of the artifact request record, the opaque id of the viewer who made it.'}},['operation','args','workspaceId'],(args,{workspace})=>{
     const root = local(workspace);
     if(runtime.readWorkspace({root}).workspaceId!==args.workspaceId) throw new Error('The artifact request belongs to another workspace.');
-    return saveBoardRequest({root,operation:args.operation,args:args.args,source:'artifact'});
+    return saveBoardRequest({root,operation:args.operation,args:args.args,source:'artifact',by:args.by ?? null});
   }),
   tool('pipeline_decision_apply','Apply a saved gate decision or price approval from the board immediately, once server validation passes: the board click is the approval, so no chat confirmation prompt. Revalidates the job revision and exact file hashes, and fails a decision whose price or files changed since the click. A price approval is checked against the saved price itself. Does not claim Studio authentication.',{requestId:string,confirmedBy:string,maxCredits:{type:'integer',minimum:0,description:'Concept approvals only: the credits the board showed.'}},['requestId','confirmedBy'],(args,{workspace})=>applyBoardDecision({...args,root:local(workspace)})),
   tool('pipeline_migration_preview','Inventory brands and jobs from the earlier version\'s database and preview the local file migration. Does not migrate records.',{},[],(_,{workspace})=>migration.dryRunMigration({root:local(workspace)})),
