@@ -16,8 +16,8 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^mcp__.+__(create_image_job|create_video_job|creative_generate_speech|creative_transcribe_audio|creative_design_voice|creative_generate_image|creative_generate_video|creative_edit_image|creative_generate_in_flow|creative_run_flow_nodes)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"" }]
+        "matcher": "^mcp__(.*(3[Ee]cho|3ECHO|[Tt]hree_?[Ee]cho|THREE_?ECHO|[Ee]leven[_-]?[Ll]abs|ELEVEN[_-]?LABS).*__.+|.+__(create_image_job|create_video_job|creative_[a-z_]+|[a-z_]*studio[a-z_]*|list_workspaces|get_workspace_capabilities|get_upload_capabilities|estimate_image_job|estimate_video_job|wait_for_job|get_job|get_job_result|list_jobs|cancel_job|get_asset|list_assets|fetch_asset_bytes|upload_asset|update_asset_metadata|create_asset_upload_session|complete_asset_upload|import_asset_from_url|import_asset_from_file_reference|get_overlay_track|get_overlay_render|save_overlay_track|render_overlay_track|delete_overlay_track))$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"", "timeout": 20 }]
       },
       {
         "matcher": "^mcp__.+__(createScheduledPost|updateScheduledPost|createScheduledPostForReview|sendScheduledPostForReview)$",
@@ -25,7 +25,7 @@
       },
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"", "timeout": 20 }]
       },
       {
         "matcher": "^(Agent|Task)$",

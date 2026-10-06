@@ -1005,7 +1005,8 @@ export function spendDecision(job, toolName, toolInput) {
   const deny = reason => ({ allow: false, reason });
   if (ELEVEN_LABS_MEDIA.includes(base)) return deny(SPEND_DENY.elevenLabsMedia);
   const provider = providerOf(base);
-  if (!THREE_ECHO_SPENDERS.includes(base) && !VOICE_SPENDERS.includes(base)) return { allow: true, cost: 0 };
+  // Only the named spenders can be checked against a price, so nothing else is ever let through here.
+  if (!THREE_ECHO_SPENDERS.includes(base) && !VOICE_SPENDERS.includes(base)) return deny(SPEND_DENY.unsupported);
   const transcription = base === 'creative_transcribe_audio';
   if (transcription && isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
   const price = transcription ? currentTranscriptionApproval(job) : currentPriceApproval(job);

@@ -18,6 +18,43 @@ export const ELEVEN_LABS_MEDIA = Object.freeze([
 export const GUARDED_TOOLS = Object.freeze(new Set([...THREE_ECHO_SPENDERS, ...VOICE_SPENDERS, ...ELEVEN_LABS_MEDIA]));
 export const WRITE_TOOLS = Object.freeze(new Set(['Write', 'Edit', 'MultiEdit']));
 
+// Everything else on the 3Echo and ElevenLabs servers is refused inside a campaign workspace unless it is named here.
+// The lists are reviewed by hand against the connectors' own tool descriptions: a new tool on either server stays
+// refused until it is added. Reads, quotes and polling spend nothing and change nothing.
+export const READ_ONLY_TOOLS = Object.freeze(new Set([
+  // 3Echo jobs, assets and workspaces.
+  'list_workspaces', 'get_workspace_capabilities', 'get_upload_capabilities', 'estimate_image_job', 'estimate_video_job',
+  'wait_for_job', 'get_job', 'get_job_result', 'list_jobs', 'get_asset', 'list_assets', 'fetch_asset_bytes',
+  'get_overlay_track', 'get_overlay_render',
+  // 3Echo Studio reads and quotes.
+  'estimate_studio_take', 'estimate_studio_take_batch', 'estimate_studio_reference_bible', 'estimate_studio_flow_step',
+  'get_studio_flow', 'get_studio_creative_treatment_status', 'get_studio_fine_cut', 'get_studio_reference_bible_item',
+  'get_studio_release', 'get_studio_rough_cut', 'get_studio_sequence_readiness', 'get_studio_take_batch_run', 'get_studio_take_prompt',
+  'preview_studio_take_prompt', 'list_studio_productions', 'list_studio_sequences', 'list_studio_shots', 'list_studio_takes',
+  'list_studio_reference_bible_items', 'list_studio_fine_cuts', 'list_studio_releases',
+  // ElevenLabs reads.
+  'get_more_tools', 'creative_list_voices', 'creative_get_flow_run_status', 'creative_show_flow_results', 'creative_get_flow',
+  'creative_get_flow_node', 'creative_get_flow_node_types', 'creative_get_model_guide', 'creative_get_model_schema',
+  'creative_get_available_assets', 'creative_get_voice_design_previews', 'creative_get_brand_kit', 'creative_list_brand_kits',
+]));
+// Steps a job takes that change something but spend no credits: putting a file into 3Echo or onto an ElevenLabs flow
+// (publishing and transcription need them), and cancelling a 3Echo job.
+export const NO_SPEND_TOOLS = Object.freeze(new Set([
+  'create_asset_upload_session', 'complete_asset_upload', 'upload_asset', 'import_asset_from_url', 'import_asset_from_file_reference', 'cancel_job',
+  'creative_create_flow', 'creative_create_asset_upload', 'creative_finalize_asset_upload', 'creative_attach_reference_file',
+]));
+// 3Echo tools without "studio" in their name, so a connector listed under an opaque id (mcp__<uuid>__) is still known.
+const THREE_ECHO_NAMES = new Set([
+  ...THREE_ECHO_SPENDERS, 'list_workspaces', 'get_workspace_capabilities', 'get_upload_capabilities', 'estimate_image_job', 'estimate_video_job',
+  'wait_for_job', 'get_job', 'get_job_result', 'list_jobs', 'cancel_job', 'get_asset', 'list_assets', 'fetch_asset_bytes', 'upload_asset',
+  'update_asset_metadata', 'create_asset_upload_session', 'complete_asset_upload', 'import_asset_from_url', 'import_asset_from_file_reference',
+  'get_overlay_track', 'get_overlay_render', 'save_overlay_track', 'render_overlay_track', 'delete_overlay_track',
+]);
+// The server spellings are the ones the PreToolUse matcher in hooks/hooks.json reaches, so the two always agree.
+const OWN_SERVER = /^plugin_social-campaign_/;
+const THREE_ECHO_SERVER = /3[Ee]cho|3ECHO|[Tt]hree_?[Ee]cho|THREE_?ECHO/;
+const ELEVEN_LABS_SERVER = /[Ee]leven[_-]?[Ll]abs|ELEVEN[_-]?LABS/;
+
 export const NO_JOB_WARNING = "This paid call isn't linked to a Social Campaign job, so its cost isn't tracked.";
 export const NO_JOB_DENY = 'Paid images, video and voice are made inside a job. Start or resume the job on the board first.';
 export const FACT_FILE_DENY = 'These records are kept by Social Campaign itself and cannot be edited by hand.';
@@ -38,6 +75,7 @@ export const SPEND_DENY = Object.freeze({
   overBudget: 'This would go over the approved price for this job. Show the new price and get it approved first.',
   alreadyMade: 'This item has already been made. To make it again, ask for a redo on the board.',
   stillMaking: "This item is still being made. Check on it with wait_for_job instead of making it again.",
+  unsupported: "This 3Echo or ElevenLabs tool isn't covered by an approved price, so it isn't used for campaign jobs. Pictures and clips are made with create_image_job and create_video_job, and voice with creative_generate_speech.",
   unchecked: "The price check couldn't finish, so nothing was made. Try again in a moment.",
 });
 
@@ -62,6 +100,37 @@ export function toolBase(name) {
 }
 
 export const isGuardedTool = base => GUARDED_TOOLS.has(base);
+
+/** 'threeEcho' or 'elevenLabs' when the full MCP tool name belongs to one of those servers, else null. */
+export function spendServer(name) {
+  const value = String(name || '');
+  if (!value.startsWith('mcp__')) return null;
+  const at = value.lastIndexOf('__');
+  if (at <= 3) return null;
+  const server = value.slice(5, at);
+  const base = value.slice(at + 2);
+  if (OWN_SERVER.test(server)) return null;
+  if (THREE_ECHO_SERVER.test(server)) return 'threeEcho';
+  if (ELEVEN_LABS_SERVER.test(server)) return 'elevenLabs';
+  // A connector under an opaque id is known by its tool names alone.
+  if (THREE_ECHO_NAMES.has(base) || /(^|_)studio(_|$)/.test(base)) return 'threeEcho';
+  if (base.startsWith('creative_')) return 'elevenLabs';
+  return null;
+}
+
+/**
+ * How the spend guard treats a full tool name:
+ *   'guarded'      a paid call checked against the job's approved price (on any server, as before);
+ *   'free'         a reviewed read, quote, poll or upload on the 3Echo or ElevenLabs server, never checked;
+ *   'unsupported'  any other tool on those servers, refused inside a campaign workspace because no price covers it;
+ *   null           not the spend guard's business.
+ */
+export function spendClass(name) {
+  const base = toolBase(name);
+  if (GUARDED_TOOLS.has(base)) return 'guarded';
+  if (!spendServer(name)) return null;
+  return READ_ONLY_TOOLS.has(base) || NO_SPEND_TOOLS.has(base) ? 'free' : 'unsupported';
+}
 
 /** True when the call is a plain estimate that the tool itself answers without spending. */
 export const honoursEstimateOnly = (base, input) => asObject(input).estimate_only === true && VOICE_ESTIMABLE.includes(base);
