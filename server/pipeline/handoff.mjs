@@ -340,12 +340,21 @@ function walkFiles(base, dir = base, out = []) {
   return out;
 }
 
-function run(binary, args) {
-  return spawnSync(binary, args, { encoding: 'utf8', windowsHide: true });
+// spawnSync holds the whole server while it waits, so every call has a limit. A later async
+// runProcess should replace these; until then the limits match the other ffmpeg calls.
+const STEP_TIMEOUT_MS = 60 * 1000;
+const TRANSCODE_TIMEOUT_MS = 300 * 1000;
+
+const spoken = ms => (ms >= 120000 ? `${Math.round(ms / 60000)} minutes` : `${Math.round(ms / 1000)} seconds`);
+
+export function run(binary, args, { what = `The ${binary} program`, timeoutMs = STEP_TIMEOUT_MS, fix = 'Try again. If it keeps happening, close other heavy programs first.' } = {}) {
+  const done = spawnSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout: timeoutMs });
+  if (done.error?.code === 'ETIMEDOUT') throw new UserFacingError(`${what} took longer than ${spoken(timeoutMs)} and was stopped, so this step did not finish.`, { code: 'process_timed_out', fix });
+  return done;
 }
 
 function probeSeconds(file) {
-  const done = run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
+  const done = run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { what: 'Reading the length of a clip' });
   const value = Number(String(done.stdout || '').trim());
   return done.status === 0 && Number.isFinite(value) && value > 0 ? value : null;
 }
@@ -354,10 +363,10 @@ function findPython() {
   const names = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python'];
   let anyPython = false;
   for (const name of names) {
-    const probe = run(name, ['-c', 'import sys; print(1)']);
+    const probe = run(name, ['-c', 'import sys; print(1)'], { what: 'Checking for Python' });
     if (probe.status !== 0) continue;
     anyPython = true;
-    if (run(name, ['-c', 'import openpyxl']).status === 0) return { name, anyPython };
+    if (run(name, ['-c', 'import openpyxl'], { what: 'Checking for the Python package openpyxl' }).status === 0) return { name, anyPython };
   }
   return { name: null, anyPython };
 }
@@ -428,7 +437,7 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
     let pictureName = picture ? `${id}${extname(picture).toLowerCase()}` : `${id}.png`;
     if (picture) copyFileSync(picture, join(frames, pictureName));
     else {
-      const frame = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', (seconds / 2).toFixed(2), '-i', clip.file, '-frames:v', '1', join(frames, pictureName)]);
+      const frame = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', (seconds / 2).toFixed(2), '-i', clip.file, '-frames:v', '1', join(frames, pictureName)], { what: 'Making a picture for one scene' });
       if (frame.status !== 0) throw new UserFacingError('I could not make a picture for one scene, so I cannot send this video yet.');
     }
     const caption = firstSentence(clip.prompt) || `Scene ${n}`;
@@ -452,7 +461,7 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
 
   const input = join(tmpdir(), `social-campaign-breakdown-${process.pid}-${Date.now()}.json`);
   writeFileSync(input, JSON.stringify({ rows }));
-  const made_xlsx = run(python.name, ['-c', BREAKDOWN_SCRIPT, input, join(release, 'concept-breakdown.xlsx')]);
+  const made_xlsx = run(python.name, ['-c', BREAKDOWN_SCRIPT, input, join(release, 'concept-breakdown.xlsx')], { what: 'Writing the concept breakdown spreadsheet' });
   rmSync(input, { force: true });
   if (made_xlsx.status !== 0) throw new UserFacingError(EXCEL_REFUSAL, { fix: 'Install the Python package openpyxl, then try again.' });
 
@@ -563,7 +572,7 @@ export function returnHandoff({ root, brand, jobId, filePath = null } = {}) {
   if (!source || !fileSize(source) || !VIDEO_FILE.test(source)) {
     throw new UserFacingError('I cannot find the final video yet. Export it in Post-production, or tell me where it is.');
   }
-  const looksVideo = run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', source]);
+  const looksVideo = run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', source], { what: 'Checking the final video' });
   if (looksVideo.status === 0 && !/video/.test(looksVideo.stdout || '')) throw new UserFacingError('That file is not a video, so I did not bring it in.');
 
   const deliverable = record.deliverable || 'D1';
@@ -574,7 +583,10 @@ export function returnHandoff({ root, brand, jobId, filePath = null } = {}) {
   try {
     if (/\.(mp4|m4v)$/i.test(source)) copyFileSync(source, part);
     else {
-      const converted = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', source, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', part]);
+      const converted = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', source, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', part], {
+        what: 'Converting the final video to MP4', timeoutMs: TRANSCODE_TIMEOUT_MS,
+        fix: 'Export the video as MP4 in Post-production, or tell me where an MP4 copy is, and try again.',
+      });
       if (converted.status !== 0) throw new UserFacingError('I could not read that video, so I did not bring it in.');
     }
     const before = join(folder, 'final-before-post.mp4');

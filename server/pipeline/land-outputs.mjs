@@ -101,13 +101,18 @@ function manifestFileFor(job, parsed) {
 
 const IMAGE_FORMATS = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const sameFormat = (a, b) => a === b || (['jpg', 'jpeg'].includes(a) && ['jpg', 'jpeg'].includes(b));
-const hasFfmpeg = () => spawnSync('ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true }).status === 0;
+// Both run with spawnSync, which holds whichever process lands the file, so both have a limit.
+const FFMPEG_CHECK_TIMEOUT_MS = 20 * 1000;
+const CONVERT_TIMEOUT_MS = 60 * 1000;
+const hasFfmpeg = () => spawnSync('ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true, timeout: FFMPEG_CHECK_TIMEOUT_MS }).status === 0;
 
 function convertToTemp(job, dir, item, source, targetExt) {
   const temp = join(dir, `${item}.${randomUUID()}.part.${targetExt}`);
-  const done = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', join(job.dir, ...source.split('/')), '-frames:v', '1', temp], { stdio: 'ignore', windowsHide: true });
+  const done = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', join(job.dir, ...source.split('/')), '-frames:v', '1', temp], { stdio: 'ignore', windowsHide: true, timeout: CONVERT_TIMEOUT_MS });
   if (done.status === 0 && existsSync(temp)) return temp;
   rmSync(temp, { force: true });
+  // A stuck conversion is a failure to record and retry on the next landing pass, not a quiet fallback.
+  if (done.error?.code === 'ETIMEDOUT') throw new Error(`Converting the picture to ${targetExt} took longer than ${CONVERT_TIMEOUT_MS / 1000} seconds and was stopped.`);
   return null;
 }
 
