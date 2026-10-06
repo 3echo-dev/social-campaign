@@ -25,6 +25,7 @@ import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { currentArtifact } from '../artifacts/refs.mjs';
 import { registerFile } from '../media/ingest.mjs';
 import { buildEstimate } from '../generation/estimate.mjs';
+import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import {
   attachDerivedAsset,
   beginItem,
@@ -283,8 +284,13 @@ function readSubtitlePackage(db, campaignId, assetId) {
   return json && String(/** @type {any} */ (json).asset_id) === assetId ? json : null;
 }
 
+/** Longest wait for one generated file, the same as the generation lander. */
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
 /**
  * Download a generated file the provider handed back as a url.
+ * Goes through boundedFetch, so the address and every redirect is checked against the
+ * private network policy, the wait is capped and so is the size.
  * @param {string} url
  * @param {string} folder
  * @param {string} nameHint
@@ -293,11 +299,24 @@ function readSubtitlePackage(db, campaignId, assetId) {
 async function downloadTo(url, folder, nameHint) {
   let response;
   try {
-    response = await fetch(url);
-  } catch {
-    throw new UserFacingError('That generated file could not be downloaded.', {
-      code: 'download_failed',
-      fix: 'Try the download again, or ask for the file to be made again.',
+    response = await boundedFetch(url, { raw: true, timeoutMs: DOWNLOAD_TIMEOUT_MS, maxBytes: GENERATED_MEDIA_MAX_BYTES, headers: { Accept: '*/*' } });
+  } catch (error) {
+    const code = error instanceof FetchFailure ? error.code : 'network';
+    if (code === 'private_address' || code === 'invalid_url') {
+      throw new UserFacingError('That url is not a public web address, so the generated file was not downloaded from it.', {
+        code: 'download_refused',
+        fix: 'Use the download link the provider returned, or save the file and pass its path instead.',
+      });
+    }
+    throw new UserFacingError(
+      code === 'timed_out' ? 'That generated file took too long to download.' : 'That generated file could not be downloaded.',
+      { code: 'download_failed', fix: 'Try the download again, or ask for the file to be made again.' },
+    );
+  }
+  if (response.truncated) {
+    throw new UserFacingError(`That generated file is larger than ${Math.round(GENERATED_MEDIA_MAX_BYTES / 1024 / 1024)} MB, so it was not downloaded.`, {
+      code: 'download_too_large',
+      fix: 'Save the file on this computer and pass its path instead.',
     });
   }
   if (!response.ok) {
@@ -307,10 +326,10 @@ async function downloadTo(url, folder, nameHint) {
     });
   }
   const fromUrl = extname(new URL(url).pathname);
-  const extension = fromUrl && fromUrl.length <= 5 ? fromUrl : extensionForType(response.headers.get('content-type'));
+  const extension = fromUrl && fromUrl.length <= 5 ? fromUrl : extensionForType(response.content_type);
   mkdirSync(folder, { recursive: true });
   const target = join(folder, `${nameHint}${extension}`);
-  writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+  writeFileSync(target, response.buffer);
   return target;
 }
 

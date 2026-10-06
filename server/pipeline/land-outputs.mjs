@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import { ELEVEN_LABS, appendLanded, finishMediaIfLanded, isFetchableUrl, isLanded, jobAt, parseJobKey, readLanded, readRecords, THREE_ECHO } from './facts.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -284,10 +285,13 @@ async function download(url, { attempts, backoffMs }) {
   let last = { ok: false, reason: 'download_failed', status: null };
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+      // boundedFetch follows redirects by hand and checks every hop, and its resolved
+      // address, against the private network policy; the body is capped in size.
+      const response = await boundedFetch(url, { raw: true, timeoutMs: DOWNLOAD_TIMEOUT_MS, maxBytes: GENERATED_MEDIA_MAX_BYTES, headers: { Accept: '*/*' } });
+      if (response.truncated) return { ok: false, reason: 'download_failed', status: response.status };
       if (response.ok) {
-        const contentType = response.headers.get('content-type') || '';
-        const bytes = Buffer.from(await response.arrayBuffer());
+        const contentType = response.content_type;
+        const bytes = response.buffer;
         if (bytes.length && !/^text\/html/i.test(contentType)) return { ok: true, bytes, contentType };
         last = { ok: false, reason: 'download_failed', status: response.status };
       } else if (EXPIRED_STATUSES.has(response.status)) {
@@ -295,8 +299,9 @@ async function download(url, { attempts, backoffMs }) {
       } else {
         last = { ok: false, reason: 'download_failed', status: response.status };
       }
-    } catch {
+    } catch (error) {
       last = { ok: false, reason: 'download_failed', status: null };
+      if (error instanceof FetchFailure && error.code !== 'timed_out' && error.code !== 'network') return last;
     }
     if (attempt < attempts) await pause(backoffMs * attempt);
   }

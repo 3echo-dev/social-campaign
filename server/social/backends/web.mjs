@@ -13,7 +13,7 @@
  */
 
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { BlockList, isIP } from 'node:net';
 
 import { envelope, pageRecord, parseHttpUrl } from '../records.mjs';
 import { pagePlan } from '../plans.mjs';
@@ -23,6 +23,9 @@ export const FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Longest wait for one response, from the prototype. */
 export const FETCH_TIMEOUT_MS = 15_000;
+
+/** Largest generated image, video or voice file downloaded from a provider link. */
+export const GENERATED_MEDIA_MAX_BYTES = 500 * 1024 * 1024;
 
 /** A current desktop browser. Sites serve their normal page to it. */
 export const BROWSER_USER_AGENT =
@@ -49,23 +52,73 @@ export class FetchFailure extends Error {
   }
 }
 
+/** IPv4 ranges that are not the public internet: this computer, local networks, cloud metadata, benchmarking, multicast and reserved. */
+const PRIVATE_V4 = new BlockList();
+for (const [network, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3],
+]) PRIVATE_V4.addSubnet(network, prefix, 'ipv4');
+
+/** IPv6 ranges that are never a public web server: unspecified, loopback, local-use NAT64, unique local, link-local, site-local and multicast. */
+const PRIVATE_V6 = new BlockList();
+for (const [network, prefix] of [
+  ['::', 128], ['::1', 128], ['64:ff9b:1::', 48], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8],
+]) PRIVATE_V6.addSubnet(network, prefix, 'ipv6');
+
 /**
+ * The 16 bytes of a valid IPv6 address, any spelling: compressed, dotted IPv4 tail, zone id.
+ * @param {string} value already accepted by isIP as version 6.
+ * @returns {number[]}
+ */
+function ipv6Bytes(value) {
+  let text = value.split('%')[0];
+  const dotted = text.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(1).map(Number);
+    text = `${text.slice(0, -dotted[0].length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, tail] = text.includes('::') ? text.split('::') : [text, null];
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = [...left, ...Array(tail === null ? 0 : 8 - left.length - right.length).fill('0'), ...right];
+  return groups.flatMap((group) => {
+    const word = Number.parseInt(group, 16);
+    return [word >> 8, word & 0xff];
+  });
+}
+
+/**
+ * The IPv4 address an IPv6 address carries and would reach: IPv4-mapped (::ffff:0:0/96),
+ * IPv4-translated (::ffff:0:0:0/96), IPv4-compatible (::/96), NAT64 (64:ff9b::/96) and 6to4 (2002::/16).
+ * @param {number[]} bytes
+ * @returns {string|null}
+ */
+function embeddedIpv4(bytes) {
+  const zero = (from, to) => bytes.slice(from, to).every((byte) => byte === 0);
+  const quad = (from) => bytes.slice(from, from + 4).join('.');
+  if (zero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) return quad(12);
+  if (zero(0, 8) && bytes[8] === 0xff && bytes[9] === 0xff && zero(10, 12)) return quad(12);
+  if (zero(0, 12)) return quad(12);
+  if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b && zero(4, 12)) return quad(12);
+  if (bytes[0] === 0x20 && bytes[1] === 0x02) return quad(2);
+  return null;
+}
+
+/**
+ * Whether an address or host name is on this computer or a private network.
+ * IPv6 is read as bytes, so the hex form Node's URL parser gives a mapped address
+ * ([::ffff:7f00:1] for 127.0.0.1) is caught as well as the dotted one.
  * @param {string} address
  * @returns {boolean}
  */
 export function isPrivateAddress(address) {
   const value = address.replace(/^\[|\]$/g, '').toLowerCase();
-  if (isIP(value) === 4) {
-    const [a, b] = value.split('.').map(Number);
-    return (
-      a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224
-    );
-  }
+  if (isIP(value) === 4) return PRIVATE_V4.check(value, 'ipv4');
   if (isIP(value) === 6) {
-    if (value === '::1' || value === '::') return true;
-    if (value.startsWith('::ffff:')) return isPrivateAddress(value.slice(7));
-    return /^(fc|fd|fe8|fe9|fea|feb)/.test(value);
+    const bare = value.split('%')[0];
+    if (PRIVATE_V6.check(bare, 'ipv6')) return true;
+    const embedded = embeddedIpv4(ipv6Bytes(bare));
+    return embedded !== null && PRIVATE_V4.check(embedded, 'ipv4');
   }
   return value === 'localhost' || value.endsWith('.localhost') || value.endsWith('.local') || value.endsWith('.internal');
 }

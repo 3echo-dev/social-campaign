@@ -825,7 +825,10 @@ export function isFetchableUrl(value) {
   try {
     const url = new URL(String(value));
     if (url.protocol === 'https:') return true;
-    return url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+    // Plain http to this computer is only for the offline tests' local file server, behind the
+    // same switch the page reader uses. Provider media links are always https.
+    return url.protocol === 'http:' && process.env.SOCIAL_CAMPAIGN_ALLOW_PRIVATE_FETCH === '1' &&
+      ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
   } catch {
     return false;
   }
