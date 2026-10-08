@@ -1291,3 +1291,9 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .project-card.is-waiting{border-color:var(--tape);box-shadow:0 0 0 1px rgba(245,200,75,.35),0 14px 32px -20px rgba(245,200,75,.6),inset 0 -1px 1px rgb(255 255 255/.05)}
 .project-card.is-waiting .pc-body>.pill{color:var(--tape-ink);background:var(--tape);border-color:var(--tape)}
 @media (hover:hover) and (pointer:fine){.project-card.is-waiting:hover{box-shadow:0 0 0 1px rgba(245,200,75,.5),0 18px 36px -20px rgba(245,200,75,.75),inset 0 -1px 1px rgb(255 255 255/.05)}}
+.ref-form{display:flex;flex-direction:column;gap:10px;max-width:520px}
+.ref-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+.ref-form textarea,.ref-form input:not([type=file]),.ref-form select{font:inherit;color:inherit}
+.ref-file{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ref-file .kit-file-button{display:inline-flex;flex-direction:row}
+.ref-actions{display:flex;gap:8px}

@@ -23,6 +23,7 @@ import { join, extname } from 'node:path';
 import { runYtDlp, mapYtDlpError, parseInfo } from '../social/backends/ytdlp.mjs';
 import { assertPublicHost, FetchFailure } from '../social/backends/web.mjs';
 import { isUrl, platformOf } from '../video/watch-source.mjs';
+import { updateReferenceManifest } from './references.mjs';
 import { managedEnvironmentRoot } from '../setup/research-helper-record.mjs';
 
 export const REFERENCE_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
@@ -190,9 +191,11 @@ export async function referenceFromUrl(options) {
     usedCookies: Boolean(cookies),
     downloadedAt: (options.now ?? (() => new Date()))().toISOString(),
   };
-  manifest.entries = manifest.entries.filter((e) => !(e.id === id && e.type === type));
-  manifest.entries.push(entry);
-  mkdirSync(refsDir, { recursive: true });
-  writeJson(manifestPath, manifest);
+  // Re-read under the lock, so an upload saved from the board while this was downloading is kept.
+  updateReferenceManifest(options.jobDir, (latest) => ({
+    ...latest,
+    schemaVersion: latest.schemaVersion || 1,
+    entries: [...latest.entries.filter((e) => !(e.id === id && e.type === type)), entry],
+  }));
   return { ok: true, status: 'downloaded', entry, reminder: 'Reference only: learn from it and describe it; never repost or reuse it as the finished post.' };
 }

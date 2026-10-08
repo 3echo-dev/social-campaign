@@ -35,3 +35,5 @@ For a redo, rewrite only the one prompt you are given, and leave every other ite
 Never spend credits, quote a price, call a provider tool, apply an approval, or spawn another agent.
 
 Return the paths you wrote, what you planned, which item is the sample, and any open question, in plain words.
+
+Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.

@@ -108,3 +108,5 @@ Use these exact calls and nothing else for this job.
 - Review copies: `pipeline_review_copies_prepare {brand, jobId}`, upload each `toUpload[].path`, and only when the upload was not matched, `pipeline_review_copies_record {brand, jobId, items:[{path, assetId, url}]}`, one item per copy.
 
 Return a short summary with the job ID, active stage, artifacts written, reused artifacts, blockers, and next action.
+
+Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.

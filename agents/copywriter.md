@@ -53,3 +53,5 @@ Write one caption per platform, in the brand's voice, from what the files visibl
 Add no claim the brand profile does not already support: no numbers, prices, offers, results, superlatives, names or places that are not in the profile or on screen.
 Write hashtags between the platform's recommended minimum and maximum, or `None`, and one CTA line or `None`.
 There is no editor pass: the person checks the caption at the final approval and changes it with Ask for changes.
+
+Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.

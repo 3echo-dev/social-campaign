@@ -105,6 +105,13 @@ If `action` is `upload` instead (the pre-assets fallback, `dataBase64`), decode 
 Once the tool call succeeds, delete the transit copy from the artifact's asset store the same way as the logo's, with `path` set to `assetId`, when one was used.
 The photo lives only under that brand's own `inputs/<brand>/`, recorded on the job as `productAsset`, and nowhere else.
 
+A reference the person added on the job page (`add_reference`, `args.reference`) travels the same way: a picture, video, audio file or add-on arrives as `action` `asset` (an `assetId` in the artifact's asset store), `upload` (`dataBase64`, only for small files) or `text` (the caption or notes text itself, nothing to download).
+For `asset`, call the Artifact tool's `read` action with `path` set to `args.reference.assetId` to save it to a local file, and pass `reference.path` as that saved path (dropping `assetId`) to `pipeline_board_request_land`.
+For `upload`, decode those bytes to a local file yourself first; never type or re-key them.
+Then apply with `pipeline_board_request_apply` like any other request, delete the transit copy from the artifact's asset store the same way as the logo's, and publish the workspace projection.
+The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
+If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
+
 ## Reading a comment from the board
 
 Every comment the board sends to Claude is one plain sentence for a person to read, for example 'New job for SK-II: "facial cream fb story".' or 'Please check the board for my latest updates.': it never carries a request id, an operation name, or a workspace id.
