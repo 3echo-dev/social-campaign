@@ -3935,7 +3935,7 @@ const decided=panelVerdicts(boards,panelStates(boards,panels));
 if(verdict==='approve'&&decided.some(entry=>entry.verdict!=='approve'))return{error:'A change is asked on a panel, so send the changes instead.'};
 if(verdict==='request_changes'&&!note&&!decided.some(entry=>entry.verdict==='changes'))return{error:'Say what should change.'};
 if(decided.length)args.panels=decided;
-if(note)args.note=note;
+if(note&&verdict==='request_changes')args.note=note;
 return{args};
 }
 if(MEDIA_GATE_IDS.has(gate)){
@@ -3947,7 +3947,7 @@ return{panel:trimmed(panel.panel),...(trimmed(panel.deliverable)?{deliverable:tr
 if(verdict==='approve'&&decided.some(entry=>entry.verdict!=='approve'))return{error:'A change is asked on one, so send the changes instead.'};
 if(verdict==='request_changes'&&!note&&!decided.some(entry=>entry.verdict==='changes'))return{error:'Say what should change.'};
 if(decided.length)args.panels=decided;
-if(note)args.note=note;
+if(note&&verdict==='request_changes')args.note=note;
 return{args};
 }
 if(verdict==='request_changes'&&!note)return{error:'Say what should change.'};
@@ -3967,7 +3967,7 @@ if(pending.some(([id])=>!recipeReady(recipeState,id)))return{error:'Choose the c
 if(pending.length)args.recipe=Object.fromEntries(pending.map(([id])=>[id,recipePicks(recipeState,id)]));
 args.chosen=concept.id;
 args.credits=conceptCredits(concepts,concept);
-args.note=note||`Concept ${concept.id}: ${concept.title}`;
+args.note=`Concept ${concept.id}: ${concept.title}`;
 }else{
 if(concept)args.chosen=concept.id;
 args.note=concept?`Concept ${concept.id}: ${note}`:note;
@@ -3979,7 +3979,7 @@ const totals=priceTotals(doc?.review?.quote);
 if(!totals)return{error:'Every item needs a price before this can be approved.'};
 args.totals=totals;
 }
-if(note)args.note=note;
+if(note&&verdict==='request_changes')args.note=note;
 return{args};
 }
 function waitingNote(status){
@@ -3999,6 +3999,24 @@ if(bare(sentFiles)||bare(shownFiles))return sentFiles.map(file=>file?.path).sort
 return key(sentFiles)===key(shownFiles);
 }
 return args.revision===project.revision;
+}
+export function reviewDraftKey(project){
+const review=pendingReview(project);
+if(!review)return'';
+const files=(Array.isArray(review.artifacts)?review.artifacts:[]).map(file=>`${file?.path||''}|${file?.sha256||''}`).sort().join(',');
+return`${project.jobId}|${review.reviewId||review.gate||''}|${files||`rev${project.revision}`}`;
+}
+export function clearReviewDrafts(state){
+if(!state)return state;
+Object.assign(state,{comment:'',commentOpen:false,panelDraft:'',mediaDraft:'',panelEditing:null,mediaEditing:null,panelError:'',mediaError:''});
+return state;
+}
+export function scopeReviewState(state,project){
+const key=reviewDraftKey(project);
+if(!key)return state;
+if(state.draftKey===key)return state;
+if(!state.draftKey){state.draftKey=key;return state;}
+return{choice:null,comment:'',commentOpen:false,panelDraft:'',draftKey:key};
 }
 export function sentDecisionState(project,state){
 if(!state||!(state.busy||state.submitted||state.needsReconciliation)||!state.args)return state||{};
@@ -5791,7 +5809,7 @@ if(ui.revision!==project.revision){
 ui.revision=project.revision;
 ui.intake={values:ui.intake.values||{}};
 if(!(ui.review.submitted&&ui.review.requestId&&ui.review.args)){
-ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||''};
+ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||'',draftKey:ui.review.draftKey};
 stopJobRequestWatch(project.jobId+':review');
 }
 ui.recipe={};
@@ -5802,9 +5820,10 @@ stopJobRequestWatch(project.jobId+':workspace');
 }
 if(ui.review.requestId&&ui.review.args&&pendingReview(project)&&!decisionMatchesReview(project,ui.review.args)){
 forgetSentDecision(project.jobId);
-ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||''};
+ui.review={choice:null,comment:'',commentOpen:false,panelDraft:''};
 stopJobRequestWatch(project.jobId+':review');
 }
+ui.review=scopeReviewState(ui.review,project);
 return ui;
 }
 function docFor(project){
@@ -7160,6 +7179,7 @@ render();
 try{
 const result=await transport.call('submit_decision',args);
 Object.assign(state,{busy:false,submitted:true,submittedAt:state.submittedAt||Date.now(),message:result?.message||'',signal:result?.signal||null});
+clearReviewDrafts(state);
 scheduleReminderWake(state);
 if(artifactMode()){rememberSentDecision(project.jobId,state.requestId);watchJobRequest(project.jobId,'review',state);}
 render();

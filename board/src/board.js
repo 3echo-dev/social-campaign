@@ -3444,7 +3444,7 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on a panel, so send the changes instead.' };
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
     if (decided.length) args.panels = decided;
-    if (note) args.note = note;
+    if (note && verdict === 'request_changes') args.note = note;
     return { args };
   }
   if (MEDIA_GATE_IDS.has(gate)) {
@@ -3456,7 +3456,7 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on one, so send the changes instead.' };
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
     if (decided.length) args.panels = decided;
-    if (note) args.note = note;
+    if (note && verdict === 'request_changes') args.note = note;
     return { args };
   }
   if (verdict === 'request_changes' && !note) return { error: 'Say what should change.' };
@@ -3476,7 +3476,7 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
       if (pending.length) args.recipe = Object.fromEntries(pending.map(([id]) => [id, recipePicks(recipeState, id)]));
       args.chosen = concept.id;
       args.credits = conceptCredits(concepts, concept);
-      args.note = note || `Concept ${concept.id}: ${concept.title}`;
+      args.note = `Concept ${concept.id}: ${concept.title}`;
     } else {
       if (concept) args.chosen = concept.id;
       args.note = concept ? `Concept ${concept.id}: ${note}` : note;
@@ -3488,7 +3488,8 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (!totals) return { error: 'Every item needs a price before this can be approved.' };
     args.totals = totals;
   }
-  if (note) args.note = note;
+  // Approving sends no note: the box says "What should change?", so a note there belongs to a request for changes only.
+  if (note && verdict === 'request_changes') args.note = note;
   return { args };
 }
 
@@ -3519,6 +3520,36 @@ export function decisionMatchesReview(project, args) {
     return key(sentFiles) === key(shownFiles);
   }
   return args.revision === project.revision;
+}
+
+/**
+ * What a typed note belongs to: the job, the review id and the exact files shown (path and checksum; the revision when the
+ * review lists no files). A note typed on one review is never shown on, or sent with, another.
+ */
+export function reviewDraftKey(project) {
+  const review = pendingReview(project);
+  if (!review) return '';
+  const files = (Array.isArray(review.artifacts) ? review.artifacts : []).map(file => `${file?.path || ''}|${file?.sha256 || ''}`).sort().join(',');
+  return `${project.jobId}|${review.reviewId || review.gate || ''}|${files || `rev${project.revision}`}`;
+}
+
+/** Forget every note typed on a review: the box, the per-panel boxes and the per-card boxes. Not the saved panel verdicts. */
+export function clearReviewDrafts(state) {
+  if (!state) return state;
+  Object.assign(state, { comment: '', commentOpen: false, panelDraft: '', mediaDraft: '', panelEditing: null, mediaEditing: null, panelError: '', mediaError: '' });
+  return state;
+}
+
+/**
+ * The review state for the review shown now. When the review is a different one from the state's own, nothing carries over:
+ * no note, no panel verdict, no choice. Returns the state to keep using.
+ */
+export function scopeReviewState(state, project) {
+  const key = reviewDraftKey(project);
+  if (!key) return state;
+  if (state.draftKey === key) return state;
+  if (!state.draftKey) { state.draftKey = key; return state; }
+  return { choice: null, comment: '', commentOpen: false, panelDraft: '', draftKey: key };
 }
 
 /**
@@ -5585,7 +5616,7 @@ if (typeof document !== 'undefined') {
       // A decision already sent stays sent (with its receipt watch) across the new revision; it lets go below, once the review
       // shown is a different one, or when its receipt ends.
       if (!(ui.review.submitted && ui.review.requestId && ui.review.args)) {
-        ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '' };
+        ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '', draftKey: ui.review.draftKey };
         stopJobRequestWatch(project.jobId + ':review');
       }
       ui.recipe = {};
@@ -5598,9 +5629,11 @@ if (typeof document !== 'undefined') {
     }
     if (ui.review.requestId && ui.review.args && pendingReview(project) && !decisionMatchesReview(project, ui.review.args)) {
       forgetSentDecision(project.jobId);
-      ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '' };
+      ui.review = { choice: null, comment: '', commentOpen: false, panelDraft: '' };
       stopJobRequestWatch(project.jobId + ':review');
     }
+    // A note typed on one review never follows the person to another.
+    ui.review = scopeReviewState(ui.review, project);
     return ui;
   }
   function docFor(project) {
@@ -7047,6 +7080,8 @@ if (typeof document !== 'undefined') {
     try {
       const result = await transport.call('submit_decision', args);
       Object.assign(state, { busy: false, submitted: true, submittedAt: state.submittedAt || Date.now(), message: result?.message || '', signal: result?.signal || null });
+      // The request is written: the note went with it, so the box starts empty for whatever review comes next.
+      clearReviewDrafts(state);
       scheduleReminderWake(state);
       if (artifactMode()) { rememberSentDecision(project.jobId, state.requestId); watchJobRequest(project.jobId, 'review', state); }
       render();
