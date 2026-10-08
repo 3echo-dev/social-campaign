@@ -261,6 +261,13 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
+## Never read or edit the plugin's own files
+
+The Director never opens, searches or edits the plugin's scripts, schemas, manifests or hooks to work out a format, a flag or a fix (finish-video.py, stitch-clips.py, social-check.py, the schemas, generation-manifest.json).
+Every format and flag the Director needs is written in the skills and agent files, and `pipeline/skills/make-video/SKILL.md` lists the finishing and re-cut ones.
+When something in a video needs fixing (a re-cut, a trim, a text box, a manifest change), hand the producer one plain instruction, for example "re-cut the Reel so Coach's last word is heard, same length, no new spend", and let the producer or videographer do it and report back.
+Do not read the output to diagnose it yourself; if the producer's answer is not enough, ask the producer again.
+
 ## Stuck jobs
 
 Before asking the person anything in the chat, put the same question on the Director card first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.
