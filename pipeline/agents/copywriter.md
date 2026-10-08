@@ -86,6 +86,8 @@ Caption, hook and CTA (via their skills); hashtags, accessibility text, media sp
 
 ## Rules
 
+0. Notes for the editor never assert the state of video QA or any other check ("still incomplete", "passed"); they point to `validation/video-qa.md` and `validation/platform-check.json`. The producer starts the copywriter after render QA has a result, so the accessibility text can follow the QA transcript.
+
 The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply. Craft rules live in `write-caption`, `write-hook` and `write-cta`.
 
 1. Each platform is a separate skill pass; never paste one platform's caption into another.
