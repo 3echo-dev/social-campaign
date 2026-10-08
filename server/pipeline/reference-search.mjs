@@ -14,6 +14,11 @@
  *     work with no login, and pick up a local credentials file if one exists. Each is a route status
  *     (ok / empty / blocked / login_required / not_installed), never a throw.
  *
+ * - `urls: [...]` is the verify step: each single public video URL (found by a web search, a competitor's site or a press
+ *   page, never from a listing page) is opened on its own with `--dump-json --skip-download --no-cookies`, with
+ *   `--impersonate chrome` first for TikTok and a retry without it when curl_cffi is missing. Each URL gets its own status
+ *   (ok / blocked / not_found / login_required), so a walled search or profile page never says anything about a video.
+ *
  * It only lists candidates. The researcher still checks each one is in the niche, then downloads and takes it apart
  * with pipeline_video_teardown.
  */
@@ -21,6 +26,7 @@
 import { runYtDlp, mapYtDlpError } from '../social/backends/ytdlp.mjs';
 import { referenceYtdlpBinary } from './url-reference.mjs';
 import { runDiscovery } from './social-discovery.mjs';
+import { assertPublicHost } from '../social/backends/web.mjs';
 
 export const SEARCH_MAX_DURATION_S = 90;
 export const SEARCH_DEFAULT_LIMIT = 10;
@@ -121,12 +127,137 @@ function tagOf(value) {
   return String(value ?? '').trim().replace(/^#/, '').replace(/[^\p{L}\p{N}_]/gu, '');
 }
 
+const VERIFY_MAX_URLS = 12;
+const VERIFY_TIMEOUT_MS = 45_000;
+const VERIFY_CONCURRENCY = 3;
+
+/** Which platform a URL is on, and whether it names ONE video (a listing, tag, search or profile page does not). */
+export function classifyVideoUrl(raw) {
+  let u;
+  try {
+    u = new URL(String(raw ?? '').trim());
+  } catch {
+    return { valid: false, platform: 'other', single: false, reason: 'not a web address' };
+  }
+  if (!/^https?:$/.test(u.protocol)) return { valid: false, platform: 'other', single: false, reason: 'not a web address' };
+  const host = u.hostname.replace(/^(www|m|mobile)\./i, '').toLowerCase();
+  const path = u.pathname;
+  if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+    if (/^\/@[^/]+\/(video|photo)\/\d+/.test(path) || /^\/(t|v)\/[\w-]+/.test(path) || /^(vm|vt)\./.test(host)) return { valid: true, platform: 'tiktok', single: true };
+    return { valid: true, platform: 'tiktok', single: false, reason: 'a TikTok listing, profile or search page, not one video' };
+  }
+  if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
+    if (/^\/(?:[^/]+\/)?(reel|reels|p|tv)\/[\w-]+/.test(path)) return { valid: true, platform: 'instagram', single: true };
+    return { valid: true, platform: 'instagram', single: false, reason: 'an Instagram listing, hashtag or profile page, not one Reel' };
+  }
+  if (host === 'youtube.com' || host === 'youtu.be' || host.endsWith('.youtube.com')) {
+    if (/^\/shorts\/[\w-]+/.test(path) || (host === 'youtu.be' && path.length > 1) || (/^\/watch$/.test(path) && u.searchParams.get('v'))) return { valid: true, platform: 'youtube', single: true };
+    return { valid: true, platform: 'youtube', single: false, reason: 'a YouTube listing, channel or search page, not one video' };
+  }
+  return { valid: true, platform: 'other', single: true };
+}
+
+function statusOf(code) {
+  if (code === 'login_required') return 'login_required';
+  if (code === 'not_found') return 'not_found';
+  if (code === 'backend_missing') return 'backend_missing';
+  return 'blocked';
+}
+
+function infoToRow(url, platform, info, impersonated) {
+  return {
+    url,
+    platform,
+    status: 'ok',
+    title: info.title ? String(info.title).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+    uploader: info.uploader || info.channel || null,
+    views: num(info.view_count),
+    likes: num(info.like_count),
+    comments: num(info.comment_count),
+    durationS: num(info.duration),
+    uploadDate: info.upload_date ? String(info.upload_date) : null,
+    pageUrl: info.webpage_url || url,
+    ...(impersonated ? { impersonated: true } : {}),
+  };
+}
+
+async function verifyOne(rawUrl, runOptions, run, assertHost) {
+  const url = String(rawUrl ?? '').trim();
+  const kind = classifyVideoUrl(url);
+  if (!kind.valid) return { url, platform: kind.platform, status: 'invalid_url', reason: kind.reason };
+  if (!kind.single) return { url, platform: kind.platform, status: 'not_a_video_url', reason: kind.reason };
+  try {
+    await assertHost(new URL(url));
+  } catch (error) {
+    return { url, platform: kind.platform, status: 'invalid_url', reason: error?.message ?? 'address could not be checked' };
+  }
+  const args = (impersonate) => [...BASE, ...(impersonate ? ['--impersonate', 'chrome'] : []), '--no-playlist', '--skip-download', '--dump-json', '--', url];
+  const tiktok = kind.platform === 'tiktok';
+  let result = await run(args(tiktok), { ...runOptions, timeoutMs: VERIFY_TIMEOUT_MS });
+  let impersonated = tiktok;
+  // No curl_cffi: try once more without impersonation instead of calling the video blocked.
+  if (tiktok && !result.ok && /impersonat/i.test(`${result.stderr}`) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(result.stderr)) {
+    result = await run(args(false), { ...runOptions, timeoutMs: VERIFY_TIMEOUT_MS });
+    impersonated = false;
+  }
+  const info = jsonLines(result.stdout)[0];
+  if (info) return infoToRow(url, kind.platform, info, impersonated);
+  const mapped = mapYtDlpError(result, kind.platform);
+  return { url, platform: kind.platform, status: statusOf(mapped.code), code: mapped.code, reason: mapped.reason };
+}
+
 /**
- * @param {{query?: string, platform?: 'youtube'|'tiktok'|'both'|'tiktok_api'|'instagram', tiktokTags?: string[],
+ * Open each single public video URL on its own and report what yt-dlp saw. A URL is only ever called blocked,
+ * login_required or not_found here, from its own page, never because a search, hashtag or profile page was walled.
+ * @param {string[]} urls
+ * @param {{binary?: string, run?: typeof runYtDlp, assertHost?: (u: URL) => Promise<void>}} [options]
+ */
+export async function verifyReferenceUrls(urls, options = {}) {
+  const seen = new Set();
+  const list = (Array.isArray(urls) ? urls : []).map((u) => String(u ?? '').trim()).filter((u) => u && !seen.has(u) && seen.add(u)).slice(0, VERIFY_MAX_URLS);
+  if (!list.length) return { ok: false, status: 'invalid_query', message: 'Give at least one single video URL in urls.', results: [], counts: {} };
+  const run = options.run ?? runYtDlp;
+  const assertHost = options.assertHost ?? ((u) => assertPublicHost(u, false));
+  const runOptions = { binary: referenceYtdlpBinary(options.binary), timeoutMs: VERIFY_TIMEOUT_MS, maxBytes: 8 * 1024 * 1024 };
+  const results = new Array(list.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      const i = next++;
+      results[i] = await verifyOne(list[i], runOptions, run, assertHost);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, list.length) }, worker));
+  const count = (s) => results.filter((r) => r.status === s).length;
+  const counts = {
+    given: list.length,
+    ok: count('ok'),
+    blocked: count('blocked'),
+    not_found: count('not_found'),
+    login_required: count('login_required'),
+    other: results.filter((r) => !['ok', 'blocked', 'not_found', 'login_required'].includes(r.status)).length,
+  };
+  const videoLinks = list.length - count('not_a_video_url') - count('invalid_url');
+  const summary = `found ${videoLinks} public video links, ${counts.ok} downloaded, ${counts.blocked + counts.login_required + counts.not_found} blocked individually`;
+  return {
+    ok: counts.ok > 0,
+    status: counts.ok ? 'ok' : 'none_verified',
+    summary,
+    counts,
+    results,
+    next: counts.ok
+      ? ['Keep the ok results that are in the brand\'s niche and run pipeline_video_teardown on each until N are watched. Record this summary line and each blocked URL with its own status in research/competitors.md.']
+      : ['No URL verified. Record each URL with its own status, then go on down the ladder (public routes, niche web search for more single video URLs, Chrome). Do not report a login wall for the platform from this.'],
+  };
+}
+
+/**
+ * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both'|'tiktok_api'|'instagram', tiktokTags?: string[],
  *   instagramTags?: string[], instagramProfiles?: string[], tiktokUsers?: string[], tiktokTrending?: boolean, limit?: number,
  *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, discover?: typeof runDiscovery}} options
  */
 export async function searchReferences(options = {}) {
+  if (Array.isArray(options.urls) && options.urls.length) return verifyReferenceUrls(options.urls, { binary: options.binary, run: options.run, assertHost: options.assertHost });
   const query = String(options.query ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const platform = ['youtube', 'tiktok', 'both', 'tiktok_api', 'instagram'].includes(options.platform) ? options.platform : 'both';
   const limit = Math.min(Math.max(Math.floor(Number(options.limit) || SEARCH_DEFAULT_LIMIT), 1), SEARCH_MAX_LIMIT);
