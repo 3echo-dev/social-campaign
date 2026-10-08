@@ -219,6 +219,11 @@ function requiredFalseGaps(gaps) {
 
 const FILL_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 300 });
 const SUGGESTIBLE_FIELDS = Object.freeze(['audience']);
+// Findings the researcher may add for the brand voice notes. They are optional and each is held
+// to the note cap that the brand voice file renders them under.
+const DEPTH_FINDING_KEYS = Object.freeze(['uniqueMechanism', 'alternativeSolution', 'heroProduct', 'constraints', 'strategy']);
+const FINDING_NOTE_MAX = 1500;
+const CONSTRAINT_TAG = /^\s*(?:[-*\u2022]\s*)?[\[(]?(?:confirmed|inferred)\b/i;
 // One set of pillar limits for a typed save, the board and a research fill.
 const CONTENT_PILLARS_MIN = brandProfile.CONTENT_PILLAR_MIN;
 const CONTENT_PILLARS_MAX = brandProfile.CONTENT_PILLAR_MAX;
@@ -309,6 +314,39 @@ function suggestedProblems(suggested, fills, problems) {
   return names;
 }
 
+function findingLines(value) {
+  if (typeof value === 'string') return value.split(/\r?\n/);
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value.flatMap((item) => item.split(/\r?\n/));
+  return null;
+}
+
+function findingProblems(findings, problems) {
+  for (const key of DEPTH_FINDING_KEYS) {
+    if (!own(findings, key)) continue;
+    const field = `research.findings.${key}`;
+    const value = findings[key];
+    if (key === 'strategy' && isObject(value)) continue;
+    const lines = findingLines(value);
+    if (!lines) {
+      problems.push({ field, problem: `${key} must be text or a list of text lines.` });
+      continue;
+    }
+    const text = lines.join('\n');
+    for (const { test, rule } of FILL_BANNED_PATTERNS) {
+      if (test.test(text)) problems.push({ field, problem: `${key} ${rule}.` });
+    }
+    if (text.trim().length > FINDING_NOTE_MAX) {
+      problems.push({ field, problem: `${key} must be at most ${FINDING_NOTE_MAX} characters (has ${text.trim().length}).` });
+    }
+    if (key === 'constraints') {
+      const untagged = lines.filter((line) => line.trim() && !CONSTRAINT_TAG.test(line));
+      if (untagged.length) {
+        problems.push({ field, problem: 'Start every constraint line with "Confirmed" or "Inferred"; an inferred line is never a brand fact.' });
+      }
+    }
+  }
+}
+
 function attempt(field, problems, step) {
   try {
     step();
@@ -332,6 +370,8 @@ function researchProblems(researchDraft, slug, place, problems) {
   }
   if (own(researchDraft, 'findings') && !isObject(researchDraft.findings)) {
     problems.push({ field: 'research.findings', problem: 'research.findings must be an object.' });
+  } else if (own(researchDraft, 'findings')) {
+    findingProblems(researchDraft.findings, problems);
   }
   if (own(researchDraft, 'scope') && !isObject(researchDraft.scope)) {
     problems.push({ field: 'research.scope', problem: 'research.scope must be an object.' });

@@ -110,7 +110,7 @@ Use it for the competitors and for the audience suggestion, and never fill it in
 Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total, each with a one-line rationale and at most 3 items.
 Keep competitor work light.
 The file at `draftPath` already holds the right keys.
-Fill it in place and never add, rename or remove a key.
+Fill it in place and never add, rename or remove a key; the keys you add inside `research.findings` below are the one exception.
 The file looks like this, with only the fields still blank in `fills`:
 
 ```json
@@ -143,6 +143,22 @@ Evidence, citations and run details never belong in a fill; save validates this 
   List only the names you found, and the save keeps the declared ones first and adds yours up to 3.
   Find enough to make 3 in total unless fewer genuine competitors exist for that product in the target market.
   When fewer exist, record why in `research.gaps` instead of padding the list to 3.
+
+### Strategic findings
+
+In the same run, and from fetches you already made, add any of these keys to `research.findings` that the pages support.
+They are all optional, and a missing key is fine.
+Each is plain text (or a list of text lines) of at most 1,500 characters with no URL, domain, date or the word "fetched"; refer to evidence by its `id` instead.
+
+- `uniqueMechanism`: why the product works or differs from alternatives, and how the brand backs that up.
+- `alternativeSolution`: what customers did or used before choosing this kind of product.
+- `heroProduct`: the main product or products, or the catalogue highlights.
+- `constraints`: creative and claims limits, one per line.
+  Start every line with `Confirmed` or `Inferred`, followed by the evidence `id` where there is one.
+  Use `Confirmed` only for what the brand states itself; everything else is `Inferred`, and an inferred line is never worded as a brand fact.
+- `strategy`: context a marketer must know, such as seasonality, a subscription model, key channels or use of customer content.
+
+Open questions you could not close go in `research.gaps` as before.
 
 ### Audience fallback
 
