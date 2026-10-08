@@ -516,18 +516,29 @@ function findTable(body, headerTest) {
   return null;
 }
 
+// A field's label may carry a qualifier after ", family": `Hook, family H-VALUE (a how-it-works opener)`.
+// The label stays the plain name ("Hook") and the family leads the value, so the board shows one tidy row.
+function conceptField(label, value) {
+  const family = /^(.{1,60}?),\s*family\s+(.+)$/i.exec(label.trim());
+  if (!family) return { label, lines: [value.trim()] };
+  return { label: family[1].trim(), lines: [`Family: ${family[2].trim()}`, value.trim()] };
+}
+
 /**
  * concepts.md: `## Concept A: title (recommended)` sections, each a bullet list
- * of `- Label: value` fields, plus the Media quote table's total credits per
+ * of `- Label: value` fields (nested sub-bullets fold into their field's value, one per line), plus the Media quote table's total credits per
  * concept and the front matter credits.
  */
 export function parseConcepts(text) {
   const { meta, body } = splitFrontMatter(text);
   const concepts = [];
   let current = null;
+  let open = null;
+  let baseIndent = 0;
   for (const line of body.split(/\r?\n/)) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
     if (heading) {
+      open = null;
       const concept = /^Concept\s+([A-Za-z0-9]{1,8})\s*(?:[:.\-\u2013\u2014]\s*(.*))?$/i.exec(heading[1].trim());
       if (concept) {
         const rawTitle = concept[2] || '';
@@ -544,15 +555,27 @@ export function parseConcepts(text) {
       continue;
     }
     if (!current) continue;
-    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
     if (bullet) {
-      const field = /^\**([^:*]{1,120}?)\**:\s*(.*)$/.exec(bullet[1].trim());
-      current.fields.push(field ? { label: clip(field[1], 120), value: clip(field[2]) } : { label: '', value: clip(bullet[1]) });
+      const indent = bullet[1].replace(/\t/g, '    ').length;
+      if (open && indent > baseIndent) {
+        // A nested sub-bullet belongs to the field above it: fold it into that field's value, one line each.
+        open.lines.push(bullet[2].trim());
+        open.field.value = clip(open.lines.join('\n'));
+        continue;
+      }
+      baseIndent = indent;
+      const field = /^\**([^:*]{1,120}?)\**:\s*(.*)$/.exec(bullet[2].trim());
+      const entry = field ? conceptField(field[1], field[2]) : { label: '', lines: [bullet[2].trim()] };
+      open = { field: { label: clip(entry.label, 120), value: clip(entry.lines.filter(Boolean).join('\n')) }, lines: entry.lines.filter(Boolean) };
+      current.fields.push(open.field);
       continue;
     }
-    if (/^\s{2,}\S/.test(line) && current.fields.length) {
-      const last = current.fields[current.fields.length - 1];
-      last.value = clip(`${last.value} ${line.trim()}`);
+    if (/^\s{2,}\S/.test(line) && open) {
+      // A wrapped continuation line extends the last line of the field it follows.
+      if (open.lines.length) open.lines[open.lines.length - 1] = `${open.lines[open.lines.length - 1]} ${line.trim()}`;
+      else open.lines.push(line.trim());
+      open.field.value = clip(open.lines.join('\n'));
     }
   }
   const quote = findTable(body, header => header.some(cell => cell.includes('concept')) && header.some(cell => cell.includes('total')));

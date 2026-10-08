@@ -2004,7 +2004,7 @@ export function conceptCards(concepts, choice = null, { disabled = false } = {})
       const isSourceRef = /^insight it rests on$/i.test(field.label || '');
       const humanized = isSourceRef ? humanizeSourceRef(field.value) : null;
       const value = humanized ? esc(humanized) : inlineMarkdown(field.value);
-      return `<div>${field.label ? `<dt>${esc(field.label)}</dt>` : ''}<dd>${value}</dd></div>`;
+      return `<div>${field.label ? `<dt>${esc(field.label)}</dt>` : ''}<dd${/\n/.test(field.value) ? ' class="lines"' : ''}>${value}</dd></div>`;
     }).join('');
     return `<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}</span><span class="concept-radio" aria-hidden="true"></span></span>${fields.length ? `<dl class="review-fields">${fieldRows}</dl>` : ''}${credits ? `<span class="concept-foot">${esc(credits)}</span>` : ''}</span></label>`;
   }).join('')}</div>`;

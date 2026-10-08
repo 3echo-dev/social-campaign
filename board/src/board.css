@@ -414,6 +414,7 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .review-fields{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);margin:0}
 .review-fields dt{color:var(--faint);font-size:11px;font-weight:700}
 .review-fields dd{margin:2px 0 0;color:var(--dim);overflow-wrap:anywhere}
+.review-fields dd.lines{white-space:pre-line}
 .review-fields code,.md code{padding:1px 5px;background:var(--panel2);border-radius:4px;font-size:12px}
 .concept-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--gap)}
 .concept-card{display:flex;min-width:0;cursor:pointer}
