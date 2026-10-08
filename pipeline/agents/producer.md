@@ -60,6 +60,8 @@ Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `j
 Per pending row, read its `task-contracts.json` entry, pass only `contextRefs`, enforce capabilities,
 then run producer rows or spawn the named agent and wait.
 Wait for a spawned agent's own hand-back, which arrives by itself when it finishes; never poll for its output files with a sleep loop, and never add a fixed sleep after a file appears.
+Spawn each agent in the foreground (no `run_in_background`), and never call `pipeline_review_present` or set a gate state while a spawned agent is still working: it may still be writing the file the review shows, and a file that changes after the person saw it locks their choice.
+`pipeline_review_present` refuses while an agent is still working on the job; wait for its hand-back, then call it again.
 
 Report the stage before and after each row; report long stages as they run:
 

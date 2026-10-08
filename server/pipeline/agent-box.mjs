@@ -250,6 +250,25 @@ const isFresh = (run, now) => {
   return began === null || now - began < STALE_RUN_MS;
 };
 
+/**
+ * A helper that is allowed to hold up a review for this long, counted from its start. A helper that has run longer than this
+ * with no end line is taken as lost (a killed session never fires the host's stop event), so a dead run cannot block a review forever.
+ */
+export const HELPER_WAIT_MS = 30 * 60 * 1000;
+
+/**
+ * The helpers still working on a job: runs of the job's agent log with a start or a dispatch and no end, started less than
+ * HELPER_WAIT_MS ago. The Director (the producer) is never one: it is the agent that presents, and its own run is open until it stops.
+ * `lines` is the parsed agents.jsonl. Oldest first.
+ */
+export function openHelpers(lines, { now = Date.now(), waitMs = HELPER_WAIT_MS } = {}) {
+  return runsFrom(lines).filter(run => {
+    if (run.agent === 'producer' || !isOpen(run)) return false;
+    const began = startOf(run);
+    return began !== null && now - began < waitMs;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Files
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import * as runtime from './runtime.mjs';
 import { projectJobMetrics } from '../studio/metrics.mjs';
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
+import { UserFacingError } from '../lib/errors.mjs';
 import { buildJobDocument, parseConcepts, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
@@ -18,7 +19,7 @@ import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceLi
 import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
-import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, rosterOf, stuckFor } from './agent-box.mjs';
+import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
@@ -2321,6 +2322,25 @@ function moveToReview(root, brand, jobId, snapshot, requested, paths) {
   return { gate, snapshot: runtime.readJobSnapshot({ root, brand, jobId }), moved: { from: moved.from, to: moved.to, steps: moved.steps } };
 }
 
+/**
+ * A review is never presented while a helper is still working on the job: the helper may still be writing the very file the
+ * person is about to read, and a file that changes after it was shown locks the person's pick. The agent log (agents.jsonl,
+ * written by the agent-run hook) says who is still working. A helper with no end line that started more than HELPER_WAIT_MS ago is
+ * taken as lost and does not block. The Director that presents is not a helper. Nothing is checked when the log is missing.
+ */
+function assertNoHelperRunning(root,brand,jobId) {
+  let working;
+  try { working=openHelpers(readAgentLines(jobDirectory(root,brand,jobId))); } catch { return; }
+  if(!working.length) return;
+  const names=[...new Set(working.map(run=>agentLabel(run.agent)))];
+  const who=names.length===1 ? `the ${names[0]}` : `the ${names.slice(0,-1).join(', ')} and ${names[names.length-1]}`;
+  throw new UserFacingError(`${who.charAt(0).toUpperCase()+who.slice(1)} ${names.length===1 ? 'is' : 'are'} still working on this job, so this review is not ready to show. Wait for ${names.length===1 ? 'it' : 'them'} to hand back, then present this review again.`,{
+    code:'helper_running',
+    fix:'Do not present while a helper is running. Wait for its hand-back, which arrives by itself, then call this again.',
+    details:{agents:working.map(run=>run.agent)},
+  });
+}
+
 export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   root=rootOf(root);
   let snapshot=runtime.readJobSnapshot({root,brand,jobId});
@@ -2348,6 +2368,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     const workflowId=snapshot.route?.workflowId || null;
     const aimed=requested ?? current ?? inferredGate(snapshot.project.state,paths,workflowId);
     if(aimed && !current) assertReviewFits(aimed,workflowId);
+    assertNoHelperRunning(root,brand,jobId);
     // Post-production comes before the final approval: never ask for both at once, and never ask while the edit is away.
     if(aimed==='content') {
       const job=facts.jobAt(root,brand,jobId);

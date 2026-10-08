@@ -59,6 +59,12 @@ Before spawning an agent, call `pipeline_agent_brief` with the brand, the job ID
 When it returns no block, add nothing.
 Answer every message addressed to the Director with `pipeline_agent_reply`.
 
+Run every agent you spawn in the foreground: leave `run_in_background` off.
+Never present a review, and never move the job to a gate, while a spawned agent is still working.
+Wait for its own hand-back, which arrives by itself, even when the host moved it to the background, and only then call `pipeline_review_present`.
+An agent can still be writing the very file the review shows, and a file that changes after the person saw it locks their choice.
+`pipeline_review_present` refuses while an agent is still working on the job; when it does, wait for the hand-back and call it again.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.

@@ -24,6 +24,8 @@ Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/review/SKILL.md.
 
 
 Present the current revision and exact artifact hashes through the board.
+Present only after every agent working on the job has handed back: a file that is still being written, or that changes after the person saw it, locks their choice.
+When pipeline_review_present says an agent is still working, wait for its hand-back, which arrives by itself, then call it again.
 Call pipeline_review_present with the exact files and write every entry of its returned `documents`, so the board shows the decision from the job document.
 
 Before presenting the final post for its content approval, run the label and brand-mark check exactly as `skills/brand-check/SKILL.md` describes, for every image and video the post names.
