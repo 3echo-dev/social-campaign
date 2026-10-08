@@ -12,6 +12,9 @@ const DEFAULT_TARGET_MARKET = 'Singapore';
 const COMPETITOR_ITEM_MAX = 500;
 // The declared-context fields a brand onboarding research pass is allowed to fill in when blank.
 const CONTEXT_FIELDS = Object.freeze(['audience', 'market', 'voice', 'contentPillars', 'competitors']);
+// Extra text fields research may also fill when blank. They are not context fields: a blank one
+// never makes the research pass run, and the board has no input for them.
+const RESEARCH_EXTRA_FIELDS = Object.freeze(['forbiddenClaims', 'examples']);
 // Every profile save, typed or research, is held to these limits: a brand's audience or
 // positioning is a short brief, not a research dossier. This is the one place they are
 // enforced, so nothing downstream (a job's own audience field among them) can inherit a
@@ -421,7 +424,7 @@ function withoutStaleSuggestions(provenance, existing, fields) {
   const filled = provenance.researchFilled;
   if (!filled || typeof filled !== 'object' || !existing) return provenance;
   const next = { ...filled };
-  for (const name of ['audience', 'market', 'voice']) {
+  for (const name of ['audience', 'market', 'voice', ...RESEARCH_EXTRA_FIELDS]) {
     if (!next[name] || !next[name].suggested || existing[name] === fields[name]) continue;
     const { suggested, ...kept } = next[name];
     next[name] = kept;
@@ -611,6 +614,19 @@ function blankContextFields(profile) {
   return fields;
 }
 
+function blankExtraValue(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return !value.trim();
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === 'object' && Object.keys(value).length === 0;
+}
+
+// The context fields research may fill, plus the extra text fields it may also fill, still blank.
+function blankResearchFields(profile) {
+  const extra = RESEARCH_EXTRA_FIELDS.filter(name => blankExtraValue(profile && profile[name]));
+  return [...blankContextFields(profile), ...extra];
+}
+
 // A field's text, for the checks below: a context field's string value, or its list items
 // joined so a source-note pattern can be found in any one of them.
 function tidyFieldText(profile, name) {
@@ -715,12 +731,12 @@ function fillBlankContext(dir, fills, options = {}) {
     try { diskRecord = JSON.parse(raw); } catch { diskRecord = null; }
     const existing = validRecord(diskRecord) ? diskRecord : null;
     if (!existing) throw new Error('Complete the required brand profile before research.');
-    const blanks = new Set(blankContextFields(existing));
+    const blanks = new Set(blankResearchFields(existing));
     const filled = [];
     const kept = [];
     const input = {};
     let added = [];
-    for (const name of CONTEXT_FIELDS) {
+    for (const name of [...CONTEXT_FIELDS, ...RESEARCH_EXTRA_FIELDS]) {
       if (!own(source, name)) continue;
       if (name === 'competitors') {
         const topUp = topUpCompetitors(existing, source.competitors);
@@ -776,6 +792,7 @@ module.exports = {
   MAX_COMPETITORS,
   COMPETITOR_ITEM_MAX,
   CONTEXT_FIELDS,
+  RESEARCH_EXTRA_FIELDS,
   CONTEXT_TEXT_LIMITS,
   CONTENT_PILLAR_MIN,
   CONTENT_PILLAR_MAX,
@@ -794,6 +811,7 @@ module.exports = {
   buildProfileContext: context,
   taskContext: context,
   blankContextFields,
+  blankResearchFields,
   fillBlankContext,
   profileTidyReport,
   targetMarketOf,

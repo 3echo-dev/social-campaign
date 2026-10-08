@@ -159,9 +159,13 @@ function gapLines(record) {
   return shown;
 }
 
-function audienceIsSuggested(profile) {
+function isSuggested(profile, name) {
   const filled = profile && profile.provenance && profile.provenance.researchFilled;
-  return Boolean(clean(profile && profile.audience) && filled && filled.audience && filled.audience.suggested);
+  return Boolean(block(profile && profile[name]) && filled && filled[name] && filled[name].suggested);
+}
+
+function audienceIsSuggested(profile) {
+  return isSuggested(profile, 'audience');
 }
 
 function voiceSource(profile) {
@@ -204,8 +208,8 @@ function renderBody(options) {
   ]);
   section(lines, 'Content pillars', [pillarsOf(p).map(item => '- ' + item).join('\n')]);
   section(lines, 'Vocabulary', [block(p.terminology)]);
-  section(lines, 'Words and claims we never use', [block(p.forbiddenClaims)]);
-  section(lines, 'Example posts that sound right', [block(p.examples)]);
+  section(lines, 'Words and claims we never use', [block(p.forbiddenClaims), isSuggested(p, 'forbiddenClaims') ? 'This list is a suggestion from research on the brand\'s own pages and has not been checked yet.' : '']);
+  section(lines, 'Example posts that sound right', [block(p.examples), isSuggested(p, 'examples') ? 'These examples were picked by research from the brand\'s own pages and have not been checked yet.' : '']);
   section(lines, 'Visual identity', visualIdentity(p, kit));
   section(lines, 'Research notes', researchNotes(record));
   const gaps = gapLines(record);

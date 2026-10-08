@@ -141,7 +141,7 @@ It skips any part the person already provided and returns `skipped` when colours
 If the `pipeline_brand_research_start` result is `skipped`, do not dispatch the researcher.
 There is nothing blank to fill, or research is already current.
 
-Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
+Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
 Put `brand:<slug>` alone on the first line of the researcher's spawn prompt, on every dispatch including a second round, so the board can show the Researcher working.
 
@@ -158,6 +158,7 @@ If audience alone still remains after the two rounds, save once more with `audie
 Right after a successful save, tell the person plainly which fields research filled, from the `filled` list, in marketing words such as "Research filled in Audience, Brand voice and Content pillars."
 If `competitorsAdded` lists names, say research added them as competitors, for example "Research added Northshore Grocer and FreshCart SG to your competitors."
 If `suggested` lists a field, say it is a suggestion to check, for example "The audience is a suggestion based on competitors, so please check it."
+Name `forbiddenClaims` as "words and claims to avoid" and `examples` as "example posts", and say once that they are suggestions taken from the brand's own pages, without asking the person anything about them.
 
 Close the run as failed with `pipeline_brand_research_close`, `status: 'failed'` and a reason, only when a tool itself returns an error.
 After a first failure, call `pipeline_brand_research_start` once more to restart the research, without calling `web_brand_kit` again; the board keeps showing that research is under way until the restart ends. A second failure is final.

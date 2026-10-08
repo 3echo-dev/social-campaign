@@ -144,6 +144,19 @@ Evidence, citations and run details never belong in a fill; save validates this 
   Find enough to make 3 in total unless fewer genuine competitors exist for that product in the target market.
   When fewer exist, record why in `research.gaps` instead of padding the list to 3.
 
+### Also fill when blank
+
+`forbiddenClaims` and `examples` appear in `fills` only when the person left them blank, and save never overwrites a value they typed.
+Take both from the brand's own pages and posts you have already fetched; run no extra search or fetch for them.
+Each is at most 600 characters of plain text, with no URL, domain or date.
+
+- `forbiddenClaims`: wording or promises the brand's own pages avoid or hedge, one short line each.
+  Leave it blank when nothing in the fetched pages shows one.
+- `examples`: 2 or 3 lines the brand really published, copied as written and separated by new lines.
+  Leave it blank when you cannot quote the brand itself; never write an example yourself.
+
+Save marks a filled `forbiddenClaims` or `examples` as a suggestion automatically.
+
 ### Strategic findings
 
 In the same run, and from fetches you already made, add any of these keys to `research.findings` that the pages support.
