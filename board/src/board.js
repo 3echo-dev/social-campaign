@@ -1992,6 +1992,7 @@ const GATE_TITLES = Object.freeze({
   pictures: 'Check the pictures',
   clips: 'Check the video clips',
   cut: 'Check the joined video',
+  finish: 'Check the finished video',
   content: 'Approve the final post',
   publish: 'Confirm where and when to post',
   campaign_proposal: 'Approve the campaign plan',
@@ -2509,8 +2510,8 @@ export function sampleView(doc) {
 // The pictures, the clips and the joined video are each reviewed as a grid: one card per panel with its picture or player and the
 // storyboard's words for it, and a per-card "Ask for changes" with a note. Every card counts as approved until a change is asked on
 // it; "Approve all" sits under the grid. A change goes back to the named panels, and a redo of one is priced again first.
-const MEDIA_GATE_IDS = new Set(['pictures', 'clips', 'cut']);
-const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'], cut: ['video', 'videos'] });
+const MEDIA_GATE_IDS = new Set(['pictures', 'clips', 'cut', 'finish']);
+const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'], cut: ['video', 'videos'], finish: ['video', 'videos'] });
 const mediaPanelKey = panel => `${trimmed(panel?.deliverable)}|${trimmed(panel?.panel)}`;
 export const mediaPanelsOf = doc => (Array.isArray(doc?.review?.mediaSet?.panels) ? doc.review.mediaSet.panels : []);
 const mediaPanelTitle = panel => trimmed(panel?.text?.label) || (trimmed(panel?.panel) === 'Cut' ? 'Joined video' : trimmed(panel?.panel)) || 'Panel';
@@ -3281,7 +3282,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   const review = doc.review;
   const gate = review.gate;
   const parts = [];
-  const locked = Boolean(state.busy || state.submitted || state.needsReconciliation);
+  const locked = Boolean(state.busy || state.submitted || state.needsReconciliation || state.settled);
   if (gate === 'findings') {
     parts.push(reportArticle(doc.report, { jobTitle: project?.title }));
     const covered = new Set([doc.report?.path, ...(doc.report?.stills || []).map(still => still.path)].filter(Boolean));
@@ -3332,7 +3333,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   return parts.join('');
 }
 
-const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'content', 'publish']);
+const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'finish', 'content', 'publish']);
 const copiesWaiting = refs => {
   const kinds = new Set(refs.map(ref => ref.kind));
   const what = kinds.has('image') && kinds.has('video') ? 'pictures and video' : kinds.has('video') ? 'video' : 'pictures';
@@ -3362,7 +3363,7 @@ function unviewableMedia(doc) {
  */
 function approval(gate, doc, state, recipeState = {}, routeState = {}, postStates = {}) {
   const unviewable = COPY_GATES.has(gate) ? unviewableMedia(doc) : [];
-  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? (gate === 'cut' ? 'Approve' : 'Approve all') : 'Approve', line: copiesWaiting(unviewable) };
+  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? (gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all') : 'Approve', line: copiesWaiting(unviewable) };
   if (gate === 'concept') {
     const concepts = doc?.review?.concepts;
     const concept = concepts?.concepts?.find(item => item.id === state.choice);
@@ -3394,8 +3395,8 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again before it is made.` };
-    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? 'Approving lets Claude ask what to add: captions, music, both or nothing.' : 'Approving lets Claude join them into one video.';
-    return { label: gate === 'cut' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? 'Approve it and pick what to add: captions, music, both or nothing.' : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
+    return { label: gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
     const sample = doc?.review?.sample;
@@ -3420,6 +3421,13 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
   if (gate === 'findings') return { label: 'Approve report', line: 'Approving finishes this job.' };
   return { label: 'Approve', line: '' };
 }
+/** What the joined video's approve buttons add; the id is what the server records as the finishing choice. */
+export const FINISHING_PICKS = Object.freeze([
+  { id: 'captions', label: 'Approve + add captions' },
+  { id: 'music', label: 'Approve + add music' },
+  { id: 'both', label: 'Approve + both', primary: true },
+  { id: 'skip', label: 'Approve as is' },
+]);
 const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare prices too, and add one more competitor.' });
 
 /**
@@ -3428,7 +3436,7 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * error to show instead. Concept approvals carry the credits shown; price
  * approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {} }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -3457,6 +3465,11 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
+    // The joined video is approved together with what to add to it: captions, music, both or as is (skip).
+    if (gate === 'cut' && verdict === 'approve' && finishing !== null) {
+      if (!FINISHING_PICKS.some(pick => pick.id === finishing)) return { error: 'Pick captions, music, both or as is.' };
+      args.finishing = finishing;
+    }
     return { args };
   }
   if (verdict === 'request_changes' && !note) return { error: 'Say what should change.' };
@@ -3557,9 +3570,27 @@ export function scopeReviewState(state, project) {
  * even when a newer job document still lists the gate as waiting; it lets go once the review is a different one.
  */
 export function sentDecisionState(project, state) {
-  if (!state || !(state.busy || state.submitted || state.needsReconciliation) || !state.args) return state || {};
+  if (!state || !(state.busy || state.submitted || state.needsReconciliation || state.settled) || !state.args) return state || {};
   if (!pendingReview(project) || decisionMatchesReview(project, state.args)) return state;
-  return { ...state, busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, message: '' };
+  return { ...state, busy: false, submitted: false, needsReconciliation: false, settled: false, declined: false, requestId: null, args: null, operation: null, message: '' };
+}
+
+/** What a settled card says: the decision on it was already made (applied, or declined as a repeat), so the buttons stay off. */
+export function settledLine(state) {
+  const said = typeof state?.message === 'string' ? state.message.trim() : '';
+  return said ? `Already handled. ${said}` : 'Already handled. Claude has this decision and is catching up.';
+}
+
+/**
+ * Whether a request found in the requests collection settles the review shown: it is about these same files and was either
+ * applied or declined as a repeat of a decision already made. A plain decline (a refusal, nothing changed) does not settle it,
+ * so the buttons come back; a request still waiting is handled as "sent" elsewhere.
+ */
+export function settlesReview(project, request) {
+  if (!request || request.operation !== 'submit_decision' || !decisionMatchesReview(project, request.args)) return false;
+  const status = String(request.artifactReceipt?.status || request.status || '');
+  if (status === 'applied') return true;
+  return status === 'declined' && Boolean(request.handled || request.artifactReceipt?.handled);
 }
 
 /**
@@ -3576,16 +3607,23 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
   const ready = status === 'ready';
   const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal }) : waitingNote(status);
   const headExtra = ready && gate === 'findings' ? reportDownloads(downloads) : '';
-  const decided = state.busy || state.submitted || state.needsReconciliation;
+  const decided = state.busy || state.submitted || state.needsReconciliation || state.settled;
   const plan = ready ? approval(gate, doc, state, recipeState, routeState, postStates) : { disabled: true, label: 'Approve', line: '' };
   const approveLabel = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? 'Waiting for Claude' : plan.label;
-  const notice = state.declined
-    ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
-    : state.submitted || state.needsReconciliation ? notifyClaudeNotice(state, signal) : '';
+  const notice = state.settled
+    ? `<div class="notice" role="status"><span>${esc(settledLine(state))}</span></div>`
+    : state.declined
+      ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
+      : state.submitted || state.needsReconciliation ? notifyClaudeNotice(state, signal) : '';
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
+  // The joined video is approved with what to add to it, in one click. Once a choice is sent the buttons give way to the one that waits.
+  const pickFinishing = gate === 'cut' && ready && !decided && !plan.disabled && plan.action !== 'send-panels';
+  const primaryButtons = pickFinishing
+    ? FINISHING_PICKS.map(pick => `<button type="button"${pick.primary ? ' class="primary"' : ''} data-review-action="approve" data-finishing="${esc(pick.id)}">${esc(pick.label)}</button>`).join('')
+    : `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : state.settled ? 'Already handled' : approveLabel)}</button>`;
   const actions = state.commentOpen
     ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: make the hook shorter and show the product sooner.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? 'Waiting for Claude' : 'Send changes'}</button></div></div></div>`
-    : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button><button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : approveLabel)}</button></div></div>`;
+    : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button>${primaryButtons}</div></div>`;
   const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : GATE_TITLES[gate] || humanize(gate);
   return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
 }
@@ -3596,7 +3634,7 @@ export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
-const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
+const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'finished video': 'finish', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
 const hasQuestionId = item => item?.questionId !== undefined && item?.questionId !== null && String(item.questionId).trim() !== '';
 
@@ -5659,7 +5697,7 @@ if (typeof document !== 'undefined') {
       ui.intake = { values: ui.intake.values || {} };
       // A decision already sent stays sent (with its receipt watch) across the new revision; it lets go below, once the review
       // shown is a different one, or when its receipt ends.
-      if (!(ui.review.submitted && ui.review.requestId && ui.review.args)) {
+      if (!((ui.review.submitted && ui.review.requestId && ui.review.args) || (ui.review.settled && ui.review.args))) {
         ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '', draftKey: ui.review.draftKey };
         stopJobRequestWatch(project.jobId + ':review');
       }
@@ -5671,7 +5709,7 @@ if (typeof document !== 'undefined') {
       // A route choice stays pending across the new revision until the plan on the board shows it; so does a post's own
       // answer or mark, until the status list or the kit shows it.
     }
-    if (ui.review.requestId && ui.review.args && pendingReview(project) && !decisionMatchesReview(project, ui.review.args)) {
+    if (ui.review.args && (ui.review.requestId || ui.review.settled) && pendingReview(project) && !decisionMatchesReview(project, ui.review.args)) {
       forgetSentDecision(project.jobId);
       ui.review = { choice: null, comment: '', commentOpen: false, panelDraft: '' };
       stopJobRequestWatch(project.jobId + ':review');
@@ -5778,6 +5816,16 @@ if (typeof document !== 'undefined') {
     sentDecisionReads.set(project.jobId, key);
     const hint = sentDecisionIds()[project.jobId];
     transport.findDecisionRequests(project.jobId, hint ? [hint] : []).then(found => {
+      // After a reload: a decision already applied on these same files, or declined as a repeat, settles the card it left showing.
+      const settled = (found || []).filter(request => settlesReview(project, request)).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+      if (settled) {
+        const ui = uiFor(project);
+        if (!ui.review.busy && !ui.review.submitted) {
+          Object.assign(ui.review, { settled: true, busy: false, submitted: false, declined: false, args: settled.args, requestId: null, message: String(settled.artifactReceipt?.status || settled.status) === 'declined' ? (settled.artifactReceipt?.message || settled.message || '') : '' });
+          render();
+        }
+        return;
+      }
       const mine = (found || []).filter(request => request && request.operation === 'submit_decision' && !request.status?.match?.(/^(applied|declined|failed|error|rejected|needs_reconciliation)$/) && decisionMatchesReview(project, request.args));
       const request = mine.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
       const ui = uiFor(project);
@@ -5805,13 +5853,17 @@ if (typeof document !== 'undefined') {
         render();
       } else if (status === 'applied') {
         stopJobRequestWatch(key);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
+        // An applied decision keeps its card settled until the job document catches up and stops listing the review.
+        const keep = part === 'review' && state.args ? { settled: true, args: state.args } : { args: null };
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, ...keep, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
         notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? 'Claude has your answer.' : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'Claude is trying that step again.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was changed.', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null });
+        // Declined because it repeats a decision already made: the card is settled, not re-armed.
+        const handled = part === 'review' && state.args && Boolean(receipt.handled || acknowledgement.handled);
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was changed.', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: handled ? state.args : null, ...(handled ? { settled: true } : {}) });
         if (part === 'route') routeEnded(jobId, state, 'notice', state.message);
         else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'notice', state.message);
         render();
@@ -6770,7 +6822,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.sbAction){panelAction(target.dataset.sbAction);return;}
     if(target.dataset.mrAction){mediaPanelAction(target.dataset.mrAction, target.dataset.mrKey);return;}
     if(target.dataset.flagAccept||target.dataset.flagUndo){flagAction(target.dataset.flagAccept || target.dataset.flagUndo, Boolean(target.dataset.flagAccept));return;}
-    if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref);return;}
+    if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref, target.dataset.finishing);return;}
     if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project, target.dataset.recipeSave);return;}
     if(target.dataset.workspaceAction){workspaceAction(target.dataset.workspaceAction);return;}
     if(target.dataset.reportDownload){void saveReport(target.dataset.reportDownload);return;}
@@ -7111,13 +7163,13 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
-  async function submitDecision(project, verdict) {
+  async function submitDecision(project, verdict, finishing = null) {
     const state = uiFor(project).review;
-    if (!transport || state.busy || state.submitted || state.needsReconciliation) return;
+    if (!transport || state.busy || state.submitted || state.needsReconciliation || state.settled) return;
     const comment = app.querySelector('#review-comment')?.value ?? state.comment ?? '';
     state.comment = comment;
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {} });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -7559,7 +7611,7 @@ if (typeof document !== 'undefined') {
     const prefix = `${ref}: `;
     return text.trim() ? `${text}\n${prefix}` : prefix;
   }
-  async function reviewAction(action, ref) {
+  async function reviewAction(action, ref, finishing) {
     const project = current();
     if (!project) return;
     const state = uiFor(project).review;
@@ -7581,7 +7633,7 @@ if (typeof document !== 'undefined') {
       return;
     }
     if (action === 'cancel-changes') { state.commentOpen = false; state.error = ''; render(); app.querySelector('[data-review-action="changes"]')?.focus(); return; }
-    if (action === 'approve') await submitDecision(project, 'approve');
+    if (action === 'approve') await submitDecision(project, 'approve', finishing || null);
     else if (action === 'send-changes' || action === 'send-panels') await submitDecision(project, 'request_changes');
   }
   function focusQuietly(selector) {

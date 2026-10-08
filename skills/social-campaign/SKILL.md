@@ -20,6 +20,7 @@ metadata:
 - Job and input flow
 - Board and decisions
   - Never stop waiting on an open gate
+- Finishing the joined video
 - Stuck jobs
 - Stage behavior
 - Operating practice
@@ -291,6 +292,18 @@ When you need a photo, clip, audio or other file from the person, ask with `pipe
 
 The Director never picks an unanswered fact itself, and never puts it on screen: not a name spelling, not a sign-up route, not an eligibility line. Copy that needs a fact nobody has given leaves it out, and the fact stays a board question until answered.
 Do not park such questions for the final approval; the final approval lists only small choices that did not block the copy.
+
+## Finishing the joined video
+
+The joined video (`gate: "cut"`) is a plain join: no captions, no music, no on-screen text. All of that is added once, by `finish-video.py`, in one style (bold white on a dark box, inside the safe area above the bottom 500 px), so the person approves the cut without being asked to like text that will still change. The order is fixed: joined video, finishing choice, finishing, finished video, post text, checks, final.
+
+1. The cut card carries the finishing choice as its approve buttons: "Approve + add captions", "Approve + add music", "Approve + both", "Approve as is". One click approves the cut and answers the finishing question. When a request arrives from the cut card (a `submit_decision` with `reviewId` `cut`), call `pipeline_decision_apply` right away and do nothing else: the server records the choice in `approvals/finishing.json` in the same step. Do not ask the finishing question again, and do not decline, re-record or "convert" these requests yourself.
+2. A change note on the cut that only asks for finishing ("add captions and background music") is not a redo: `pipeline_decision_apply` approves the cut and records the choice read from the note. A note that asks for a real edit (order, trims, a shot, a redo) reopens the cut as before. A request that repeats something already decided is declined with `pipeline_board_request_decline` and `handled: true`, so the board shows "Already handled".
+3. Only when the cut was approved some other way (in chat) and no choice is recorded, ask ONE question with `pipeline_board_ask` ("Add captions", "Add background music", "Both", "Skip, use as is") and record it with `pipeline_finishing_choice`.
+4. Captions: before running `finish-video.py` with captions, get the words that were actually spoken. Call `media_transcribe` on `media/D{n}/final-raw.mp4`; when it answers `needs_transcription_provider`, follow its steps (`creative_transcribe_audio` when ElevenLabs is connected, priced as a transcription item; `transcript_save` to keep it). Finishing builds the captions from that transcript. Without one it uses the script wording, and you must say so: "captions come from the script, not checked against the speech".
+5. Music has no maker in this plugin and none is invented. With the shelf empty (`pipeline_music_list`), ask the person for a track (a file path) or a link to one, add it with `pipeline_music_add`, then finish. Or offer captions only. Never create audio by hand, with Python or any other script, unless you say so plainly and the person agrees; never say the video has music before a track is added.
+6. After `finish-video.py` exits 0, present the finished video (`pipeline_review_present` with `gate: "finish"`, review copies as for the cut) and wait. "Approve" lets the post text come next. A change asked there reruns finishing only (change the recorded choice with `pipeline_finishing_choice` if the note says so, then run `finish-video.py` again): the approved cut and its text plan stay. Finishing also draws the post's on-screen text (`media/D{n}/onscreen.json`, saved by the join), so "Approve as is" still makes a finished video when the script has on-screen text.
+7. Never re-join the clips yourself or run your own ffmpeg to finish. The stamped output of `finish-video.py` is the only finished video the board accepts.
 
 ## Say what was actually done
 

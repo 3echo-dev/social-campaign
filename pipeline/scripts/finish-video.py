@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""Finish the stitched cut: spoken-line captions, a music bed, an end card, a loudness-normalised encode.
+"""Finish the plain joined cut: on-screen text, spoken-line captions, a music bed, an end card, a loudness-normalised encode.
 
     python finish-video.py <manifest.json> [--out media/D1/final.mp4] [--music media/music/choice.json] [--post drafts/D1/post.md]
     python finish-video.py <manifest.json> --variant v2 --hook "<text>" --cta "<text>"
 
 Reads the stitched cut (stitch.output, else media/D<n>/final.mp4), keeps it as final-raw.mp4 next to it,
-and writes the finished final.mp4. Run it right after stitch-clips.py. The on-screen text the stitch
-burned stays as it is.
+and writes the finished final.mp4 (plus final-finished.sha256, which marks it as this script's own output, and
+finish-report.json, which says where the caption words came from). Run it right after the person approved the
+joined video and said what to add. The joined video is plain: it carries no text, so everything on screen is
+drawn here, once, in one style (bold white on a dark rounded box, inside the safe area above the bottom 500 px).
 
-  * Captions: each beat's spoken line (a clip's dialogue, else the manifest's voice-over text, else the
-    script's Spoken line column, else the storyboard's quoted speech), shown over that clip's span, two
-    lines of 32 characters at most, bold white on a dark rounded box above the platform's bottom margin.
+  * On-screen text: media/D<n>/onscreen.json, saved by stitch-clips.py from the script's on-screen text column
+    ({"items": [{"start", "end", "text", "position"?}], "avoid"?: [{"x","y","w","h"}]}; avoid are fractions of the frame
+    where a face or logo sits). It is drawn in a slot just above the captions, and moved above or below an avoid box
+    it would cover. It is drawn whether or not captions are chosen, because it is the post's own text, not an extra.
+  * Captions: each beat's spoken line, shown over that clip's span, two lines of 32 characters at most, bold
+    white on a dark rounded box above the platform's bottom margin. The words come from the transcript of the
+    approved cut when there is one (--transcript, else media/D<n>/transcript.json, else the workspace's
+    imports/transcripts/<sha256 of final-raw.mp4>.json saved by media_transcribe / transcript_save). Without
+    one they come from the script wording (a clip's dialogue, else the manifest's voice-over text, else the
+    script's Spoken line column, else the storyboard's quoted speech) and finish-report.json and the printed
+    line say "script wording, not checked against the speech".
     The words turn gold one by one (word times spread evenly over the chunk's span). No spoken lines,
     no captions.
   * Voice-over: the manifest's top-level voiceover [{beat, file, text}] (beat is 1-based, 1 or "B1").
@@ -23,10 +33,8 @@ burned stays as it is.
   * Encode: H.264 and AAC, two-pass loudnorm to -14 LUFS, +faststart, a keyframe every 2 s.
   * Variant (--variant <id> --hook <text> --cta <text>): the same finishing from the same final-raw.mp4,
     written to final-<id>.mp4 next to final.mp4, which is left alone. The hook replaces the first beat's
-    on-screen text for the first 2 s; the cta replaces the end card's call to action. Limitation: the
-    stitch already burned the beat's text into final-raw.mp4, so the hook is drawn as a solid dark box
-    over the band where the stitch puts that text (about 62% down the frame, room for four lines) and the
-    new hook sits in it. Burned text taller than that band, or placed elsewhere, can peek out.
+    on-screen text for the first 2 s (the first beat's own text starts after it); the cta replaces the end card's
+    call to action.
 
 Pillow and ffmpeg only. ffmpeg and ffprobe are called with argument lists, never a shell string.
 Exit 0 finished, or nothing to add (the cut is kept as it is).
@@ -239,23 +247,112 @@ def text_box(text, scale, max_w, hl=None):
     return im
 
 
-def hook_box(W, H, scale, text):
-    """A solid dark band over the place where the stitch burned the beat's text, with the variant hook in it."""
-    top = int(H * 0.62) - int(24 * scale)
-    band_h = min(H - top, int(330 * scale))
-    im = Image.new("RGBA", (W, band_h), (0, 0, 0, 255))
+def onscreen_box(W, H, scale, text):
+    """The on-screen text as one bold white label on a dark box (the captions' style), at most 3 lines; None when it does not fit."""
     lines = wrap(re.sub(r"\s+", " ", text).strip())
+    if not lines:
+        return None
     if len(lines) > 3:
-        print("finish: the hook does not fit in 3 lines, so it is not burned in (nothing is cut short).", file=sys.stderr)
-        return None, top
-    label = text_box("\n".join(lines), scale, W - int(2 * 60 * scale))
-    if label is None:
-        return None, top
-    # Plain bold text on the solid band: reuse the label but without its translucent box.
-    flat = Image.new("RGBA", label.size, (0, 0, 0, 255))
-    flat.alpha_composite(label)
-    im.alpha_composite(flat, ((W - flat.width) // 2, int(12 * scale)))
-    return im, top
+        print("finish: the on-screen text \"%s...\" does not fit in 3 lines, so it is not drawn (nothing is cut short)." % text[:30], file=sys.stderr)
+        return None
+    return text_box("\n".join(lines), scale, W - int(2 * 60 * scale))
+
+
+def place_onscreen(box, W, H, scale, zone, slot_bottom, position, avoid):
+    """The top-left y for an on-screen label: by default just above the caption slot, inside the safe area; a position
+    keyword moves it; it steps above (else below) any avoid box (a face or logo) it would cover."""
+    top = int(zone["top"] * scale)
+    gap = int(16 * scale)
+    if position == "top":
+        y = top
+    elif position == "middle":
+        y = int(H * 0.40 - box.height / 2)
+    else:
+        y = slot_bottom - box.height
+    y = max(top, min(y, slot_bottom - box.height))
+    x0, x1 = (W - box.width) // 2, (W + box.width) // 2
+    for _ in range(len(avoid) + 1):
+        hit = None
+        for r in avoid:
+            rx0, rx1, ry0, ry1 = r["x"] * W, (r["x"] + r["w"]) * W, r["y"] * H, (r["y"] + r["h"]) * H
+            if x0 < rx1 and x1 > rx0 and y < ry1 and y + box.height > ry0:
+                hit = (ry0, ry1)
+                break
+        if not hit:
+            return y
+        above = int(hit[0]) - gap - box.height
+        below = int(hit[1]) + gap
+        if above >= top:
+            y = above
+        elif below + box.height <= slot_bottom:
+            y = below
+        else:
+            print("finish: the on-screen text cannot avoid the marked face or logo area, so it is drawn where it fits.", file=sys.stderr)
+            return y
+    return y
+
+
+def read_onscreen(path):
+    """(items, avoid) from an on-screen plan file; ([], []) when there is none."""
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], []
+    items = []
+    for entry in data.get("items", []) if isinstance(data, dict) else []:
+        try:
+            text = str(entry.get("text") or "").strip()
+            start, end = float(entry.get("start")), float(entry.get("end"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if text and end > start:
+            items.append({"start": start, "end": end, "text": text, "position": str(entry.get("position") or "")})
+    avoid = []
+    for r in (data.get("avoid") or []) if isinstance(data, dict) else []:
+        try:
+            avoid.append({k: float(r[k]) for k in ("x", "y", "w", "h")})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return items, avoid
+
+
+def read_transcript(path):
+    """[(start, end, text)] from a saved transcript: segments, else words grouped into one list; [] when unreadable."""
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for seg in data.get("segments", []) if isinstance(data, dict) else []:
+        try:
+            start = float(seg.get("start_s", seg.get("start")))
+            end = float(seg.get("end_s", seg.get("end")))
+            text = str(seg.get("text") or "").strip()
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if text:
+            out.append((start, end, text))
+    return out
+
+
+def transcript_for(a, jobdir, raw, final):
+    """The transcript of the approved cut and where it was found, else (None, '')."""
+    candidates = []
+    if a.transcript:
+        candidates.append(a.transcript)
+    candidates.append(os.path.join(os.path.dirname(final), "transcript.json"))
+    try:
+        # media_transcribe / transcript_save keep it at <workspace>/imports/transcripts/<sha256 of the media>.json
+        workspace = os.path.normpath(os.path.join(jobdir, "..", "..", "..", ".."))
+        candidates.append(os.path.join(workspace, "imports", "transcripts", sha256(raw) + ".json"))
+    except OSError:
+        pass
+    for c in candidates:
+        if os.path.isfile(c):
+            segs = read_transcript(c)
+            if segs:
+                return segs, c
+    return None, ""
 
 
 def end_card(W, H, scale, logo_path, cta):
@@ -407,6 +504,8 @@ def main():
     ap.add_argument("--no-captions", action="store_true", help="leave captions out even when the recorded choice has them")
     ap.add_argument("--no-music", action="store_true", help="leave music out even when the recorded choice has it")
     ap.add_argument("--no-end-card", action="store_true", help="leave the end card out")
+    ap.add_argument("--transcript", help="a transcript file ({segments: [{start_s, end_s, text}]}) to build the captions from")
+    ap.add_argument("--onscreen", help="the on-screen text plan (default: onscreen.json next to the cut)")
     ap.add_argument("--variant", help="make a test version, media/D<n>/final-<id>.mp4, from final-raw.mp4 and leave final.mp4 alone")
     ap.add_argument("--hook", help="with --variant: the hook text for the first 2 seconds")
     ap.add_argument("--cta", help="with --variant: the call to action for the end card")
@@ -459,7 +558,9 @@ def main():
     want_captions, want_music, choice = review_gate.finishing(jobdir)
     a.want_captions = want_captions and not a.no_captions
     a.want_music = want_music and not a.no_music
-    if not (a.want_captions or a.want_music):
+    plan_path = a.onscreen or os.path.join(os.path.dirname(final), "onscreen.json")
+    has_onscreen = bool(read_onscreen(plan_path)[0])
+    if not (a.want_captions or a.want_music or has_onscreen):
         # Skip: the joined video is used as it is. An earlier finished final.mp4 is put back to the plain cut.
         if not a.variant and os.path.isfile(raw):
             try:
@@ -600,6 +701,22 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         if not text.strip() and len(beats) == len(order):
             text = beats[n]
         lines.append("" if text.strip().lower() in NO_SPEECH or not a.want_captions else text.strip())
+    # The words come from the transcript of the approved cut when there is one. Without it they are the script's wording,
+    # and the report says so: the captions were not checked against what is actually said.
+    segments, transcript_path = transcript_for(a, jobdir, raw, final) if a.want_captions else (None, "")
+    caption_source = "none"
+    if a.want_captions:
+        if segments:
+            heard = 0
+            for n, (s0, e0) in enumerate(spans):
+                words = " ".join(t for (ts, te, t) in segments if s0 - 0.05 <= (ts + te) / 2.0 < e0 + 0.05).strip()
+                if words:
+                    lines[n] = words
+                    caption_ends.pop(n, None)
+                    heard += 1
+            caption_source = "transcript" if heard else "script"
+        elif any(lines):
+            caption_source = "script"
     has_lines = any(lines)
     has_speech = bool(vos) or has_lines or any(isinstance(by_id[s].get("dialogue"), (dict, str)) or by_id[s].get("generateAudio") is True for s in order)
 
@@ -608,13 +725,26 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
     bottom_y = H - int(zone["bottom"] * scale)
     max_w = W - int((zone["left"] + zone["right"]) * scale)
     chunks_n = 0
-    if a.variant and a.hook and a.hook.strip():
-        # First, so the captions stay on top of the box.
-        box, top = hook_box(W, H, scale, a.hook.strip())
-        if box is not None:
-            p = os.path.join(tmp, "hook.png")
-            box.save(p)
-            overlays.append((p, 0, top, 0.0, min(D, HOOK_SECONDS)))
+    # On-screen text sits in a slot just above the captions' two-line box, inside the safe area.
+    cap_probe = text_box("x\nx", scale, max_w)
+    slot_bottom = bottom_y - (cap_probe.height if cap_probe is not None else int(120 * scale)) - int(24 * scale)
+    onscreen, avoid = read_onscreen(a.onscreen or os.path.join(os.path.dirname(raw), "onscreen.json"))
+    hook = a.hook.strip() if a.variant and a.hook and a.hook.strip() else ""
+    if hook:
+        onscreen = [dict(item, start=max(item["start"], HOOK_SECONDS)) for item in onscreen if item["end"] > HOOK_SECONDS]
+        onscreen.insert(0, {"start": 0.0, "end": HOOK_SECONDS, "text": hook, "position": ""})
+    drawn_text = 0
+    for k, item in enumerate(onscreen):
+        start, end = max(0.0, item["start"]), min(D, item["end"])
+        if end <= start:
+            continue
+        box = onscreen_box(W, H, scale, item["text"])
+        if box is None:
+            continue
+        p = os.path.join(tmp, "onscreen-%d.png" % k)
+        box.save(p)
+        overlays.append((p, (W - box.width) // 2, place_onscreen(box, W, H, scale, zone, slot_bottom, item["position"], avoid), start, end))
+        drawn_text += 1
     if has_lines:
         n = 0
         for idx, ((s, e), text) in enumerate(zip(spans, lines)):
@@ -703,9 +833,19 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
     os.replace(work, final)
     if stamp:
         open(stamp, "w").write(sha256(final))
-    print("wrote %s  %sx%s  %.2fs  (captions %s, music %s, voice-over %s, end card %s%s)" % (
+    source_words = {"transcript": "from the transcript of the approved cut", "script": "from the script wording, not checked against the speech", "none": ""}[caption_source]
+    try:
+        report = {"captions": has_lines, "captionSource": caption_source, "transcript": transcript_path.replace(os.sep, "/") if transcript_path else None,
+                  "onScreenText": drawn_text, "music": bool(music), "finalSha256": sha256(final)}
+        if not a.variant:
+            with open(os.path.join(os.path.dirname(final), "finish-report.json"), "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+    except OSError:
+        pass
+    print("wrote %s  %sx%s  %.2fs  (on-screen text %s, captions %s, music %s, voice-over %s, end card %s%s)" % (
         final.replace(os.sep, "/"), out["width"], out["height"], out["duration"],
-        ("%d with the spoken word in gold" % chunks_n) if has_lines else "none",
+        ("%d line(s)" % drawn_text) if drawn_text else "none",
+        (("%d with the spoken word in gold, %s" % (chunks_n, source_words)) if has_lines else "none"),
         ("ducked under speech" if has_speech else "bed") if music else "none",
         ("%d placed" % len(vos)) if vos else "none",
         ("logo" if logo else "") + (" + " if logo and cta else "") + ("call to action" if cta else "") if card is not None else "none",

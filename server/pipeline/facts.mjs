@@ -1008,13 +1008,16 @@ export const MEDIA_REVIEWS = Object.freeze({
   pictures: Object.freeze({ kind: 'image', file: 'approvals/pictures.json' }),
   clips: Object.freeze({ kind: 'video', file: 'approvals/clips.json' }),
   cut: Object.freeze({ kind: 'video', file: 'approvals/cut.json' }),
+  // The finished video (captions, music, on-screen text added by finish-video.py), checked before the post text. Reviewed only when
+  // something was added: a "skip" finishing choice uses the approved joined video as it is.
+  finish: Object.freeze({ kind: 'video', file: 'approvals/finish.json' }),
 });
 
 const slotOfKey = key => {
   const parsed = parseJobKey(key);
   return parsed ? `${parsed.deliverable}|${parsed.item}` : null;
 };
-const sameKey = (a, b) => (canonicalJobKey(a) || a) === (canonicalJobKey(b) || b);
+export const sameKey = (a, b) => (canonicalJobKey(a) || a) === (canonicalJobKey(b) || b);
 
 /**
  * The newest priced item of each picture (kind image) or clip (kind video) slot and the file it landed as. complete: every slot has
@@ -1040,7 +1043,49 @@ export function mediaSet(job, kind) {
 }
 
 /** The set a review gate covers. A new panel-grid review adds its entry to MEDIA_REVIEWS and a case here. */
-export const reviewSet = (job, gate) => (gate === 'cut' ? cutSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
+export const reviewSet = (job, gate) => (gate === 'cut' ? cutSet(job) : gate === 'finish' ? finishedSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
+
+/**
+ * The finished video of each post, media/D<n>/final.mp4, only while it is finish-video.py's own output: media/D<n>/final-finished.sha256
+ * holds its checksum. A plain cut copied to final.mp4 (a skip choice, a failed finish) has no stamp and is not reviewed as finished.
+ */
+export function finishedSet(job) {
+  const panels = [];
+  let names = [];
+  try { names = readdirSync(join(job.dir, 'media'), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name)).map(entry => entry.name); } catch { /* no media yet */ }
+  for (const deliverable of names.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) {
+    const file = `media/${deliverable}/final.mp4`;
+    let bytes;
+    let stamp = '';
+    try { bytes = readFileSync(join(job.dir, ...file.split('/'))); stamp = String(readFileSync(join(job.dir, 'media', deliverable, 'final-finished.sha256'), 'utf8')).trim(); } catch { continue; }
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    if (bytes.length && stamp === sha256) panels.push({ slot: `${deliverable}|Finished`, key: `${deliverable}-finished`, deliverable, panel: 'Finished', version: 1, file, sha256 });
+  }
+  return { kind: 'video', panels, complete: panels.length > 0 };
+}
+
+/** Whether any post has on-screen text saved by the join (media/D<n>/onscreen.json): finishing draws it, so a "skip" still makes a finished video. */
+export function onscreenPlanned(job) {
+  let names = [];
+  try { names = readdirSync(join(job.dir, 'media'), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name)).map(entry => entry.name); } catch { return false; }
+  return names.some(name => (readJson(join(job.dir, 'media', name, 'onscreen.json'))?.items || []).some(item => item && String(item.text || '').trim()));
+}
+
+/** Finishing has something to make: captions or music were chosen, or the joined video has on-screen text to draw. */
+export function finishingNeeded(job) {
+  const record = finishingRecord(job);
+  return Boolean(record) && (record.choice !== 'skip' || onscreenPlanned(job));
+}
+
+const FINISHING_CHOICE_IDS = Object.freeze(['captions', 'music', 'both', 'skip']);
+
+/** The finishing choice recorded for the joined video(s) as approved now (approvals/finishing.json), else null. */
+export function finishingRecord(job) {
+  const saved = readJson(join(job.dir, 'approvals', 'finishing.json'));
+  if (!saved || !FINISHING_CHOICE_IDS.includes(saved.choice) || !mediaSetApproved(job, 'cut') || !Array.isArray(saved.files)) return null;
+  const panels = reviewSet(job, 'cut').panels;
+  return saved.files.length === panels.length && panels.every(panel => saved.files.some(file => file?.file === panel.file && file.sha256 === panel.sha256)) ? saved : null;
+}
 
 /** The joined (plain) video of each post, media/D<n>/final-raw.mp4: one panel per post. Join the clips with stitch-clips.py to make it. */
 export function cutSet(job) {
@@ -1060,6 +1105,8 @@ export function cutSet(job) {
 export function mediaSetApproved(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
   if (!spec) return false;
+  // A finished video is approved only for the cut and the choice it was made from: a new cut, or a changed choice, voids it.
+  if (gate === 'finish' && !finishingRecord(job)) return false;
   const decision = readJson(join(job.dir, ...spec.file.split('/')));
   if (!decision || typeof decision !== 'object' || decision.decision !== 'approve' || !Array.isArray(decision.files)) return false;
   const set = reviewSet(job, gate);
@@ -1071,13 +1118,15 @@ export function mediaSetApproved(job, gate) {
 export function mediaReviewRequired(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
   if (!spec) return false;
+  // The finished video is reviewed once something was chosen to add, whether or not it has been made yet.
+  if (gate === 'finish') return finishingNeeded(job);
   if (!reviewSet(job, gate).panels.length) return false;
   return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
 }
 
 /** The first of the reviews that is required and not approved, or null. */
 export function mediaReviewOutstanding(job) {
-  return ['pictures', 'clips', 'cut'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
+  return ['pictures', 'clips', 'cut', 'finish'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key

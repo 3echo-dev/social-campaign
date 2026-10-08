@@ -2155,7 +2155,7 @@ function stageLabel(stageId, workflowId = null) {
 }
 
 const GATE_NAMES = Object.freeze({
-  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Check the joined video', finishing: 'Finishing choice', content: 'Final post', publish: 'Posting plan',
+  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Check the joined video', finishing: 'Finishing choice', finish: 'Check the finished video', content: 'Final post', publish: 'Posting plan',
   campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report',
 });
 const OFF_FLOW_STATES = new Set(['CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'COMPLETE', 'CANCELLED']);
@@ -2202,7 +2202,7 @@ function gateHistory(decisions, gate) {
 
 function stageOfGate(gate, workflowId = null) {
   if (gate === 'price') return 'your-approval-of-the-price';
-  if (['sample', 'pictures', 'clips', 'cut', 'finishing'].includes(gate)) return 'making-the-images-and-video';
+  if (['sample', 'pictures', 'clips', 'cut', 'finishing', 'finish'].includes(gate)) return 'making-the-images-and-video';
   return stagesRuntime.forState(statesRuntime.AWAITING_STATE[gate], workflowId)?.stage || null;
 }
 
@@ -2264,6 +2264,11 @@ function mediaReviewFacts(dir) {
     required.push('finishing');
     const choice = finishingChoice(job);
     if (choice) approved.set('finishing', { gate: 'finishing', at: isoTime(choice.decidedAt) });
+    // The finished video is checked once finishing ran, when something was added to it.
+    if (choice && facts.finishingNeeded(job)) {
+      required.push('finish');
+      if (facts.mediaSetApproved(job, 'finish')) approved.set('finish', { gate: 'finish', at: isoTime(readJson(join(dir, ...facts.MEDIA_REVIEWS.finish.file.split('/')))?.decidedAt) });
+    }
   }
   return { required, approved };
 }
@@ -2504,13 +2509,13 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
     const approved = stageGates.filter((gate) => decided.has(gate));
     stage.approvals = approved.map((gate) => decided.get(gate));
-    stage.gates = stageGates.filter((gate) => !['sample', 'pictures', 'clips', 'cut', 'finishing'].includes(gate) || decided.has(gate) || (gate === 'finishing' && decided.has('cut'))).map((gate) => {
+    stage.gates = stageGates.filter((gate) => !['sample', 'pictures', 'clips', 'cut', 'finishing', 'finish'].includes(gate) || decided.has(gate) || (gate === 'finishing' && decided.has('cut')) || (gate === 'finish' && decided.has('finishing'))).map((gate) => {
       const history = gateHistory(decisions, gate);
       return {
         gate,
         name: GATE_NAMES[gate] || stageLabel(gate),
         status: decided.has(gate) ? 'done'
-          : gate === 'finishing' ? 'waiting'
+          : gate === 'finishing' || gate === 'finish' ? 'waiting'
           : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'
             : (flowing && statesRuntime.APPROVED_STATE[gate] && orderIds.indexOf(statesRuntime.APPROVED_STATE[gate]) <= nowAt) || stage.status === 'complete' ? 'done' : 'pending',
         ...(history.length ? { history } : {}),
