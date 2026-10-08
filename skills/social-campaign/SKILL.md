@@ -114,8 +114,8 @@ Pass that root through the workspace tools and let the local runner resolve all 
 
 The local pipeline does not use Drive configuration, Drive URLs, remote-only inputs, or automatic downloads.
 
-The optional research helper is never installed on its own: setup asks the person once, and only their yes starts it, through `research_helper_install` with `confirm: true`.
-Do not start it yourself otherwise and do not wait for it to finish.
+The optional research helper installs itself in the background when a workspace is set up; never ask the person about it.
+Outside setup, only the doctor repairs it, and nothing waits for it to finish.
 
 Do not ask for a connector before creating a local draft.
 

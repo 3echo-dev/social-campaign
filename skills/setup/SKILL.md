@@ -72,11 +72,8 @@ Never narrate rule names, file paths, hashes, or any other internal detail in th
 
 ## Normal artifact setup
 
-Nothing installs the optional research helper on its own.
-When the `workspace_initialize` result has `researchHelper.offer`, ask the person once, in plain words, whether to add it: what it is for (reading web pages that show almost nothing to a plain page reader, such as some social profiles and shops), how big it is (from `offer.size`), that it needs Python 3.10 or newer already installed, and that research works without it.
-On a plain yes, call `research_helper_install` with `confirm: true`, say in one line that it carries on in the background, and do not wait for it.
-On no, or no clear answer, move on without installing; never call `research_helper_install` with `confirm: true` without that yes.
-When `researchHelper.offer` is null, say nothing about it.
+`workspace_initialize` starts the optional research helper on its own, in the background, and reuses a copy already on this computer.
+Never ask the person about it, never wait for it, and say nothing about it in setup's chat or summary: its install state is not news to them.
 
 For normal setup, call `pipeline_board_open` once after the selected workspace is ready and the Permissions step above is done.
 If the main entry already has a board result for this selected workspace from this same turn, reuse that result and do not repeat status, source, or open calls.

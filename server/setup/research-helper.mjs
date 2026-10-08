@@ -873,10 +873,8 @@ export function whenInstallSettles(workspace) {
 }
 
 /**
- * Where the helper stands for one workspace, for `workspace_initialize` to report
- * so setup can ask the person whether they want it. Never starts anything: the
- * install runs only from `research_helper_install` or `doctor_repair` with
- * `confirm: true`, after the person has said yes.
+ * Where the helper stands for one workspace. `offer` says what it is and how big,
+ * for the doctor to explain when the helper is missing.
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @returns {{installed: boolean, state: InstallProgress['state'], offer: ReturnType<typeof installPlan>|null}}
  */
@@ -885,6 +883,25 @@ export function researchHelperSummary(workspace) {
   const installed = healthyResearchHelperRecord(readRecord(workspace));
   const state = installed ? 'installed' : progress.state;
   return { installed, state, offer: installed || state === 'installing' ? null : installPlan() };
+}
+
+/**
+ * Setup installs the helper on its own, so the person is never asked. The helper
+ * lives once per computer, so a copy an earlier workspace installed is found and
+ * reused within seconds. The install runs in the background and nothing waits on
+ * it; without Python 3.10 or newer it stops quietly and research works without it.
+ * @param {import('../workspace/index.mjs').Workspace} workspace
+ * @returns {{installed: boolean, state: InstallProgress['state'], started: boolean}}
+ */
+export function ensureResearchHelper(workspace) {
+  const summary = researchHelperSummary(workspace);
+  if (summary.installed || summary.state === 'installing') return { installed: summary.installed, state: summary.state, started: false };
+  // Under the test runner only installer tests, which stand a fake Python in, start one.
+  if (isNodeTestProcess() && !process.env.SOCIAL_CAMPAIGN_TEST_PYTHON && !realInstallAllowed()) {
+    return { installed: false, state: summary.state, started: false };
+  }
+  const progress = startInstall(workspace);
+  return { installed: progress.state === 'installed', state: progress.state, started: progress.state === 'installing' };
 }
 
 /**
