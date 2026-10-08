@@ -39,6 +39,9 @@ const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
 const plain = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const word = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
+/** A file the person attached to a message (a reference saved on the job): its kind and name, for the chip in the chat. */
+const attachmentOf = value => (plain(value) && word(value.name) ? { label: String(word(value.label) || 'Reference').slice(0, 60), name: String(word(value.name)).slice(0, 120), type: word(value.type) } : null);
+
 export const messagesFile = (jobDir, agent) => join(jobDir, 'messages', `${agent}.jsonl`);
 
 /** `m-` and the first 16 hex digits of the request id's hash, so a repeated request always names the same message. */
@@ -103,7 +106,7 @@ export function readAgentMessages(jobDir, agent) {
     if (!plain(line) || typeof line.id !== 'string') continue;
     if (line.kind === 'sent' && typeof line.text === 'string') {
       if (byId.has(line.id)) continue;
-      const message = { id: line.id, requestId: word(line.requestId), text: line.text, at: word(line.at), status: 'sent', deliveredAt: null, reply: null, repliedAt: null };
+      const message = { id: line.id, requestId: word(line.requestId), text: line.text, at: word(line.at), status: 'sent', deliveredAt: null, reply: null, repliedAt: null, ...(attachmentOf(line.attachment) ? { attachment: attachmentOf(line.attachment) } : {}) };
       byId.set(line.id, message);
       order.push(message);
     } else if (line.kind === 'delivered' && byId.has(line.id)) {
@@ -165,7 +168,7 @@ function knownAgent(agent, roster) {
  * already has 20 messages waiting. A message to the Director is delivered at once.
  * Returns {jobId, agent, messageId, duplicate, delivered}.
  */
-export function saveAgentMessage({ root, brand, jobId, agent, text, requestId, roster = null } = {}) {
+export function saveAgentMessage({ root, brand, jobId, agent, text, requestId, roster = null, attachment = null } = {}) {
   const job = openJob(root, brand, jobId);
   if (isFinishedState(job.state)) throw new InvalidInputError('This job is finished, so it can no longer take messages.');
   knownAgent(agent, roster);
@@ -182,7 +185,7 @@ export function saveAgentMessage({ root, brand, jobId, agent, text, requestId, r
     if (messages.filter(message => isPending(message, agent)).length >= PENDING_LIMIT) {
       throw new InvalidInputError(`${PENDING_LIMIT} messages are already waiting for the ${agentLabel(agent)}. They will be passed on at its next step.`);
     }
-    const sent = appendLine(file, { kind: 'sent', id, requestId, text: clean });
+    const sent = appendLine(file, { kind: 'sent', id, requestId, text: clean, ...(attachmentOf(attachment) ? { attachment: attachmentOf(attachment) } : {}) });
     if (agent === DIRECTOR) appendLine(file, { kind: 'delivered', id, toolUseId: null, agentId: null, at: sent.at });
     return { jobId, agent, messageId: id, duplicate: false, delivered: agent === DIRECTOR };
   });

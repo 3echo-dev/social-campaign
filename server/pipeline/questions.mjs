@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import * as runtime from './runtime.mjs';
+import { REFERENCE_TYPES } from './references.mjs';
 
 export const QUESTION_ID = /^q-[0-9a-f]{12}$/;
 export const QUESTION_TEXT_LIMIT = 300;
@@ -120,12 +121,23 @@ function questionPlace(root, { brand, jobId }) {
   return { jobId: null, brand: wantedBrand };
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false }) {
+// A question that asks for a file: the board shows the upload control in the card, and the file is saved as a reference of this type.
+function uploadWish(wantsUpload, jobId) {
+  if (wantsUpload === undefined || wantsUpload === null || wantsUpload === false) return null;
+  if (!wantsUpload || typeof wantsUpload !== 'object' || Array.isArray(wantsUpload)) throw new TypeError('wantsUpload must say which kind of file to ask for.');
+  const type = wantsUpload.type === undefined ? 'picture' : wantsUpload.type;
+  if (typeof type !== 'string' || !Object.hasOwn(REFERENCE_TYPES, type)) throw new TypeError(`wantsUpload.type must be one of: ${Object.keys(REFERENCE_TYPES).join(', ')}.`);
+  if (!jobId) throw new TypeError('A question that asks for a file must be about one job (pass jobId).');
+  return { type };
+}
+
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null }) {
   const place = questionPlace(root, { brand, jobId });
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
   const choices = questionOptions(options);
   if (allowText !== undefined && allowText !== null && typeof allowText !== 'boolean') throw new TypeError('allowText must be true or false.');
   if (inChat !== undefined && inChat !== null && typeof inChat !== 'boolean') throw new TypeError('inChat must be true or false.');
+  const wish = inChat ? null : uploadWish(wantsUpload, place.jobId);
   const typed = inChat ? false : typeof allowText === 'boolean' ? allowText : true;
   if (!inChat && !choices.length && !typed) throw new TypeError('Give at least one option, or allow a typed answer.');
   const record = {
@@ -136,6 +148,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     options: choices,
     allowText: typed,
     ...(inChat ? { inChat: true } : {}),
+    ...(wish ? { wantsUpload: wish } : {}),
     askedAt: new Date().toISOString(),
     status: 'open',
     answer: null,
@@ -182,6 +195,15 @@ export function answerQuestion({ root, questionId, choice, text, via, requestId 
   if (question.status !== 'open') throw new Error(WITHDRAWN);
   const answer = answerFor(question, { choice, text, via });
   const next = { ...question, status: 'answered', answer, answeredVia: via, answeredAt: new Date().toISOString(), requestId: typeof requestId === 'string' && requestId ? requestId : null };
+  writeAtomic(questionFile(root, questionId), next);
+  return next;
+}
+
+/** The person sent the file a question asked for: it is answered, with what was added as the answer. */
+export function closeUploadQuestion({ root, questionId, jobId, summary }) {
+  const question = readQuestion({ root, questionId });
+  if (question.status !== 'open' || !question.wantsUpload || question.jobId !== jobId) return question;
+  const next = { ...question, status: 'answered', answer: { text: String(summary || 'Added the file.').slice(0, ANSWER_TEXT_LIMIT) }, answeredVia: 'board', answeredAt: new Date().toISOString() };
   writeAtomic(questionFile(root, questionId), next);
   return next;
 }

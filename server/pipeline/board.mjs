@@ -11,7 +11,7 @@ import { UserFacingError } from '../lib/errors.mjs';
 import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { addReference, checkReference, referenceSummaries } from './references.mjs';
-import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
+import { answerQuestion, closeUploadQuestion, listQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
 import { assertContentQc } from './label-qc.mjs';
@@ -22,7 +22,8 @@ import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from '.
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
 import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
-import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { REFERENCE_TYPES } from './references.mjs';
 import { finishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
@@ -972,6 +973,7 @@ function questionItem(question, place) {
   if (question.inChat) return { kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: false, inChat: true, need: NEEDS_ANSWER_IN_CHAT, questionId: question.questionId, options: [], allowText: false, at: inboxAt(question.askedAt) };
   return {
     kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: true,
+    ...(question.wantsUpload ? { wantsUpload: { type: question.wantsUpload.type } } : {}),
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,
     at: inboxAt(question.askedAt),
   };
@@ -1497,7 +1499,8 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
 
 // A reference upload: exactly these fields, a job that exists, a known type and a file kind that type accepts.
 // The bytes are checked again when the request is applied; here only what a request can show without them.
-const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision']);
+// `to` says the reference came from that agent's chat (the chat then shows it as a chip); `questionId` is the open question that asked for the file.
+const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision', 'to', 'questionId']);
 
 function validateAddReference(root, args) {
   if (!plainObject(args)) throw new Error('Say which job this is for.');
@@ -1505,6 +1508,19 @@ function validateAddReference(root, args) {
   if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
   if (typeof args.brand !== 'string' || typeof args.jobId !== 'string' || !facts.jobAt(root, args.brand.trim(), args.jobId.trim())) throw new Error('That job could not be found for that brand.');
   checkReference(args.reference, { shapeOnly: !(typeof args.reference?.dataBase64 === 'string' && args.reference.dataBase64) && !args.reference?.path });
+  const job = facts.jobAt(root, args.brand.trim(), args.jobId.trim());
+  if (args.to !== undefined) {
+    if (typeof args.to !== 'string') throw new Error('Choose who the file is for.');
+    const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
+    const roster = rosterOf({ rows: snapshot.plan?.rows, route: snapshot.route });
+    if (!roster.includes(args.to)) throw new Error('That agent is not part of this job.');
+  }
+  if (args.questionId !== undefined) {
+    let question = null;
+    try { question = readQuestion({ root, questionId: args.questionId }); } catch { /* reported below */ }
+    if (!question || question.jobId !== job.jobId || !question.wantsUpload) throw new Error('That question is not asking for a file on this job.');
+    if (question.status === 'withdrawn') throw new Error('This question was taken back, so it no longer needs a file.');
+  }
 }
 
 // The deliverable the way the person sees it ("the Instagram Reel"), never its id.
@@ -2067,7 +2083,22 @@ function boardJobFields(value) {
 
 // A new job request carries exactly these fields. A product photo never travels with it (a request can never carry a
 // local path), so `photo` is dropped on the way in; anything else is refused before the request is saved or claimed.
-const CREATE_JOB_FIELDS = new Set(['requestId', 'workspaceId', 'title', 'brief', 'brand', 'brandName', 'sourceRefs', 'kind', 'job']);
+const CREATE_JOB_FIELDS = new Set(['requestId', 'workspaceId', 'title', 'brief', 'brand', 'brandName', 'sourceRefs', 'kind', 'job', 'references']);
+// References the person added in the new-job form (pictures, video, audio, caption text, add-ons). Each is the same shape
+// as an add_reference request's reference and is saved into the new job's own folder once the job exists.
+export const JOB_FORM_REFERENCES_MAX = 8;
+
+// Checked when the request is saved (shape only while a file is still in the asset store) and again, with the bytes, before
+// the job is created, so a bad reference refuses the whole request and no half-made job is left behind.
+function checkJobReferences(list, { strict = false } = {}) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new TypeError('The references must be a list.');
+  if (list.length > JOB_FORM_REFERENCES_MAX) throw new Error(`Add up to ${JOB_FORM_REFERENCES_MAX} references when starting a job. The rest can be added on the job page.`);
+  return list.map(reference => {
+    const hasBytes = typeof reference?.dataBase64 === 'string' && reference.dataBase64 || typeof reference?.path === 'string' && reference.path;
+    return checkReference(reference, { shapeOnly: !strict && !hasBytes });
+  });
+}
 const TITLE_LIMIT = 200;
 const BRIEF_LIMIT = 6000;
 const withoutPhoto = args => (plainObject(args) ? Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'photo')) : args);
@@ -2090,6 +2121,7 @@ function createJobFields(args, root) {
     if (args[key].length > limit) throw new Error(`Keep the ${key} to ${limit} characters or fewer.`);
   }
   if (args.brand !== undefined && args.brand !== null && typeof args.brand !== 'string') throw new TypeError('The brand must be text.');
+  checkJobReferences(args.references);
   const job = boardJobFields(args.job) || {};
   // The pipeline is always chosen: by Claude in the job fields, or by the request itself. It is normalised and written back.
   const raw = job.kind ?? args.kind;
@@ -2147,11 +2179,21 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     return result;
   }
   if(operation==='create_job') {
+    const {requestedBy,...jobArgs}=args;
+    args=jobArgs;
     const job=createJobFields(args,root);
+    checkJobReferences(args.references,{strict:true});
     const result=runtime.createJob({root,brand:args.brand,requestId:args.requestId,title:args.title,brief:args.brief,...(job?{job}:{}),ownerUserId:null,ownerEmail:null});
     const brand=result.brand||args.brand;
+    // The form's references go into the new job's own folder before Claude is woken, so intake and the brief see them from the start.
+    const saved=[];
+    if(Array.isArray(args.references)&&args.references.length) {
+      const made=facts.jobAt(root,String(brand||'').trim(),String(result.jobId||'').trim());
+      if(!made) throw new Error('The new job could not be found to save its references.');
+      args.references.forEach((reference,index)=>saved.push(addReference({jobDir:made.dir,reference,requestId:`${args.requestId}-ref${index+1}`,by:requestedBy}).reference));
+    }
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand,jobId:result.jobId},source:'local'});
-    return {...result,jobId:result.jobId,brand,message:'Job saved. Your Claude session can now continue intake.'};
+    return {...result,jobId:result.jobId,brand,...(saved.length?{referenceCount:saved.length}:{}),message:saved.length?`Job saved with ${saved.length === 1 ? 'one reference' : saved.length + ' references'}. Your Claude session can now continue intake.`:'Job saved. Your Claude session can now continue intake.'};
   }
   if(operation==='continue_job') {
     runtime.readJobSnapshot({root,brand:args.brand,jobId:args.jobId});
@@ -2176,6 +2218,13 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const job=facts.jobAt(root,String(args.brand||'').trim(),String(args.jobId||'').trim());
     if(!job) throw new Error('That job could not be found for that brand.');
     const {reference,added}=addReference({jobDir:job.dir,reference:args.reference,requestId:args.requestId,by:args.requestedBy});
+    const shown=reference.originalName||reference.label;
+    if(args.to) {
+      const said=`Added a reference: ${reference.label.toLowerCase()} "${shown}"${reference.note?` (${reference.note})`:''}. It is saved on the job.`;
+      const { roster } = checkAgentMessage(root,{requestId:args.requestId,brand:args.brand,jobId:args.jobId,agent:args.to,text:said,workspaceId:runtime.readWorkspace({root}).workspaceId});
+      saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.to,text:said.slice(0,MESSAGE_TEXT_LIMIT),requestId:`${args.requestId}-chat`,roster,attachment:{label:reference.label,name:shown,type:reference.type}});
+    }
+    if(args.questionId) closeUploadQuestion({root,questionId:args.questionId,jobId:job.jobId,summary:`Added ${reference.label.toLowerCase()}: ${shown}`});
     if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {jobId:job.jobId,reference,added,message:`${reference.label} saved to this job. Your Claude session can now use it.`};
   }
@@ -2646,7 +2695,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   // or invalid answer leaves the request unclaimed and nothing written: decline it
   // with the reason and the board shows the current questions again.
   if(record.operation==='update_intake') validateIntakeUpdate({root,brand:record.args?.brand,jobId:record.args?.jobId,expectedRevision:record.args?.expectedRevision,patch:record.args?.patch});
-  if(record.operation==='create_job') createJobFields(record.args, root);
+  if(record.operation==='create_job') { createJobFields(record.args, root); checkJobReferences(record.args.references, { strict: true }); }
   if(record.operation==='answer_question') validateBoardAnswer(root,record.args);
   // A post answer or mark that cannot be taken yet (the wait has not passed, the post is not waiting) is checked before the
   // claim, so the request stays unclaimed and can be declined with the reason.
@@ -2662,7 +2711,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
     ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
     : record.operation==='answer_question'
       ? answeredQuestion(root,record)
-      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
+      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'||record.operation==='create_job'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
   catch(error) {
     const next = {
       ...record,
