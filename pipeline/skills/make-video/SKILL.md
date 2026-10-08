@@ -85,6 +85,8 @@ After the finish, say what the video really has: when `media/music/choice.json` 
 <!-- BEGIN labelled references (0.14 task 3) -->
 ## Labelled references
 
+Reference videos the person pasted as links are saved by `pipeline_reference_from_url` in `inputs/references/video/<id>/` and listed in `inputs/references/manifest.json`. Use their pacing, framing and hook as direction in the prompt text. The downloaded file is reference only: never stitch it into the cut or post it.
+
 Every reference attached to a clip carries a short label and what to keep, and the prompt opens with a legend of them in attachment order.
 
 1. The clip item's `references` has one `{ ref, label, keep }` per entry of its `assetIds`, in the same order, the panel image that seeds the clip included.

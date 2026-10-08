@@ -207,6 +207,11 @@ When the spawn prompt passes `problems`, fix exactly those in the file at `draft
    Fill `Not found` and `Sources`, delete every `Not yet researched`, and save a compact evidence matrix.
    Refresh only the changed claim or scope and preserve the saved competitor shortlist.
 
+
+### Video links
+
+A Reel, TikTok, YouTube or other video link given as evidence is saved first with `pipeline_reference_from_url` (yt-dlp, no login), then watched with `video_watch`. Order for Instagram: yt-dlp download, then the public page, then the browser. A `needs_sign_in` or `blocked` status is recorded under `Not found` with the host, and the Director is asked for a board upload; browser cookies are only used when the person has said yes to `cookiesFromBrowser`. The file is reference only, never reposted.
+
 ### Retry chain, per source, hard cap one pass
 
 Retry once, change the query, change the source, then record a `Not verified` gap.

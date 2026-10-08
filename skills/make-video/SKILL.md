@@ -25,6 +25,8 @@ Leave unknown provider outcomes unresolved and do not retry blindly.
 
 ## Before the clips are made
 
+- A reference video the person pasted as a link is already saved by `pipeline_reference_from_url` under `inputs/references/video/<id>/` (see the manifest). Use it to match pacing, framing and hook style, and describe what to borrow in the clip prompts. Never cut, re-upload or ship the downloaded file itself; it is reference only.
+
 - Every reference attached to a clip carries a short label and one phrase on what to keep.
   Fill the item's `references: [{ ref, label, keep }]` in the same order as its `assetIds`, and make the legend the very first thing in the prompt, for example `[Image 1] Mina: keep her face and black bob. [Image 2] Mealbox box: keep the exact box and logo.`
   Preflight refuses a mismatch in plain words; a job with no `references` still runs.
