@@ -4335,6 +4335,23 @@ function traceFiles(files, ctx, label) {
   return agentChips(files, 0, { artifacts: ctx.chipContext?.artifacts || [], doc: ctx.chipContext?.doc || null, label, by: '' });
 }
 
+// A done step that made a storyboard keeps it readable: the boards of the job document whose file the step lists (or made).
+function stepStoryboards(item, files, doc) {
+  const made = path => (item.outputs || []).some(ref => refMatches(ref, path)) || files.some(file => file.path === path);
+  return (Array.isArray(doc?.storyboards) ? doc.storyboards : []).filter(board => board && trimmed(board.path) && (board.panels || []).length && made(board.path));
+}
+
+// Every panel of a storyboard with its words and picture, the same fields and frames as the storyboard review, read-only.
+export function storyboardReadout(board) {
+  const slots = (board?.panels || []).map((panel, index) => {
+    const frame = panelFrameHtml(panel, index, { large: true });
+    const picture = frame.startsWith('<img') ? `<div class="sb-slot-frame">${frame}</div>` : `<div class="sb-slot-frame is-empty${panel?.frame?.thumbOmitted ? ' is-omitted' : ''}">${frame}</div>`;
+    const meta = [Number(panel?.durationSeconds) > 0 ? secondsWord(panel.durationSeconds) : '', PANEL_SOURCE_WORDS[panel?.source] || 'New'].filter(Boolean).join(' · ');
+    return `<div class="sb-slot" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${picture}<div class="sb-slot-body"><div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span></div>${panelFields(panel, board)}</div></div>`;
+  });
+  return slots.join('');
+}
+
 const QUESTION_STATE_WORDS = Object.freeze({ open: 'Still open', withdrawn: 'Withdrawn' });
 // The first step keeps what the person asked for and the questions the Director put to them, each with its answer and when it came.
 function requestTrace(item) {
@@ -4360,6 +4377,8 @@ export function stepTrace(item, ctx = {}) {
   const priceList = withFiles && item.quote && status === 'done' ? `<p><b>Price list</b></p>${priceTable(item.quote, { withProvider: true })}` : '';
   const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList && !item.request ? '<p class="muted">No files listed for this step.</p>' : ''));
   const took = win.from !== null && win.to !== null && win.to >= win.from ? tookWords(win.to - win.from) : '';
+  const boards = withFiles ? stepStoryboards(item, files, ctx.chipContext?.doc) : [];
+  const shotPlan = boards.length ? traceSection('Storyboard', boards.map(board => storyboardStrip(board) + storyboardReadout(board)).join('')) : '';
   const facts = [
     withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
     traceFact(status === 'done' || status === 'running' ? 'Started' : 'Waiting since', esc(traceWhen(item.startedAt))),
@@ -4369,9 +4388,9 @@ export function stepTrace(item, ctx = {}) {
   ].join('');
   const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
   const asked = withFiles ? requestTrace(item) : '';
-  const none = !facts && !made && !session && !asked;
+  const none = !facts && !made && !session && !asked && !shotPlan;
   const sessionBody = win.known ? (session || '<p class="muted">Nothing was recorded for this step.</p>') : '<p class="muted">The time of this step was not recorded.</p>';
-  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection('What it made', made)}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
+  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection('What it made', made)}${shotPlan}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
 }
 
 const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
