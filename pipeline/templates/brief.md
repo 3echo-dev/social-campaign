@@ -18,6 +18,7 @@ brand_files_reviewed: true    # false when onboarding was accepted as drafts
 **Decide:** approve · change {what} · start over
 **Next:** {what happens after you approve, and what it costs}
 **Spent so far:** {n} of {ceiling} credits
+{Delete this line unless the reference evidence fell short of what was asked: **References:** {n} of {N} verified, {why the rest were blocked}, and you chose {paste links / continue with what was found}.}
 {Delete this line unless brand_files_reviewed is false: **Brand files are unreviewed drafts,** so the voice here is a guess. Tell me what is off and it gets fixed for every job after this one.}
 
 ---

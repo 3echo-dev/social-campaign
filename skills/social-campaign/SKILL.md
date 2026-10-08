@@ -271,6 +271,13 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
+## Reference evidence that falls short is asked before the brief
+
+When the person asked for N reference videos (for example "the top 5 Reels in my niche"), or the job needs style references, read `research/competitors.md` before writing the brief and count only references that were verified, popular and in the job's niche. Off-niche results never count.
+If fewer than N were verified, ask ONE `pipeline_board_ask` question on the Director card before the brief, and say the same line in chat. Say in plain words how many were verified and why the rest were blocked (for example "I could check 1 of the 5: TikTok and Instagram asked for a sign-in"), with the options "I'll paste links" (TikTok, Instagram and YouTube links are downloaded with `pipeline_reference_from_url`) and "Continue with what you found", and `allowText` true.
+Never proceed to the brief silently. Wait for the answer; pasted links go back to the researcher before the brief is written.
+The brief's "What you're deciding" section then states plainly that the reference evidence fell short, how many were verified, and what the person chose.
+
 ## Facts the copy depends on are asked early
 
 At the brief stage, before any script, caption or on-screen text is written, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
