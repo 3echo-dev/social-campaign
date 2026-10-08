@@ -7,8 +7,9 @@
 //
 // Shape of the result (the value of document.agents), see docs/PLAN-0.10-AGENT-BOX.md section 2:
 //   { v: 1, list: [agent], unassigned: { yours, records, other, yoursMore, recordsMore, otherMore }, truncated }
-//   agent = { id, name, model, state, task, role, since, files, filesMore, activity, runs, messages, messagesMore, pendingMessages, needs, note? }
+//   agent = { id, name, model, state, task, role, since, files, filesMore, activity, runs, sessions, messages, messagesMore, pendingMessages, needs, note? }
 //   `role` is what the agent does, in one plain line, whatever it is doing now. `runs` are its finished runs, oldest first: { at, tookMs }.
+//   `sessions` are all of its runs, oldest first, for the step history: { at, end, state, task, tookMs, summary }; state is finished, failed, stopped, running or lost.
 //   state is one of AGENT_STATES. `note` (only when there is one) says why a card waits: "Starts after researching".
 //   Director only: `needs` lists what the person must act on (the inbox keys, with `from`, the agent that wrote the work behind it).
 //   Director only, and only when the job is stuck: `stuck` = { reason, kind, since, asked, canRetry, retry? }, see stuckOf below.
@@ -39,6 +40,7 @@ export const TASK_LIMIT = 120;
 export const ACTIVITY_SHOWN = 5;
 export const ACTIVITY_SHED = 2;
 export const RUNS_SHOWN = 6;
+export const SESSIONS_SHOWN = 8;
 export const FILES_SHOWN = 12;
 export const FILES_SHED = 4;
 export const UNASSIGNED_SHOWN = 24;
@@ -445,6 +447,21 @@ function newestFirst(entries, limit) {
     .map(item => ({ at: item.entry.at, text: item.entry.text }));
 }
 
+/** One run as the step history lists it: when it began and ended, what it was asked, how it ended and how long it took. */
+function sessionOf(run, now) {
+  const lost = isOpen(run) && !isFresh(run, now);
+  const state = run.ended ?? (lost ? 'lost' : 'running');
+  const reason = state === 'failed' ? plainLine(run.error, 100) : null;
+  return {
+    at: text(run.startedAt) ?? text(run.dispatchedAt),
+    end: text(run.endedAt),
+    state,
+    task: plainLine(run.description, 80),
+    tookMs: Number.isFinite(run.durationMs) ? run.durationMs : null,
+    summary: reason ?? plainLine(run.summary, 100),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The Director's needs
 // ---------------------------------------------------------------------------
@@ -655,7 +672,7 @@ export function fitAgentBox(section, budget = AGENT_BOX_BUDGET_BYTES) {
         }
       }
     },
-    () => section.list.forEach(agent => { agent.activity = []; if (Array.isArray(agent.runs)) agent.runs = agent.runs.slice(-1); }),
+    () => section.list.forEach(agent => { agent.activity = []; if (Array.isArray(agent.runs)) agent.runs = agent.runs.slice(-1); if (Array.isArray(agent.sessions)) agent.sessions = agent.sessions.slice(-2); }),
     () => section.list.forEach(agent => {
       if (agent.messages.length > 1) {
         agent.messagesMore += agent.messages.length - 1;
@@ -829,6 +846,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
       files: files.slice(0, FILES_SHOWN),
       filesMore: Math.max(0, files.length - FILES_SHOWN),
       activity: newestFirst(activity, ACTIVITY_SHOWN),
+      sessions: runs.slice(-SESSIONS_SHOWN).map(run => sessionOf(run, clock)),
       runs: isDirector ? [] : runs.filter(run => run.ended === 'finished' && text(run.endedAt)).slice(-RUNS_SHOWN).map(run => ({ at: run.endedAt, tookMs: Number.isFinite(run.durationMs) ? run.durationMs : null })),
       messages: shown,
       messagesMore: Math.max(0, sent.length - shown.length),
@@ -872,7 +890,7 @@ export function coreOnlyAgentBox(section) {
   const list = (Array.isArray(section?.list) ? section.list : []).map(agent => {
     const { id, name, model, state, task, role, since, note, needs, pendingMessages, stuck } = agent;
     return {
-      id, name, model, state, task, role, since: since ?? null, files: [], filesMore: (agent.files?.length ?? 0) + (agent.filesMore ?? 0), activity: [], runs: [],
+      id, name, model, state, task, role, since: since ?? null, files: [], filesMore: (agent.files?.length ?? 0) + (agent.filesMore ?? 0), activity: [], runs: [], sessions: [],
       messages: [], messagesMore: (agent.messages?.length ?? 0) + (agent.messagesMore ?? 0), pendingMessages, needs,
       ...(note ? { note } : {}), ...(stuck ? { stuck } : {}),
     };
@@ -929,7 +947,7 @@ export function onboardingAgents({ brandDir, brandName, usage, onboardingStatus,
   const brand = clipOneLine(brandName, 60) || 'your brand';
   const card = (id, fields) => ({
     id, name: nameOf(id), model: shortModel(registry.get(id)?.model), state: 'waiting', task: actionOf(id), role: actionOf(id), since: null, files: [], filesMore: 0,
-    activity: [], runs: [], messages: [], messagesMore: 0, pendingMessages: 0, ...fields,
+    activity: [], runs: [], sessions: [], messages: [], messagesMore: 0, pendingMessages: 0, ...fields,
   });
 
   const waitsOnPerson = phase === 'failed'

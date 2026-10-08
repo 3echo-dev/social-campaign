@@ -994,9 +994,20 @@ svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .stg-h h3 span{color:var(--dim);font-weight:600;margin-left:2px}
 .stg-h .cnt{font-size:var(--t1);color:var(--faint)}
 .steps{display:flex;flex-direction:column;gap:8px}
-.step{--c:133 139 150;--rim:.13;--glow:0;--fill:.12;position:relative;display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:0 12px;padding:8px 12px 8px 8px;border:1px solid transparent;border-radius:14px;
+.step{--c:133 139 150;--rim:.13;--glow:0;--fill:.12;position:relative;display:block;padding:0;border:1px solid transparent;border-radius:14px;
   background:radial-gradient(34% 70% at 50% 0%,rgb(255 255 255/calc(var(--fill)*.13)),rgb(255 255 255/0) 100%) padding-box,radial-gradient(38% 80% at 50% 100%,rgb(255 255 255/calc(var(--fill)*.09)),rgb(255 255 255/0) 100%) padding-box,radial-gradient(46% 150% at 0% 100%,rgb(var(--c)/calc(var(--fill)*.42)),rgb(var(--c)/0) 100%) padding-box,radial-gradient(46% 150% at 100% 0%,rgb(var(--c)/calc(var(--fill)*.34)),rgb(var(--c)/0) 100%) padding-box,radial-gradient(60% 90% at 100% 100%,rgb(var(--c)/calc(var(--fill)*.16)),rgb(var(--c)/0) 100%) padding-box,linear-gradient(180deg,#101114,#0B0C0E) padding-box,linear-gradient(227deg,rgb(var(--c)/var(--rim)) 1%,rgb(255 255 255/calc(var(--rim)*.85)) 50%,rgb(var(--c)/var(--rim)) 99%) border-box;
   box-shadow:0 0 30px -7px rgb(var(--c)/var(--glow)),inset 0 -1px 1px rgb(255 255 255/.1),inset 0 1px 1px rgb(255 255 255/.03)}
+/* A step's row: the picture, the name and words, and who has it. A step that began is a <details>, so the row is its summary and the history opens under it. */
+.step-row{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:0 12px;padding:8px 12px 8px 8px;border-radius:13px}
+.step.has-trace .step-row{grid-template-columns:46px minmax(0,1fr) auto 18px}
+.step-d>summary{list-style:none;cursor:pointer}
+.step-d>summary::-webkit-details-marker{display:none}
+.step-d>summary:hover{background:rgb(255 255 255/.03)}
+.step-d>summary:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.step-d[open]>summary .chev,.task details[open]>summary .chev{transform:rotate(180deg)}
+.step-row .chev,.task-row .chev{display:grid;place-items:center;color:var(--faint);transition:transform 200ms var(--ease-out)}
+.step.is-locked{cursor:not-allowed}
+.step.is-locked .pill{opacity:.8}
 .step+.step::before{content:"";position:absolute;left:22px;top:-10px;width:2px;height:10px;background:var(--line2);border-radius:1px}
 .step.s-done{--c:126 217 160;--rim:.44;--glow:.3;--fill:.62}
 .step.s-running{--c:143 178 255;--rim:.75;--glow:.75;--fill:1}
@@ -1029,6 +1040,9 @@ svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 /* A gate section: a dashed band naming the decision. Waiting on the person, it opens and holds the review. */
 .gateband{margin:14px 0 6px;list-style:none}
 .gb{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 8px;border-block:1px dashed var(--line2)}
+.gateband.is-locked{cursor:not-allowed}
+.gateband.is-locked .gt b{color:var(--dim)}
+.gateband.is-locked .gt .meta{color:var(--faint)}
 details.gate>summary.gb{cursor:pointer;list-style:none}
 details.gate>summary.gb::-webkit-details-marker{display:none}
 details.gate>summary.gb:focus-visible{outline:2px solid var(--tape);outline-offset:2px;border-radius:var(--r2)}
@@ -1045,6 +1059,28 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .gate-body{display:flex;flex-direction:column;gap:var(--gap);padding:var(--pad);margin:8px 0 4px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r3)}
 .gate-body>.panel{padding:0;background:none;border:0;box-shadow:none;border-radius:0}
 .gate-body>.panel+.panel{padding-top:var(--gap);border-top:1px solid var(--line)}
+/* The history under a step, a gate or a task: who, when, what it made and what happened in between. */
+.trace{display:flex;flex-direction:column;gap:12px;padding:4px 14px 14px 14px;margin:0;border-top:1px dashed var(--line2);font-size:var(--t2);color:var(--dim)}
+.trace>*:first-child{margin-top:12px}
+.gate-body>.trace{padding:12px 0 0;border-top:1px dashed var(--line2);margin-top:4px}
+.gate-body>.trace>*:first-child{margin-top:0}
+.gate-body>.trace:first-child{border-top:0;margin-top:0;padding-top:0}
+.trace-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 16px;margin:0}
+.trace-facts>div{display:contents}
+.trace-facts dt{color:var(--faint)}
+.trace-facts dd{margin:0;color:var(--paper);overflow-wrap:anywhere}
+.trace-who{display:inline-flex;align-items:center;gap:6px}
+.trace-sec{display:flex;flex-direction:column;gap:6px;min-width:0}
+.trace-sec h4{margin:0;font-size:var(--t1);font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.trace .muted{margin:0}
+.trace-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.trace-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;line-height:1.45;overflow-wrap:anywhere}
+.trace-list li>b{color:var(--paper);font-weight:700}
+.trace-list li>.num{color:var(--faint);font-size:var(--t1)}
+.trace-list li>span:not(.num){flex-basis:100%}
+.trace-quote,.trace-reply{padding-left:10px;border-left:2px solid var(--line2);color:var(--dim)}
+.trace .ab-chips{margin:0}
+@media (prefers-reduced-motion:reduce){.step-row .chev,.task-row .chev{transition:none}}
 /* What goes below the stages: research, strategy, files, usage and details, each folded away, like Studio's house rules. */
 .studio-more{display:flex;flex-direction:column;margin-top:var(--gap);border-top:1px solid var(--line)}
 .studio-more>.panel{padding:12px 0;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none}
@@ -1148,6 +1184,20 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .typing i{width:6px;height:6px;border-radius:50%;background:var(--wait);animation:pill-blink 1.2s ease-in-out infinite}
 .typing i:nth-child(2){animation-delay:.18s}
 .typing i:nth-child(3){animation-delay:.36s}
+/* The agent's tasks, at the top of its chat: each began task opens to its history; one not started is disabled. */
+.chat-tasks{display:flex;flex-direction:column;gap:6px;min-width:0}
+.chat-tasks h3{display:flex;align-items:center;gap:8px;margin:0;font-size:var(--t1);font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.chat-tasks ol{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.task{border:1px solid var(--line);border-radius:12px;background:var(--panel2);min-width:0}
+.task-row{display:flex;align-items:center;gap:8px;min-height:40px;padding:6px 10px;border-radius:11px}
+.task-row b{flex:1 1 auto;min-width:0;font-size:var(--t2);font-weight:700;overflow-wrap:anywhere}
+.task details>summary{list-style:none;cursor:pointer}
+.task details>summary::-webkit-details-marker{display:none}
+.task details>summary:hover{background:rgb(255 255 255/.03)}
+.task details>summary:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.task.is-locked{cursor:not-allowed;background:none;border-style:dashed}
+.task.is-locked b{color:var(--faint);font-weight:600}
+.task .trace{padding:4px 10px 12px}
 .chat-details{margin-top:2px;padding-top:10px;border-top:1px solid var(--line);color:var(--dim);font-size:var(--t1)}
 .chat-details>summary{display:flex;align-items:center;gap:8px;min-height:24px;cursor:pointer;list-style:none;font-weight:700}
 .chat-details>summary::-webkit-details-marker{display:none}

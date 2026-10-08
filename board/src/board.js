@@ -4197,6 +4197,119 @@ function refMatches(ref, path) {
 
 const tookWords = ms => (Number.isFinite(ms) && ms > 0 ? (ms < 90000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60000)} min`) : '');
 
+// ---- Step history: what opens under a step card, a gate section or a task in an agent's chat ----
+// A step is a window of time (when it began, when it finished). Its trace is who did it, what it made, and what that agent ran,
+// said and was told inside the window. A step with no recorded time shows who and what only, never another step's activity.
+const traceMs = value => { const at = Date.parse(value ?? ''); return Number.isFinite(at) ? at : null; };
+const TRACE_RUN_WORDS = Object.freeze({ finished: 'Finished', failed: 'Could not finish', stopped: 'Finished', running: 'Working now', lost: 'Stopped responding' });
+// The activity rows that only repeat a message the Messages list already shows.
+const TRACE_MESSAGE_ROWS = /^(You sent a message|Your message was passed on|Your message was answered|The Director answered your message)$/;
+const traceWhen = value => (traceMs(value) === null ? '' : time(value));
+function stepWindow(item) {
+  const from = traceMs(item.startedAt);
+  const to = item.status === 'done' ? traceMs(item.doneAt) : null;
+  return { from, to, known: from !== null || to !== null || item.status !== 'done' };
+}
+function gateWindow(item) {
+  const approved = (Array.isArray(item.history) ? item.history : []).filter(entry => entry?.decision === 'approved').at(-1);
+  const from = traceMs(item.openedAt);
+  const to = item.status === 'done' ? traceMs(approved?.at || item.approval?.at) : null;
+  return { from, to, known: from !== null || to !== null || item.status !== 'done' };
+}
+const atOf = (value, win) => { const at = traceMs(value); return at !== null && (win.from === null || at >= win.from) && (win.to === null || at <= win.to); };
+function runOverlaps(run, win) {
+  const began = traceMs(run?.at);
+  if (began === null) return false;
+  const ended = traceMs(run.end) ?? (run.state === 'running' ? Infinity : began);
+  return (win.to === null || began <= win.to) && (win.from === null || ended >= win.from);
+}
+function traceFact(label, value) { return value ? `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>` : ''; }
+function traceSection(title, inner) { return inner ? `<section class="trace-sec"><h4>${esc(title)}</h4>${inner}</section>` : ''; }
+const traceWho = (id, person, model) => (person ? `<span class="trace-who">${blob(id, person.mood, 20)}<span>${esc(person.name)}${trimmed(model) ? ` · ${esc(model)}` : ''}</span></span>` : '');
+
+// What the agents ran inside the window: one line each, with when, how long and how it ended.
+function traceRuns(agents, win) {
+  const named = agents.length > 1;
+  const lines = agents.flatMap(agent => (Array.isArray(agent?.sessions) ? agent.sessions : []).filter(run => runOverlaps(run, win)).map(run => {
+    const began = agentTime(run.at);
+    const ended = run.end ? agentTime(run.end) : '';
+    const took = tookWords(run.tookMs) || (traceMs(run.end) !== null && traceMs(run.at) !== null ? tookWords(traceMs(run.end) - traceMs(run.at)) : '');
+    const when = [began && ended && ended !== began ? `${began} to ${ended}` : began, took, TRACE_RUN_WORDS[run.state] || ''].filter(Boolean).join(' · ');
+    return { at: traceMs(run.at) || 0, html: `<li><b>${esc(`${named ? `${agentNameOf(agent)}: ` : ''}${agentPlain(run.task, 'Worked on this job')}`)}</b><span class="num">${esc(when)}</span>${agentPlain(run.summary) ? `<span>${esc(agentPlain(run.summary))}</span>` : ''}</li>` };
+  }));
+  return lines.length ? `<ol class="trace-list">${lines.sort((a, b) => a.at - b.at).map(line => line.html).join('')}</ol>` : '';
+}
+
+// The messages the person sent inside the window, each with the answer.
+function traceMessages(agents, win) {
+  const rows = agents.flatMap(agent => (Array.isArray(agent?.messages) ? agent.messages : []).filter(message => message && trimmed(message.text) && atOf(message.at, win)).map(message => ({ agent, message })))
+    .sort((a, b) => (traceMs(a.message.at) || 0) - (traceMs(b.message.at) || 0));
+  if (!rows.length) return '';
+  return `<ol class="trace-list trace-msgs">${rows.map(({ agent, message }) => {
+    const reply = message.status === 'answered' ? agentPlain(message.reply) : '';
+    return `<li><b>You${agents.length > 1 ? ` to the ${esc(agentNameOf(agent))}` : ''}</b><span class="num">${esc(agentTime(message.at))}</span><span>${esc(truncateText(message.text, 240))}</span>${reply ? `<span class="trace-reply"><b>${esc(agentNameOf(agent))}:</b> ${esc(truncateText(reply, 240))}</span>` : ''}</li>`;
+  }).join('')}</ol>`;
+}
+
+// What the Director did and what the person decided inside the window: the same rows as the chat's Details fold.
+function traceMoves(agents, win) {
+  const rows = agents.filter(isDirectorAgent).flatMap(agent => (Array.isArray(agent.activity) ? agent.activity : [])
+    .map(row => ({ at: row?.at, text: agentPlain(row?.text) })).filter(row => row.text && !TRACE_MESSAGE_ROWS.test(row.text) && atOf(row.at, win)))
+    .sort((a, b) => (traceMs(a.at) || 0) - (traceMs(b.at) || 0));
+  return rows.length ? `<ol class="trace-list">${rows.map(row => `<li><span class="num">${esc(agentTime(row.at))}</span><span>${esc(row.text)}</span></li>`).join('')}</ol>` : '';
+}
+
+function traceFiles(files, ctx, label) {
+  return agentChips(files, 0, { artifacts: ctx.chipContext?.artifacts || [], doc: ctx.chipContext?.doc || null, label, by: '' });
+}
+
+/**
+ * What opens under a step card or a task in an agent's chat. item: { name, line, agent, status, outputs, startedAt, doneAt }.
+ * ctx: `agent` and `person` (the agent card and how it looks), `chipContext`, `agents` (everyone on the job, for the Director's moves),
+ * `withWho` (false in that agent's own chat).
+ */
+export function stepTrace(item, ctx = {}) {
+  const { agent = null, person = null, withWho = true, withFiles = true } = ctx;
+  const win = stepWindow(item);
+  const status = item.status;
+  const files = (Array.isArray(agent?.files) ? agent.files : []).filter(file => file && trimmed(file.path) && (item.outputs || []).some(ref => refMatches(ref, file.path)));
+  const made = !withFiles ? '' : traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' ? '<p class="muted">No files listed for this step.</p>' : '');
+  const took = win.from !== null && win.to !== null && win.to >= win.from ? tookWords(win.to - win.from) : '';
+  const facts = [
+    withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
+    traceFact(status === 'done' || status === 'running' ? 'Started' : 'Waiting since', esc(traceWhen(item.startedAt))),
+    status === 'done' ? traceFact('Finished', esc([traceWhen(item.doneAt), took].filter(Boolean).join(' · '))) : '',
+    status === 'running' ? traceFact('Now', 'Working on it') : '',
+    status === 'waiting' ? traceFact('Now', 'Waiting on you') : '',
+  ].join('');
+  const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
+  const none = !facts && !made && !session;
+  const sessionBody = win.known ? (session || '<p class="muted">Nothing was recorded for this step.</p>') : '<p class="muted">The time of this step was not recorded.</p>';
+  return `<dl class="trace-facts">${facts}</dl>${traceSection('What it made', made)}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
+}
+
+const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
+/** What opens under a gate section: who prepared it, when it opened, what the person decided (with any change requests), and the session in between. */
+export function gateTrace(item, ctx = {}) {
+  const { agent = null, person = null, director = null } = ctx;
+  const win = gateWindow(item);
+  const history = Array.isArray(item.history) ? item.history : [];
+  const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
+  const decisions = history.length
+    ? history.map(entry => `<li><b>${esc(APPROVAL_WORDS[entry.decision] || 'Decided')}${entry.round > 1 ? ` (round ${entry.round})` : ''}</b><span class="num">${esc(traceWhen(entry.at))}</span>${entry.comment ? `<span class="trace-quote">${esc(truncateText(entry.comment, 200))}</span>` : ''}</li>`).join('')
+    : item.status === 'done' && traceMs(item.approval?.at) !== null ? `<li><b>Approved</b><span class="num">${esc(`${traceWhen(item.approval.at)}${price ? ` · ${price}` : ''}`)}</span></li>` : '';
+  const reviewed = [...new Set(history.flatMap(entry => (Array.isArray(entry.files) ? entry.files : [])))].map(path => ({ path }));
+  const agents = [agent, director].filter((one, at, list) => one && list.indexOf(one) === at);
+  const facts = [
+    traceFact('Prepared by', traceWho(item.agent || agent?.id, person, agent?.model)),
+    traceFact('Asked you', esc(traceWhen(item.openedAt))),
+    item.status === 'waiting' ? traceFact('Now', 'Waiting on you') : '',
+  ].join('');
+  const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agents, win)].join('') : '';
+  const decided = decisions ? `<ol class="trace-list">${decisions}</ol>` : '';
+  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else was recorded for this decision.</p>') : '')}`;
+}
+
 // One bubble for each finished step of this agent: the step's name, the files it made as links, and a small footer.
 function workBubbles(agent, tasks, chipContext) {
   const done = tasks.filter(task => task.status === 'done');
@@ -4258,6 +4371,32 @@ function agentComposer(agent, { about = 'the job', ui = {}, signal = {} } = {}) 
   return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}"><div class="cmp-row"><label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div><div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
 }
 
+// The agent's own tasks on this job, in plan order, at the top of its chat. A task that began (done, working or waiting) opens to its
+// history, the same trace the stage card shows; one not started yet is disabled. An agent with no plan rows (the Researcher on
+// brand onboarding) lists its runs instead, each openable.
+const TASK_PILLS = Object.freeze({ finished: ['done', 'Done'], failed: ['pending', 'Could not finish'], stopped: ['done', 'Done'], running: ['running', 'Working'], lost: ['pending', 'Stopped responding'] });
+function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = '' } = {}) {
+  const view = agentView(agent);
+  const person = { name: agentNameOf(agent), mood: view.mood };
+  const sessions = (Array.isArray(agent.sessions) ? agent.sessions : []).filter(run => run && typeof run === 'object');
+  const rows = tasks.length
+    ? tasks.map(task => ({ name: task.name, status: task.status, pill: [STEP_STATUSES.has(task.status) ? task.status : 'pending', STEP_STATUS_WORDS[task.status] || STEP_STATUS_WORDS.pending], line: task.line, item: { ...task, agent: agent.id }, files: true }))
+    : sessions.map(run => {
+      const [tone, word] = TASK_PILLS[run.state] || TASK_PILLS.finished;
+      const name = agentPlain(run.task, 'A run on this job');
+      return { name, status: run.state === 'running' ? 'running' : 'done', pill: [tone, word], line: '', item: { name, status: run.state === 'running' ? 'running' : 'done', agent: agent.id, startedAt: run.at, doneAt: run.end, outputs: [] }, files: false };
+    });
+  if (!rows.length) return '';
+  const items = rows.map((row, index) => {
+    const head = `<b>${esc(row.name)}</b><span class="pill st-${row.pill[0]}">${esc(row.pill[1])}</span>`;
+    if (row.status === 'pending') return `<li class="task is-locked" aria-disabled="true"><div class="task-row">${head}</div></li>`;
+    const key = `task:${jobId}:${agent.id}:${index}:${row.name}`;
+    const trace = stepTrace(row.item, { agent, person, chipContext, withWho: false, withFiles: row.files });
+    return `<li class="task"><details data-open-key="${esc(key)}"${openKeys?.has(key) ? ' open' : ''}><summary class="task-row" title="${esc(`Show the history of ${row.name}`)}">${head}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="trace" role="group" aria-label="${esc(`History of ${row.name}`)}">${trace}</div></details></li>`;
+  }).join('');
+  return `<section class="chat-tasks" aria-label="${esc(`Tasks of the ${person.name} on this job`)}"><h3>${tasks.length ? 'Tasks' : 'Runs'} <span class="count">${rows.length}</span></h3><ol>${items}</ol></section>`;
+}
+
 /**
  * One agent's chat, in the Inbox's column. ctx: `tasks` (this agent's steps, from the plan), `chipContext` (the job's files),
  * `needs` (the Director's open questions and decisions, as they already render), `stuck`, `item` (when the agent's step is at a
@@ -4274,7 +4413,7 @@ export function agentChat(agent, ctx = {}) {
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
-  return `<aside class="thread chat" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost icon" data-ab-back aria-label="Back to the inbox" title="Back to the inbox">${icon('back')}</button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(view.word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
+  return `<aside class="thread chat" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost icon" data-ab-back aria-label="Back to the inbox" title="Back to the inbox">${icon('back')}</button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(view.word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
 }
 
 // What the agent did lately, in a small fold at the end of its chat: short plain lines, newest last.
@@ -4298,9 +4437,13 @@ function stepStatusFallback(stage, index) {
   if (index !== 0) return 'pending';
   return status === 'waiting' || status === 'awaiting' ? 'waiting' : status === 'running' ? 'running' : 'pending';
 }
-function gateItemOf(gate, status, stage) {
+function gateItemOf(gate, status, stage, agent = null) {
   const approval = (Array.isArray(stage?.approvals) ? stage.approvals : []).find(entry => entry?.gate === gate) || null;
-  return { kind: 'gate', gate, name: GATE_TITLES[gate] || humanize(gate), status: STEP_STATUSES.has(status) ? status : 'pending', approval };
+  const entry = (Array.isArray(stage?.gates) ? stage.gates : []).find(item => item?.gate === gate) || null;
+  return {
+    kind: 'gate', gate, name: GATE_TITLES[gate] || humanize(gate), status: STEP_STATUSES.has(status) ? status : 'pending', approval,
+    agent: agent && agent !== 'human' && agent !== 'scripts' ? agent : null, openedAt: trimmed(entry?.openedAt), history: Array.isArray(entry?.history) ? entry.history : [],
+  };
 }
 
 /**
@@ -4316,8 +4459,8 @@ export function stageItems(project, { pendingGate = null } = {}) {
       const agent = planWord(task?.agent);
       const gate = planWord(task?.gate);
       const status = STEP_STATUSES.has(task?.status) ? task.status : stepStatusFallback(stage, index);
-      if (agent !== 'human' && agent !== 'scripts') items.push({ kind: 'step', name: trimmed(task?.name) || 'Step', line: trimmed(task?.line), agent: agent || 'producer', status, outputs: Array.isArray(task?.outputs) ? task.outputs : [] });
-      if (gate && !placed.has(gate)) { placed.add(gate); items.push(gateItemOf(gate, task.gateStatus || (agent === 'human' ? status : 'pending'), stage)); }
+      if (agent !== 'human' && agent !== 'scripts') items.push({ kind: 'step', name: trimmed(task?.name) || 'Step', line: trimmed(task?.line), agent: agent || 'producer', status, outputs: Array.isArray(task?.outputs) ? task.outputs : [], startedAt: trimmed(task?.startedAt), doneAt: trimmed(task?.doneAt) });
+      if (gate && !placed.has(gate)) { placed.add(gate); items.push(gateItemOf(gate, task.gateStatus || (agent === 'human' ? status : 'pending'), stage, agent)); }
     });
     for (const entry of Array.isArray(stage.gates) ? stage.gates : []) {
       const gate = planWord(entry?.gate);
@@ -4337,16 +4480,19 @@ export function stageItems(project, { pendingGate = null } = {}) {
   return stages;
 }
 
-function stepCard(item, prev, who) {
+function stepCard(item, prev, who, { trace = '', open = false, key = '' } = {}) {
   const person = who(item.agent) || { name: humanize(item.agent), mood: 'sleepy' };
   const status = item.status;
   const starting = status === 'running' && person.called === false;
   const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : starting ? `The Director is calling the ${person.name}` : item.line || (status === 'done' ? 'Finished' : 'Working on it');
   const glyph = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : status === 'running' ? '<span class="pip"></span>' : '';
-  return `<li class="step s-${status}"><span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span></li>`;
+  const row = `<span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span>`;
+  // A step that is done, working or waiting opens to its history. One not reached yet is shown disabled: no control, no history.
+  if (status === 'pending') return `<li class="step s-pending is-locked" aria-disabled="true"><div class="step-row">${row}</div></li>`;
+  return `<li class="step s-${status} has-trace"><details class="step-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="step-row" title="${esc(`Show the history of ${item.name}`)}">${row}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${trace}</div></details></li>`;
 }
 
-function gateSection(item, { jobId, body, open, isOpen }) {
+function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
   const status = item.status;
   const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
   const approved = item.approval?.at && Number.isFinite(Date.parse(item.approval.at)) ? `Approved ${time(item.approval.at)}${price ? ` · ${price}` : ''}` : 'Done';
@@ -4354,27 +4500,40 @@ function gateSection(item, { jobId, body, open, isOpen }) {
   const badge = status === 'done' ? icon('check') : status === 'waiting' ? icon('user') : icon('gate');
   const head = `<span class="gl" aria-hidden="true">${badge}</span><span class="gt"><b>${esc(item.name)}</b><span class="meta">${esc(meta)}</span></span>`;
   const cls = `gateband g-${status}`;
-  if (!body) return `<li class="${cls}" data-gate="${esc(item.gate)}"><div class="gb">${head}</div></li>`;
+  // The history opens for a gate that is done or waiting on the person. A gate not reached yet is disabled, unless it already holds something to show.
+  const history = status === 'pending' ? '' : trace;
+  if (!body && !history) return `<li class="${cls}${status === 'pending' ? ' is-locked' : ''}" data-gate="${esc(item.gate)}"${status === 'pending' ? ' aria-disabled="true"' : ''}><div class="gb">${head}</div></li>`;
   const key = `gate:${jobId}:${item.gate}:${status}`;
-  return `<li class="${cls}" data-gate="${esc(item.gate)}"><details class="gate" data-open-key="${esc(key)}"${isOpen(key, open || status === 'waiting') ? ' open' : ''}><summary class="gb">${head}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="gate-body">${body}</div></details></li>`;
+  return `<li class="${cls}" data-gate="${esc(item.gate)}"><details class="gate" data-open-key="${esc(key)}"${isOpen(key, open || status === 'waiting') ? ' open' : ''}><summary class="gb">${head}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="gate-body">${body}${history ? `<div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${history}</div>` : ''}</div></details></li>`;
 }
 
 /**
  * The stages, drawn: a heading ("Stage 2  Writing", "1 of 3 done") and under it the step cards joined by a line, with each
  * gate section between them. `bodies` maps a gate to what opens inside it ({ html, open }); the gates that got a body are
- * returned in `placed`, so the page can show anything left over after the stages.
+ * returned in `placed`, so the page can show anything left over after the stages. A step or gate that is done, working or
+ * waiting opens to its history (`who` gives the agent card behind a step as `agent`, `chipContext` links its files);
+ * one not reached yet is disabled.
  */
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open } = {}) {
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {} } = {}) {
   const placed = new Set();
   let prev = '';
   const stages = model.map((stage, at) => {
     const done = stage.items.filter(item => item.status === 'done').length;
-    const rows = stage.items.map(item => {
-      if (item.kind === 'step') { const card = stepCard(item, prev, who); prev = item.name; return card; }
+    const rows = stage.items.map((item, index) => {
+      if (item.kind === 'step') {
+        const person = who(item.agent);
+        const key = `step:${jobId}:${stage.id ?? at}:${item.name}`;
+        const card = stepCard(item, prev, who, { trace: item.status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext }), open: isOpen(key, false), key });
+        prev = item.name;
+        return card;
+      }
       const own = bodies[item.gate] || null;
       if (own?.html) placed.add(item.gate);
       prev = item.name;
-      return gateSection(item, { jobId, body: own?.html || '', open: Boolean(own?.open), isOpen });
+      const author = item.agent ? who(item.agent) : null;
+      const director = who('producer');
+      const trace = item.status === 'pending' ? '' : gateTrace(item, { agent: author?.agent || null, person: author, director: director?.agent || null, chipContext });
+      return gateSection(item, { jobId, body: own?.html || '', open: Boolean(own?.open), isOpen, trace });
     });
     return `<li class="stg"><div class="stg-h"><h3>Stage ${at + 1} <span>${esc(stage.label)}</span></h3><span class="cnt num">${done} of ${stage.items.length} done</span></div><ol class="steps">${rows.join('')}</ol></li>`;
   });
@@ -5292,7 +5451,7 @@ if (typeof document !== 'undefined') {
     const chatAgent = boxUi.chat ? box.all.find(item => item.id === boxUi.chat) || null : null;
     if (boxUi.chat && !chatAgent) boxUi.chat = null;
     // Who is on a step card, and how they look: from the agents of this job.
-    const who = id => { const agent = box.all.find(item => item.id === id); if (!agent) return null; const view = agentView(agent); return { name: agentNameOf(agent), mood: view.mood, called: view.called }; };
+    const who = id => { const agent = box.all.find(item => item.id === id); if (!agent) return null; const view = agentView(agent); return { name: agentNameOf(agent), mood: view.mood, called: view.called, agent }; };
     // What opens inside each gate section: the review for the gate waiting on the person, and what belongs to a gate once it is past.
     const bodies = {};
     if (pendingGate && review) bodies[pendingGate] = { html: review, open: true };
@@ -5300,7 +5459,7 @@ if (typeof document !== 'undefined') {
     extra('publish', sentPanel + kitPanel, true);
     extra('findings', report, true);
     extra('storyboard', storyboard);
-    const flow = stageFlow(stageItems(project, { pendingGate }), { jobId: project.jobId, who, bodies, isOpen: gateOpen });
+    const flow = stageFlow(stageItems(project, { pendingGate }), { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext });
     const left = (gate, html) => (flow.placed.has(gate) ? '' : html);
     const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + (flow.placed.has(pendingGate) ? '' : review) + recipeStandalone;
     const filesPanel = agentBox
@@ -5310,7 +5469,7 @@ if (typeof document !== 'undefined') {
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
     // The right column: the Inbox, or the chat with one agent.
-    const tasksOf = id => (project.stages || []).flatMap(stage => (Array.isArray(stage?.tasks) ? stage.tasks : [])).filter(task => planWord(task?.agent) === id).map(task => ({ name: trimmed(task.name) || 'Step', status: task.status, outputs: Array.isArray(task.outputs) ? task.outputs : [] }));
+    const tasksOf = id => (project.stages || []).flatMap(stage => (Array.isArray(stage?.tasks) ? stage.tasks : [])).filter(task => planWord(task?.agent) === id).map(task => ({ name: trimmed(task.name) || 'Step', line: trimmed(task.line), status: STEP_STATUSES.has(task.status) ? task.status : 'pending', outputs: Array.isArray(task.outputs) ? task.outputs : [], startedAt: trimmed(task.startedAt), doneAt: trimmed(task.doneAt) }));
     const decision = pendingGate ? needItems.find(item => item.kind === 'decision' && item.gate === pendingGate) : null;
     const author = decision ? (agentBox?.director?.needs || []).find(need => need?.kind === 'decision' && need.gate === pendingGate)?.from || null : null;
     let side;

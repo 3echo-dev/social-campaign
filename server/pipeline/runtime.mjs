@@ -2161,6 +2161,37 @@ function isoTime(value) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+// The status stage log as [{ state, at }] in log order: the "To" column and its time. Only the board's step history reads it.
+function loggedTimes(statusText) {
+  const out = [];
+  for (const line of String(statusText || '').split(/\r?\n/)) {
+    const cells = line.split('|').map((cell) => cell.trim());
+    if (cells.length < 5 || !/^\d{4}-\d{2}-\d{2}T/.test(cells[1])) continue;
+    const state = cells[3].replace(/`/g, '');
+    const at = isoTime(cells[1]);
+    if (state && at) out.push({ state, at });
+  }
+  return out;
+}
+
+const HISTORY_SHOWN = 4;
+const HISTORY_COMMENT = 160;
+
+// What the person decided at a gate, oldest first and short: when, the word they gave, and the files they saw.
+function gateHistory(decisions, gate) {
+  const entries = [];
+  for (const record of decisions || []) {
+    if (!record || record.malformed || record.gate !== gate) continue;
+    const decision = record.decision === 'approved' ? 'approved' : record.decision === 'changes_requested' ? 'changes' : null;
+    const at = isoTime(record.decidedAt);
+    if (!decision || !at) continue;
+    const comment = typeof record.comment === 'string' ? record.comment.replace(/\s+/g, ' ').trim() : '';
+    const files = (Array.isArray(record.artifacts) ? record.artifacts : []).map((item) => item?.path).filter((path) => typeof path === 'string').slice(0, HISTORY_SHOWN);
+    entries.push({ decision, at, ...(Number.isFinite(Number(record.round)) && Number(record.round) > 0 ? { round: Number(record.round) } : {}), ...(comment ? { comment: comment.length > HISTORY_COMMENT ? `${comment.slice(0, HISTORY_COMMENT - 3).trimEnd()}...` : comment } : {}), ...(files.length ? { files } : {}) });
+  }
+  return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-HISTORY_SHOWN);
+}
+
 function stageOfGate(gate, workflowId = null) {
   if (gate === 'price') return 'your-approval-of-the-price';
   if (gate === 'sample') return 'making-the-images-and-video';
@@ -2311,7 +2342,7 @@ function planCell(value) {
 // Each plan row's own status: done, running, waiting or pending. Rows up to the last one whose "State after" the job has
 // reached (or is in now) are done. The row after that is waiting when it is the person's gate and the job waits on that gate
 // (or on the person at its stage), and running while Claude has it, unless the job is held up or over. Everything later is pending.
-function applyTaskStatuses(stages, planRows, state, reached) {
+function applyTaskStatuses(stages, planRows, state, reached, logged = []) {
   const after = planRows.map((row) => planCell(row['State after']));
   const order = statesRuntime.ids();
   const nowAt = order.indexOf(state);
@@ -2335,6 +2366,20 @@ function applyTaskStatuses(stages, planRows, state, reached) {
     for (const task of stage.tasks || []) lastDone = Math.max(lastDone, task._row);
   }
   const next = lastDone + 1;
+  // When each row finished (the last time the log reached its "State after") and began (when the row before it finished, or its
+  // gate was decided, whichever is later): the step history shows them. A row the log does not tell about has neither.
+  const loggedAt = new Map();
+  for (const entry of logged) loggedAt.set(entry.state, entry.at);
+  const decidedAt = new Map();
+  const gateEntries = new Map();
+  for (const stage of stages) {
+    for (const approval of stage.approvals || []) if (approval?.at) decidedAt.set(approval.gate, approval.at);
+    for (const entry of stage.gates || []) gateEntries.set(entry.gate, entry);
+  }
+  const later = (a, b) => (!a ? b : !b ? a : Date.parse(a) >= Date.parse(b) ? a : b);
+  const doneAt = after.map((id, index) => (id && index <= lastDone ? loggedAt.get(id) || null : null));
+  const gateAt = planRows.map((row) => planCell(row.Gate) || null);
+  const startedAt = planRows.map((row, index) => (index === 0 ? null : later(doneAt[index - 1], gateAt[index - 1] ? decidedAt.get(gateAt[index - 1]) || null : null)));
   for (const stage of stages) {
     for (const task of stage.tasks || []) {
       const index = task._row;
@@ -2353,6 +2398,12 @@ function applyTaskStatuses(stages, planRows, state, reached) {
         if (human) status = own === 'waiting' && !held ? 'waiting' : own === 'done' ? 'done' : 'pending';
       }
       task.status = status;
+      if (status !== 'pending' && startedAt[index] && !(status === 'done' && doneAt[index] && Date.parse(startedAt[index]) > Date.parse(doneAt[index]))) task.startedAt = startedAt[index];
+      if (status === 'done' && doneAt[index]) task.doneAt = doneAt[index];
+      if (gate && gateEntries.has(gate)) {
+        const opened = human ? startedAt[index] : doneAt[index];
+        if (opened) gateEntries.get(gate).openedAt = opened;
+      }
       delete task._row;
     }
   }
@@ -2410,13 +2461,17 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
     const approved = stageGates.filter((gate) => decided.has(gate));
     stage.approvals = approved.map((gate) => decided.get(gate));
-    stage.gates = stageGates.filter((gate) => gate !== 'sample' || decided.has('sample')).map((gate) => ({
-      gate,
-      name: GATE_NAMES[gate] || stageLabel(gate),
-      status: decided.has(gate) ? 'done'
-        : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'
-          : (flowing && statesRuntime.APPROVED_STATE[gate] && orderIds.indexOf(statesRuntime.APPROVED_STATE[gate]) <= nowAt) || stage.status === 'complete' ? 'done' : 'pending',
-    }));
+    stage.gates = stageGates.filter((gate) => gate !== 'sample' || decided.has('sample')).map((gate) => {
+      const history = gateHistory(decisions, gate);
+      return {
+        gate,
+        name: GATE_NAMES[gate] || stageLabel(gate),
+        status: decided.has(gate) ? 'done'
+          : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'
+            : (flowing && statesRuntime.APPROVED_STATE[gate] && orderIds.indexOf(statesRuntime.APPROVED_STATE[gate]) <= nowAt) || stage.status === 'complete' ? 'done' : 'pending',
+        ...(history.length ? { history } : {}),
+      };
+    });
     const waiting = stageGates.filter((gate) => !decided.has(gate));
     if (approved.length && waiting.length && !(currentIndex >= 0 && index < currentIndex)) {
       stage.note = `${namesOf(waiting)} still to approve.`;
@@ -2486,7 +2541,7 @@ function snapshotStages(state, planRows, route, context = {}) {
     }];
   }
   const derived = deriveStages(routeStages, state, planRows, { ...context, workflowId });
-  applyTaskStatuses(derived, planRows, state, context.reached);
+  applyTaskStatuses(derived, planRows, state, context.reached, context.logged);
   return derived;
 }
 
@@ -2647,7 +2702,7 @@ export function readJobSnapshot(options = {}) {
       ownerUserId: job.ownerUserId || null,
       ownerEmail: job.ownerEmail || null,
       ownershipStatus: job.ownershipStatus || (job.ownerUserId ? 'bound' : 'unbound'),
-      stages: snapshotStages(status.state, rows, route, { dir, decisions, reached: stagesRuntime.loggedStates(status.text) }),
+      stages: snapshotStages(status.state, rows, route, { dir, decisions, reached: stagesRuntime.loggedStates(status.text), logged: loggedTimes(status.text) }),
       artifacts,
       decisions,
       metrics,

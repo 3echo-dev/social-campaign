@@ -763,6 +763,8 @@ function boardTask(task) {
     ...(String(task.gate ?? '').replace(/`/g, '').trim() ? { gate: String(task.gate).replace(/`/g, '').trim() } : {}),
     status: task.status || 'pending',
     ...(task.gateStatus ? { gateStatus: task.gateStatus } : {}),
+    ...(task.startedAt ? { startedAt: task.startedAt } : {}),
+    ...(task.doneAt ? { doneAt: task.doneAt } : {}),
     ...(outputs.length ? { outputs } : {}),
   };
 }
