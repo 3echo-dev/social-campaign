@@ -5579,6 +5579,18 @@ function traceFiles(files, ctx, label) {
   return agentChips(files, 0, { artifacts: ctx.chipContext?.artifacts || [], doc: ctx.chipContext?.doc || null, label, by: '' });
 }
 
+const QUESTION_STATE_WORDS = Object.freeze({ open: 'Still open', withdrawn: 'Withdrawn' });
+// The first step keeps what the person asked for and the questions the Director put to them, each with its answer and when it came.
+function requestTrace(item) {
+  const request = item.request && trimmed(item.request.text) ? `<ol class="trace-list"><li><b>Your request</b><span class="num">${esc(traceWhen(item.request.at))}</span><span class="trace-quote">${esc(item.request.text)}</span></li></ol>` : '';
+  const questions = (Array.isArray(item.questions) ? item.questions : []).filter(entry => trimmed(entry?.text)).map(entry => {
+    const answered = entry.status === 'answered';
+    const when = answered ? `Answered ${traceWhen(entry.answeredAt)}`.trim() : QUESTION_STATE_WORDS[entry.status] || 'Still open';
+    return `<li><b>${esc(entry.text)}</b><span class="num">${esc(when)}</span>${answered && trimmed(entry.answer) ? `<span class="trace-quote">${esc(entry.answer)}</span>` : ''}</li>`;
+  }).join('');
+  return traceSection('What you asked', request) + traceSection('Questions and answers', questions ? `<ol class="trace-list">${questions}</ol>` : '');
+}
+
 /**
  * What opens under a step card or a task in an agent's chat. item: { name, line, agent, status, outputs, startedAt, doneAt }.
  * ctx: `agent` and `person` (the agent card and how it looks), `chipContext`, `agents` (everyone on the job, for the Director's moves),
@@ -5590,7 +5602,7 @@ export function stepTrace(item, ctx = {}) {
   const status = item.status;
   const files = (Array.isArray(agent?.files) ? agent.files : []).filter(file => file && trimmed(file.path) && (item.outputs || []).some(ref => refMatches(ref, file.path)));
   const priceList = withFiles && item.quote && status === 'done' ? `<p><b>Price list</b></p>${priceTable(item.quote, { withProvider: true })}` : '';
-  const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList ? '<p class="muted">No files listed for this step.</p>' : ''));
+  const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList && !item.request ? '<p class="muted">No files listed for this step.</p>' : ''));
   const took = win.from !== null && win.to !== null && win.to >= win.from ? tookWords(win.to - win.from) : '';
   const facts = [
     withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
@@ -5600,9 +5612,10 @@ export function stepTrace(item, ctx = {}) {
     status === 'waiting' ? traceFact('Now', 'Waiting on you') : '',
   ].join('');
   const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
-  const none = !facts && !made && !session;
+  const asked = withFiles ? requestTrace(item) : '';
+  const none = !facts && !made && !session && !asked;
   const sessionBody = win.known ? (session || '<p class="muted">Nothing was recorded for this step.</p>') : '<p class="muted">The time of this step was not recorded.</p>';
-  return `<dl class="trace-facts">${facts}</dl>${traceSection('What it made', made)}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
+  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection('What it made', made)}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
 }
 
 const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
@@ -5776,7 +5789,7 @@ export function stageItems(project, { pendingGate = null } = {}) {
       const agent = planWord(task?.agent);
       const gate = planWord(task?.gate);
       const status = STEP_STATUSES.has(task?.status) ? task.status : stepStatusFallback(stage, index);
-      if (agent !== 'human' && agent !== 'scripts') items.push({ kind: 'step', name: trimmed(task?.name) || 'Step', line: trimmed(task?.line), agent: agent || 'producer', status, outputs: Array.isArray(task?.outputs) ? task.outputs : [], startedAt: trimmed(task?.startedAt), doneAt: trimmed(task?.doneAt) });
+      if (agent !== 'human' && agent !== 'scripts') items.push({ kind: 'step', name: trimmed(task?.name) || 'Step', line: trimmed(task?.line), agent: agent || 'producer', status, outputs: Array.isArray(task?.outputs) ? task.outputs : [], startedAt: trimmed(task?.startedAt), doneAt: trimmed(task?.doneAt), request: task?.request || null, questions: Array.isArray(task?.questions) ? task.questions : [] });
       if (gate && !placed.has(gate)) { placed.add(gate); items.push(gateItemOf(gate, task.gateStatus || (agent === 'human' ? status : 'pending'), stage, agent)); }
     });
     for (const entry of Array.isArray(stage.gates) ? stage.gates : []) {

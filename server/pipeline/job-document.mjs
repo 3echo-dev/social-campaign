@@ -976,6 +976,8 @@ function redact(text, root) {
 }
 
 function titleOf(path, body) {
+  // The brief's first heading is its angle, not its name: the files list and the step that wrote it call it "Brief".
+  if (path === 'brief.md') return 'Brief';
   const heading = /^#\s+(.+)$/m.exec(body || '')?.[1];
   if (heading && !/[{}]/.test(heading)) return clip(heading.replace(/[`*]/g, ''), 160);
   return basename(path);

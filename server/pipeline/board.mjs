@@ -829,6 +829,41 @@ export function withPriceList(stages, jobPath) {
   });
 }
 
+const REQUEST_STEP = 'Reading your request';
+const REQUEST_LIMIT = 4000;
+const QUESTION_LIMIT = 20;
+
+function questionAnswerWords(question) {
+  const answer = question?.answer && typeof question.answer === 'object' ? question.answer : {};
+  return [typeof answer.choice === 'string' ? answer.choice : '', typeof answer.text === 'string' ? answer.text : ''].map(part => part.trim()).filter(Boolean).join(' - ');
+}
+
+// The first step of a job keeps what the person asked for: their request and when they sent it, and every question the Director asked
+// for this job (oldest first) with the answer and when it came, or that it is still open or was taken back. Questions are read from the
+// workspace store by job id, so one job never shows another job's questions.
+export function withRequestRecord(stages, { root, jobId, job }) {
+  const text = typeof job?.request === 'string' ? job.request.trim() : '';
+  const at = typeof job?.requestedAt === 'string' && Number.isFinite(Date.parse(job.requestedAt)) ? job.requestedAt : null;
+  let asked = [];
+  if (root && jobId) { try { asked = listQuestions({ root, jobId, readOnly: true }).filter(question => question.jobId === jobId).reverse().slice(0, QUESTION_LIMIT); } catch { asked = []; } }
+  if (!text && !asked.length) return stages;
+  const questions = asked.map(question => ({
+    text: String(question.text || ''),
+    askedAt: question.askedAt || null,
+    status: question.status === 'answered' || question.status === 'withdrawn' ? question.status : 'open',
+    ...(question.status === 'answered' ? { answer: questionAnswerWords(question), answeredAt: question.answeredAt || null } : {}),
+  }));
+  return stages.map(stage => (stage?.id !== 'getting-your-brief' || !Array.isArray(stage.tasks) ? stage : {
+    ...stage,
+    tasks: stage.tasks.map(task => (task?.name !== REQUEST_STEP ? task : {
+      ...task,
+      ...(!task.startedAt && at ? { startedAt: at } : {}),
+      ...(text ? { request: { text: text.slice(0, REQUEST_LIMIT), at } } : {}),
+      ...(questions.length ? { questions } : {}),
+    })),
+  }));
+}
+
 function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   let report = null;
   try {
@@ -841,7 +876,7 @@ function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   return {
     intake: projectIntake(snapshot, profile),
     pendingReviews: gate ? [{ reviewId: gate, gate, revision: snapshot.project.revision, artifacts: reviewArtifacts, summary: reviewArtifacts.length ? 'Review these current files before submitting your decision.' : 'Ask Claude to register the exact review files before approving.' }] : [],
-    stages: withPriceList((snapshot.project.stages || []).map(boardStage), job.path),
+    stages: withRequestRecord(withPriceList((snapshot.project.stages || []).map(boardStage), job.path), { root, jobId: job.jobId, job: snapshot.job }),
     usageStages: usage.stages.map(({ id, label, kind, tokens: stageTokens, elapsedMs, openSince }) => ({ id, label, kind, tokens: stageTokens, elapsedMs, openSince })),
     metrics: { recordedTokens: tokens.length ? tokens.reduce((a, b) => a + b, 0) : null, tokens: projection.tokens, coverage: { tokens: projection.coverage.tokens } },
     brandProfile: snapshot.project.brandProfile || null,
