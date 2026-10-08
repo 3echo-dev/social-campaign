@@ -43,6 +43,7 @@ Before any of this, if this session's first successful `pipeline_status`, `pipel
 When the artifact tools are not available, stop and name the missing host tool.
 
 At the start of every new session or resume, and whenever a reminder says to re-arm the board's wake-up, read the bound board with the Artifact tool's `read` action, then republish that same page to the same `url` right away, even when nothing else changed.
+Read any saved file that returns completely, in parallel chunks, before publishing, as board-setup's order describes.
 Reading it that way records its long id as the alias automatically; there is no separate call to make for that.
 When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source`, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action, publish the returned `filePath` to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
 That refresh already re-arms the wake-up too, so no separate republish is needed after it.
