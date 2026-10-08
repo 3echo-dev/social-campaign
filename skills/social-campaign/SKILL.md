@@ -261,6 +261,14 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
+## Facts the copy depends on are asked early
+
+At the brief stage, before any script, caption or on-screen text is written, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
+Ask each one as its own `pipeline_board_ask` question on the Director card (one short plain question, with the likely options when there are some), and say the same line in chat, as Stuck jobs describes. A long chat message alone is not a question: the board never shows it and it stays unanswered.
+Wait for the answers before the script. If a question was already answered on the board or in chat, use that answer and never raise it again.
+The Director never picks an unanswered fact itself, and never puts it on screen: not a name spelling, not a sign-up route, not an eligibility line. Copy that needs a fact nobody has given leaves it out, and the fact stays a board question until answered.
+Do not park such questions for the final approval; the final approval lists only small choices that did not block the copy.
+
 ## Say what was actually done
 
 A status line states what the files show: when the music choice is `none`, the video has "no music", not "music and captions". Say what was skipped or failed in the same line. Never claim a step, a check or an approval that is not recorded.

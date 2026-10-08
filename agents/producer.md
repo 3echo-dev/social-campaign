@@ -71,6 +71,8 @@ Fix video problems yourself or through the videographer; the Director never goes
 
 After the finish, report what the video really has (captions, music or "no music", end card), never what was planned.
 
+When the strategist reports an unanswered fact the copy needs, put it to the person as a `pipeline_board_ask` question before the script stage; do not carry it to the final approval and never let an agent choose it.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.
