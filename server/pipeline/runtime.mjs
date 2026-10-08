@@ -2354,6 +2354,16 @@ function applyTaskStatuses(stages, planRows, state, reached, logged = []) {
   if (firstOfNow >= 0) lastDone = firstOfNow;
   after.forEach((id, index) => { if (id && seen.has(id) && id !== state && index > lastDone) lastDone = index; });
   if (state === 'COMPLETE') lastDone = Math.max(lastDone, planRows.length - 1);
+  // Asked for changes: the log has already reached the gate's state, which would call the next row (the media) the one
+  // running. The row that made the thing under review is being redone, so it runs and everything after it waits.
+  let redoRow = -1;
+  if (state === 'CHANGES_REQUESTED') {
+    const before = (reached || []).map(planCell).filter((id) => !OFF_FLOW_STATES.has(id)).pop();
+    if (before && REWORK_STAGE[before]) {
+      const rows = after.map((id, index) => (id === before && planCell(planRows[index].Agent) !== 'human' ? index : -1)).filter((index) => index >= 0);
+      if (rows.length) { redoRow = rows[0]; lastDone = redoRow - 1; }
+    }
+  }
   const held = state === 'BLOCKED' || state === 'ESCALATED' || state === 'CANCELLED';
   const finished = state === 'COMPLETE';
   const waitingGate = statesRuntime.gateOf(state) || (stages.some((stage) => stage.id === 'your-approval-of-the-price' && stage.status === 'waiting') ? 'price' : null);
@@ -2387,6 +2397,8 @@ function applyTaskStatuses(stages, planRows, state, reached, logged = []) {
       const human = planCell(task.agent) === 'human';
       let status;
       if (index <= lastDone) status = 'done';
+      else if (index === redoRow) status = 'running';
+      else if (redoRow >= 0) status = 'pending';
       else if (index === next && !held && !finished) {
         if (personWaiting) status = (gate && gate === waitingGate) || (!gate && stage.status === 'waiting') ? 'waiting' : 'pending';
         else status = 'running';
@@ -2497,11 +2509,34 @@ function stageSubstep(current, stageId, workflowId) {
   return current.substep === stageLabel(stageId, workflowId) ? null : current.substep;
 }
 
+// A job asked for changes has left the state it was in, so the state alone maps to no stage and the whole rail read
+// pending. The stage log still says where it was: the last state before CHANGES_REQUESTED. The gate that was open
+// names the work being redone, so the stage that makes it shows running ("Making your changes") and the stages
+// before it stay done. null when the log cannot say, and the rail keeps its old reading.
+const REWORK_STAGE = {
+  AWAITING_CONCEPT_APPROVAL: { stage: 'shaping-the-idea', substep: 'Making your changes', status: 'running' },
+  AWAITING_STORYBOARD_APPROVAL: { stage: 'shaping-the-idea', substep: 'Making your changes', status: 'running' },
+  AWAITING_CONTENT_APPROVAL: { stage: 'writing-the-posts', substep: 'Making your changes', status: 'running' },
+  AWAITING_PUBLISH_APPROVAL: { stage: 'writing-the-posts', substep: 'Making your changes', status: 'running' },
+  AWAITING_PROPOSAL_APPROVAL: { stage: 'writing-the-posts', substep: 'Making your changes', status: 'running' },
+  AWAITING_ACTIVATION_APPROVAL: { stage: 'writing-the-posts', substep: 'Making your changes', status: 'running' },
+};
+const REPORT_REWORK_STAGE = {
+  AWAITING_REPORT_REVIEW: { stage: 'writing-the-report', substep: 'Making your changes', status: 'running' },
+};
+
+function reworkStage(state, reached, workflowId) {
+  if (state !== 'CHANGES_REQUESTED') return null;
+  const before = (Array.isArray(reached) ? reached : []).filter((id) => !OFF_FLOW_STATES.has(id)).pop();
+  if (!before) return null;
+  return (stagesRuntime.isReportWorkflow(workflowId) ? REPORT_REWORK_STAGE : REWORK_STAGE)[before] || null;
+}
+
 function snapshotStages(state, planRows, route, context = {}) {
   const workflowId = typeof route?.workflowId === 'string' ? route.workflowId : null;
   const stateIds = planRows.map((row) => row['State after']).filter(Boolean);
   const walked = stagesRuntime.walkedStages(stateIds, workflowId, { rows: planRows, route }) || workflowStageIds(workflowId);
-  const current = stagesRuntime.forState(state, workflowId);
+  const current = stagesRuntime.forState(state, workflowId) || reworkStage(state, context.reached, workflowId);
   const currentIndex = current ? walked.indexOf(current.stage) : -1;
   const routeStages = walked.map((stageId, index) => {
     let stageStatus = index < currentIndex ? 'complete' : index === currentIndex ? (current?.status || 'running') : 'pending';
