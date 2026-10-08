@@ -44,6 +44,7 @@ Follow these steps exactly and never read plugin code while doing them.
 ## Voice check
 
 Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/brand-check/SKILL.md.
+Also read "Words and claims we never use" in `brand/brand-voice.md` (the profile's `forbiddenClaims`) as claims the draft must not make, and report any use of one as a finding.
 Use this adapter only when the active route and task contract name this skill.
 Reuse the current job snapshot, input revision, accepted artifact hashes, and capability results.
 Call pipeline_job_read only when no fresh snapshot is supplied or an external state change occurred.

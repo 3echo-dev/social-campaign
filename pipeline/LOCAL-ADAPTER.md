@@ -106,3 +106,9 @@ Uploading media to 3echo and sending the posts run in the main session, never in
 A guard lets through only Metricool calls that exactly match the approved posting plan.
 A post whose result is not known is settled by the person, through a `resolve_post` request, and a post the person made themselves is closed by a `mark_posted` request.
 `skills/publish/SKILL.md` is the full contract.
+
+## Local changes to vendored scripts
+
+- `scripts/lib-brand-profile.js`: `RESEARCH_EXTRA_FIELDS` (`forbiddenClaims`, `examples`), `blankResearchFields`, and `fillBlankContext` fills those two when blank, never over a typed value. They are not context fields, so a blank one never starts a research run.
+- `scripts/lib-brand-voice.js`: brand-voice.md renders the findings `uniqueMechanism`, `alternativeSolution`, `heroProduct` and `constraints`, retitles `strategy` as Strategic context, adds a "Gaps to check" section from `research.gaps` (omitted when none), and notes when `forbiddenClaims` or `examples` are research suggestions. What counts as complete is unchanged.
+- `skills/research/SKILL.md`: the brand-onboarding draft spec adds the optional fills and findings above. Budget is unchanged.

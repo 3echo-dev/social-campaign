@@ -8,17 +8,26 @@ const research = require('./lib-brand-research.js');
 
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'brand', 'brand-voice.md');
 const BLANK = /^(?:unknown|n\/?a|none|tbd|tba|-+|not[ _-]?(?:known|set|available))$/i;
-const NOTE_KEYS = Object.freeze(['summary', 'voice', 'contentPillars', 'strategy', 'postAudit', 'competitorRationale']);
+const NOTE_KEYS = Object.freeze([
+  'summary', 'voice', 'contentPillars', 'uniqueMechanism', 'alternativeSolution', 'heroProduct',
+  'constraints', 'strategy', 'postAudit', 'competitorRationale',
+]);
 const NOTE_TITLES = Object.freeze({
   summary: 'Summary',
   voice: 'How the brand sounds today',
   contentPillars: 'Topics the brand posts about',
-  strategy: 'Strategy',
+  uniqueMechanism: 'What makes it different',
+  alternativeSolution: 'What customers used before',
+  heroProduct: 'Hero products',
+  constraints: 'Creative and claims constraints',
+  strategy: 'Strategic context',
   postAudit: 'What recent posts show',
   competitorRationale: 'Why these competitors',
 });
 const NOTE_MAX = 1500;
 const NOT_SET = 'Not set yet.';
+const GAPS_MAX = 12;
+const CONSTRAINT_NOTE = 'Lines marked Inferred are the researcher\'s reading, not facts the brand has confirmed.';
 const REQUIREMENTS = Object.freeze([
   { field: 'voice', reason: 'Add the brand voice: how the brand should sound.' },
   { field: 'audience', reason: 'Add the audience: who the brand is speaking to.' },
@@ -127,14 +136,36 @@ function researchNotes(record) {
   const parts = [];
   for (const key of NOTE_KEYS) {
     const text = block(findings[key]);
-    if (text) parts.push('**' + NOTE_TITLES[key] + '**\n\n' + truncate(text, NOTE_MAX));
+    if (!text) continue;
+    const note = key === 'constraints' && /\binferred\b/i.test(text) ? '\n\n' + CONSTRAINT_NOTE : '';
+    parts.push('**' + NOTE_TITLES[key] + '**\n\n' + truncate(text, NOTE_MAX) + note);
   }
   return parts;
 }
 
-function audienceIsSuggested(profile) {
+// Open questions the research could not settle. A channel the person declared unavailable is not a gap.
+function gapLines(record) {
+  const gaps = record && Array.isArray(record.gaps) ? record.gaps : [];
+  const lines = [];
+  for (const gap of gaps) {
+    if (!gap || typeof gap !== 'object' || gap.scope === 'account_discovery') continue;
+    const question = oneLine(gap.question);
+    if (!question) continue;
+    const reason = oneLine(gap.reason);
+    lines.push('- ' + truncate(question, 200) + (reason && reason !== question ? ': ' + truncate(reason, 300) : ''));
+  }
+  const shown = lines.slice(0, GAPS_MAX);
+  if (lines.length > shown.length) shown.push('- ' + (lines.length - shown.length) + ' more.');
+  return shown;
+}
+
+function isSuggested(profile, name) {
   const filled = profile && profile.provenance && profile.provenance.researchFilled;
-  return Boolean(clean(profile && profile.audience) && filled && filled.audience && filled.audience.suggested);
+  return Boolean(block(profile && profile[name]) && filled && filled[name] && filled[name].suggested);
+}
+
+function audienceIsSuggested(profile) {
+  return isSuggested(profile, 'audience');
 }
 
 function voiceSource(profile) {
@@ -177,10 +208,12 @@ function renderBody(options) {
   ]);
   section(lines, 'Content pillars', [pillarsOf(p).map(item => '- ' + item).join('\n')]);
   section(lines, 'Vocabulary', [block(p.terminology)]);
-  section(lines, 'Words and claims we never use', [block(p.forbiddenClaims)]);
-  section(lines, 'Example posts that sound right', [block(p.examples)]);
+  section(lines, 'Words and claims we never use', [block(p.forbiddenClaims), isSuggested(p, 'forbiddenClaims') ? 'This list is a suggestion from research on the brand\'s own pages and has not been checked yet.' : '']);
+  section(lines, 'Example posts that sound right', [block(p.examples), isSuggested(p, 'examples') ? 'These examples were picked by research from the brand\'s own pages and have not been checked yet.' : '']);
   section(lines, 'Visual identity', visualIdentity(p, kit));
   section(lines, 'Research notes', researchNotes(record));
+  const gaps = gapLines(record);
+  if (gaps.length) lines.push('## Gaps to check', '', gaps.join('\n'), '');
   if (marks) lines.push(marks, '');
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }

@@ -69,12 +69,16 @@ function draftPathFor(brandDir, runId) {
   return join(onboardingRun.runDir(brandDir, runId), 'research-draft.json');
 }
 
-const SKELETON_FILLS = Object.freeze({ audience: '', market: '', voice: '', contentPillars: [], competitors: [] });
+const SKELETON_FILLS = Object.freeze({ audience: '', market: '', voice: '', contentPillars: [], competitors: [], forbiddenClaims: '', examples: '' });
+const EXTRA_FILLS = brandProfile.RESEARCH_EXTRA_FIELDS;
 
 function draftSkeleton(runId, blankFields, toFind) {
   const fills = {};
   for (const name of brandProfile.CONTEXT_FIELDS) {
     if (name === 'competitors' ? toFind > 0 : blankFields.includes(name)) fills[name] = structuredClone(SKELETON_FILLS[name]);
+  }
+  for (const name of EXTRA_FILLS) {
+    if (blankFields.includes(name)) fills[name] = SKELETON_FILLS[name];
   }
   return {
     version: 1,
@@ -146,7 +150,8 @@ export function startBrandResearch({ root, brand }) {
   const declaredCompetitors = Array.isArray(run.declaredCompetitors) ? run.declaredCompetitors : declared;
   const draftPath = draftPathFor(brandDir, run.runId);
   const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
-  ensureDraftSkeleton(draftPath, run.runId, run.blankFields || blankFields, toFind);
+  const alsoFill = brandProfile.blankResearchFields(profile).filter((name) => EXTRA_FILLS.includes(name));
+  ensureDraftSkeleton(draftPath, run.runId, [...(run.blankFields || blankFields), ...alsoFill], toFind);
   return {
     status: started.created ? 'started' : 'already_running',
     runId: run.runId,
@@ -154,6 +159,7 @@ export function startBrandResearch({ root, brand }) {
     brandId: entry.id,
     market: run.market || brandProfile.targetMarketOf(profile),
     blankFields: run.blankFields || blankFields,
+    alsoFill,
     competitors: { declared: declaredCompetitors, toFind },
     limits: run.limits || limits,
     draftPath,
@@ -217,8 +223,13 @@ function requiredFalseGaps(gaps) {
   return gaps.map((gap) => (typeof gap === 'string' ? { question: gap, reason: gap, required: false } : gap));
 }
 
-const FILL_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 300 });
-const SUGGESTIBLE_FIELDS = Object.freeze(['audience']);
+const FILL_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 300, forbiddenClaims: 600, examples: 600 });
+const SUGGESTIBLE_FIELDS = Object.freeze(['audience', ...EXTRA_FILLS]);
+// Findings the researcher may add for the brand voice notes. They are optional and each is held
+// to the note cap that the brand voice file renders them under.
+const DEPTH_FINDING_KEYS = Object.freeze(['uniqueMechanism', 'alternativeSolution', 'heroProduct', 'constraints', 'strategy']);
+const FINDING_NOTE_MAX = 1500;
+const CONSTRAINT_TAG = /^\s*(?:[-*\u2022]\s*)?[\[(]?(?:confirmed|inferred)\b/i;
 // One set of pillar limits for a typed save, the board and a research fill.
 const CONTENT_PILLARS_MIN = brandProfile.CONTENT_PILLAR_MIN;
 const CONTENT_PILLARS_MAX = brandProfile.CONTENT_PILLAR_MAX;
@@ -251,11 +262,11 @@ function checkFillText(field, text, problems) {
 
 function fillProblems(fills, problems) {
   for (const key of Object.keys(fills)) {
-    if (!brandProfile.CONTEXT_FIELDS.includes(key)) {
+    if (!brandProfile.CONTEXT_FIELDS.includes(key) && !EXTRA_FILLS.includes(key)) {
       problems.push({ field: `fills.${key}`, problem: `Brand research cannot fill "${key}".` });
     }
   }
-  for (const field of ['audience', 'market', 'voice']) {
+  for (const field of ['audience', 'market', 'voice', ...EXTRA_FILLS]) {
     if (!own(fills, field)) continue;
     const value = fills[field];
     if (typeof value !== 'string') {
@@ -298,7 +309,7 @@ function suggestedProblems(suggested, fills, problems) {
   }
   const names = [...new Set(suggested)];
   if (names.some((name) => !SUGGESTIBLE_FIELDS.includes(name))) {
-    problems.push({ field: 'suggested', problem: 'Only the audience can be marked as a suggestion.' });
+    problems.push({ field: 'suggested', problem: `Only ${SUGGESTIBLE_FIELDS.join(', ')} can be marked as a suggestion.` });
     return [];
   }
   for (const name of names) {
@@ -307,6 +318,39 @@ function suggestedProblems(suggested, fills, problems) {
     }
   }
   return names;
+}
+
+function findingLines(value) {
+  if (typeof value === 'string') return value.split(/\r?\n/);
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value.flatMap((item) => item.split(/\r?\n/));
+  return null;
+}
+
+function findingProblems(findings, problems) {
+  for (const key of DEPTH_FINDING_KEYS) {
+    if (!own(findings, key)) continue;
+    const field = `research.findings.${key}`;
+    const value = findings[key];
+    if (key === 'strategy' && isObject(value)) continue;
+    const lines = findingLines(value);
+    if (!lines) {
+      problems.push({ field, problem: `${key} must be text or a list of text lines.` });
+      continue;
+    }
+    const text = lines.join('\n');
+    for (const { test, rule } of FILL_BANNED_PATTERNS) {
+      if (test.test(text)) problems.push({ field, problem: `${key} ${rule}.` });
+    }
+    if (text.trim().length > FINDING_NOTE_MAX) {
+      problems.push({ field, problem: `${key} must be at most ${FINDING_NOTE_MAX} characters (has ${text.trim().length}).` });
+    }
+    if (key === 'constraints') {
+      const untagged = lines.filter((line) => line.trim() && !CONSTRAINT_TAG.test(line));
+      if (untagged.length) {
+        problems.push({ field, problem: 'Start every constraint line with "Confirmed" or "Inferred"; an inferred line is never a brand fact.' });
+      }
+    }
+  }
 }
 
 function attempt(field, problems, step) {
@@ -332,6 +376,8 @@ function researchProblems(researchDraft, slug, place, problems) {
   }
   if (own(researchDraft, 'findings') && !isObject(researchDraft.findings)) {
     problems.push({ field: 'research.findings', problem: 'research.findings must be an object.' });
+  } else if (own(researchDraft, 'findings')) {
+    findingProblems(researchDraft.findings, problems);
   }
   if (own(researchDraft, 'scope') && !isObject(researchDraft.scope)) {
     problems.push({ field: 'research.scope', problem: 'research.scope must be an object.' });
@@ -399,7 +445,9 @@ function draftProblems(draft, ctx) {
   if (own(draft, 'budget') && !isObject(draft.budget)) problems.push({ field: 'budget', problem: 'budget must be an object.' });
   const safeFills = isObject(fills) ? fills : {};
   if (isObject(fills)) fillProblems(fills, problems);
-  const suggested = suggestedProblems(draft.suggested, safeFills, problems);
+  const named = suggestedProblems(draft.suggested, safeFills, problems);
+  // A filled forbiddenClaims or examples always reads as a suggestion until the person has checked it.
+  const suggested = [...new Set([...named, ...EXTRA_FILLS.filter((name) => filled(safeFills[name]))])];
   if (isObject(researchDraft)) researchProblems(researchDraft, ctx.slug, ctx.place, problems);
   const shapeCount = problems.length;
   let needsAudience = false;
