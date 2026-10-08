@@ -962,12 +962,33 @@ function voiceGenerations(base, input) {
   return n === null ? VOICE_DEFAULT_GENERATIONS : n;
 }
 
-function sampleKeyFor(job, quote) {
+// The sample is the item marked sample in the price, or else the first thing made. When the person has asked for changes on a
+// sample, its redo takes over: the newest priced version of the same panel (the approved price must list it) is the sample now,
+// and it stays the sample through further rounds. A sample sent back for changes never unlocks the other panels; only an approval
+// of the current sample does (see sampleApproved).
+export function sampleKeyFor(job, quote) {
   const items = Array.isArray(quote?.items) ? quote.items : [];
   const marked = items.find(entry => entry && entry.provider === THREE_ECHO && entry.sample === true && !isReferenceItem(entry));
-  if (marked) return canonicalJobKey(marked.key);
-  const first = readRecords(job).find(record => record.type === 'create' && record.provider === THREE_ECHO && !isReferenceItem(record.key));
-  return first ? canonicalJobKey(first.key) : null;
+  let base = null;
+  if (marked) base = canonicalJobKey(marked.key);
+  else {
+    const first = readRecords(job).find(record => record.type === 'create' && record.provider === THREE_ECHO && !isReferenceItem(record.key));
+    base = first ? canonicalJobKey(first.key) : null;
+  }
+  const baseParsed = base ? parseJobKey(base) : null;
+  if (!baseParsed) return base;
+  const decided = readJson(join(job.dir, 'approvals', 'sample.json'));
+  const decidedKey = decided && typeof decided === 'object' ? canonicalJobKey(decided.key) : null;
+  const decidedParsed = decidedKey ? parseJobKey(decidedKey) : null;
+  if (!decidedParsed || decidedParsed.deliverable !== baseParsed.deliverable || decidedParsed.item !== baseParsed.item || decidedParsed.version < baseParsed.version) return base;
+  if (decided.decision !== 'changes') return decidedKey;
+  let newest = decidedParsed;
+  for (const entry of items) {
+    if (!entry || entry.provider !== THREE_ECHO || isReferenceItem(entry)) continue;
+    const parsed = parseJobKey(entry.key);
+    if (parsed && parsed.deliverable === baseParsed.deliverable && parsed.item === baseParsed.item && parsed.version > newest.version) newest = parsed;
+  }
+  return newest.key;
 }
 
 function sampleApproved(job, key) {
