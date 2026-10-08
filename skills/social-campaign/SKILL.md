@@ -200,6 +200,16 @@ After a stable job ID exists, use pipeline_inputs_import for selected local file
 
 The import copies files into an immutable input revision and preserves the originals.
 
+### A pasted video link is a reference
+
+When the person pastes a link to a Reel, TikTok, YouTube or other video, and a job exists (create one first if none does), call `pipeline_reference_from_url` with that job and the link, with no extra question. Pass their words about it as `note`. It downloads the video, its caption and thumbnail into the job's `inputs/references/video/` and lists it in the references manifest. Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
+
+- Reference use only: learn from it, describe it, borrow the idea. Never repost it or use the downloaded file in a finished post, and say so if the person asks to.
+- If it returns `needs_sign_in` (a login wall), do not read their browser. Offer, in plain words: "That one needs a login, so I can't open it. Upload the video with the upload button on the board and I'll use that." Only if they ask for another way, ask "Can I use your signed-in Chrome session to download it?" and, after a clear yes, call again with `cookiesFromBrowser` set to the browser they name. Never pass `cookiesFromBrowser` without that yes.
+- For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
+- A link the tool refuses as `private_address` or `invalid_url` is not retried.
+- Then `video_watch` the saved file when its content matters.
+
 Use the job snapshot to show the current route, missing fields, questions, plan, stages, artifacts, decisions, and metrics.
 
 Route blockers are actionable questions.

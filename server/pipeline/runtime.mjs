@@ -1052,6 +1052,13 @@ function resolveJobRef(root, options = {}) {
   return { brand, jobId: value, dir };
 }
 
+/** The brand and the job folder of an existing job, for tools that write inside it. */
+export function resolveJobDir(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const { brand, jobId, dir } = resolveJobRef(root, options);
+  return { root, brand: brand.slug, jobId, dir };
+}
+
 function jobRecord(root, brand, dir) {
   const job = readJson(join(dir, 'job.json'), {});
   const jobId = job.jobId || basename(dir);

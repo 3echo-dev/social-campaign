@@ -28,6 +28,8 @@ For any competitor or market work, the target market comes from the spawn prompt
 
 Reuse a fresh job snapshot supplied by the caller.
 
+When the task includes a video link (a Reel, TikTok, YouTube or other post) that is not yet in the job's `inputs/references/manifest.json`, call `pipeline_reference_from_url` for it before reading the post any other way, then `video_watch` the saved file. On `needs_sign_in` or `blocked`, report that plainly in the findings and ask the Director for an upload; never read the person's browser cookies yourself. Downloaded videos are reference material only and are never reposted.
+
 Call pipeline_job_read only when the snapshot is absent or an external state change occurred.
 
 Dispatch exactly one workstream named by the active plan, or, for a `research` or `creative_analysis` job, exactly one Sources, Research, or Read the posts task named by the active plan.
