@@ -75,6 +75,9 @@ export const DEFAULT_WORKER_PATH = fileURLToPath(new URL('../../python/social_fe
  */
 export const CRAWL4AI_VERSION = '0.9.3';
 
+/** yt-dlp with curl_cffi, so TikTok's bot check can be answered with browser impersonation (--impersonate chrome). */
+export const VIDEO_TOOLS_REQUIREMENT = 'yt-dlp[default,curl-cffi]';
+
 /** The oldest Python the helper works on. */
 export const MIN_PYTHON = { major: 3, minor: 10 };
 
@@ -1135,6 +1138,15 @@ async function runInstallWithLease(job, options) {
     return fail(job, 'The managed environment cannot load the pinned page reader. Try the install again.');
   }
   updateProgress(job, { pythonVersion: runtimeProbe.python.version, crawl4aiVersion: runtimeProbe.crawl4ai.version });
+
+  // Video downloads for reference teardowns. Never fatal: without it the research helper still reads pages,
+  // and a missing downloader is reported plainly when a video is asked for.
+  try {
+    const have = await runInstallCommand(python, ['-c', 'import yt_dlp, curl_cffi'], STEP_TIMEOUT_MS.probe, installOptions);
+    if (!have.ok) await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', VIDEO_TOOLS_REQUIREMENT], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+  } catch {
+    // keep going
+  }
 
   if (!runtimeProbe?.chromium.found) {
     step(job, 'browser');

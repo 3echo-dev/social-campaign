@@ -143,10 +143,14 @@ export async function referenceFromUrl(options) {
   ];
   if (type === 'caption') args.push('--skip-download');
   else args.push('-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4');
-  args.push('--', url);
-
-  const run = await runYtDlp(args, { binary: referenceYtdlpBinary(options.binary), timeoutMs: options.timeoutMs ?? REFERENCE_DOWNLOAD_TIMEOUT_MS, maxBytes: 4 * 1024 * 1024 });
   const platform = platformOf(url);
+  const runOptions = { binary: referenceYtdlpBinary(options.binary), timeoutMs: options.timeoutMs ?? REFERENCE_DOWNLOAD_TIMEOUT_MS, maxBytes: 4 * 1024 * 1024 };
+  // TikTok answers a plain downloader with a bot check; with curl_cffi installed yt-dlp can present itself as Chrome.
+  // When this yt-dlp has no impersonation support it says so, and the plain run is tried instead.
+  let run = await runYtDlp(platform === 'tiktok' ? [...args, '--impersonate', 'chrome', '--', url] : [...args, '--', url], runOptions);
+  if (platform === 'tiktok' && !run.ok && /impersonat/i.test(`${run.stderr}${run.stdout}`) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(run.stderr)) {
+    run = await runYtDlp([...args, '--', url], runOptions);
+  }
   const names = readdirSync(tempDir);
   const videoName = names.find((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()) && !n.includes('.part'));
   const infoName = names.find((n) => n === 'video.info.json');
