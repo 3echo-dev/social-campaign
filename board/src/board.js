@@ -4614,15 +4614,26 @@ export function stepTrace(item, ctx = {}) {
 }
 
 const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
+// What the person decided at a gate, one row each: every round of the history, or the single approval when there is no history.
+function gateDecisionRows(item) {
+  const history = Array.isArray(item.history) ? item.history : [];
+  const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
+  return history.length
+    ? history.map(entry => `<li><b>${esc(APPROVAL_WORDS[entry.decision] || 'Decided')}${entry.round > 1 ? ` (round ${entry.round})` : ''}</b><span class="num">${esc(traceWhen(entry.at))}</span>${entry.comment ? `<span class="trace-quote">${esc(truncateText(entry.comment, 200))}</span>` : ''}</li>`).join('')
+    : item.status === 'done' && traceMs(item.approval?.at) !== null ? `<li><b>Approved</b><span class="num">${esc(`${traceWhen(item.approval.at)}${price ? ` · ${price}` : ''}`)}</span></li>` : '';
+}
+// The words for a decided gate: "Approved <when>", with the credits for the price. Empty when the approval has no time.
+export function gateReceipt(item) {
+  if (item?.status !== 'done' || !item.approval?.at || !Number.isFinite(Date.parse(item.approval.at))) return '';
+  const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
+  return `Approved ${time(item.approval.at)}${price ? ` · ${price}` : ''}`;
+}
 /** What opens under a gate section: who prepared it, when it opened, what the person decided (with any change requests), and the session in between. */
 export function gateTrace(item, ctx = {}) {
   const { agent = null, person = null, director = null } = ctx;
   const win = gateWindow(item);
   const history = Array.isArray(item.history) ? item.history : [];
-  const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
-  const decisions = history.length
-    ? history.map(entry => `<li><b>${esc(APPROVAL_WORDS[entry.decision] || 'Decided')}${entry.round > 1 ? ` (round ${entry.round})` : ''}</b><span class="num">${esc(traceWhen(entry.at))}</span>${entry.comment ? `<span class="trace-quote">${esc(truncateText(entry.comment, 200))}</span>` : ''}</li>`).join('')
-    : item.status === 'done' && traceMs(item.approval?.at) !== null ? `<li><b>Approved</b><span class="num">${esc(`${traceWhen(item.approval.at)}${price ? ` · ${price}` : ''}`)}</span></li>` : '';
+  const decisions = gateDecisionRows(item);
   const reviewed = [...new Set(history.flatMap(entry => (Array.isArray(entry.files) ? entry.files : [])))].map(path => ({ path }));
   const agents = [agent, director].filter((one, at, list) => one && list.indexOf(one) === at);
   const facts = [
@@ -4810,7 +4821,7 @@ function stepCard(item, prev, who, { trace = '', open = false, key = '' } = {}) 
   const person = who(item.agent) || { name: humanize(item.agent), mood: 'sleepy' };
   const status = item.status;
   const starting = status === 'running' && person.called === false;
-  const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : starting ? `The Director is calling the ${person.name}` : item.line || (status === 'done' ? 'Finished' : 'Working on it');
+  const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : starting ? `The Director is calling the ${person.name}` : status === 'done' && item.receipt ? item.receipt : item.line || (status === 'done' ? 'Finished' : 'Working on it');
   const glyph = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : status === 'running' ? '<span class="pip"></span>' : '';
   const row = `<span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span>`;
   // A step that is done, working or waiting opens to its history. One not reached yet is shown disabled: no control, no history.
@@ -4820,8 +4831,7 @@ function stepCard(item, prev, who, { trace = '', open = false, key = '' } = {}) 
 
 function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
   const status = item.status;
-  const price = item.gate === 'price' && item.approval?.totals ? priceWords(item.approval.totals) : '';
-  const approved = item.approval?.at && Number.isFinite(Date.parse(item.approval.at)) ? `Approved ${time(item.approval.at)}${price ? ` · ${price}` : ''}` : 'Done';
+  const approved = gateReceipt(item) || 'Done';
   const meta = status === 'waiting' ? 'Waiting on you' : status === 'done' ? approved : 'Not started yet';
   const badge = status === 'done' ? icon('check') : status === 'waiting' ? icon('user') : icon('gate');
   const head = `<span class="gl" aria-hidden="true">${badge}</span><span class="gt"><b>${esc(item.name)}</b><span class="meta">${esc(meta)}</span></span>`;
@@ -4831,6 +4841,37 @@ function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
   if (!body && !history) return `<li class="${cls}${status === 'pending' ? ' is-locked' : ''}" data-gate="${esc(item.gate)}"${status === 'pending' ? ' aria-disabled="true"' : ''}><div class="gb">${head}</div></li>`;
   const key = `gate:${jobId}:${item.gate}:${status}`;
   return `<li class="${cls}" data-gate="${esc(item.gate)}"><details class="gate" data-open-key="${esc(key)}"${isOpen(key, open || status === 'waiting') ? ' open' : ''}><summary class="gb">${head}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="gate-body">${body}${history ? `<div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${history}</div>` : ''}</div></details></li>`;
+}
+
+// A decided approval gate that belongs to a done step is drawn on that step's card, not as a row of its own. A gate belongs to the
+// step plan row that names it (the step drawn just before it in its stage: the ideas, the shot plan), and the price gate belongs to
+// the "Pricing the media" step. Any other gate keeps its row. The result has fresh stage and step objects; `gates` lists the merged gates.
+export function mergeDecidedGates(model) {
+  const gates = new Set();
+  const priced = [];
+  const stages = (Array.isArray(model) ? model : []).map(stage => {
+    const items = stage.items.map(item => ({ ...item }));
+    if (stage.id === 'pricing-the-media') priced.push(...items.filter(item => item.kind === 'step'));
+    return { ...stage, items };
+  });
+  for (const stage of stages) {
+    stage.items = stage.items.filter((item, index) => {
+      if (item.kind !== 'gate' || item.status !== 'done') return true;
+      const before = stage.items[index - 1];
+      const owner = item.agent ? (before?.kind === 'step' && before.agent === item.agent ? before : null) : item.gate === 'price' ? priced.at(-1) || null : null;
+      if (!owner || owner.status !== 'done' || owner.decided) return true;
+      owner.decided = item;
+      owner.receipt = gateReceipt(item);
+      gates.add(item.gate);
+      return false;
+    });
+  }
+  return { stages: stages.filter(stage => stage.items.length), gates };
+}
+// What a step card holds for the gate it carries: the decision, and whatever the gate would have opened with.
+function decidedGateTrace(gate, body) {
+  const rows = gateDecisionRows(gate);
+  return traceSection('Your approval', (body || '') + (rows ? `<ol class="trace-list">${rows}</ol>` : ''));
 }
 
 /**
@@ -4843,13 +4884,16 @@ function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
 export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {} } = {}) {
   const placed = new Set();
   let prev = '';
-  const stages = model.map((stage, at) => {
+  const merged = mergeDecidedGates(model);
+  for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
+  const stages = merged.stages.map((stage, at) => {
     const done = stage.items.filter(item => item.status === 'done').length;
     const rows = stage.items.map((item, index) => {
       if (item.kind === 'step') {
         const person = who(item.agent);
         const key = `step:${jobId}:${stage.id ?? at}:${item.name}`;
-        const card = stepCard(item, prev, who, { trace: item.status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext }), open: isOpen(key, false), key });
+        const decided = item.decided ? decidedGateTrace(item.decided, bodies[item.decided.gate]?.html || '') : '';
+        const card = stepCard(item, prev, who, { trace: item.status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext }) + decided, open: isOpen(key, false), key });
         prev = item.name;
         return card;
       }
