@@ -1,8 +1,12 @@
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { boardSnapshot } from '../pipeline/board.mjs';
 import { writeBoardDocuments } from '../pipeline/artifact.mjs';
 import { ANSWER_TEXT_LIMIT, OPTION_TEXT_LIMIT, QUESTION_OPTION_LIMIT, QUESTION_STATUSES, QUESTION_TEXT_LIMIT, answerQuestion, askQuestion, listQuestions, withdrawQuestion } from '../pipeline/questions.mjs';
+
+const openQuestionLines = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-open-questions.js'));
 
 const string = { type: 'string' };
 const questionId = { ...string, description: 'The question id returned by pipeline_board_ask, such as q-1a2b3c4d5e6f.' };
@@ -17,7 +21,17 @@ function local(workspace) {
   return workspace.root;
 }
 
+// Keep the job's Next action and Blocked on lines true: waiting on the answer while a question is open, back to normal when none is.
+function syncStatusLines(root, question) {
+  if (!question.jobId) return;
+  try {
+    const job = runtime.listJobs({ root }).find(item => item.jobId === question.jobId);
+    if (job) openQuestionLines.refreshStatusLines(job.path, root, question.jobId);
+  } catch { /* the lines are a courtesy; the question itself is saved */ }
+}
+
 function documentsFor(root, question) {
+  syncStatusLines(root, question);
   return writeBoardDocuments({ root, snapshot: boardSnapshot({ root }), jobIds: question.jobId ? [question.jobId] : [] }).documents;
 }
 

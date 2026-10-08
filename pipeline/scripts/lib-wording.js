@@ -110,6 +110,8 @@ const SOURCE_QUESTIONS = Object.freeze({
 });
 const FINISH_BRIEF = 'Finish the brief so Claude can start.';
 const QUESTION_WAITING = 'Claude has a question for you.';
+const QUESTION_NEXT_ACTION = 'Waiting for your answer to a question before the next step starts.';
+const QUESTION_BLOCKED_ON = 'Your answer to a question';
 const NEEDS_YOU_IN_CHAT = 'Claude needs something from you. Check the chat.';
 const briefQuestion = (key, need) => (need && SOURCE_QUESTIONS[need]) || BRIEF_QUESTIONS[key] || FINISH_BRIEF;
 
@@ -212,6 +214,6 @@ const carriesStateId = text => STATE_ID.test(String(text));
 
 module.exports = {
   SENTENCES, sentence, historical, has, missing, carriesStateId, REPORT_COMPLETE,
-  GATE_ASKS, gateAsk, BRIEF_QUESTIONS, SOURCE_QUESTIONS, briefQuestion, FINISH_BRIEF, QUESTION_WAITING, NEEDS_YOU_IN_CHAT,
+  GATE_ASKS, gateAsk, BRIEF_QUESTIONS, SOURCE_QUESTIONS, briefQuestion, FINISH_BRIEF, QUESTION_WAITING, QUESTION_NEXT_ACTION, QUESTION_BLOCKED_ON, NEEDS_YOU_IN_CHAT,
   ANNOUNCEMENTS, announcement, blockedReason,
 };

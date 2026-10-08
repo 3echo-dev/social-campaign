@@ -394,7 +394,7 @@ export function projectIntake(snapshot, profile = null) {
       placementNotes[ref] = { text: placementSentence(words), kind: words.endsWith('?') ? 'ask' : 'conflict' };
     }
   }
-  const blockedOn = BLOCKED_STATES.has(snapshot.project?.state) ? null : snapshot.status?.blockedOn;
+  const blockedOn = BLOCKED_STATES.has(snapshot.project?.state) || snapshot.status?.blockedOn === wording.QUESTION_BLOCKED_ON ? null : snapshot.status?.blockedOn;
   for (const item of [...(route.blockers || []), ...(route.unsupported || []), blockedOn]) {
     if (!item || ['nothing', 'you'].includes(String(item).trim().toLowerCase())) continue;
     const text = typeof item === 'string' ? item : JSON.stringify(item);
@@ -696,7 +696,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
   const metricoolOn = metricoolConnected(root);
   const stuckCtx = stuckContext(root);
   return runtime.listJobs({ root }).filter(job => !jobIds || jobIds.includes(job.jobId)).map(job => {
-    const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
+    const snapshot = withOpenQuestions(runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId }), questionsByJob.get(job.jobId));
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const reviewUrl = ({ sha256 }) => reviewUrlFor(root, { brand: job.brand, jobId: job.jobId, sourceSha: sha256 });
     const studioWorkspace = gate === PRICE_GATE || gate === 'publish' ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
@@ -738,7 +738,8 @@ function jobUsage(root, job, snapshot) {
 }
 
 function jobBlockers(snapshot) {
-  return [snapshot.status.blockedOn, ...(snapshot.route?.blockers || snapshot.route?.missingFields || snapshot.route?.missing || [])].filter(value => value && value !== 'Nothing').map(plainNeed).filter(Boolean);
+  // "Your answer to a question" is the open question itself, already shown as a question, not a missing field.
+  return [snapshot.status.blockedOn === wording.QUESTION_BLOCKED_ON ? null : snapshot.status.blockedOn, ...(snapshot.route?.blockers || snapshot.route?.missingFields || snapshot.route?.missing || [])].filter(value => value && value !== 'Nothing').map(plainNeed).filter(Boolean);
 }
 
 const BLOCKED_STATES = new Set(['BLOCKED', 'ESCALATED']);
@@ -782,6 +783,26 @@ function stageSummary(stages) {
   const list = Array.isArray(stages) ? stages : [];
   const current = list.find(stage => plainObject(stage) && !SETTLED_STAGE_STATUSES.has(stage.status));
   return { done: list.filter(stage => plainObject(stage) && stage.status === 'complete').length, total: list.length, current: current?.label || null };
+}
+
+/**
+ * While the Director has a question open on a job, the job is waiting on the person, not moving on: the first stage that is not
+ * finished shows as waiting (the same status a decision uses), its running steps wait too, and the next action and "blocked on"
+ * line say it is the person's answer. Returns the snapshot unchanged when there is nothing to show; never edits the one it is given.
+ */
+export function withOpenQuestions(snapshot, open) {
+  if (!Array.isArray(open) || !open.length) return snapshot;
+  const state = snapshot.project?.state;
+  if (states.isTerminal(state) || BLOCKED_STATES.has(state) || states.gateOf(state)) return snapshot;
+  let marked = false;
+  const stages = (snapshot.project.stages || []).map(stage => {
+    if (marked || !plainObject(stage) || stage.status === 'complete' || stage.status === 'cancelled') return stage;
+    marked = true;
+    if (stage.status !== 'running' && stage.status !== 'pending') return stage;
+    return { ...stage, status: 'waiting', tasks: (stage.tasks || []).map(task => task?.status === 'running' ? { ...task, status: 'waiting' } : task) };
+  });
+  const status = { ...(snapshot.status || {}), nextAction: wording.QUESTION_NEXT_ACTION };
+  return { ...snapshot, project: { ...snapshot.project, stages }, status };
 }
 
 function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
@@ -1214,7 +1235,7 @@ export function boardSnapshot({ root } = {}) {
   const questionsByJob = openQuestionsByJob(root);
   const stuckCtx = stuckContext(root);
   const projectEntries = runtime.listJobs({ root }).map(job => {
-    const snapshot = runtime.readJobSnapshot({ root, brand:job.brand, jobId:job.jobId });
+    const snapshot = withOpenQuestions(runtime.readJobSnapshot({ root, brand:job.brand, jobId:job.jobId }), questionsByJob.get(job.jobId));
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const intake = projectIntake(snapshot, rawProfiles.get(job.brand) || null);
     const inbox = jobInbox({ root, snapshot, gate, review, intake, questions: questionsByJob.get(job.jobId), dir: job.path });
@@ -2343,6 +2364,18 @@ function assertNoHelperRunning(root,brand,jobId) {
   });
 }
 
+/** A review is not presented while the Director's own question on the job is still open: the person's answer may change what the review shows. */
+function assertNoQuestionOpen(root,jobId) {
+  let open;
+  try { open=openQuestionsByJob(root,{readOnly:true}).get(jobId); } catch { return; }
+  if(!open?.length) return;
+  throw new UserFacingError(`You asked the person ${open.length===1 ? 'a question' : `${open.length} questions`} on this job that ${open.length===1 ? 'is' : 'are'} still waiting for an answer, so this review is not ready to show. Wait for the answer, then present this review again.`,{
+    code:'question_open',
+    fix:'Do not present or write the brief while a question on this job is open. Wait for the answer (it arrives by itself), then continue.',
+    details:{questions:open.map(question=>question.questionId)},
+  });
+}
+
 export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   root=rootOf(root);
   let snapshot=runtime.readJobSnapshot({root,brand,jobId});
@@ -2371,6 +2404,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     const aimed=requested ?? current ?? inferredGate(snapshot.project.state,paths,workflowId);
     if(aimed && !current) assertReviewFits(aimed,workflowId);
     assertNoHelperRunning(root,brand,jobId);
+    assertNoQuestionOpen(root,jobId);
     // Post-production comes before the final approval: never ask for both at once, and never ask while the edit is away.
     if(aimed==='content') {
       const job=facts.jobAt(root,brand,jobId);

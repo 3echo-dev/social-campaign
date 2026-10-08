@@ -19,6 +19,7 @@ const gate = require('./lib-gate.js');
 const roles = require('./lib-roles.js');
 const durable = require('./lib-durable.js');
 const availability = require('./lib-execution-availability.js');
+const openQuestions = require('./lib-open-questions.js');
 
 const argv = process.argv.slice(2);
 const flag = (name, dflt) => { const i = argv.indexOf('--' + name); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : dflt; };
@@ -155,6 +156,9 @@ if (current && !states.canMove(current, target, { allowRetired: compatibility })
   fail('cannot go from ' + current + ' to ' + target + '.\nFrom ' + states.label(current) +
     ' the job can go to: ' + (allowed.length ? allowed.join(', ') : 'nowhere, it is finished') + '.');
 }
+const asked = openQuestions.openFor(ws.root(argv), jobId);
+const askedRefusal = openQuestions.refusal(current, target, asked);
+if (askedRefusal) fail(askedRefusal);
 
 const stamp = ws.now(brand, argv);
 const note = flag('notesFile') || flag('notes-file')
@@ -178,9 +182,10 @@ const nextRevision = currentRevision + 1;
 setField('Current state', target);
 ensureField('Revision', nextRevision);
 setField('Last updated', stamp);
-const nextLine = flag('next', wording.sentence(target, routeRecord.workflowId));
+const waitingOnAnswer = asked.length > 0 && !states.isGate(target) && !states.isTerminal(target) && !['BLOCKED', 'ESCALATED'].includes(target);
+const nextLine = flag('next', waitingOnAnswer ? wording.QUESTION_NEXT_ACTION : wording.sentence(target, routeRecord.workflowId));
 setField('Next action', nextLine);
-setField('Blocked on', flag('blocked', states.isGate(target) ? 'You' : (target === 'BLOCKED' || target === 'ESCALATED' ? 'You' : 'Nothing')));
+setField('Blocked on', flag('blocked', waitingOnAnswer ? wording.QUESTION_BLOCKED_ON : states.isGate(target) ? 'You' : (target === 'BLOCKED' || target === 'ESCALATED' ? 'You' : 'Nothing')));
 
 // Stage log: append, never rewrite.
 const logHeader = /\| Timestamp \| From \| To \| By \| Note \|\n\|[-| ]+\|\n/;
