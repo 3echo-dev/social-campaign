@@ -205,7 +205,7 @@ The import copies files into an immutable input revision and preserves the origi
 When the person pastes a link to a Reel, TikTok, YouTube or other video, and a job exists (create one first if none does), call `pipeline_reference_from_url` with that job and the link, with no extra question. Pass their words about it as `note`. It downloads the video, its caption and thumbnail into the job's `inputs/references/video/` and lists it in the references manifest. Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
 
 - Reference use only: learn from it, describe it, borrow the idea. Never repost it or use the downloaded file in a finished post, and say so if the person asks to.
-- If it returns `needs_sign_in` (a login wall), do not read their browser. Offer, in plain words: "That one needs a login, so I can't open it. Upload the video with the upload button on the board and I'll use that." Only if they ask for another way, ask "Can I use your signed-in Chrome session to download it?" and, after a clear yes, call again with `cookiesFromBrowser` set to the browser they name. Never pass `cookiesFromBrowser` without that yes.
+- If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
 - For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
 - A link the tool refuses as `private_address` or `invalid_url` is not retried.
 - Then `video_watch` the saved file when its content matters.
@@ -270,6 +270,13 @@ Those are all the same mistake: giving up on the board and falling back to chat 
 A decision that is still open is normal and expected; it is not a signal to stop waiting, and it is not an error.
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
+
+## Reference evidence that falls short is asked before the brief
+
+When the person asked for N reference videos (for example "the top 5 Reels in my niche"; N is 3 when they gave no number), or the job needs style references, read `research/competitors.md` before writing the brief and count only references that were verified, popular and in the job's niche. Off-niche results never count.
+If fewer than N were verified, ask ONE `pipeline_board_ask` question on the Director card before the brief, and say the same line in chat. Say in plain words how many were verified and why the rest were blocked (for example "I could check 1 of the 5: TikTok and Instagram asked for a sign-in"), with the options "I'll paste links" (TikTok, Instagram and YouTube links are downloaded with `pipeline_reference_from_url`) and "Continue with what you found", and `allowText` true.
+Never proceed to the brief silently. Wait for the answer; pasted links go back to the researcher before the brief is written.
+The brief's "What you're deciding" section then states plainly that the reference evidence fell short, how many were verified, and what the person chose.
 
 ## Facts the copy depends on are asked early
 

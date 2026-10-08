@@ -81,6 +81,10 @@ Quick scan by default: what they post, what they pay to post, the offer, the CTA
 
 Classify each ad on three axes: message type (pain, solution, social proof, offer, educational, brand), funnel stage (top, middle, bottom) and creative format (static, carousel, UGC-style, talking head, before/after, demo, testimonial card, data card).
 
+To find the top N reference videos (N is the person's number, 3 when none is given), follow "Finding the top N reference videos (discovery ladder)" in the `research` skill: choose and validate the top competitors first, pull their best recent short videos, try the research helper, then Claude in Chrome read-only, then public sources (Creative Center, yt-dlp), then ask through the Director, and record each competitor chosen and what each step returned.
+
+When the prompt asks for N reference videos or the job needs style references, count a reference only if it was verified, is popular and is in the job's niche. Off-niche results (for example kid comedy when the niche is youth coaching classes) are listed apart and never count toward N. Save each verified one with `pipeline_reference_from_url` and look at it (first 3 seconds and a few more frames by ffmpeg, or `video_watch`), so hook, framing, on-screen text and pacing are Observation, not Hypothesis. If a download fails, say so in the file. If fewer than N count, write `References: {n} of {N} verified` with the reason for each miss at the top of the file, and tell the Director; do not tell the person to paste links inside the file only.
+
 See Hard limits in the `research` skill for the competitor and item caps. Then the gap section: the angle, proof type or audience no competitor addresses is the most valuable thing here.
 
 ## Turn budget

@@ -37,8 +37,9 @@ const NEXT = {
   needs_sign_in: {
     message: 'That post is only shown to signed in visitors, so it could not be downloaded without a login.',
     next: [
-      'Ask the person to upload the video file with the upload button on the board (or give its saved file path).',
-      'Or, only if the person agrees, call this tool again with cookiesFromBrowser set to the browser they are signed in with (chrome, firefox, edge, safari or brave). Never read browser cookies without their yes.',
+      "Do not ask in chat. View the post in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own permission prompt; that is the person's to answer.",
+      "If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the video file with the board's \"Add a reference\" button (upload button on the board).",
+      'Call this tool again with cookiesFromBrowser (chrome, firefox, edge, safari or brave) only if the person asks for it and says yes. Never read browser cookies without their yes.',
     ],
   },
   blocked: {
