@@ -850,10 +850,10 @@ box-shadow:inset 0 0 0 1px rgb(255 255 255/.14),inset 0 1px 0 rgb(255 255 255/.1
 .pc-kind{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgb(255 255 255/.85)}
 .project-card .pc-glass h3{font-size:17px;font-weight:700;letter-spacing:-.015em;color:#fff;line-height:1.2;text-shadow:0 1px 10px rgb(0 0 0/.35);overflow-wrap:anywhere}
 .pc-sub{font-size:var(--t1);font-weight:600;color:rgb(255 255 255/.9);text-shadow:0 1px 8px rgb(0 0 0/.35);overflow-wrap:anywhere}
-.pc-body{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:13px 16px 2px}
-.pc-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;align-items:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;color:var(--faint)}
-.pc-kv b{font-weight:500;color:var(--dim);overflow-wrap:anywhere}
-.pc-body>.pill{max-width:100%;white-space:normal;text-align:center;line-height:1.25}
+.pc-body{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:start;padding:13px 16px 2px}
+.pc-kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;align-items:baseline;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;color:var(--faint)}
+.pc-kv b{font-weight:500;color:var(--dim);min-width:0;overflow-wrap:break-word;word-break:normal}
+.pc-body>.pill{justify-self:start;max-width:100%;white-space:normal;overflow-wrap:normal;word-break:normal;text-align:left;line-height:1.25}
 .pc-act{display:block;padding:9px 16px 0;font-size:var(--t1);color:var(--dim);line-height:1.45;overflow-wrap:anywhere}
 .pc-act .card-agent{display:inline-flex;font-size:var(--t1);font-weight:500}
 .pc-act p{margin:0}
@@ -1141,10 +1141,6 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .studio.has-need-top .studio-side .in-need{display:none}
 }
 .top .header-tools{margin-left:auto}
-@media (max-width:520px){
-.pc-body{grid-template-columns:minmax(0,1fr);align-items:start}
-.pc-body>.pill{justify-self:start;text-align:left}
-}
 .media-grid{align-items:flex-start}
 .media-tile{background:var(--panel2)}
 .media-tile img,.media-tile video{background:var(--panel2)}
