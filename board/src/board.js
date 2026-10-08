@@ -1847,6 +1847,7 @@ const GATE_TITLES = Object.freeze({
   sample: 'Approve the sample image',
   pictures: 'Check the pictures',
   clips: 'Check the video clips',
+  cut: 'Check the joined video',
   content: 'Approve the final post',
   publish: 'Confirm where and when to post',
   campaign_proposal: 'Approve the campaign plan',
@@ -2364,11 +2365,11 @@ export function sampleView(doc) {
 // The pictures, the clips and the joined video are each reviewed as a grid: one card per panel with its picture or player and the
 // storyboard's words for it, and a per-card "Ask for changes" with a note. Every card counts as approved until a change is asked on
 // it; "Approve all" sits under the grid. A change goes back to the named panels, and a redo of one is priced again first.
-const MEDIA_GATE_IDS = new Set(['pictures', 'clips']);
-const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'] });
+const MEDIA_GATE_IDS = new Set(['pictures', 'clips', 'cut']);
+const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'], cut: ['video', 'videos'] });
 const mediaPanelKey = panel => `${trimmed(panel?.deliverable)}|${trimmed(panel?.panel)}`;
 export const mediaPanelsOf = doc => (Array.isArray(doc?.review?.mediaSet?.panels) ? doc.review.mediaSet.panels : []);
-const mediaPanelTitle = panel => trimmed(panel?.text?.label) || trimmed(panel?.panel) || 'Panel';
+const mediaPanelTitle = panel => trimmed(panel?.text?.label) || (trimmed(panel?.panel) === 'Cut' ? 'Joined video' : trimmed(panel?.panel)) || 'Panel';
 
 export function mediaPanelStates(doc, saved = {}) {
   return Object.fromEntries(mediaPanelsOf(doc).map(panel => {
@@ -3187,7 +3188,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   return parts.join('');
 }
 
-const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'content', 'publish']);
+const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'content', 'publish']);
 const copiesWaiting = refs => {
   const kinds = new Set(refs.map(ref => ref.kind));
   const what = kinds.has('image') && kinds.has('video') ? 'pictures and video' : kinds.has('video') ? 'video' : 'pictures';
@@ -3217,7 +3218,7 @@ function unviewableMedia(doc) {
  */
 function approval(gate, doc, state, recipeState = {}, routeState = {}, postStates = {}) {
   const unviewable = COPY_GATES.has(gate) ? unviewableMedia(doc) : [];
-  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? 'Approve all' : 'Approve', line: copiesWaiting(unviewable) };
+  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? (gate === 'cut' ? 'Approve' : 'Approve all') : 'Approve', line: copiesWaiting(unviewable) };
   if (gate === 'concept') {
     const concepts = doc?.review?.concepts;
     const concept = concepts?.concepts?.find(item => item.id === state.choice);
@@ -3249,8 +3250,8 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again before it is made.` };
-    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.';
-    return { label: 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? 'Approving lets Claude ask what to add: captions, music, both or nothing.' : 'Approving lets Claude join them into one video.';
+    return { label: gate === 'cut' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
     const sample = doc?.review?.sample;
@@ -3389,7 +3390,7 @@ export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
-const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
+const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
 const hasQuestionId = item => item?.questionId !== undefined && item?.questionId !== null && String(item.questionId).trim() !== '';
 
@@ -4454,7 +4455,7 @@ function messageBubbles(agent) {
   }).join('');
 }
 
-const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
+const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', cut: 'clapper', finishing: 'sparkles', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
 // The picture for a step is picked from what the step is: its short name says it.
 const STEP_PICTURES = Object.freeze([
   [/request|setting the plan/, 'folder'], [/price|cost/, 'money'], [/storyboard|media spec|shot plan|slide plan|cut plan|still frames/, 'picture'],
@@ -4731,6 +4732,7 @@ const GATE_COMMENT_NAMES = Object.freeze({
   sample: 'Sample',
   pictures: 'Pictures',
   clips: 'Video clips',
+  cut: 'Joined video',
   content: 'Final post',
   publish: 'Posting plan',
   campaign_proposal: 'Campaign plan',

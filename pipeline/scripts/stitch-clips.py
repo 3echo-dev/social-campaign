@@ -382,6 +382,12 @@ def main():
                 if attempt == 4:
                     sys.exit("could not write %s: %s" % (out.replace(os.sep, "/"), e))
                 time.sleep(0.2)
+        # The plain join is also kept as final-raw.mp4: the person checks that one before anything is added to it.
+        if os.path.basename(out) == "final.mp4":
+            try:
+                shutil.copyfile(out, os.path.join(os.path.dirname(out), "final-raw.mp4"))
+            except OSError as e:
+                sys.exit("could not write final-raw.mp4: %s" % e)
         print("wrote %s  %sx%s  %.2fs  (%d clip(s), sources total %.2fs, clip audio kept from %d, captions %s)" % (
             out.replace(os.sep, "/"), final.get("width"), final.get("height"),
             final.get("duration", 0.0), len(clips), total, sum(clip_audio), "burned" if burned else "none"))

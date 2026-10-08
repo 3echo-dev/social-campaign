@@ -82,6 +82,7 @@ const GATE_ASKS = Object.freeze({
   storyboard: 'Approve the storyboard, or name a panel to change.',
   price: 'Approve the price before anything is made.',
   sample: 'Check the sample before the rest is made.',
+  cut: 'Watch the joined video, then approve it or say what to change.',
   content: 'Approve the final post, or say what to change.',
   publish: 'Confirm where and when to post.',
   campaign_proposal: 'Approve the campaign plan, or say what to change.',

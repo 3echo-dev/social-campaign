@@ -106,3 +106,59 @@ def stitch_problem(jobdir):
         return None
     return ("The video clips have not been approved yet. Present the clips review (pipeline_review_present with gate clips), "
             "wait for the person to approve them all, then join them.")
+
+
+# ---------------------------------------------------------------- the joined video and what to add to it
+# Mirrors server/pipeline/facts.mjs (cutSet, mediaSetApproved for gate "cut") and server/pipeline/finishing.mjs. The board writes
+# approvals/cut.json when the person approves the joined video (media/D<n>/final-raw.mp4); the Director records the answer to
+# "what should be added" in approvals/finishing.json. finish-video.py refuses (exit 6) until both match the files as they are now.
+FINISHING_CHOICES = {"captions": (True, False), "music": (False, True), "both": (True, True), "skip": (False, False)}
+
+
+def cut_files(jobdir):
+    """The joined cuts, [(job-relative path, sha256)], one per post that has media/D<n>/final-raw.mp4."""
+    out = []
+    try:
+        names = sorted((n for n in os.listdir(os.path.join(jobdir, "media")) if re.match(r"^D\d+$", n)),
+                       key=lambda n: int(n[1:]))
+    except OSError:
+        return out
+    for name in names:
+        rel = "media/%s/final-raw.mp4" % name
+        path = os.path.join(jobdir, *rel.split("/"))
+        if os.path.isfile(path) and os.path.getsize(path):
+            out.append((rel, _sha(path)))
+    return out
+
+
+def _covers(entries, cuts):
+    if not isinstance(entries, list) or not cuts or len(entries) != len(cuts):
+        return False
+    return all(any(isinstance(e, dict) and e.get("file") == rel and e.get("sha256") == sha for e in entries) for rel, sha in cuts)
+
+
+def cut_approved(jobdir):
+    d = _json(os.path.join(jobdir, "approvals", "cut.json"))
+    return bool(d and d.get("decision") == "approve" and _covers(d.get("files"), cut_files(jobdir)))
+
+
+def finishing(jobdir):
+    """(captions, music, choice) recorded for the joined video as approved now, else None."""
+    d = _json(os.path.join(jobdir, "approvals", "finishing.json"))
+    if not d or d.get("choice") not in FINISHING_CHOICES or not cut_approved(jobdir) or not _covers(d.get("files"), cut_files(jobdir)):
+        return None
+    captions, music = FINISHING_CHOICES[d["choice"]]
+    return captions, music, d["choice"]
+
+
+def finishing_problem(jobdir):
+    """Why captions or music may not be added yet, or None."""
+    if not cut_files(jobdir):
+        return "The clips are not joined yet. Join them with stitch-clips.py, show the joined video and wait for the person to approve it."
+    if not cut_approved(jobdir):
+        return ("The person has not approved the joined video yet. Present it (pipeline_review_present with gate cut), wait for the "
+                "approval, then ask what to add. Nothing is added before that.")
+    if finishing(jobdir) is None:
+        return ("The person has not said what to add yet. Ask once with pipeline_board_ask (Add captions, Add background music, Both, "
+                "Skip use as is) and record the answer with pipeline_finishing_choice.")
+    return None

@@ -29,6 +29,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, relative, reso
 import { fileURLToPath } from 'node:url';
 import * as facts from './facts.mjs';
 import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
+import { finishingChoice } from './finishing.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..', '..');
@@ -2147,7 +2148,7 @@ function stageLabel(stageId, workflowId = null) {
 }
 
 const GATE_NAMES = Object.freeze({
-  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', content: 'Final post', publish: 'Posting plan',
+  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Check the joined video', finishing: 'Finishing choice', content: 'Final post', publish: 'Posting plan',
   campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report',
 });
 const OFF_FLOW_STATES = new Set(['CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'COMPLETE', 'CANCELLED']);
@@ -2194,7 +2195,7 @@ function gateHistory(decisions, gate) {
 
 function stageOfGate(gate, workflowId = null) {
   if (gate === 'price') return 'your-approval-of-the-price';
-  if (gate === 'sample' || gate === 'pictures' || gate === 'clips') return 'making-the-images-and-video';
+  if (['sample', 'pictures', 'clips', 'cut', 'finishing'].includes(gate)) return 'making-the-images-and-video';
   return stagesRuntime.forState(statesRuntime.AWAITING_STATE[gate], workflowId)?.stage || null;
 }
 
@@ -2244,12 +2245,18 @@ function mediaReviewFacts(dir) {
   const none = { required: [], approved: new Map() };
   if (!dir) return none;
   const job = { dir };
-  const required = ['pictures', 'clips'].filter((gate) => facts.mediaReviewRequired(job, gate));
+  const required = ['pictures', 'clips', 'cut'].filter((gate) => facts.mediaReviewRequired(job, gate));
   const approved = new Map();
   for (const gate of required) {
     if (!facts.mediaSetApproved(job, gate)) continue;
     const decision = readJson(join(dir, ...facts.MEDIA_REVIEWS[gate].file.split('/')));
     approved.set(gate, { gate, at: isoTime(decision?.decidedAt) });
+  }
+  // What to add to the joined video is asked after it is approved; it shows as a step of its own.
+  if (required.includes('cut')) {
+    required.push('finishing');
+    const choice = finishingChoice(job);
+    if (choice) approved.set('finishing', { gate: 'finishing', at: isoTime(choice.decidedAt) });
   }
   return { required, approved };
 }
@@ -2490,12 +2497,13 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
     const approved = stageGates.filter((gate) => decided.has(gate));
     stage.approvals = approved.map((gate) => decided.get(gate));
-    stage.gates = stageGates.filter((gate) => !['sample', 'pictures', 'clips'].includes(gate) || decided.has(gate)).map((gate) => {
+    stage.gates = stageGates.filter((gate) => !['sample', 'pictures', 'clips', 'cut', 'finishing'].includes(gate) || decided.has(gate) || (gate === 'finishing' && decided.has('cut'))).map((gate) => {
       const history = gateHistory(decisions, gate);
       return {
         gate,
         name: GATE_NAMES[gate] || stageLabel(gate),
         status: decided.has(gate) ? 'done'
+          : gate === 'finishing' ? 'waiting'
           : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'
             : (flowing && statesRuntime.APPROVED_STATE[gate] && orderIds.indexOf(statesRuntime.APPROVED_STATE[gate]) <= nowAt) || stage.status === 'complete' ? 'done' : 'pending',
         ...(history.length ? { history } : {}),

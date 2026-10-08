@@ -22,6 +22,7 @@ import { attemptState, deliveryReference, projectPublishStatus, readAttempts, re
 import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { finishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
@@ -579,7 +580,7 @@ function priceOpen(root, brand, jobId) {
 }
 export const FINDINGS_GATE = 'findings';
 const REVIEW_GATES = Object.freeze(['concept', 'storyboard', 'content', 'publish', 'campaign_proposal', 'campaign_activation', FINDINGS_GATE]);
-const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
+const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', cut: 'joined video', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
 const REPORT_FILE = 'report/report.md';
 const REPORT_STILLS_DIR = 'report/stills';
 const STILL_TYPES = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
@@ -630,8 +631,9 @@ export function sampleReview(root, brand, jobId, snapshot) {
 
 export const PICTURES_GATE = 'pictures';
 export const CLIPS_GATE = 'clips';
-export const MEDIA_GATES = Object.freeze([PICTURES_GATE, CLIPS_GATE]);
-const MEDIA_GATE_WORDS = Object.freeze({ pictures: 'pictures', clips: 'video clips' });
+export const CUT_GATE = 'cut';
+export const MEDIA_GATES = Object.freeze([PICTURES_GATE, CLIPS_GATE, CUT_GATE]);
+const MEDIA_GATE_WORDS = Object.freeze({ pictures: 'pictures', clips: 'video clips', cut: 'joined video' });
 
 /**
  * The review of every storyboard picture (gate pictures) or every clip (gate clips), shown together once the whole set is made and
@@ -645,6 +647,7 @@ export function mediaReview(root, brand, jobId, snapshot, gate) {
   const job = facts.jobAt(root, brand, jobId);
   if (!job || !facts.mediaReviewRequired(job, gate)) return null;
   if (gate === CLIPS_GATE && facts.mediaReviewRequired(job, PICTURES_GATE) && !facts.mediaSetApproved(job, PICTURES_GATE)) return null;
+  if (gate === CUT_GATE && facts.mediaReviewRequired(job, CLIPS_GATE) && !facts.mediaSetApproved(job, CLIPS_GATE)) return null;
   const set = facts.reviewSet(job, gate);
   return set.complete ? panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile: spec.file, kind: spec.kind, panels: set.panels }) : null;
 }
@@ -690,7 +693,7 @@ function pendingReview(root, brand, jobId, snapshot) {
   return { gate: null, review: null };
 }
 
-const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'content', 'publish']);
+const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'content', 'publish']);
 
 export function reviewCopyGaps({ root, brand, jobId } = {}) {
   root = rootOf(root);
@@ -1025,7 +1028,8 @@ function decisionItem({ root, snapshot, gate, review, place, dir }) {
     item.summary = words ? `Approving lets Claude make the other ${words}.` : 'Approving lets Claude make the rest.';
   } else if (MEDIA_GATES.includes(gate)) {
     const count = review.artifacts.length;
-    item.summary = `${plural(count, gate === PICTURES_GATE ? 'picture' : 'video clip')} to check. ${gate === PICTURES_GATE ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.'}`;
+    item.summary = gate === CUT_GATE ? 'The joined video to check. Approving lets Claude ask what to add: captions, music, both or nothing.'
+      : `${plural(count, gate === PICTURES_GATE ? 'picture' : 'video clip')} to check. ${gate === PICTURES_GATE ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.'}`;
   } else {
     item.summary = reviewSummary(dir, gate, review.artifacts.map(artifact => artifact.path));
   }
@@ -2532,7 +2536,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   if(MEDIA_GATES.includes(requested)) {
     const pending=pendingReview(root,brand,jobId,snapshot);
     if(pending.gate===requested) return pending.review;
-    if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(`There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}.`);
+    if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(`There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}${requested===CUT_GATE ? ' and joined, after the clips are approved' : ''}.`);
     throw new Error('Another decision on this job comes first.');
   }
   if(requested===PRICE_GATE) {
@@ -2556,6 +2560,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
       const mediaJob=facts.jobAt(root,brand,jobId);
       const open=mediaJob ? facts.mediaReviewOutstanding(mediaJob) : null;
       if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} have not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:`Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
+      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask (Add captions, Add background music, Both, Skip use as is), record the answer with pipeline_finishing_choice, run finish-video.py, then carry on.'});
     }
     assertNoHelperRunning(root,brand,jobId);
     assertNoQuestionOpen(root,jobId);

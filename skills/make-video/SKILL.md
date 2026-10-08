@@ -38,13 +38,14 @@ Leave unknown provider outcomes unresolved and do not retry blindly.
 1. Voice-over: make each priced line and save it as `media/D{n}/vo/B{k}.mp3`, listed in the manifest's top-level `voiceover` as `{ beat, file, text }` (the nested contract's "Voice-over lines" section).
 2. Music (the person's finishing pick wins; never wait on it; report "no music" plainly when the choice is `none`): a music file the person gave in chat goes to `pipeline_music_add`; otherwise choose the shelf track that fits the script's mood with `pipeline_music_choose` (see `pipeline_music_list`), or `none` when the shelf is empty.
 3. Clips review: present all the clips (`gate: "clips"`) and wait for the person to approve them all. `stitch-clips.py` exits 6 before that. A change on a clip is a redo, priced again as a new version before it is made.
-4. Stitch, as the nested contract describes; the hook clip skips its first half second and keeps the beat length.
-5. Finish: run `finish-video.py` on the manifest (the nested contract's step 12).
-   It adds captions with the spoken word in gold, places the voice-over, mixes the music under speech, adds the end card and sets the final loudness, keeping the plain cut as `final-raw.mp4`.
-   Exit 2 means there was no cut, exit 3 means ffmpeg or Pillow is missing, exit 5 means finishing failed; on 3 or 5 the plain cut stays as the final video: say so in one line and carry on.
-6. Social check: run `social-check.py` on the manifest; it writes `validation/social-check.json`, four plain lines the board shows with the other checks at the final approval, and never blocks.
-7. Test versions: render each `## Variants` line of the post's `post.md` with `finish-video.py --variant <id> --hook "<text>" --cta "<text>"`, which writes `media/D{n}/final-<id>.mp4`.
-8. Post-production, once per job: follow `skills/send-to-post/SKILL.md`; when Post-production is installed it is offered as an option, and the job waits there only when the person says yes.
-9. Then the logo and label check and the final approval, as usual.
+4. Stitch, as the nested contract describes; the hook clip skips its first half second and keeps the beat length. The stitch is a plain join and also writes `media/D{n}/final-raw.mp4`; nothing is added to it yet.
+5. Joined video review: present it (`pipeline_review_present` with `gate: "cut"`, review copies as for the clips) and wait. Only the Director presents it. A change asked there goes back to the clips or the trim: a trim needs no new clip, a redo of a clip is a new version priced again (`pipeline_quote_save`, price approval, spend guard) before it is made, and then the clips review and the join come again.
+6. After the joined video is approved, ask ONE question with `pipeline_board_ask` (and in chat): "Add captions", "Add background music", "Both", "Skip, use as is". Record the answer with `pipeline_finishing_choice` (it writes `approvals/finishing.json`). If music was picked and the reply says no track is saved, say so plainly to the person and price a track first (music costs credits) or ask for one; never say the video has music unless it was added.
+7. Finish: run `finish-video.py` on the manifest (the nested contract's step 12). It adds only what was recorded: captions with the spoken word in gold (and the voice-over's text), the music bed under speech, then the end card and the final loudness; "Skip" adds nothing and the joined video stays as `final.mp4`. `final-raw.mp4` stays the plain cut.
+   Exit 6 means the joined video is not approved or the choice is not recorded: do those first, never work around it. Exit 7 means music was chosen and no track is saved. Exit 2 means there was no cut, exit 3 means ffmpeg or Pillow is missing, exit 5 means finishing failed; on 3 or 5 the plain cut stays as the final video: say so in one line and carry on.
+8. Social check: run `social-check.py` on the manifest; it writes `validation/social-check.json`, four plain lines the board shows with the other checks at the final approval, and never blocks.
+9. Test versions: render each `## Variants` line of the post's `post.md` with `finish-video.py --variant <id> --hook "<text>" --cta "<text>"`, which writes `media/D{n}/final-<id>.mp4`.
+10. Post-production, once per job: follow `skills/send-to-post/SKILL.md`; when Post-production is installed it is offered as an option, and the job waits there only when the person says yes.
+11. Then the logo and label check and the final approval, as usual.
 
 Read the canonical nested contract for its output shape and checks.

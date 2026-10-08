@@ -986,6 +986,7 @@ function sampleApproved(job, key) {
 export const MEDIA_REVIEWS = Object.freeze({
   pictures: Object.freeze({ kind: 'image', file: 'approvals/pictures.json' }),
   clips: Object.freeze({ kind: 'video', file: 'approvals/clips.json' }),
+  cut: Object.freeze({ kind: 'video', file: 'approvals/cut.json' }),
 });
 
 const slotOfKey = key => {
@@ -1018,7 +1019,21 @@ export function mediaSet(job, kind) {
 }
 
 /** The set a review gate covers. A new panel-grid review adds its entry to MEDIA_REVIEWS and a case here. */
-export const reviewSet = (job, gate) => mediaSet(job, MEDIA_REVIEWS[gate].kind);
+export const reviewSet = (job, gate) => (gate === 'cut' ? cutSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
+
+/** The joined (plain) video of each post, media/D<n>/final-raw.mp4: one panel per post. Join the clips with stitch-clips.py to make it. */
+export function cutSet(job) {
+  const panels = [];
+  let names = [];
+  try { names = readdirSync(join(job.dir, 'media'), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name)).map(entry => entry.name); } catch { /* no media yet */ }
+  for (const deliverable of names.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) {
+    const file = `media/${deliverable}/final-raw.mp4`;
+    let bytes;
+    try { bytes = readFileSync(join(job.dir, ...file.split('/'))); } catch { continue; }
+    if (bytes.length) panels.push({ slot: `${deliverable}|Cut`, key: `${deliverable}-cut`, deliverable, panel: 'Cut', version: 1, file, sha256: createHash('sha256').update(bytes).digest('hex') });
+  }
+  return { kind: 'video', panels, complete: panels.length > 0 };
+}
 
 /** Whether the person approved the current pictures or clips, exactly as they are now. */
 export function mediaSetApproved(job, gate) {
@@ -1035,13 +1050,13 @@ export function mediaSetApproved(job, gate) {
 export function mediaReviewRequired(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
   if (!spec) return false;
-  if (!mediaSet(job, spec.kind).panels.length) return false;
+  if (!reviewSet(job, gate).panels.length) return false;
   return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
 }
 
 /** The first of the reviews that is required and not approved, or null. */
 export function mediaReviewOutstanding(job) {
-  return ['pictures', 'clips'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
+  return ['pictures', 'clips', 'cut'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key

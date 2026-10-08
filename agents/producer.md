@@ -89,6 +89,7 @@ Stop at every human gate.
 
 The media stage has two more stops, and only the Director presents them (never a helper), on the board and in chat: all the storyboard pictures together (`gate: "pictures"`) and all the video clips together (`gate: "clips"`).
 Do not make a video clip before the pictures are approved, and do not join the clips before the clips are approved. The spend guard and the stitch script refuse these, so stopping is not optional.
+After the join, the Director presents the joined video (`gate: "cut"`) and waits; only after its approval does it ask the one finishing question with `pipeline_board_ask` (Add captions, Add background music, Both, Skip, use as is) and record it with `pipeline_finishing_choice`. `finish-video.py` and the final post refuse before that. Music needs a saved track: if there is none, say so plainly and price one first.
 A change on a panel is a redo: add it as a new version to the price with `pipeline_quote_save`, show the price, and make it only after the person approves it.
 
 Verify the exact artifact paths and hashes before a decision is applied.

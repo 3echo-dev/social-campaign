@@ -32,6 +32,8 @@ Pillow and ffmpeg only. ffmpeg and ffprobe are called with argument lists, never
 Exit 0 finished, or nothing to add (the cut is kept as it is).
 Exit 2 there is no stitched cut to finish.
 Exit 3 ffmpeg, ffprobe or Pillow is missing: the stitched cut stays as final.mp4.
+Exit 6 the joined video is not approved yet, or what to add is not recorded (approvals/cut.json, approvals/finishing.json): nothing is made.
+Exit 7 music was chosen and no music track is saved: nothing is made. Say so, then price a track or pick another choice.
 Exit 5 finishing failed: final-raw.mp4 is put back as final.mp4 and the reason is printed
 (a failed variant just reports that it was not made).
 """
@@ -402,6 +404,9 @@ def main():
     ap.add_argument("--out", help="the stitched cut to finish and the finished file (default: stitch.output or media/D<n>/final.mp4)")
     ap.add_argument("--music", help="music choice file (default: <job>/media/music/choice.json)")
     ap.add_argument("--post", help="post.md for the call to action (default: next to the manifest)")
+    ap.add_argument("--no-captions", action="store_true", help="leave captions out even when the recorded choice has them")
+    ap.add_argument("--no-music", action="store_true", help="leave music out even when the recorded choice has it")
+    ap.add_argument("--no-end-card", action="store_true", help="leave the end card out")
     ap.add_argument("--variant", help="make a test version, media/D<n>/final-<id>.mp4, from final-raw.mp4 and leave final.mp4 alone")
     ap.add_argument("--hook", help="with --variant: the hook text for the first 2 seconds")
     ap.add_argument("--cta", help="with --variant: the call to action for the end card")
@@ -443,6 +448,33 @@ def main():
     raw = os.path.join(os.path.dirname(final), "final-raw.mp4")
     stamp = os.path.join(os.path.dirname(final), "final-finished.sha256")
     target = os.path.join(os.path.dirname(final), "final-%s.mp4" % a.variant) if a.variant else final
+
+    # Nothing is added before the person approved the joined video and said what to add (approvals/cut.json, finishing.json).
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import review_gate
+    why = review_gate.finishing_problem(jobdir)
+    if why:
+        print(why, file=sys.stderr)
+        sys.exit(6)
+    want_captions, want_music, choice = review_gate.finishing(jobdir)
+    a.want_captions = want_captions and not a.no_captions
+    a.want_music = want_music and not a.no_music
+    if not (a.want_captions or a.want_music):
+        # Skip: the joined video is used as it is. An earlier finished final.mp4 is put back to the plain cut.
+        if not a.variant and os.path.isfile(raw):
+            try:
+                shutil.copyfile(raw, final)
+                if os.path.isfile(stamp):
+                    os.remove(stamp)
+            except OSError as e:
+                print("Cannot restore the plain cut (%s)." % e, file=sys.stderr)
+                sys.exit(5)
+        print("Nothing to add (%s): the joined video is used as it is." % choice)
+        sys.exit(0)
+    if a.want_music and not music_file(jobdir, a.music or os.path.join(jobdir, "media", "music", "choice.json")):
+        print("Background music was chosen but no music track is saved for this job, so nothing was made. Say so plainly: price a track "
+              "(music costs credits) or ask for a saved one, or record a different choice.", file=sys.stderr)
+        sys.exit(7)
 
     if a.variant:
         if not os.path.isfile(raw):
@@ -567,7 +599,7 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
                 caption_ends[n] = spans[n][0] + max(v["dur"] for v in mine) + 0.2
         if not text.strip() and len(beats) == len(order):
             text = beats[n]
-        lines.append("" if text.strip().lower() in NO_SPEECH else text.strip())
+        lines.append("" if text.strip().lower() in NO_SPEECH or not a.want_captions else text.strip())
     has_lines = any(lines)
     has_speech = bool(vos) or has_lines or any(isinstance(by_id[s].get("dialogue"), (dict, str)) or by_id[s].get("generateAudio") is True for s in order)
 
@@ -608,14 +640,14 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
                     overlays.append((p, (W - box.width) // 2, bottom_y - box.height, at + j * dt, end if j == count - 1 else at + (j + 1) * dt))
                 at = end
     logo = find_logo(brand_dir)
-    card = end_card(W, H, scale, logo, cta)
+    card = None if a.no_end_card else end_card(W, H, scale, logo, cta)
     if card is not None:
         p = os.path.join(tmp, "end-card.png")
         card.save(p)
         overlays.append((p, 0, 0, max(0.0, D - END_SECONDS), D + 1))
 
     music_path = a.music or os.path.join(jobdir, "media", "music", "choice.json")
-    music = music_file(jobdir, music_path)
+    music = music_file(jobdir, music_path) if a.want_music else None
 
     # Filter graph.
     inputs = ["-i", raw]
