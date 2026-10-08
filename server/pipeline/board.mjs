@@ -604,9 +604,7 @@ export function sampleReview(root, brand, jobId, snapshot) {
   if (!items.length) return null;
   const records = facts.readRecords(job);
   const studioCreates = records.filter(record => record.type === 'create' && record.provider === facts.THREE_ECHO && slotOf(record.key) && !facts.isReferenceItem(record.key));
-  const marked = items.find(item => item.provider === facts.THREE_ECHO && item.sample === true);
-  const firstCreate = records.find(record => record.type === 'create' && record.provider === facts.THREE_ECHO && !facts.isReferenceItem(record.key));
-  const sample = facts.parseJobKey(marked ? marked.key : firstCreate?.key);
+  const sample = facts.parseJobKey(facts.sampleKeyFor(job, { items: facts.readQuote(job)?.quote?.items || [] }));
   if (!sample) return null;
   const slot = slotOf(sample.key);
   const rest = items.filter(item => item.provider === facts.THREE_ECHO && SAMPLE_KINDS.has(item.kind) && slotOf(item.key) !== slot);
