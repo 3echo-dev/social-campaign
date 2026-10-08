@@ -4487,6 +4487,18 @@ function stepStoryboards(item, files, doc) {
   return (Array.isArray(doc?.storyboards) ? doc.storyboards : []).filter(board => board && trimmed(board.path) && (board.panels || []).length && made(board.path));
 }
 
+// True when the storyboard gate is done and a done step already shows the storyboard (its readout), so the gate row need not repeat it.
+export function storyboardKeptByStep(stages, who, doc) {
+  const items = (stages || []).flatMap(stage => stage.items || []);
+  if (!items.some(item => item.kind === 'gate' && item.gate === 'storyboard' && item.status === 'done')) return false;
+  return items.some(item => {
+    if (item.kind !== 'step' || item.status === 'pending') return false;
+    const agent = who(item.agent)?.agent || null;
+    const files = (Array.isArray(agent?.files) ? agent.files : []).filter(file => file && trimmed(file.path) && (item.outputs || []).some(ref => refMatches(ref, file.path)));
+    return stepStoryboards(item, files, doc).length > 0;
+  });
+}
+
 // Every panel of a storyboard with its words and picture, the same fields and frames as the storyboard review, read-only.
 export function storyboardReadout(board) {
   const slots = (board?.panels || []).map((panel, index) => {
@@ -5749,7 +5761,7 @@ if (typeof document !== 'undefined') {
     const report = pendingGate === 'findings' ? '' : reportPanel(doc, { downloads, jobTitle: project.title });
     const reportJob = isReportJob(project);
     const recipeStandalone = doc && pendingGate !== 'concept' ? recipePanel(doc, ui.recipe, ui.recipeStatus) : '';
-    const storyboard = pendingGate === 'sample' || pendingGate === 'storyboard' || MEDIA_GATE_IDS.has(pendingGate) ? '' : storyboardPanel(doc);
+    let storyboard = pendingGate === 'sample' || pendingGate === 'storyboard' || MEDIA_GATE_IDS.has(pendingGate) ? '' : storyboardPanel(doc);
     const omitted = project.artifactsOmitted || 0;
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
     // The Inbox and the chats replace the Inbox panel, the Director card and the agent rail. A job document with no agents
@@ -5774,8 +5786,12 @@ if (typeof document !== 'undefined') {
     const extra = (gate, html, open = false) => { if (!html) return; bodies[gate] = { html: (bodies[gate]?.html || '') + html, open: Boolean(bodies[gate]?.open) || open }; };
     extra('publish', sentPanel + kitPanel, true);
     extra('findings', report, true);
+    // Once the storyboard is approved and a done step (the Shot plan) keeps it readable, the approval row holds only the decision:
+    // the panels are shown once, inside that step.
+    const stages = stageItems(project, { pendingGate });
+    if (storyboard && storyboardKeptByStep(stages, who, doc)) storyboard = '';
     extra('storyboard', storyboard);
-    const flow = stageFlow(stageItems(project, { pendingGate }), { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext });
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext });
     const left = (gate, html) => (flow.placed.has(gate) ? '' : html);
     const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + (flow.placed.has(pendingGate) ? '' : review) + recipeStandalone;
     const filesPanel = agentBox
