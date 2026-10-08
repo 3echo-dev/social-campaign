@@ -4,7 +4,7 @@ description: >
   Local pipeline video intelligence specialist.
   Use when the active plan names source video analysis or render quality assurance.
 model: claude-sonnet-5-5
-tools: Read, Write, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__transcript_save
 disallowedTools: Agent
 skills: watch-video, analyze-video, source-validation, write-report
 maxTurns: 40
@@ -33,3 +33,7 @@ Write source analysis or video QA only to the active task's output path, or, for
 Do not create media, publish, change the script, or apply an approval.
 
 Return artifact paths, reused media evidence, changed probes, and unresolved quality gaps.
+
+## Finishing text and captions
+
+The joined video is plain: on-screen text lives in `media/D{n}/onscreen.json` and `finish-video.py` draws it with the captions in one style. Never burn text into the cut yourself, and never re-join the clips or run your own ffmpeg to finish: the board accepts only the stamped output of `finish-video.py`. To build captions from what is actually said, call `media_transcribe` on `media/D{n}/final-raw.mp4` (and `transcript_save` to keep a transcript you were given); without one, finishing uses the script wording and says so.

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Normalise and concatenate the clips a generation manifest lists, and burn the
-on-screen text over the cut.
+"""Normalise and concatenate the clips a generation manifest lists into one PLAIN cut.
 
     python stitch-clips.py <manifest.json> [--captions script.md] [--out media/D1/final.mp4]
 
-Captions come from the file --captions or stitch.captions names, else the deliverable's
-script.md, else its storyboard.md. An empty stitch.captions, or "none", asks for none.
+The joined video is plain: no on-screen text, no captions, no music. The person approves that
+cut (media/D<n>/final-raw.mp4), so all text can be added once, in one style, by finish-video.py.
+The on-screen text of the script's beats (dare line, supers, call to action) is not burned in:
+it is saved next to the cut as media/D<n>/onscreen.json ({"items": [{"beat", "start", "end",
+"text"}]}) and finish-video.py draws it together with the captions. The text comes from the file
+--captions or stitch.captions names, else the deliverable's script.md, else its storyboard.md.
+An empty stitch.captions, or "none", saves none.
 
 A clip with headroom: {askSec, inSec, useSec} (the hook clip) is cut from inSec in and
 keeps useSec, so the extra second asked for at the start is dropped.
@@ -17,8 +21,8 @@ Stdlib only. ffmpeg and ffprobe are called with argument lists, never a shell st
 Exit 3 means ffmpeg is missing: the clips are listed so the hand-off can ship them
 separately rather than claiming a cut exists.
 Exit 6 means the person has not approved the video clips yet: nothing is joined.
-Exit 4 means captions were requested and none were burned: the cut is written without
-text and the reason is printed.
+Exit 4 means on-screen text was requested and none could be saved to onscreen.json: the cut is
+written (it never carries text) and the reason is printed.
 """
 import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
 
@@ -168,21 +172,17 @@ def captions_source(explicit, stitch, jobdir, root, resolve):
     return None, True
 
 
-def caption_filter(beats, width, height, font, folder):
-    y = max(int(BAND_TOP * height / 1920), min(int(height * 0.62), int(BAND_BOTTOM * height / 1920)))
-    size = max(20, int(FONT_SIZE * width / 1080))
-    parts, t = [], 0.0
+def write_onscreen_plan(path, beats):
+    """Save each beat's on-screen text with its span on the timeline (the script's own durations). finish-video.py draws it."""
+    items, t = [], 0.0
     for n, (dur, text) in enumerate(beats):
         if has_text(text):
-            textfile = "caption-%d.txt" % n
-            with open(os.path.join(folder, textfile), "w", encoding="utf-8") as f:
-                f.write(text)
-            parts.append(
-                "drawtext=fontfile='%s':textfile='%s':expansion=none:fontsize=%d:fontcolor=white:"
-                "borderw=4:bordercolor=black:x=(w-text_w)/2:y=%d:"
-                "enable='between(t,%.2f,%.2f)'" % (esc_path(font), textfile, size, y, t, t + dur))
+            items.append({"beat": n + 1, "start": round(t, 2), "end": round(t + dur, 2), "text": text.strip()})
         t += dur
-    return ",".join(parts)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump({"items": items}, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, path)
 
 
 def main():
@@ -339,12 +339,16 @@ def main():
         except OSError as e:
             sys.exit("cannot write to %s: %s" % (os.path.dirname(out).replace(os.sep, "/"), e))
 
-        burned = False
+        planned = False
+        plan_file = os.path.join(os.path.dirname(out), "onscreen.json")
+        try:
+            os.remove(plan_file)   # a plan from an earlier join never describes this one
+        except OSError:
+            pass
         source, requested = captions_source(a.captions, stitch, jobdir, root, resolve)
         why = None
         note = None
         if requested:
-            font = next((f for f in FONTS if os.path.exists(f)), None)
             shown = source.replace(os.sep, "/") if source else None
             no_script = not any(os.path.isfile(p) for p in script_candidates(jobdir, root) if p.endswith("script.md"))
             beats = read_beats(source, no_script) if source else []
@@ -354,19 +358,15 @@ def main():
                 why = "no table with a Duration column and on-screen text found in %s" % shown
             elif not any(has_text(text) for _, text in beats):
                 requested = False
-                note = "no beat in %s has on-screen text, so none was burned" % shown
-            elif not font:
-                why = "no usable font file found"
+                note = "no beat in %s has on-screen text, so none was saved for finishing" % shown
             else:
-                r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", joined,
-                         "-vf", caption_filter(beats, W, H, font, tmp), "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-                         "-c:a", "copy", work], cwd=tmp)
-                if r.returncode == 0 and not re.search(r"drawtext|error", r.stderr, re.I):
-                    burned = True
-                else:
-                    why = "drawtext failed:\n%s" % r.stderr.strip()[:400]
-        if not burned:
-            shutil.copyfile(joined, work)
+                try:
+                    write_onscreen_plan(plan_file, beats)
+                    planned = True
+                except OSError as e:
+                    why = "could not write onscreen.json: %s" % e
+        # The cut is always the plain join.
+        shutil.copyfile(joined, work)
 
         final = probe(work) or {}
         if any(clip_audio) and not final:
@@ -388,13 +388,13 @@ def main():
                 shutil.copyfile(out, os.path.join(os.path.dirname(out), "final-raw.mp4"))
             except OSError as e:
                 sys.exit("could not write final-raw.mp4: %s" % e)
-        print("wrote %s  %sx%s  %.2fs  (%d clip(s), sources total %.2fs, clip audio kept from %d, captions %s)" % (
+        print("wrote %s  %sx%s  %.2fs  (%d clip(s), sources total %.2fs, clip audio kept from %d, plain join: on-screen text %s)" % (
             out.replace(os.sep, "/"), final.get("width"), final.get("height"),
-            final.get("duration", 0.0), len(clips), total, sum(clip_audio), "burned" if burned else "none"))
+            final.get("duration", 0.0), len(clips), total, sum(clip_audio), "saved for finishing (onscreen.json)" if planned else "none"))
         if note:
             print("captions: %s" % note)
-        if requested and not burned:
-            print("captions were requested and none were burned: %s. The cut has no on-screen text." % why, file=sys.stderr)
+        if requested and not planned:
+            print("on-screen text was requested and none was saved for finishing: %s. The cut is plain either way." % why, file=sys.stderr)
             failed_captions = True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
