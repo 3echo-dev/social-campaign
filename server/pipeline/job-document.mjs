@@ -889,6 +889,7 @@ export function parseQuote(value, { made = new Set(), estimates = [] } = {}) {
         credits: Number.isFinite(credits) && credits >= 0 ? credits : null,
         detail: quoteDetail(item, byId.get(item.estimateId)),
         made: Boolean(key && made.has(key)),
+        ...(item.sample === true ? { sample: true } : {}),
       };
     });
   return { items: items.slice(0, MAX_QUOTE_ROWS), totals: quoteTotals(source.items), truncated: items.length > MAX_QUOTE_ROWS };

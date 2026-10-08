@@ -8,7 +8,7 @@ import { projectJobMetrics } from '../studio/metrics.mjs';
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { UserFacingError } from '../lib/errors.mjs';
-import { buildJobDocument, parseConcepts, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
+import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
@@ -805,6 +805,30 @@ export function withOpenQuestions(snapshot, open) {
   return { ...snapshot, project: { ...snapshot.project, stages }, status };
 }
 
+const PRICE_LIST_STAGES = new Set(['pricing-the-media', 'your-approval-of-the-price']);
+
+// The price list (pricing/quote.json) outlives the review that showed it: once the price is approved the pending review is gone, so the
+// pricing step and the price decision carry the same itemised quote the review drew, and the pricing step the time it took.
+export function withPriceList(stages, jobPath) {
+  if (!jobPath || !stages.some(stage => PRICE_LIST_STAGES.has(stage?.id))) return stages;
+  const job = { dir: jobPath };
+  const saved = facts.readQuote(job);
+  if (!saved) return stages;
+  const made = new Set(facts.readRecords(job).filter(record => record.type === 'create').map(record => facts.canonicalJobKey(record.key)).filter(Boolean));
+  const estimates = facts.readEstimates(job);
+  const quote = parseQuote(saved.quote, { made, estimates });
+  if (!quote.items.length) return stages;
+  const times = estimates.map(entry => entry?.at).filter(at => typeof at === 'string' && Number.isFinite(Date.parse(at))).sort((a, b) => Date.parse(a) - Date.parse(b));
+  return stages.map(stage => {
+    if (stage?.id === 'pricing-the-media') {
+      const timed = !stage.tasks?.length && times.length && stage.status === 'complete';
+      return { ...stage, quote, ...(timed ? { startedAt: times[0], doneAt: times[times.length - 1] } : {}) };
+    }
+    if (stage?.id === 'your-approval-of-the-price' && Array.isArray(stage.gates)) return { ...stage, gates: stage.gates.map(entry => (entry?.gate === PRICE_GATE ? { ...entry, quote } : entry)) };
+    return stage;
+  });
+}
+
 function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   let report = null;
   try {
@@ -817,7 +841,7 @@ function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   return {
     intake: projectIntake(snapshot, profile),
     pendingReviews: gate ? [{ reviewId: gate, gate, revision: snapshot.project.revision, artifacts: reviewArtifacts, summary: reviewArtifacts.length ? 'Review these current files before submitting your decision.' : 'Ask Claude to register the exact review files before approving.' }] : [],
-    stages: (snapshot.project.stages || []).map(boardStage),
+    stages: withPriceList((snapshot.project.stages || []).map(boardStage), job.path),
     usageStages: usage.stages.map(({ id, label, kind, tokens: stageTokens, elapsedMs, openSince }) => ({ id, label, kind, tokens: stageTokens, elapsedMs, openSince })),
     metrics: { recordedTokens: tokens.length ? tokens.reduce((a, b) => a + b, 0) : null, tokens: projection.tokens, coverage: { tokens: projection.coverage.tokens } },
     brandProfile: snapshot.project.brandProfile || null,

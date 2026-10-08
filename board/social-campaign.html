@@ -3235,6 +3235,7 @@ export function conceptCredits(concepts, concept) {
 const PRICE_PROVIDERS = Object.freeze(['threeEcho', 'elevenLabs']);
 const PRICE_TOTAL_LABELS = Object.freeze({ threeEcho: '3Echo Studio credits', elevenLabs: 'ElevenLabs voice credits' });
 const PRICE_WORDS = Object.freeze({ threeEcho: ['Studio credit', 'Studio credits'], elevenLabs: ['voice credit', 'voice credits'] });
+const PRICE_PROVIDER_NAMES = Object.freeze({ threeEcho: '3Echo Studio', elevenLabs: 'ElevenLabs' });
 const QUOTE_KIND_LABELS = Object.freeze({ image: 'Image', video: 'Video clip', voice: 'Voice-over' });
 
 export function priceWords(totals) {
@@ -3737,11 +3738,11 @@ export function postPreview(post) {
   return `<article class="post-preview"><div class="post-head"><div class="post-title"><h3>${esc(title)}</h3>${refTag(postRef)}</div>${askForChanges(postRef)}</div>${media.length ? `<div class="media-grid">${media.map(ref => mediaTile(ref)).join('')}</div>` : ''}<dl class="review-fields">${post?.hook ? `<div><dt>Hook</dt><dd class="post-hook">${esc(post.hook)}</dd></div>` : ''}${rest ? `<div><dt>Caption</dt><dd class="post-caption">${esc(rest)}</dd></div>` : ''}${post?.cta ? `<div><dt>CTA</dt><dd>${esc(post.cta)}</dd></div>` : ''}${post?.hashtags?.length ? `<div><dt>Hashtags</dt><dd class="post-tags">${esc(post.hashtags.join(' '))}</dd></div>` : ''}</dl></article>`;
 }
 
-export function priceTable(quote, { used = null } = {}) {
+export function priceTable(quote, { used = null, withProvider = false } = {}) {
   const items = Array.isArray(quote?.items) ? quote.items : [];
   const rows = items.map(item => {
     const version = Number(item.version) > 1 ? `Redo, version ${Number(item.version)}` : '';
-    const detail = [version, item.detail || '', item.made ? 'Already made' : ''].filter(Boolean).join(' · ');
+    const detail = [withProvider ? PRICE_PROVIDER_NAMES[item.provider] || '' : '', item.sample ? 'Sample' : '', version, item.detail || '', item.made ? 'Already made' : ''].filter(Boolean).join(' · ');
     const credits = creditNumber(item.credits);
     return `<tr><td><span class="price-item">${refTag(item.deliverable)}${refTag(item.panel)}<span>${esc(QUOTE_KIND_LABELS[item.kind] || humanize(item.kind))}</span></span>${detail ? `<small>${esc(detail)}</small>` : ''}</td><td class="num">${credits === null ? '<span class="muted">Not priced</span>' : esc(creditFigure(credits))}</td></tr>`;
   }).join('');
@@ -5588,7 +5589,8 @@ export function stepTrace(item, ctx = {}) {
   const win = stepWindow(item);
   const status = item.status;
   const files = (Array.isArray(agent?.files) ? agent.files : []).filter(file => file && trimmed(file.path) && (item.outputs || []).some(ref => refMatches(ref, file.path)));
-  const made = !withFiles ? '' : traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' ? '<p class="muted">No files listed for this step.</p>' : '');
+  const priceList = withFiles && item.quote && status === 'done' ? `<p><b>Price list</b></p>${priceTable(item.quote, { withProvider: true })}` : '';
+  const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList ? '<p class="muted">No files listed for this step.</p>' : ''));
   const took = win.from !== null && win.to !== null && win.to >= win.from ? tookWords(win.to - win.from) : '';
   const facts = [
     withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
@@ -5622,7 +5624,7 @@ export function gateTrace(item, ctx = {}) {
   ].join('');
   const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agents, win)].join('') : '';
   const decided = decisions ? `<ol class="trace-list">${decisions}</ol>` : '';
-  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else was recorded for this decision.</p>') : '')}`;
+  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', (item.quote && item.status === 'done' ? priceTable(item.quote, { withProvider: true }) : '') + traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else was recorded for this decision.</p>') : '')}`;
 }
 
 // One bubble for each finished step of this agent: the step's name, the files it made as links, and a small footer.
@@ -5757,7 +5759,7 @@ function gateItemOf(gate, status, stage, agent = null) {
   const entry = (Array.isArray(stage?.gates) ? stage.gates : []).find(item => item?.gate === gate) || null;
   return {
     kind: 'gate', gate, name: GATE_TITLES[gate] || humanize(gate), status: STEP_STATUSES.has(status) ? status : 'pending', approval,
-    agent: agent && agent !== 'human' && agent !== 'scripts' ? agent : null, openedAt: trimmed(entry?.openedAt), history: Array.isArray(entry?.history) ? entry.history : [],
+    agent: agent && agent !== 'human' && agent !== 'scripts' ? agent : null, openedAt: trimmed(entry?.openedAt), history: Array.isArray(entry?.history) ? entry.history : [], quote: entry?.quote || null,
   };
 }
 
@@ -5790,7 +5792,7 @@ export function stageItems(project, { pendingGate = null } = {}) {
   }
   for (const stage of stages) {
     for (const item of stage.items) if (item.kind === 'gate' && item.gate === pendingGate) item.status = 'waiting';
-    if (!stage.items.length) stage.items.push({ kind: 'step', name: stage.label, line: stage.note, agent: 'producer', status: stepStatusFallback(stage.source, 0), outputs: [] });
+    if (!stage.items.length) stage.items.push({ kind: 'step', name: stage.label, line: stage.note, agent: 'producer', status: stepStatusFallback(stage.source, 0), outputs: [], quote: stage.source?.quote || null, startedAt: trimmed(stage.source?.startedAt), doneAt: trimmed(stage.source?.doneAt) });
   }
   return stages;
 }
