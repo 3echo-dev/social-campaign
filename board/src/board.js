@@ -3502,13 +3502,44 @@ function waitingNote(status) {
 }
 
 /**
+ * Whether a submitted decision (its request arguments) is about the review the board shows now: the same job and review id
+ * (gate), and the same files by path and checksum. Without checksums on both sides the revision stands in. A newer job
+ * document that still shows the same files at the gate matches; a redo that put different files there does not.
+ */
+export function decisionMatchesReview(project, args) {
+  const review = pendingReview(project);
+  if (!review || !args || args.jobId !== project?.jobId) return false;
+  if ((args.reviewId || '') !== (review.reviewId || review.gate || '')) return false;
+  const key = list => (Array.isArray(list) ? list : []).map(file => `${file?.path || ''}|${file?.sha256 || ''}`).sort().join('\n');
+  const sentFiles = Array.isArray(args.artifacts) ? args.artifacts : [];
+  const shownFiles = Array.isArray(review.artifacts) ? review.artifacts : [];
+  if (sentFiles.length && shownFiles.length) {
+    const bare = list => list.every(file => !file?.sha256);
+    if (bare(sentFiles) || bare(shownFiles)) return sentFiles.map(file => file?.path).sort().join('\n') === shownFiles.map(file => file?.path).sort().join('\n');
+    return key(sentFiles) === key(shownFiles);
+  }
+  return args.revision === project.revision;
+}
+
+/**
+ * The decision state to draw for a review. A decision the person already sent stays "sent" while it is for the review shown,
+ * even when a newer job document still lists the gate as waiting; it lets go once the review is a different one.
+ */
+export function sentDecisionState(project, state) {
+  if (!state || !(state.busy || state.submitted || state.needsReconciliation) || !state.args) return state || {};
+  if (!pendingReview(project) || decisionMatchesReview(project, state.args)) return state;
+  return { ...state, busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, message: '' };
+}
+
+/**
  * The review panel for the job's pending decision, drawn from the job document:
  * concept cards, storyboard panels, the itemised price, the final post with its
  * media, or the posting plan, with Approve and Ask for changes.
  */
-export function reviewPanel(project, doc, state = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), downloads = null } = {}) {
+export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), downloads = null } = {}) {
   const review = pendingReview(project);
   if (!review) return '';
+  const state = sentDecisionState(project, rawState);
   const gate = review.gate || review.reviewId;
   const status = reviewStatus(project, doc, docState);
   const ready = status === 'ready';
@@ -5122,6 +5153,25 @@ export async function createTransport(config = {}, host = globalThis) {
   async function readRequest(requestId) {
     return recordData(await db.doc(`requests/${requestId}`).get());
   }
+  // The decisions already sent for a job, from the requests collection: a query on the job when the database offers one, plus
+  // the request ids the page remembered. Only this workspace's own submit_decision requests come back.
+  async function findDecisionRequests(jobId, knownIds = []) {
+    const found = new Map();
+    const take = saved => {
+      const request = recordData(saved);
+      if (request && request.operation === 'submit_decision' && String(request.workspaceId) === workspaceId && request.args?.jobId === jobId) found.set(request.requestId, request);
+    };
+    try {
+      const query = typeof db.collection === 'function' ? db.collection('requests').where('args.jobId', '==', jobId) : null;
+      const snapshot = query ? await query.get() : null;
+      if (snapshot) (snapshot.docs || []).forEach(take);
+    } catch { /* No query here: the remembered ids below still find it. */ }
+    for (const id of knownIds) {
+      if (!REQUEST_ID.test(String(id))) continue;
+      try { take(await db.doc(`requests/${id}`).get()); } catch { /* Skipped. */ }
+    }
+    return [...found.values()];
+  }
   function subscribeRequest(requestId, onReceipt, onError) {
     const requestRef = db.doc(`requests/${requestId}`);
     if (typeof requestRef.onSnapshot !== 'function') return () => {};
@@ -5275,6 +5325,7 @@ export async function createTransport(config = {}, host = globalThis) {
     subscribeJobDocument,
     readJobDocument,
     readRequest,
+    findDecisionRequests,
     signal,
     checkSignalAvailability,
     readPlanNote,
@@ -5531,15 +5582,24 @@ if (typeof document !== 'undefined') {
       // The job moved on: keep what the person typed, drop every request status.
       ui.revision = project.revision;
       ui.intake = { values: ui.intake.values || {} };
-      ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '' };
+      // A decision already sent stays sent (with its receipt watch) across the new revision; it lets go below, once the review
+      // shown is a different one, or when its receipt ends.
+      if (!(ui.review.submitted && ui.review.requestId && ui.review.args)) {
+        ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '' };
+        stopJobRequestWatch(project.jobId + ':review');
+      }
       ui.recipe = {};
       ui.recipeStatus = {};
       ui.workspace = {};
       stopJobRequestWatch(project.jobId + ':intake');
-      stopJobRequestWatch(project.jobId + ':review');
       stopJobRequestWatch(project.jobId + ':workspace');
       // A route choice stays pending across the new revision until the plan on the board shows it; so does a post's own
       // answer or mark, until the status list or the kit shows it.
+    }
+    if (ui.review.requestId && ui.review.args && pendingReview(project) && !decisionMatchesReview(project, ui.review.args)) {
+      forgetSentDecision(project.jobId);
+      ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '' };
+      stopJobRequestWatch(project.jobId + ':review');
     }
     return ui;
   }
@@ -5619,6 +5679,37 @@ if (typeof document !== 'undefined') {
     jobRequestWatches.delete(key);
     jobRequestReaders.delete(key);
   }
+  // A sent decision is remembered by its request id (the request itself lives in the requests collection), so a reload finds
+  // it again. The id is only a pointer; the request's own status decides whether the card still shows it as sent.
+  const SENT_DECISIONS_KEY = 'socialCampaign.sentDecisions';
+  function sentDecisionIds() {
+    try { const found = JSON.parse(globalThis.localStorage?.getItem(SENT_DECISIONS_KEY) || '{}'); return found && typeof found === 'object' ? found : {}; } catch { return {}; }
+  }
+  function rememberSentDecision(jobId, requestId) {
+    try { globalThis.localStorage?.setItem(SENT_DECISIONS_KEY, JSON.stringify({ ...sentDecisionIds(), [jobId]: requestId })); } catch { /* The requests collection is still the record. */ }
+  }
+  function forgetSentDecision(jobId) {
+    try { const all = sentDecisionIds(); delete all[jobId]; globalThis.localStorage?.setItem(SENT_DECISIONS_KEY, JSON.stringify(all)); } catch { /* Same. */ }
+  }
+  const sentDecisionReads = new Map();
+  function ensureSentDecision(project) {
+    const review = pendingReview(project);
+    if (!review || !artifactMode() || typeof transport?.findDecisionRequests !== 'function') return;
+    const files = (review.artifacts || []).map(file => `${file.path}|${file.sha256 || ''}`).join(',');
+    const key = `${project.jobId}|${review.reviewId || review.gate}|${files}`;
+    if (sentDecisionReads.get(project.jobId) === key) return;
+    sentDecisionReads.set(project.jobId, key);
+    const hint = sentDecisionIds()[project.jobId];
+    transport.findDecisionRequests(project.jobId, hint ? [hint] : []).then(found => {
+      const mine = (found || []).filter(request => request && request.operation === 'submit_decision' && !request.status?.match?.(/^(applied|declined|failed|error|rejected|needs_reconciliation)$/) && decisionMatchesReview(project, request.args));
+      const request = mine.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+      const ui = uiFor(project);
+      if (!request || ui.review.busy || ui.review.submitted) return;
+      Object.assign(ui.review, { requestId: request.requestId, busy: false, submitted: true, verdict: request.args.decision === 'request_changes' ? 'request_changes' : 'approve', submittedAt: Date.parse(request.createdAt || '') || Date.now(), operation: 'submit_decision', args: request.args, error: '', declined: false });
+      watchJobRequest(project.jobId, 'review', ui.review);
+      render();
+    }).catch(() => { /* Without the record the buttons simply show. */ });
+  }
   // Follow a job-page request (intake answers or a decision) to its receipt.
   function watchJobRequest(jobId, part, state) {
     const key = jobId + ':' + part;
@@ -5629,7 +5720,13 @@ if (typeof document !== 'undefined') {
       if (!receipt || state.requestId !== requestId) return;
       const acknowledgement = receipt.artifactReceipt || receipt;
       const status = String(acknowledgement.status || receipt.status || 'requested');
-      if (status === 'applied') {
+      if (part === 'review' && status !== 'requested' && status !== 'sent') forgetSentDecision(jobId);
+      if (part === 'review' && ['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
+        // A decision that failed can be made again: the card shows the reason and the buttons come back.
+        stopJobRequestWatch(key);
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, error: acknowledgement.message || receipt.message || 'Claude could not apply this. Try again.', submittedAt: null, lastReminderAt: null, reminding: false });
+        render();
+      } else if (status === 'applied') {
         stopJobRequestWatch(key);
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: null, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
@@ -5717,6 +5814,7 @@ if (typeof document !== 'undefined') {
   function details(project) {
     ensureJobDocument(project);
     ensurePlanNote(project);
+    ensureSentDecision(project);
     syncInboxDocuments();
     const ui = uiFor(project);
     const doc = docFor(project);
@@ -6103,7 +6201,7 @@ if (typeof document !== 'undefined') {
       const result = await transport.call('submit_decision', args);
       Object.assign(state, { busy: false, submitted: true, submittedAt: state.submittedAt || Date.now(), message: result?.message || '', signal: result?.signal || null });
       scheduleReminderWake(state);
-      if (artifactMode()) watchJobRequest(project.jobId, 'review', state);
+      if (artifactMode()) { rememberSentDecision(project.jobId, state.requestId); watchJobRequest(project.jobId, 'review', state); }
       render();
     } catch (e) {
       Object.assign(state, { busy: false, requestId: null, error: e.message });
@@ -6950,7 +7048,7 @@ if (typeof document !== 'undefined') {
       const result = await transport.call('submit_decision', args);
       Object.assign(state, { busy: false, submitted: true, submittedAt: state.submittedAt || Date.now(), message: result?.message || '', signal: result?.signal || null });
       scheduleReminderWake(state);
-      if (artifactMode()) watchJobRequest(project.jobId, 'review', state);
+      if (artifactMode()) { rememberSentDecision(project.jobId, state.requestId); watchJobRequest(project.jobId, 'review', state); }
       render();
     } catch (e) {
       Object.assign(state, { busy: false, requestId: null, error: e.message });
