@@ -689,6 +689,83 @@ export function photoPayload(photo) {
   return null;
 }
 
+// "Add a reference": a picture, video, audio file, caption text or add-on the person puts on a job from the
+// board itself, so they never have to type a file path in chat. Files go to the artifact's asset store (the
+// same transit the logo and product photo use); the server saves them in the job's own folder.
+export const REFERENCE_TYPES = Object.freeze([
+  { id: 'picture', label: 'Reference picture', hint: 'PNG, JPG or WebP', kinds: ['image'] },
+  { id: 'video', label: 'Reference video', hint: 'MP4, MOV or WebM', kinds: ['video'] },
+  { id: 'audio', label: 'Audio (music or voice)', hint: 'MP3, WAV, M4A or OGG', kinds: ['audio'] },
+  { id: 'caption', label: 'Caption or text', hint: 'Type it, or choose a TXT or MD file', kinds: ['text'] },
+  { id: 'addon', label: 'Add-on', hint: 'Any picture, video, audio, PDF or text file', kinds: ['image', 'video', 'audio', 'document', 'text'] },
+]);
+const REFERENCE_EXT = Object.freeze({
+  png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', mp4: 'video', mov: 'video', webm: 'video', m4v: 'video',
+  mp3: 'audio', wav: 'audio', m4a: 'audio', ogg: 'audio', aac: 'audio', pdf: 'document', txt: 'text', md: 'text', srt: 'text', vtt: 'text',
+});
+export const REFERENCE_LIMIT_MB = Object.freeze({ image: 20, video: 100, audio: 50, document: 20 });
+export const REFERENCE_TEXT_MAX = 20000;
+export const REFERENCE_NOTE_MAX = 500;
+export const REFERENCE_INLINE_MAX = 180 * 1024;
+export function referenceKindOf(name) {
+  const ext = String(name || '').toLowerCase().split('.').pop();
+  return REFERENCE_EXT[ext] || null;
+}
+// A plain-words problem with a picked file for the chosen type, or '' when it can go ahead.
+export function referenceProblem(typeId, file) {
+  const type = REFERENCE_TYPES.find(item => item.id === typeId);
+  if (!type) return 'Choose what this is first.';
+  if (!file) return '';
+  const kind = referenceKindOf(file.name);
+  if (!kind || !type.kinds.includes(kind)) return `${type.label} takes ${type.hint}. Pick a different file, or change what it is.`;
+  if (kind === 'text') return file.size > REFERENCE_TEXT_MAX * 4 ? 'That text file is too long. Trim it or paste the part you want.' : '';
+  const limit = REFERENCE_LIMIT_MB[kind];
+  if (file.size > limit * 1024 * 1024) return `That file is too big for the board (limit ${limit} MB for ${kind === 'document' ? 'documents' : kind}). Try a smaller or shorter copy.`;
+  return '';
+}
+// The wire shape of one reference. A file goes to the asset store when `assets` is there, else inline when small;
+// text always goes inline. Throws a plain-worded Error. Never reads the file into chat.
+export async function encodeReferenceUpload(assets, { type, file, text, note }) {
+  const cleanNote = String(note || '').replace(/\s+/g, ' ').trim();
+  if (cleanNote.length > REFERENCE_NOTE_MAX) throw new Error(`Keep the note under ${REFERENCE_NOTE_MAX} characters.`);
+  const base = { type, ...(cleanNote ? { note: cleanNote } : {}) };
+  const kind = file ? referenceKindOf(file.name) : 'text';
+  if (kind === 'text') {
+    const body = file ? await file.text() : String(text || '');
+    if (!body.trim()) throw new Error('Type some text, or choose a file.');
+    if (body.length > REFERENCE_TEXT_MAX) throw new Error(`That text is too long (limit ${REFERENCE_TEXT_MAX.toLocaleString('en-US')} characters). Shorten it or split it.`);
+    return { ...base, action: 'text', text: body, fileName: file ? file.name : 'caption.txt' };
+  }
+  const common = { ...base, fileName: file.name, mimeType: file.type || '', size: file.size };
+  if (assets) {
+    try {
+      const asset = await assets.upload(file, { type: file.type || 'application/octet-stream' });
+      return { ...common, action: 'asset', assetId: asset.id };
+    } catch {
+      if (file.size > REFERENCE_INLINE_MAX) throw new Error('The board could not upload that file right now. It may be too big for storage or storage is busy. Try again, or use a smaller copy.');
+    }
+  } else if (file.size > REFERENCE_INLINE_MAX) {
+    throw new Error('Uploading this file needs the board opened inside Claude. Open it from your Claude session and try again.');
+  }
+  return { ...common, action: 'upload', dataBase64: await blobToBase64(file) };
+}
+// The References panel on a job page: what is saved, and the control that adds more.
+export function referencesPanel(project, state = {}, { openKeys = new Set() } = {}) {
+  const refs = Array.isArray(project?.references) ? project.references : [];
+  const typeId = state.type || 'picture';
+  const type = REFERENCE_TYPES.find(item => item.id === typeId) || REFERENCE_TYPES[0];
+  const busy = Boolean(state.busy);
+  const isText = type.id === 'caption';
+  const chips = refs.map(ref => `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note ? ` · ${esc(truncateText(ref.note, 60))}` : ''}</small></button></li>`).join('');
+  const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+  const fileInput = `<input type="file" id="ref-file" class="kit-file visually-hidden" name="ref_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
+  const picked = state.fileName ? `<span class="muted">${esc(state.fileName)}</span>` : `<span class="muted">${esc(type.hint)}</span>`;
+  const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="ref_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
+  const form = `<div class="ref-form"><label>What is it<select name="ref_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="ref-file">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="ref_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label><div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
+  const open = openKeys.has('more:refs') || busy || Boolean(state.error);
+  return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">Add a reference</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${list}${form}</div></details>`;
+}
+
 // After a kit action (add or remove a colour or font row, remove or replace
 // the logo) mutates the draft and calls render(), the section re-renders
 // fresh: the "+ Add colour"/"+ Add font" buttons carry no form `name` (so
@@ -4769,6 +4846,8 @@ function requestComment(operation, args = {}) {
       return `Brief answers saved${quotedTitle(args?.title)}.`;
     case 'attach_product_photo':
       return `${args?.subject === 'character' ? 'Character picture' : 'Product photo'} added${quotedTitle(args?.title)}.`;
+    case 'add_reference':
+      return `Reference added${quotedTitle(args?.title)}.`;
     case 'continue_job':
       return args?.title ? `Carry on with "${truncateText(args.title, 120)}".` : 'Carry on with this job.';
     case 'import_inputs':
@@ -5574,6 +5653,7 @@ if (typeof document !== 'undefined') {
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
+    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys });
     const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
@@ -5606,7 +5686,7 @@ if (typeof document !== 'undefined') {
       if (need && !need.includes('class="in-need is-idle"')) needTop = `<div class="need-top">${need}</div>`;
       side = agentInbox(box.all, { now, need, needText: railParts && top ? railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
-    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${referencesBox}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
@@ -6077,9 +6157,83 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
+  // --- Add a reference (job page) -------------------------------------------------------------
+  function refStateFor(project) {
+    const ui = uiFor(project);
+    ui.refs ||= { type: 'picture', file: null, fileName: '', text: '', note: '', busy: false, error: '', message: '' };
+    return ui.refs;
+  }
+  function currentRefProject() {
+    const id = selectedId();
+    return (data.projects || []).find(item => item.jobId === id) || null;
+  }
+  function captureRefInputs(state) {
+    const note = app.querySelector('[name="ref_note"]');
+    const text = app.querySelector('[name="ref_text"]');
+    if (note) state.note = note.value;
+    if (text) state.text = text.value;
+  }
+  function onRefChange(field) {
+    const project = currentRefProject();
+    if (!project) return;
+    const state = refStateFor(project);
+    captureRefInputs(state);
+    if (field.name === 'ref_type') {
+      state.type = field.value;
+      state.file = null; state.fileName = ''; state.error = ''; state.message = '';
+    } else if (field.name === 'ref_file') {
+      const file = field.files?.[0] || null;
+      const problem = referenceProblem(state.type, file);
+      state.file = problem ? null : file;
+      state.fileName = problem || !file ? '' : file.name;
+      state.error = problem;
+      state.message = '';
+    }
+    render();
+  }
+  async function submitReference(project) {
+    if (!transport) return;
+    const state = refStateFor(project);
+    captureRefInputs(state);
+    if (state.busy) return;
+    if (!state.file && !(state.type === 'caption' && state.text.trim())) {
+      state.error = state.type === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file first.';
+      render();
+      return;
+    }
+    state.busy = true; state.error = ''; state.message = '';
+    render();
+    try {
+      let assets = null;
+      if (artifactMode() && globalThis.claude?.use) {
+        try { assets = await globalThis.claude.use('assets'); } catch { assets = null; }
+      }
+      const reference = await encodeReferenceUpload(assets, { type: state.type, file: state.file, text: state.text, note: state.note });
+      const requestId = randomId(globalThis);
+      const result = await transport.call('add_reference', { requestId, brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, reference, ...(project.title ? { title: project.title } : {}) });
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', message: result?.message || 'Saving. Claude will confirm shortly.' });
+      notify(result?.status === 'requested' ? 'Reference sent. Claude will save it to this job.' : (result?.message || 'Reference saved.'));
+      render();
+      await refresh();
+    } catch (e) {
+      Object.assign(state, { busy: false, error: e.message || 'Could not add that reference.' });
+      render();
+    }
+  }
+  app.addEventListener('input', event => {
+    const name = event.target?.name;
+    if (name !== 'ref_note' && name !== 'ref_text') return;
+    const project = currentRefProject();
+    if (project) captureRefInputs(refStateFor(project));
+  });
+  app.addEventListener('change', event => {
+    const name = event.target?.name;
+    if (name === 'ref_type' || name === 'ref_file') onRefChange(event.target);
+  });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
-    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save]');if(!target)return;
+    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action]');if(!target)return;
+    if(target.dataset.refAction==='send'){const refProject=currentRefProject();if(refProject)void submitReference(refProject);return;}
     if(target.dataset.publishToggle!==undefined){
       const key=target.dataset.publishToggle;
       if(openKeys.has(key))openKeys.delete(key);else openKeys.add(key);

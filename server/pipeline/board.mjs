@@ -10,6 +10,7 @@ import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { UserFacingError } from '../lib/errors.mjs';
 import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
+import { addReference, checkReference, referenceSummaries } from './references.mjs';
 import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
@@ -1388,6 +1389,7 @@ export function boardSnapshot({ root } = {}) {
       ...(stuck ? { stuck } : {}),
       ...(handoffState ? { handoff: handoffState } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
+      references:referenceSummaries(job.path),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
       usage:{
@@ -1467,7 +1469,7 @@ const requesterIdOf = by => (typeof by === 'string' && REQUESTER_ID.test(by) ? b
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
@@ -1477,6 +1479,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (operation === 'mark_posted') checkMarkPosted(root, args);
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
+  if (operation === 'add_reference') validateAddReference(root, args);
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
@@ -1490,6 +1493,18 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
     return prior;
   }
   return {...record,message:'Request saved locally. The running Claude session will validate and apply it.'};
+}
+
+// A reference upload: exactly these fields, a job that exists, a known type and a file kind that type accepts.
+// The bytes are checked again when the request is applied; here only what a request can show without them.
+const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision']);
+
+function validateAddReference(root, args) {
+  if (!plainObject(args)) throw new Error('Say which job this is for.');
+  if (Object.keys(args).some(key => !ADD_REFERENCE_FIELDS.has(key))) throw new Error('This request carries more than a reference, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.brand !== 'string' || typeof args.jobId !== 'string' || !facts.jobAt(root, args.brand.trim(), args.jobId.trim())) throw new Error('That job could not be found for that brand.');
+  checkReference(args.reference, { shapeOnly: !(typeof args.reference?.dataBase64 === 'string' && args.reference.dataBase64) && !args.reference?.path });
 }
 
 // The deliverable the way the person sees it ("the Instagram Reel"), never its id.
@@ -2157,6 +2172,13 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {...result,message:`${result.job?.subject==='character'?'Character picture':'Product photo'} saved. Your Claude session can now continue this job.`};
   }
+  if(operation==='add_reference') {
+    const job=facts.jobAt(root,String(args.brand||'').trim(),String(args.jobId||'').trim());
+    if(!job) throw new Error('That job could not be found for that brand.');
+    const {reference,added}=addReference({jobDir:job.dir,reference:args.reference,requestId:args.requestId,by:args.requestedBy});
+    if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
+    return {jobId:job.jobId,reference,added,message:`${reference.label} saved to this job. Your Claude session can now use it.`};
+  }
   if(operation==='import_inputs') return runtime.importLocalInputs({root,brand:args.brand,jobId:args.jobId,sourcePaths:[args.path],ownedByBrand:args.ownedByBrand===true,usedInPost:args.usedInPost===true});
   if(operation==='skip_provider') {
     if(!CONNECTOR_KEYS.includes(args.provider)) throw new Error('Unsupported connector.');
@@ -2255,6 +2277,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'create_job') return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'continue_job') return result.project?.jobId || result.jobId ? { jobId: result.project?.jobId || result.jobId } : null;
   if (operation === 'update_intake' || operation === 'attach_product_photo') return result.jobId ? { jobId: result.jobId, ...(Number.isSafeInteger(result.revision) ? { revision: result.revision } : {}) } : null;
+  if (operation === 'add_reference') return result.jobId ? { jobId: result.jobId, referenceId: result.reference?.id } : null;
   if (operation === 'import_inputs') return result.revisionId ? { revisionId: result.revisionId } : null;
   if (operation === 'connect_provider' || operation === 'skip_provider') {
     return typeof result.provider === 'string' && typeof result.state === 'string' ? { provider: result.provider, state: result.state } : null;
@@ -2639,7 +2662,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
     ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
     : record.operation==='answer_question'
       ? answeredQuestion(root,record)
-      : boardOperation({root,operation:record.operation,args:record.args,source:'local'}); }
+      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
   catch(error) {
     const next = {
       ...record,
