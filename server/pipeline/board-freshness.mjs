@@ -54,14 +54,6 @@ export const BOARD_TEXT = Object.freeze({
   stuck: 'A job is stuck and the person has not been asked yet. For each job below, ask them in one plain line with pipeline_board_ask, say the same line in chat, then carry on.',
 });
 
-/** Shown without blocking when nobody is waiting on the job. */
-export const BOARD_NOTE = Object.freeze({
-  behind: 'The board is a little behind the work.',
-  unsaved: "Some made files aren't saved yet.",
-  copies: "A review's images or video can't be viewed on the board yet.",
-  close: 'Nobody is waiting on this right now, so it can be caught up next time.',
-});
-
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const boardPath = (root, name) => join(resolve(root), BOARD_DIR, name);
 const jobRef = job => `${job.brand}/${job.jobId}`;

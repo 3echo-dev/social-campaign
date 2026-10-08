@@ -30,14 +30,6 @@ function stopReason(text, behind, unsaved, copies, more = {}) {
   return reasons.join(' ');
 }
 
-function noteText(note, behind, unsaved, copies) {
-  const lines = [];
-  if (behind.length) lines.push(note.behind);
-  if (unsaved.length) lines.push(note.unsaved);
-  if (copies.length) lines.push(note.copies);
-  return [...lines, note.close].join(' ');
-}
-
 async function main() {
   const event = await readEvent();
   if (!event || event.hook_event_name !== 'Stop' || event.stop_hook_active === true) return;
@@ -62,10 +54,11 @@ async function main() {
   const signature = sha256(JSON.stringify(block
     ? { block, behind: blockBehind, unsaved: blockUnsaved, copies: blockCopies, ...(agents.length ? { agents } : {}), ...(replies.length ? { replies } : {}), ...(stuck.length ? { stuck } : {}), ...(yourTurn.length ? { yourTurn: yourTurn.map(({ jobId, state, revision }) => ({ jobId, state, revision })) } : {}), ...(chatAsk ? { chatAsk: { jobId: chatAsk.jobId, hash: chatAsk.hash } } : {}) }
     : { block, behind: refs(behind), unsaved: refs(unsaved), copies: refs(copies) }));
+  // With nobody waiting there is nothing to tell Claude now, and a Stop hook has no model-only
+  // channel besides a block, so a systemMessage would show up in the person's chat as "Stop says".
+  if (!block) return;
   if (!fresh.claimStopBlock(root, event.session_id, signature)) return;
-  process.stdout.write(JSON.stringify(block
-    ? { decision: 'block', reason: stopReason(fresh.BOARD_TEXT, blockBehind, blockUnsaved, blockCopies, { agents, replies, stuck, yourTurn: yourTurn.length ? fresh.yourTurnReason(yourTurn) : '', chatAsk: chatAsk !== null }) }
-    : { systemMessage: noteText(fresh.BOARD_NOTE, behind, unsaved, copies) }));
+  process.stdout.write(JSON.stringify({ decision: 'block', reason: stopReason(fresh.BOARD_TEXT, blockBehind, blockUnsaved, blockCopies, { agents, replies, stuck, yourTurn: yourTurn.length ? fresh.yourTurnReason(yourTurn) : '', chatAsk: chatAsk !== null }) }));
 }
 
 main().catch(() => null).finally(() => {
