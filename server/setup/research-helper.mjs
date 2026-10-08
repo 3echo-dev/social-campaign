@@ -78,6 +78,12 @@ export const CRAWL4AI_VERSION = '0.9.3';
 /** yt-dlp with curl_cffi, so TikTok's bot check can be answered with browser impersonation (--impersonate chrome). */
 export const VIDEO_TOOLS_REQUIREMENT = 'yt-dlp[default,curl-cffi]';
 
+/**
+ * Optional discovery libraries for finding popular in-niche Reels and TikToks: Instaloader (MIT) and TikTok-Api (MIT,
+ * drives Playwright). Installed best effort, the same way as VIDEO_TOOLS_REQUIREMENT; a failure here never fails setup.
+ */
+export const DISCOVERY_TOOLS_REQUIREMENTS = ['instaloader', 'TikTokApi'];
+
 /** The oldest Python the helper works on. */
 export const MIN_PYTHON = { major: 3, minor: 10 };
 
@@ -1148,6 +1154,15 @@ async function runInstallWithLease(job, options) {
     // keep going
   }
 
+  // Discovery libraries (Instaloader, TikTok-Api). Best effort and never fatal: without them the discovery routes
+  // report not_installed and research goes on with the other routes.
+  try {
+    const haveDiscovery = await runInstallCommand(python, ['-c', 'import instaloader, TikTokApi'], STEP_TIMEOUT_MS.probe, installOptions);
+    if (!haveDiscovery.ok) await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', ...DISCOVERY_TOOLS_REQUIREMENTS], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+  } catch {
+    // keep going
+  }
+
   if (!runtimeProbe?.chromium.found) {
     step(job, 'browser');
     const installed = await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
@@ -1157,6 +1172,14 @@ async function runInstallWithLease(job, options) {
     if (!runtimeProbe.crawl4ai.compatible || !runtimeProbe.chromium.found) {
       return fail(job, 'The browser install finished, but the managed environment still cannot load the pinned page reader and Chromium. Try the install again.');
     }
+  }
+
+  // TikTok-Api drives the same Playwright Chromium. Normally already there from the step above; this is a cheap,
+  // best effort top-up that never fails the install.
+  try {
+    await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
+  } catch {
+    // keep going
   }
 
   const workerSha256 = researchHelperWorkerSha256(workerPath);
