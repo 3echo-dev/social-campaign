@@ -5865,7 +5865,7 @@ function stepPicture(name) {
 }
 const gatePicture = gate => STEP_IMG[GATE_PICTURES[gate]] || STEP_IMG.package;
 
-function agentComposer(agent, { about = 'the job', ui = {}, signal = {} } = {}) {
+export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} } = {}) {
   const name = agentNameOf(agent);
   const draft = ui.draft || '';
   const hint = isDirectorAgent(agent) ? 'The Director answers here.' : `The Director passes this on at the ${name}'s next step.`;
@@ -6081,6 +6081,29 @@ export function watchWorkspace(transport, handlers = {}) {
   }
   subscribeOnce();
   return () => { if (typeof unsubscribe === 'function') unsubscribe(); unsubscribe = null; };
+}
+
+// The workspace projection is written last in every board sync, so when it changes the page asks once more for what the open
+// job shows: the job document and the receipt of every request still out. The live watches stay the first way a change arrives;
+// this is the second, for a watch that has gone quiet. Returns true when a job document changed.
+export async function refreshLive({ transport, docs, jobIds = [], receipts = [] }) {
+  let changed = false;
+  if (typeof transport?.readJobDocument === 'function') {
+    await Promise.all([...jobIds].map(async jobId => {
+      try {
+        const next = await transport.readJobDocument(jobId);
+        if (JSON.stringify(next ?? null) === JSON.stringify(docs.get(jobId) ?? null)) return;
+        if (next) docs.set(jobId, next); else docs.delete(jobId);
+        changed = true;
+      } catch { /* The live watch stays the way this job document arrives. */ }
+    }));
+  }
+  if (typeof transport?.readRequest === 'function') {
+    await Promise.all(receipts.map(async ({ requestId, handle }) => {
+      try { const receipt = await transport.readRequest(requestId); if (receipt) handle(receipt); } catch { /* Same: the watch on the receipt remains. */ }
+    }));
+  }
+  return changed;
 }
 
 function randomId(host) {
@@ -6329,6 +6352,14 @@ export async function createTransport(config = {}, host = globalThis) {
     Promise.resolve().then(() => ref.get()).then(handle, error => onError?.(error));
     return () => {};
   }
+  async function readJobDocument(jobId) {
+    if (!JOB_DOCUMENT_ID.test(String(jobId || ''))) return null;
+    const document = recordData(await db.doc(`${JOB_DOCUMENT_COLLECTION}/${jobId}`).get());
+    return document && String(document.workspaceId) === workspaceId && document.jobId === jobId ? document : null;
+  }
+  async function readRequest(requestId) {
+    return recordData(await db.doc(`requests/${requestId}`).get());
+  }
   function subscribeRequest(requestId, onReceipt, onError) {
     const requestRef = db.doc(`requests/${requestId}`);
     if (typeof requestRef.onSnapshot !== 'function') return () => {};
@@ -6480,6 +6511,8 @@ export async function createTransport(config = {}, host = globalThis) {
     subscribe,
     subscribeRequest,
     subscribeJobDocument,
+    readJobDocument,
+    readRequest,
     signal,
     checkSignalAvailability,
     readPlanNote,
@@ -6517,6 +6550,7 @@ if (typeof document !== 'undefined') {
   const jobDocStates = new Map();
   let jobDocWatch = { jobId: null, unsubscribe: null };
   const jobRequestWatches = new Map();
+  const jobRequestReaders = new Map();
   const questionUi = new Map();
   const inboxQuestions = new Map();
   const inboxDecisions = new Map();
@@ -6717,6 +6751,8 @@ if (typeof document !== 'undefined') {
         jobDocStates.set(jobId, 'loaded');
         queueMicrotask(render);
       }, () => {
+        // A watch that ended is dropped, so the next render subscribes this job again.
+        inboxDocWatches.delete(jobId);
         jobDocStates.set(jobId, 'loaded');
         queueMicrotask(render);
       }));
@@ -6818,6 +6854,7 @@ if (typeof document !== 'undefined') {
     const unsubscribe = jobRequestWatches.get(key);
     if (typeof unsubscribe === 'function') unsubscribe();
     jobRequestWatches.delete(key);
+    jobRequestReaders.delete(key);
   }
   // Follow a job-page request (intake answers or a decision) to its receipt.
   function watchJobRequest(jobId, part, state) {
@@ -6825,7 +6862,7 @@ if (typeof document !== 'undefined') {
     stopJobRequestWatch(key);
     if (!transport?.subscribeRequest || !state.requestId) return;
     const requestId = state.requestId;
-    jobRequestWatches.set(key, transport.subscribeRequest(requestId, receipt => {
+    const handle = receipt => {
       if (!receipt || state.requestId !== requestId) return;
       const acknowledgement = receipt.artifactReceipt || receipt;
       const status = String(acknowledgement.status || receipt.status || 'requested');
@@ -6847,7 +6884,28 @@ if (typeof document !== 'undefined') {
         else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'error', state.error);
         render();
       }
-    }, () => {}));
+    };
+    jobRequestWatches.set(key, transport.subscribeRequest(requestId, handle, () => {}));
+    jobRequestReaders.set(key, { requestId, handle });
+  }
+  // Ask again for what the open page shows (see refreshLive); runs after every workspace snapshot, one at a time.
+  let resyncing = false, resyncAgain = false;
+  async function resyncLive() {
+    if (!artifactMode()) return;
+    if (resyncing) { resyncAgain = true; return; }
+    resyncing = true;
+    try {
+      const jobIds = new Set(inboxDocWatches.keys());
+      const shown = selected();
+      if (shown) jobIds.add(shown.jobId);
+      if (await refreshLive({ transport, docs: jobDocs, jobIds, receipts: [...jobRequestReaders.values()] })) {
+        for (const jobId of jobIds) jobDocStates.set(jobId, 'loaded');
+        render();
+      }
+    } finally {
+      resyncing = false;
+      if (resyncAgain) { resyncAgain = false; void resyncLive(); }
+    }
   }
   function ensureDownloads() {
     if (downloadsApi !== undefined || !artifactMode() || typeof globalThis.claude?.use !== 'function') return;
@@ -7302,7 +7360,7 @@ if (typeof document !== 'undefined') {
       void askBoardConsent();
       if (!unsubscribe) {
         unsubscribe = watchWorkspace(transport, {
-          onSnapshot: next => { captureInlineValues(); data = next; error = ''; render(); },
+          onSnapshot: next => { captureInlineValues(); data = next; error = ''; render(); void resyncLive(); },
           onError: nextError => { error = nextError?.message || 'The artifact projection could not be read.'; render(); },
         });
       }
