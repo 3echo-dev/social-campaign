@@ -300,8 +300,17 @@ function answeredBrand(root, brandSlug, brands, current) {
 }
 
 /**
+ * Whether the lone Metricool brand can be taken for a plugin brand without asking: at least one of its accounts
+ * is the one on the brand card, and none is a different account or one the brand card does not list.
+ */
+function fitsBrandCard(channels, metricoolBrand) {
+  const values = Object.values(metricoolCoverage(channels, metricoolBrand.networks));
+  return values.some(value => value === 'linked' || value === 'unverified') && !values.some(value => value === 'different_handle' || value === 'only_in_metricool');
+}
+
+/**
  * Give every plugin brand that has a finished profile and no working choice yet a Metricool brand.
- * A brand that never chose, with one brand in Metricool, gets it at once. A saved choice that Metricool no
+ * A brand that never chose, with one brand in Metricool whose accounts match the brand card, gets it at once. A saved choice that Metricool no
  * longer lists is never replaced silently, even with one brand left: it is reported as needsChoice and the
  * Inbox question is asked, so the person says which brand to use now. Otherwise a saved answer to the
  * question is applied, else the question is asked once, with its options saved on it. More than the Inbox can offer as buttons: left to the brand card's own choice.
@@ -315,10 +324,11 @@ export function reconcileMetricoolChoices({ root }) {
   const keep = new Set();
   const options = metricoolQuestionOptions(brands);
   for (const entry of brands.length ? runtime.listBrands({ root }) : []) {
-    if (!brandProfile.read(entry.path)) continue;
+    const profile = brandProfile.read(entry.path);
+    if (!profile) continue;
     const current = readBrandPublishing(entry.path);
     if (current && brands.some(item => item.id === current.blogId)) continue;
-    let pick = brands.length === 1 && !current ? { brand: brands[0], how: 'auto' } : null;
+    let pick = brands.length === 1 && !current && fitsBrandCard(profile.channels, brands[0]) ? { brand: brands[0], how: 'auto' } : null;
     if (!pick) {
       const answer = answeredBrand(root, entry.slug, brands, current);
       if (answer) pick = { brand: answer, how: 'answer' };

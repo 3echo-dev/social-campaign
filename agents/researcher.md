@@ -24,6 +24,9 @@ Run exactly one workstream per dispatch, or, for a `research` or `creative_analy
 
 The brand-onboarding workstream and the Hard limits table are defined in pipeline/skills/research/SKILL.md.
 
+For the brand-onboarding workstream, follow the draft contract pasted in the spawn prompt (`draftContract`); it is the same text as the brand-onboarding section of pipeline/skills/research/SKILL.md, which you need not find.
+If the spawn prompt has no draft contract, ask for it back in your report rather than guessing the draft shape.
+Use a plain date (YYYY-MM-DD) for every `observedAt`; never invent a clock time.
 For the brand-onboarding workstream, the target market comes from the spawn prompt and is Singapore when none is named.
 For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.
 The draft file at `draftPath` already holds the right keys, so fill it in place and never add, rename or remove a key.

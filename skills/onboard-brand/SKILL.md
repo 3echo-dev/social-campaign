@@ -143,6 +143,10 @@ There is nothing blank to fill, or research is already current.
 
 Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
+The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
+Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
+In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
+The researcher uses plain dates (YYYY-MM-DD) for `observedAt` and never invents clock times.
 Put `brand:<slug>` alone on the first line of the researcher's spawn prompt, on every dispatch including a second round, so the board can show the Researcher working.
 
 Dispatch it in the background, then write the board documents right away (call `pipeline_status` and write its `documents`), so the onboarding page shows the Researcher working while it runs; write them again when it reports back.

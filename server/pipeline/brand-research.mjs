@@ -163,9 +163,28 @@ export function startBrandResearch({ root, brand }) {
     competitors: { declared: declaredCompetitors, toFind },
     limits: run.limits || limits,
     draftPath,
+    draftContract: draftContract(),
     profileRevision: run.profileRevisionAtStart ?? profile.revision,
     researchRevision: run.researchRevisionAtStart ?? researchRevision,
   };
+}
+
+const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'SKILL.md');
+
+/**
+ * The brand onboarding section of the research skill, read from this plugin's own copy so it can go
+ * straight into the researcher's spawn prompt. Empty when the file cannot be read.
+ */
+export function draftContract() {
+  try {
+    const text = readFileSync(RESEARCH_SKILL, 'utf8').replace(/\r\n/g, '\n');
+    const start = text.indexOf('## Brand onboarding workstream');
+    if (start < 0) return '';
+    const next = text.indexOf('\n## ', start + 1);
+    return text.slice(start, next < 0 ? undefined : next).trim();
+  } catch {
+    return '';
+  }
 }
 
 function readDraft(draftPath) {
@@ -431,6 +450,37 @@ function audienceProblemText(market) {
   return `The audience is blank. Add the brand's own audience, or suggest one from the top competitors' audiences in ${market} using sources from the last 12 months and list audience under suggested.`;
 }
 
+const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * An observedAt as a full timestamp. A plain date (YYYY-MM-DD) becomes midnight UTC that day, and a time in the
+ * future is set to now, so the researcher never has to invent a clock time. A value that is not a date is left
+ * as written, and the save names it.
+ */
+function tidyObservedAt(value, now) {
+  if (typeof value !== 'string' || !value.trim()) return value;
+  const text = value.trim();
+  const parsed = Date.parse(PLAIN_DATE.test(text) ? `${text}T00:00:00.000Z` : text);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(Math.min(parsed, now.getTime())).toISOString();
+}
+
+function tidyDates(items, now) {
+  return items.map((item) => (isObject(item) && own(item, 'observedAt') ? { ...item, observedAt: tidyObservedAt(item.observedAt, now) } : item));
+}
+
+/** The research part of a draft with every source, evidence and competitor evidence date tidied. */
+function tidyResearchDates(research, now) {
+  if (!isObject(research)) return research;
+  const tidy = { ...research };
+  if (Array.isArray(tidy.sources)) tidy.sources = tidyDates(tidy.sources, now);
+  if (Array.isArray(tidy.evidenceMatrix)) tidy.evidenceMatrix = tidyDates(tidy.evidenceMatrix, now);
+  if (Array.isArray(tidy.competitorDetails)) {
+    tidy.competitorDetails = tidy.competitorDetails.map((detail) => (isObject(detail) && Array.isArray(detail.evidence) ? { ...detail, evidence: tidyDates(detail.evidence, now) } : detail));
+  }
+  return tidy;
+}
+
 function draftProblems(draft, ctx) {
   const problems = [];
   for (const key of Object.keys(draft)) {
@@ -439,7 +489,7 @@ function draftProblems(draft, ctx) {
     }
   }
   const fills = own(draft, 'fills') ? draft.fills : {};
-  const researchDraft = own(draft, 'research') ? draft.research : {};
+  const researchDraft = own(draft, 'research') ? tidyResearchDates(draft.research, new Date()) : {};
   if (!isObject(fills)) problems.push({ field: 'fills', problem: 'fills must be an object.' });
   if (!isObject(researchDraft)) problems.push({ field: 'research', problem: 'research must be an object.' });
   if (own(draft, 'budget') && !isObject(draft.budget)) problems.push({ field: 'budget', problem: 'budget must be an object.' });

@@ -56,7 +56,7 @@ export const INSTAGRAM_FEED_RATIO = Object.freeze({ min: 4 / 5, max: 1.91 });
 const PHONE_RATIO = 9 / 16;
 const PHONE_TOLERANCE = 0.02;
 const METRICOOL_NETWORKS = Object.freeze(['facebook', 'instagram', 'tiktok']);
-const LINKED = new Set(['linked', 'unverified', 'only_in_metricool']);
+const LINKED = new Set(['linked', 'unverified']);
 
 const count = value => Number(value).toLocaleString('en-US');
 const platformName = platform => del.PLATFORM_NAMES[platform] || (typeof platform === 'string' && platform ? platform[0].toUpperCase() + platform.slice(1) : 'This platform');
@@ -150,6 +150,7 @@ function channelCheck(post, context) {
   const status = plain(context.coverage) ? context.coverage[post.platform] : undefined;
   if (status === 'unverified') return check(true, `${name} is in Metricool. Check that it is the right account there.`);
   if (LINKED.has(status)) return check(true, `${name} is linked in Metricool.`);
+  if (status === 'only_in_metricool') return check(false, `${name} is in Metricool but not on the brand card, so check it is this brand's account and add it to the brand card first.`);
   if (status === 'not_linked') return check(false, `${name} is not linked in Metricool for this brand.`);
   if (status === 'different_handle') return check(false, `${name} in Metricool is a different account from the one on the brand card.`);
   return check(false, `Metricool has no ${name} account for this brand.`);
