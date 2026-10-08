@@ -261,6 +261,10 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
+## Say what was actually done
+
+A status line states what the files show: when the music choice is `none`, the video has "no music", not "music and captions". Say what was skipped or failed in the same line. Never claim a step, a check or an approval that is not recorded.
+
 ## Never read or edit the plugin's own files
 
 The Director never opens, searches or edits the plugin's scripts, schemas, manifests or hooks to work out a format, a flag or a fix (finish-video.py, stitch-clips.py, social-check.py, the schemas, generation-manifest.json).

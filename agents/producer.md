@@ -69,6 +69,8 @@ For a video post, run the copywriter after render QA has a result, never in para
 
 Fix video problems yourself or through the videographer; the Director never goes into the plugin's scripts. A re-cut, a trim or a manifest change is yours, followed by a re-stitch, a re-finish and a recheck of the changed scope only.
 
+After the finish, report what the video really has (captions, music or "no music", end card), never what was planned.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.

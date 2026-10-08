@@ -35,7 +35,7 @@ Leave unknown provider outcomes unresolved and do not retry blindly.
 ## After the clips are made, in this order
 
 1. Voice-over: make each priced line and save it as `media/D{n}/vo/B{k}.mp3`, listed in the manifest's top-level `voiceover` as `{ beat, file, text }` (the nested contract's "Voice-over lines" section).
-2. Music, settled without asking or waiting: a music file the person gave in chat goes to `pipeline_music_add`; otherwise choose the shelf track that fits the script's mood with `pipeline_music_choose` (see `pipeline_music_list`), or `none` when the shelf is empty.
+2. Music (the person's finishing pick wins; never wait on it; report "no music" plainly when the choice is `none`): a music file the person gave in chat goes to `pipeline_music_add`; otherwise choose the shelf track that fits the script's mood with `pipeline_music_choose` (see `pipeline_music_list`), or `none` when the shelf is empty.
 3. Stitch, as the nested contract describes; the hook clip skips its first half second and keeps the beat length.
 4. Finish: run `finish-video.py` on the manifest (the nested contract's step 12).
    It adds captions with the spoken word in gold, places the voice-over, mixes the music under speech, adds the end card and sets the final loudness, keeping the plain cut as `final-raw.mp4`.

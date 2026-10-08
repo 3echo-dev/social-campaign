@@ -76,7 +76,8 @@ A deliverable with `talkingCharacter: true` has a person or character speaking t
 
 ## Music
 
-Before the video is finished, settle its music. Never ask the person about it and never wait on it.
+Before the video is finished, settle its music. If the finishing choice offers the person music, their pick wins; otherwise do not wait on it.
+After the finish, say what the video really has: when `media/music/choice.json` says `none`, say "no music" plainly. Never say music was added unless the choice names a file.
 
 1. If the person gave a music file in chat, call `pipeline_music_add` with `brand`, `jobId` and the file's path.
 2. Otherwise call `pipeline_music_list`. Pick the track whose title fits the script's mood and call `pipeline_music_choose` with its id and one short reason. When the shelf is empty, call it with `none`.
