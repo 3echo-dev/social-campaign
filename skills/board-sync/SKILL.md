@@ -368,6 +368,8 @@ Then tell the person in one plain line naming the job's brand and title what hap
 Never ask the same decision twice.
 A board request that arrives for a decision already answered in chat fails validation; decline it with `pipeline_board_request_decline` and the reason `Already answered in chat.`, then write the documents again.
 Never leave the board showing a decision that chat already resolved, or the reverse.
+When a board answer lands after the person already typed the same answer in chat, treat it as that one answer, not a second or a duplicate; apply it once and reply with one plain line.
+A board answer can land late when a long turn delays it, so a reminder in chat about something already on the board is not a new request.
 
 An applied price approval, from either surface, is the explicit yes to that quote; a request for changes means re-price and present the price again.
 

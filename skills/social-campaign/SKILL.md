@@ -298,6 +298,10 @@ Treat the brand's market and accent as hard filters on every creative choice, in
 
 Before driving a browser for the person, check which account it is signed in to, and stop and ask when it is not the one the job needs.
 
+Board requests are only picked up between your turns, so keep every turn short.
+Hand long browser or research work, anything beyond a couple of quick page reads, to a background helper such as the researcher, and carry on with the person while it runs.
+When you must do several slow steps yourself, such as Claude in Chrome page loads, check for pending board requests between them and handle any before the next step.
+
 ## Artifact handoff
 
 Use board-setup for first artifact presentation and board-sync for subsequent artifact state reconciliation.
