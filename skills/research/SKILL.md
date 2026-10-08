@@ -28,7 +28,7 @@ For any competitor or market work, the target market comes from the spawn prompt
 
 Reuse a fresh job snapshot supplied by the caller.
 
-When the task includes a video link (a Reel, TikTok, YouTube or other post) that is not yet in the job's `inputs/references/manifest.json`, call `pipeline_reference_from_url` for it before reading the post any other way, then `video_watch` the saved file. On `needs_sign_in` or `blocked`, report that plainly in the findings and ask the Director for an upload; never read the person's browser cookies yourself. Downloaded videos are reference material only and are never reposted.
+When the task includes a video link (a Reel, TikTok, YouTube or other post) that is not yet in the job's `inputs/references/manifest.json`, call `pipeline_reference_from_url` for it before reading the post any other way, then `video_watch` the saved file. On `needs_sign_in` or `blocked` (a login wall), go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), without asking in chat. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that is the person's to answer, never avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line in the findings and ask the Director for a board upload ("Add a reference"). Never read the person's browser cookies yourself. Downloaded videos are reference material only and are never reposted.
 
 Call pipeline_job_read only when the snapshot is absent or an external state change occurred.
 

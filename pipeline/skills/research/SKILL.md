@@ -210,7 +210,7 @@ When the spawn prompt passes `problems`, fix exactly those in the file at `draft
 
 ### Video links
 
-A Reel, TikTok, YouTube or other video link given as evidence is saved first with `pipeline_reference_from_url` (yt-dlp, no login), then watched with `video_watch`. Order for Instagram: yt-dlp download, then the public page, then the browser. A `needs_sign_in` or `blocked` status is recorded under `Not found` with the host, and the Director is asked for a board upload; browser cookies are only used when the person has said yes to `cookiesFromBrowser`. The file is reference only, never reposted.
+A Reel, TikTok, YouTube or other video link given as evidence is saved first with `pipeline_reference_from_url` (yt-dlp, no login), then watched with `video_watch`. Order for Instagram: yt-dlp download, then the public page, then the browser. On a `needs_sign_in` or `blocked` status (a login wall), go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), without asking in chat. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that is the person's to answer, never avoid it. If the Chrome tools are not available or the extension isn't connected, record it under `Not found` with the host in one line and ask the Director for a board upload ("Add a reference"). Browser cookies are only used when the person has said yes to `cookiesFromBrowser`. The file is reference only, never reposted.
 
 ### Retry chain, per source, hard cap one pass
 
