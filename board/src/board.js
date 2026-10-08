@@ -749,21 +749,57 @@ export async function encodeReferenceUpload(assets, { type, file, text, note }) 
   }
   return { ...common, action: 'upload', dataBase64: await blobToBase64(file) };
 }
+// The control that adds one reference: what it is, the file or the typed text, and a note. The job page's panel and the
+// new-job form both use it; `prefix` only keeps their field names and ids apart ('ref' on the job page, 'nref' in the form).
+function referenceControl(state = {}, { prefix = 'ref', busy = false } = {}) {
+  const type = REFERENCE_TYPES.find(item => item.id === (state.type || 'picture')) || REFERENCE_TYPES[0];
+  const isText = type.id === 'caption';
+  const fileInput = `<input type="file" id="${prefix}-file" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
+  const picked = state.fileName ? `<span class="muted">${esc(state.fileName)}</span>` : `<span class="muted">${esc(type.hint)}</span>`;
+  const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
+  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${prefix}-file">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
+}
 // The References panel on a job page: what is saved, and the control that adds more.
 export function referencesPanel(project, state = {}, { openKeys = new Set() } = {}) {
   const refs = Array.isArray(project?.references) ? project.references : [];
-  const typeId = state.type || 'picture';
-  const type = REFERENCE_TYPES.find(item => item.id === typeId) || REFERENCE_TYPES[0];
   const busy = Boolean(state.busy);
-  const isText = type.id === 'caption';
   const chips = refs.map(ref => `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note ? ` · ${esc(truncateText(ref.note, 60))}` : ''}</small></button></li>`).join('');
   const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
-  const fileInput = `<input type="file" id="ref-file" class="kit-file visually-hidden" name="ref_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
-  const picked = state.fileName ? `<span class="muted">${esc(state.fileName)}</span>` : `<span class="muted">${esc(type.hint)}</span>`;
-  const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="ref_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
-  const form = `<div class="ref-form"><label>What is it<select name="ref_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="ref-file">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="ref_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label><div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
+  const form = `<div class="ref-form">${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
   const open = openKeys.has('more:refs') || busy || Boolean(state.error);
   return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">Add a reference</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${list}${form}</div></details>`;
+}
+
+// The same control inside the new-job form, before the job exists: each one the person adds waits in a short list and is
+// sent with the job, so Claude's first read of the brief already has it. Several are allowed.
+export const NEW_JOB_REFERENCES_MAX = 8;
+export function freshNewJobRefs() { return { type: 'picture', file: null, fileName: '', text: '', note: '', error: '', open: false, items: [] }; }
+// Check what is in the control and, when it is a reference, return it as a list item; else { error }.
+export function newJobReferenceItem(state) {
+  const type = REFERENCE_TYPES.find(item => item.id === state.type);
+  if (!type) return { error: 'Choose what this is first.' };
+  const text = String(state.text || '');
+  if (state.file) {
+    const problem = referenceProblem(state.type, state.file);
+    if (problem) return { error: problem };
+  } else if (!(type.id === 'caption' && text.trim())) {
+    return { error: type.id === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file first.' };
+  }
+  const note = String(state.note || '').replace(/\s+/g, ' ').trim();
+  if (note.length > REFERENCE_NOTE_MAX) return { error: `Keep the note under ${REFERENCE_NOTE_MAX} characters.` };
+  return { item: { type: state.type, file: state.file || null, text: state.file ? '' : text, note, name: state.file ? state.file.name : 'Typed text', label: type.label } };
+}
+export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}) {
+  const items = Array.isArray(refs.items) ? refs.items : [];
+  const list = items.length
+    ? `<ul class="ab-chips" aria-label="References for this job">${items.map((item, index) => `<li><span class="ab-chip">${esc(truncateText(item.name, 40))}<small>${esc(item.label)}${item.note ? ` · ${esc(truncateText(item.note, 60))}` : ''}</small></span> <button type="button" class="sb-ask" data-nref-remove="${index}" aria-label="${esc(`Remove ${item.name}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
+    : '';
+  const full = items.length >= NEW_JOB_REFERENCES_MAX;
+  const control = full
+    ? `<p class="muted">That is ${NEW_JOB_REFERENCES_MAX} references. You can add more on the job page after it starts.</p>`
+    : `<div class="ref-form">${referenceControl(refs, { prefix: 'nref', busy })}<div class="ref-actions"><button type="button" class="sb-ask" data-nref-action="add" ${busy ? 'disabled' : ''}>Add to this job</button></div></div>`;
+  const open = refs.open || items.length > 0 || Boolean(refs.error);
+  return `<details class="new-refs field-wide" data-open-key="new:refs"${open ? ' open' : ''}><summary>References (optional)${items.length ? ` <span class="count">${items.length}</span>` : ''}</summary><div class="new-refs-body"><p class="field-hint">Pictures, clips, audio, wording or other files you want used for this job.</p>${list}${control}${refs.error ? `<p class="field-error" role="alert">${esc(refs.error)}</p>` : ''}</div></details>`;
 }
 
 // After a kit action (add or remove a colour or font row, remove or replace
@@ -923,7 +959,7 @@ const COMPOSER_TEXT_LIMIT = 6000;
 const COMPOSER_QUESTION = 'What do you want to get done?';
 const COMPOSER_PLACEHOLDER = 'For example: an Instagram Reel for our new serum, or a report on who leads the vitamin C market.';
 const COMPOSER_BRAND_HINT = 'Posts and campaigns need one. Claude will ask.';
-const COMPOSER_FILES_LINE = 'Have files? Add them in chat after you send this.';
+const COMPOSER_FILES_LINE = 'Have files? Add them under References, or in chat after you send this.';
 
 // A job's title is the first line of what the person wrote, cut at a word when it is long.
 export function composerTitle(text) {
@@ -981,7 +1017,7 @@ export function composerForm(state = {}, { brands = [], variant = 'card' } = {})
   const label = state.busy ? 'Sending...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Send';
   const problem = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const foot = `<div class="start-foot"><small class="composer-files">${esc(COMPOSER_FILES_LINE)}</small><button class="primary" type="submit" ${blocked ? 'disabled' : ''}>${label}</button></div>`;
-  const form = `<form id="${inbox ? 'starter-form' : 'inline-form'}" class="start-form composer-form" novalidate>${text}<div class="composer-grid">${brand}${links}</div>${problem}${foot}</form>`;
+  const form = `<form id="${inbox ? 'starter-form' : 'inline-form'}" class="start-form composer-form" novalidate>${text}<div class="composer-grid">${brand}${links}</div>${newJobReferences(state.refs, { busy: state.busy || state.submitted })}${problem}${foot}</form>`;
   if (inbox) return `<section class="composer composer-inbox" aria-labelledby="starter-title"><h3 class="composer-title" id="starter-title">${COMPOSER_QUESTION}</h3>${form}</section>`;
   const notice = state.declined ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>` : '';
   return `<section class="start-card new-job composer"><div class="start-head"><h2 id="composer-title">${COMPOSER_QUESTION}</h2></div>${notice}${form}</section>`;
@@ -5174,7 +5210,7 @@ if (typeof document !== 'undefined') {
   const logoData = String(document.getElementById('board-logo')?.textContent || '').trim();
   const logoSrc = logoData.startsWith('data:image/') ? logoData : '';
   const app = document.getElementById('app');
-  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {};
+  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {}, starterRefs = freshNewJobRefs();
   let signalAvailability = null, signalAvailabilityPending = false;
   let connectorsView = false;
   // Continue was pressed on the setup Connectors step: move on at once, before Claude records it.
@@ -5318,6 +5354,7 @@ if (typeof document !== 'undefined') {
   }
   function inlineJobForm() {
     inline.values ||= {};
+    inline.refs ||= freshNewJobRefs();
     return composerForm(inline, { brands: data.brands || [] });
   }
   function newJobDraft() { return {kind:'new', values:{text:'', links:''}}; }
@@ -5767,7 +5804,7 @@ if (typeof document !== 'undefined') {
     const jobs = door.jobs.length
       ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${door.jobs.length}</span></div><div class="project-grid">${door.jobs.map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
       : '<p class="muted empty-jobs">No jobs of this kind yet. Start one below.</p>';
-    const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
+    const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues, refs: starterRefs }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
     return `<div class="slate-head"><h1>${esc(door.title)}</h1></div>${doorHtml(door, { hero: true })}${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
   }
 
@@ -6220,8 +6257,56 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
+  // --- References in the new-job form (before the job exists) ----------------------------------
+  function newRefsOf() { return inline && inline.kind === 'new' ? (inline.refs ||= freshNewJobRefs()) : starterRefs; }
+  function captureNewRefInputs(state) {
+    const note = app.querySelector('[name="nref_note"]');
+    const text = app.querySelector('[name="nref_text"]');
+    if (note) state.note = note.value;
+    if (text) state.text = text.value;
+  }
+  function onNewRefChange(field) {
+    const state = newRefsOf();
+    captureNewRefInputs(state);
+    if (field.name === 'nref_type') {
+      Object.assign(state, { type: field.value, file: null, fileName: '', error: '' });
+    } else if (field.name === 'nref_file') {
+      const file = field.files?.[0] || null;
+      const problem = referenceProblem(state.type, file);
+      Object.assign(state, { file: problem ? null : file, fileName: problem || !file ? '' : file.name, error: problem });
+    }
+    state.open = true;
+    render();
+  }
+  // Move what is in the control onto the list. Returns false, with the problem shown, when it cannot go.
+  function queueNewRef(state) {
+    captureNewRefInputs(state);
+    if ((state.items || []).length >= NEW_JOB_REFERENCES_MAX) { state.error = `Add up to ${NEW_JOB_REFERENCES_MAX} references now; the rest can go on the job page.`; return false; }
+    const checked = newJobReferenceItem(state);
+    if (checked.error) { state.error = checked.error; return false; }
+    state.items = [...(state.items || []), checked.item];
+    Object.assign(state, { file: null, fileName: '', text: '', note: '', error: '' });
+    return true;
+  }
+  // The wire shape of every listed reference: files to the asset store (inline when small), text inline. Done once per item.
+  async function encodeNewRefs(state) {
+    let assets = null;
+    if (artifactMode() && globalThis.claude?.use) {
+      try { assets = await globalThis.claude.use('assets'); } catch { assets = null; }
+    }
+    const out = [];
+    for (const item of state.items) {
+      item.encoded ||= await encodeReferenceUpload(assets, { type: item.type, file: item.file, text: item.text, note: item.note });
+      out.push(item.encoded);
+    }
+    return out;
+  }
+  app.addEventListener('toggle', event => {
+    if (event.target?.matches?.('details.new-refs')) newRefsOf().open = event.target.open;
+  }, true);
   app.addEventListener('input', event => {
     const name = event.target?.name;
+    if (name === 'nref_note' || name === 'nref_text') { captureNewRefInputs(newRefsOf()); return; }
     if (name !== 'ref_note' && name !== 'ref_text') return;
     const project = currentRefProject();
     if (project) captureRefInputs(refStateFor(project));
@@ -6229,10 +6314,13 @@ if (typeof document !== 'undefined') {
   app.addEventListener('change', event => {
     const name = event.target?.name;
     if (name === 'ref_type' || name === 'ref_file') onRefChange(event.target);
+    if (name === 'nref_type' || name === 'nref_file') onNewRefChange(event.target);
   });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
-    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action]');if(!target)return;
+    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-nref-action],[data-nref-remove]');if(!target)return;
+    if(target.dataset.nrefAction==='add'){const state=newRefsOf();state.open=true;queueNewRef(state);render();return;}
+    if(target.dataset.nrefRemove!==undefined){const state=newRefsOf();state.items=(state.items||[]).filter((_,index)=>String(index)!==target.dataset.nrefRemove);state.error='';render();return;}
     if(target.dataset.refAction==='send'){const refProject=currentRefProject();if(refProject)void submitReference(refProject);return;}
     if(target.dataset.publishToggle!==undefined){
       const key=target.dataset.publishToggle;
@@ -6568,6 +6656,12 @@ if (typeof document !== 'undefined') {
         return;
       }
       active.fieldErrors = null;
+      // A reference still sitting in the control when Send is pressed goes with the job, as if it had been added.
+      const pending = active.refs;
+      if (pending && (pending.file || (pending.type === 'caption' && String(pending.text || '').trim())) && !queueNewRef(pending)) {
+        pending.open = true; active.error = ''; render();
+        return;
+      }
     }
     const requestId = active.requestId ||= randomId(globalThis);
     const operation = active.kind === 'onboard' ? 'onboard_brand' : 'create_job';
@@ -6580,6 +6674,7 @@ if (typeof document !== 'undefined') {
     active.operation = operation; active.args = args;
     active.values = values; active.pendingName = values.name; active.busy = true; active.error = ''; active.declined = false; render();
     try {
+      if (active.kind !== 'onboard' && active.refs?.items?.length) args.references = await encodeNewRefs(active.refs);
       const result = await transport.call(operation, args);
       active.busy = false;
       if (result?.status && result.status !== 'applied' && !result.brand && !result.jobId) {
@@ -6605,6 +6700,7 @@ if (typeof document !== 'undefined') {
         return;
       }
       stopRequestWatch(active);
+      if (active.refs === starterRefs) starterRefs = freshNewJobRefs();
       inline = null;
       notify(result?.message || 'Saved to your workspace.');
       await refresh();
@@ -7485,7 +7581,7 @@ if (typeof document !== 'undefined') {
     if (event.target.id === 'inline-form') { void submitInline(event); return; }
     // The Inbox starter hands what was typed to the same composer the home page shows: it becomes the open draft, sends from
     // there, and shows its progress or any problem in that card.
-    if (event.target.id === 'starter-form') { starterValues = {}; inline = newJobDraft(); void submitInline(event); return; }
+    if (event.target.id === 'starter-form') { starterValues = {}; inline = newJobDraft(); inline.refs = starterRefs; void submitInline(event); return; }
     if (event.target.id === 'intake-form') { event.preventDefault(); void submitIntake(event.target); return; }
     if (event.target.dataset?.inboxForm !== undefined) {
       event.preventDefault();

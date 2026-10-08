@@ -127,6 +127,8 @@ Never re-ask for a link or a file the brief already gives.
 
 References and supporting material are never required to start a job; a brief with none of them is still complete.
 
+When the job came from a board `create_job` request that carried `references`, they are already saved in the job's `inputs/references/manifest.json`. Call `pipeline_references_list` for the job before you plan or write the brief, use each entry by its `type` as the social-campaign skill describes, and never ask the person to send those files again.
+
 Use a new stable request ID for this create attempt.
 
 A retry with the same request ID must use the same brand and title.

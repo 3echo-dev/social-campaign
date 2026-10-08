@@ -2067,7 +2067,22 @@ function boardJobFields(value) {
 
 // A new job request carries exactly these fields. A product photo never travels with it (a request can never carry a
 // local path), so `photo` is dropped on the way in; anything else is refused before the request is saved or claimed.
-const CREATE_JOB_FIELDS = new Set(['requestId', 'workspaceId', 'title', 'brief', 'brand', 'brandName', 'sourceRefs', 'kind', 'job']);
+const CREATE_JOB_FIELDS = new Set(['requestId', 'workspaceId', 'title', 'brief', 'brand', 'brandName', 'sourceRefs', 'kind', 'job', 'references']);
+// References the person added in the new-job form (pictures, video, audio, caption text, add-ons). Each is the same shape
+// as an add_reference request's reference and is saved into the new job's own folder once the job exists.
+export const JOB_FORM_REFERENCES_MAX = 8;
+
+// Checked when the request is saved (shape only while a file is still in the asset store) and again, with the bytes, before
+// the job is created, so a bad reference refuses the whole request and no half-made job is left behind.
+function checkJobReferences(list, { strict = false } = {}) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new TypeError('The references must be a list.');
+  if (list.length > JOB_FORM_REFERENCES_MAX) throw new Error(`Add up to ${JOB_FORM_REFERENCES_MAX} references when starting a job. The rest can be added on the job page.`);
+  return list.map(reference => {
+    const hasBytes = typeof reference?.dataBase64 === 'string' && reference.dataBase64 || typeof reference?.path === 'string' && reference.path;
+    return checkReference(reference, { shapeOnly: !strict && !hasBytes });
+  });
+}
 const TITLE_LIMIT = 200;
 const BRIEF_LIMIT = 6000;
 const withoutPhoto = args => (plainObject(args) ? Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'photo')) : args);
@@ -2090,6 +2105,7 @@ function createJobFields(args, root) {
     if (args[key].length > limit) throw new Error(`Keep the ${key} to ${limit} characters or fewer.`);
   }
   if (args.brand !== undefined && args.brand !== null && typeof args.brand !== 'string') throw new TypeError('The brand must be text.');
+  checkJobReferences(args.references);
   const job = boardJobFields(args.job) || {};
   // The pipeline is always chosen: by Claude in the job fields, or by the request itself. It is normalised and written back.
   const raw = job.kind ?? args.kind;
@@ -2147,11 +2163,21 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     return result;
   }
   if(operation==='create_job') {
+    const {requestedBy,...jobArgs}=args;
+    args=jobArgs;
     const job=createJobFields(args,root);
+    checkJobReferences(args.references,{strict:true});
     const result=runtime.createJob({root,brand:args.brand,requestId:args.requestId,title:args.title,brief:args.brief,...(job?{job}:{}),ownerUserId:null,ownerEmail:null});
     const brand=result.brand||args.brand;
+    // The form's references go into the new job's own folder before Claude is woken, so intake and the brief see them from the start.
+    const saved=[];
+    if(Array.isArray(args.references)&&args.references.length) {
+      const made=facts.jobAt(root,String(brand||'').trim(),String(result.jobId||'').trim());
+      if(!made) throw new Error('The new job could not be found to save its references.');
+      args.references.forEach((reference,index)=>saved.push(addReference({jobDir:made.dir,reference,requestId:`${args.requestId}-ref${index+1}`,by:requestedBy}).reference));
+    }
     saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand,jobId:result.jobId},source:'local'});
-    return {...result,jobId:result.jobId,brand,message:'Job saved. Your Claude session can now continue intake.'};
+    return {...result,jobId:result.jobId,brand,...(saved.length?{referenceCount:saved.length}:{}),message:saved.length?`Job saved with ${saved.length === 1 ? 'one reference' : saved.length + ' references'}. Your Claude session can now continue intake.`:'Job saved. Your Claude session can now continue intake.'};
   }
   if(operation==='continue_job') {
     runtime.readJobSnapshot({root,brand:args.brand,jobId:args.jobId});
@@ -2646,7 +2672,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   // or invalid answer leaves the request unclaimed and nothing written: decline it
   // with the reason and the board shows the current questions again.
   if(record.operation==='update_intake') validateIntakeUpdate({root,brand:record.args?.brand,jobId:record.args?.jobId,expectedRevision:record.args?.expectedRevision,patch:record.args?.patch});
-  if(record.operation==='create_job') createJobFields(record.args, root);
+  if(record.operation==='create_job') { createJobFields(record.args, root); checkJobReferences(record.args.references, { strict: true }); }
   if(record.operation==='answer_question') validateBoardAnswer(root,record.args);
   // A post answer or mark that cannot be taken yet (the wait has not passed, the post is not waiting) is checked before the
   // claim, so the request stays unclaimed and can be declined with the reason.
@@ -2662,7 +2688,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
     ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
     : record.operation==='answer_question'
       ? answeredQuestion(root,record)
-      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
+      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'||record.operation==='create_job'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
   catch(error) {
     const next = {
       ...record,

@@ -109,6 +109,10 @@ A reference the person added on the job page (`add_reference`, `args.reference`)
 For `asset`, call the Artifact tool's `read` action with `path` set to `args.reference.assetId` to save it to a local file, and pass `reference.path` as that saved path (dropping `assetId`) to `pipeline_board_request_land`.
 For `upload`, decode those bytes to a local file yourself first; never type or re-key them.
 Then apply with `pipeline_board_request_apply` like any other request, delete the transit copy from the artifact's asset store the same way as the logo's, and publish the workspace projection.
+A `create_job` request can carry `args.references`, a list of up to 8 references the person added in the new-job form, each shaped exactly like `add_reference`'s `reference`.
+Land each one the same way before landing the request: for `asset`, save it with the Artifact tool's `read` action using `path` set to its `assetId` and put the saved path in that reference's `path` (dropping `assetId`); for `upload`, decode the bytes to a local file first; `text` needs nothing.
+Leave `references` in `args` otherwise unchanged, then apply once: the server checks every reference before the job exists (a bad one refuses the whole request, so tell the person the server's plain line and decline it), then saves them into the new job's `inputs/references/` and manifest, and reports how many it saved.
+Delete each transit copy afterwards, as above.
 The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
 If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
 
