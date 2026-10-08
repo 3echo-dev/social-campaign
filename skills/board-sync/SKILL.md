@@ -113,6 +113,7 @@ A `create_job` request can carry `args.references`, a list of up to 8 references
 Land each one the same way before landing the request: for `asset`, save it with the Artifact tool's `read` action using `path` set to its `assetId` and put the saved path in that reference's `path` (dropping `assetId`); for `upload`, decode the bytes to a local file first; `text` needs nothing.
 Leave `references` in `args` otherwise unchanged, then apply once: the server checks every reference before the job exists (a bad one refuses the whole request, so tell the person the server's plain line and decline it), then saves them into the new job's `inputs/references/` and manifest, and reports how many it saved.
 Delete each transit copy afterwards, as above.
+An `add_reference` request can also carry `to` (the agent chat the person sent it from, which then shows it as a chip) and `questionId` (an open question posted with `wantsUpload`, which the apply answers for you); land and apply it exactly as above, and do not answer that question again by hand.
 The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
 If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
 

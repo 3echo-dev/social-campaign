@@ -42,10 +42,11 @@ export const questionTools = [
     text: { ...string, maxLength: QUESTION_TEXT_LIMIT, description: `The question in plain words, at most ${QUESTION_TEXT_LIMIT} characters.` },
     options: { type: 'array', maxItems: QUESTION_OPTION_LIMIT, items: { ...string, maxLength: OPTION_TEXT_LIMIT }, description: `Up to ${QUESTION_OPTION_LIMIT} short answer buttons, each at most ${OPTION_TEXT_LIMIT} characters.` },
     allowText: { type: 'boolean', description: 'Whether the board also offers a typed answer. Defaults to true.' },
+    wantsUpload: { type: 'object', properties: { type: { type: 'string', enum: ['picture', 'video', 'audio', 'caption', 'addon'], description: 'What to ask for: picture, video, audio, caption (text) or addon (any other file). Defaults to picture.' } }, additionalProperties: false, description: 'Pass this when the question asks the person for a photo, clip, audio or other file (needs jobId): the card then shows an upload control, the file is saved as a reference on the job, and the question is answered. Keep any options you also give, such as reusing an earlier file.' },
     inChat: { type: 'boolean', description: 'True for a confirmation the person must give in the chat: shown with no buttons. Defaults to false.' },
   }, ['text'], (args, { workspace }) => {
     const root = local(workspace);
-    const question = askQuestion({ root, brand: args.brand, jobId: args.jobId, text: args.text, options: args.options, allowText: args.allowText, inChat: args.inChat });
+    const question = askQuestion({ root, brand: args.brand, jobId: args.jobId, text: args.text, options: args.options, allowText: args.allowText, inChat: args.inChat, wantsUpload: args.wantsUpload });
     return { questionId: question.questionId, documents: documentsFor(root, question) };
   }),
   tool('pipeline_board_answer', `Record the answer the person gave in chat to a question posted with pipeline_board_ask, so the board stops asking it. Pass choice when they picked one of its options, text for anything else they said (at most ${ANSWER_TEXT_LIMIT} characters). A question already answered on the board returns that saved answer instead, never an error: act on the saved answer. Returns the question and documents, the board documents to write.`, {

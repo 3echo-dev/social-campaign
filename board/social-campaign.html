@@ -1311,6 +1311,10 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .new-refs>summary{cursor:pointer;font-size:13px}
 .new-refs-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
 .new-refs-body .ab-chips li{display:flex;align-items:center;gap:8px}
+.cmp-row button.attach{flex:none;width:40px;min-height:40px;padding:0;border-radius:50%;background:transparent;color:var(--dim)}
+.ab-attach{padding:10px 0 4px}
+.inbox-upload{margin-top:8px}
+.ab-chip.att{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line2);margin-top:6px}
 
 </style>
 </head>
@@ -2074,23 +2078,54 @@ export async function encodeReferenceUpload(assets, { type, file, text, note }) 
 }
 // The control that adds one reference: what it is, the file or the typed text, and a note. The job page's panel and the
 // new-job form both use it; `prefix` only keeps their field names and ids apart ('ref' on the job page, 'nref' in the form).
-function referenceControl(state = {}, { prefix = 'ref', busy = false } = {}) {
+function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = '' } = {}) {
   const type = REFERENCE_TYPES.find(item => item.id === (state.type || 'picture')) || REFERENCE_TYPES[0];
   const isText = type.id === 'caption';
-  const fileInput = `<input type="file" id="${prefix}-file" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
+  const fileId = `${prefix}-file${idKey ? `-${idKey}` : ''}`;
+  const fileInput = `<input type="file" id="${fileId}" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
   const picked = state.fileName ? `<span class="muted">${esc(state.fileName)}</span>` : `<span class="muted">${esc(type.hint)}</span>`;
   const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
-  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${prefix}-file">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
+  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
 }
 // The References panel on a job page: what is saved, and the control that adds more.
-export function referencesPanel(project, state = {}, { openKeys = new Set() } = {}) {
+export function referencesPanel(project, state = {}, { openKeys = new Set(), open: forceOpen = false } = {}) {
   const refs = Array.isArray(project?.references) ? project.references : [];
   const busy = Boolean(state.busy);
   const chips = refs.map(ref => `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note ? ` · ${esc(truncateText(ref.note, 60))}` : ''}</small></button></li>`).join('');
   const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
   const form = `<div class="ref-form">${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
-  const open = openKeys.has('more:refs') || busy || Boolean(state.error);
+  const open = forceOpen || openKeys.has('more:refs') || busy || Boolean(state.error);
   return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">Add a reference</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${list}${form}</div></details>`;
+}
+
+// The file kind a picked file is, as the reference type that fits it best.
+const REFERENCE_TYPE_OF_KIND = Object.freeze({ image: 'picture', video: 'video', audio: 'audio', text: 'caption', document: 'addon' });
+// Keep the chosen type when it accepts the file; else the type that fits the file (a picture by default, a video for a clip).
+export function referenceTypeFor(typeId, file) {
+  const type = REFERENCE_TYPES.find(item => item.id === typeId);
+  const kind = file ? referenceKindOf(file.name) : null;
+  if (!kind || (type && type.kinds.includes(kind))) return type ? type.id : 'picture';
+  return REFERENCE_TYPE_OF_KIND[kind] || 'addon';
+}
+
+// The paperclip in the agent chat composer, and the same control below it: pick a file, check its type, add a note, send.
+const PAPERCLIP = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>';
+export function chatAttachment(state = {}, agentName = 'Director') {
+  const busy = Boolean(state.busy);
+  const open = Boolean(state.open || state.error || busy);
+  const button = `<button type="button" class="attach icon" data-aref-action="toggle" aria-label="Attach a file" aria-expanded="${open ? 'true' : 'false'}" title="Attach a file" ${busy ? 'disabled' : ''}>${PAPERCLIP}</button>`;
+  const panel = open
+    ? `<div class="ab-attach ref-form" data-aref><p class="field-hint">Send ${esc(agentName)} a picture, clip, audio or text. It is saved on this job.</p>${referenceControl(state, { prefix: 'aref', busy })}<div class="ref-actions"><button type="button" class="primary" data-aref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`
+    : '';
+  return { button, panel };
+}
+
+// The upload control inside a question card, when the Director asked for a file.
+export function questionUpload(item, state = {}) {
+  const busy = Boolean(state.busy);
+  const shown = { ...state, type: state.type || item?.wantsUpload?.type || 'picture' };
+  const key = String(item?.questionId || '');
+  return `<div class="inbox-upload ref-form" data-qref="${esc(key)}">${referenceControl(shown, { prefix: 'qref', busy, idKey: key })}<div class="ref-actions"><button type="button" class="primary" data-qref-send="${esc(key)}" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
 }
 
 // The same control inside the new-job form, before the job exists: each one the person adds waits in a short list and is
@@ -4983,9 +5018,10 @@ function questionCard(item, state = {}, signal = {}, index = 0) {
   const box = typing
     ? `<form class="inbox-answer" data-inbox-form="${esc(key)}" novalidate><label class="visually-hidden" for="${id}">Your answer</label><textarea id="${id}" name="answer" maxlength="${ANSWER_LIMIT}" placeholder="Your answer">${esc(state.draft || '')}</textarea><div class="inbox-actions">${options.length ? `<button type="button" class="quiet" data-inbox-cancel="${esc(key)}">Cancel</button>` : ''}<button type="submit" class="primary">Send</button></div></form>`
     : '';
+  const upload = item.wantsUpload && !locked ? questionUpload(item, state.upload || {}) : '';
   const sent = locked && state.text ? `<p class="inbox-sent">${esc(`"${truncateText(state.text, 160)}"`)}</p>` : '';
   const done = state.answered ? '<p class="inbox-note" role="status">Claude has your answer.</p>' : inboxStatus(state, signal);
-  return `${buttons}${link}${box}${sent}${inboxError(state)}${done}`;
+  return `${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
 }
 
 function sampleThumb(doc) {
@@ -5887,7 +5923,7 @@ function messageBubbles(agent) {
     const status = agentMessageStatus(agent, message);
     const reply = message.status === 'answered' ? agentPlain(message.reply) : '';
     const sent = [status.word, status.note, agentTime(message.at)].filter(Boolean).join(' · ');
-    return `<div class="msg-r me" data-status="${esc(message.status === 'answered' || message.status === 'delivered' ? message.status : 'sent')}"><div class="bub"><p>${esc(truncateText(message.text, 600))}</p></div><span class="msg-t">${esc(sent)}</span></div>${reply ? `<div class="msg-r a"><div class="bub"><p>${esc(reply)}</p></div><span class="msg-t">${esc(`${name}${message.repliedAt ? ` · ${agentTime(message.repliedAt)}` : ''}`)}</span></div>` : ''}`;
+    return `<div class="msg-r me" data-status="${esc(message.status === 'answered' || message.status === 'delivered' ? message.status : 'sent')}"><div class="bub"><p>${esc(truncateText(message.text, 600))}</p>${message.attachment?.name ? `<span class="ab-chip att">${esc(truncateText(message.attachment.name, 40))}<small>${esc(message.attachment.label || 'Reference')}</small></span>` : ''}</div><span class="msg-t">${esc(sent)}</span></div>${reply ? `<div class="msg-r a"><div class="bub"><p>${esc(reply)}</p></div><span class="msg-t">${esc(`${name}${message.repliedAt ? ` · ${agentTime(message.repliedAt)}` : ''}`)}</span></div>` : ''}`;
   }).join('');
 }
 
@@ -5907,10 +5943,11 @@ const gatePicture = gate => STEP_IMG[GATE_PICTURES[gate]] || STEP_IMG.package;
 
 function agentComposer(agent, { about = 'the job', ui = {}, signal = {} } = {}) {
   const name = agentNameOf(agent);
+  const attach = chatAttachment(ui.attach || {}, name);
   const draft = ui.draft || '';
   const hint = isDirectorAgent(agent) ? 'The Director answers here.' : `The Director passes this on at the ${name}'s next step.`;
   const send = ui.send || {};
-  return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}"><div class="cmp-row"><label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div><div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
+  return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}"><div class="cmp-row">${attach.button}<label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div>${attach.panel}<div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
 }
 
 // The agent's own tasks on this job, in plan order, at the top of its chat. A task that began (done, working or waiting) opens to its
@@ -7013,7 +7050,8 @@ if (typeof document !== 'undefined') {
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
-    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys });
+    const wantsFile = needItems.some(item => item.kind === 'question' && item.wantsUpload && !item.closing);
+    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, open: wantsFile });
     const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
@@ -7046,7 +7084,7 @@ if (typeof document !== 'undefined') {
       if (need && !need.includes('class="in-need is-idle"')) needTop = `<div class="need-top">${need}</div>`;
       side = agentInbox(box.all, { now, need, needText: railParts && top ? railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
-    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${referencesBox}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${referencesBox}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
@@ -7624,12 +7662,79 @@ if (typeof document !== 'undefined') {
     }
     return out;
   }
+  // --- Files from the chat paperclip and from a question that asks for one ----------------------
+  function uploadStateFor(prefix, field) {
+    if (prefix === 'aref') { const project = current(); return project ? (agentBoxState(project).attach ||= freshNewJobRefs()) : null; }
+    const id = field?.closest?.('[data-qref]')?.dataset.qref;
+    return id ? (questionState(id).upload ||= { ...freshNewJobRefs(), type: inboxQuestions.get(id)?.wantsUpload?.type || 'picture' }) : null;
+  }
+  function onUploadFieldChange(prefix, field) {
+    const state = uploadStateFor(prefix, field);
+    if (!state) return;
+    const scope = field.closest('[data-qref],[data-aref]') || app;
+    const note = scope.querySelector(`[name="${prefix}_note"]`);
+    const text = scope.querySelector(`[name="${prefix}_text"]`);
+    if (note) state.note = note.value;
+    if (text) state.text = text.value;
+    if (field.name === `${prefix}_type`) {
+      Object.assign(state, { type: field.value, file: null, fileName: '', error: '', typeTouched: true });
+    } else {
+      const file = field.files?.[0] || null;
+      if (file && !state.typeTouched) state.type = referenceTypeFor(state.type, file);
+      const problem = referenceProblem(state.type, file);
+      Object.assign(state, { file: problem ? null : file, fileName: problem || !file ? '' : file.name, error: problem });
+    }
+    state.message = '';
+    render();
+  }
+  // Send the file as an add_reference request: from the chat (shown there as a chip) or as the answer to a question that asked for it.
+  async function sendUploadedReference(prefix, field) {
+    if (!transport) return;
+    const state = uploadStateFor(prefix, field);
+    const project = current();
+    const questionId = prefix === 'qref' ? field.closest('[data-qref]')?.dataset.qref : null;
+    const item = questionId ? inboxQuestions.get(questionId) : null;
+    const ownerJob = item ? viewOf(item.jobId) : project;
+    if (!state || !ownerJob || state.busy) return;
+    const scope = field.closest('[data-qref],[data-aref]') || app;
+    const note = scope.querySelector(`[name="${prefix}_note"]`);
+    const text = scope.querySelector(`[name="${prefix}_text"]`);
+    if (note) state.note = note.value;
+    if (text) state.text = text.value;
+    const checked = newJobReferenceItem(state);
+    if (checked.error) { state.error = checked.error; render(); return; }
+    Object.assign(state, { busy: true, error: '', message: '' });
+    render();
+    try {
+      let assets = null;
+      if (artifactMode() && globalThis.claude?.use) {
+        try { assets = await globalThis.claude.use('assets'); } catch { assets = null; }
+      }
+      const reference = await encodeReferenceUpload(assets, { type: state.type, file: state.file, text: state.text, note: state.note });
+      const requestId = randomId(globalThis);
+      const args = { requestId, brand: ownerJob.brand, jobId: ownerJob.jobId, expectedRevision: ownerJob.revision, reference, ...(ownerJob.title ? { title: ownerJob.title } : {}), ...(prefix === 'aref' ? { to: agentBoxState(ownerJob).chat || agentBoxState(ownerJob).to || 'producer' } : {}), ...(questionId ? { questionId } : {}) };
+      const result = await transport.call('add_reference', args);
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', typeTouched: false, open: false, message: result?.message || 'Sent. Claude will save it to this job.' });
+      if (questionId) state.type = item?.wantsUpload?.type || 'picture';
+      notify(result?.status === 'requested' ? 'File sent. Claude will save it to this job.' : (result?.message || 'File saved.'));
+      render();
+      await refresh();
+    } catch (e) {
+      Object.assign(state, { busy: false, error: e.message || 'Could not send that file.' });
+      render();
+    }
+  }
   app.addEventListener('toggle', event => {
     if (event.target?.matches?.('details.new-refs')) newRefsOf().open = event.target.open;
   }, true);
   app.addEventListener('input', event => {
     const name = event.target?.name;
     if (name === 'nref_note' || name === 'nref_text') { captureNewRefInputs(newRefsOf()); return; }
+    if (name === 'aref_note' || name === 'aref_text' || name === 'qref_note' || name === 'qref_text') {
+      const state = uploadStateFor(name.startsWith('aref') ? 'aref' : 'qref', event.target);
+      if (state) state[name.endsWith('note') ? 'note' : 'text'] = event.target.value;
+      return;
+    }
     if (name !== 'ref_note' && name !== 'ref_text') return;
     const project = currentRefProject();
     if (project) captureRefInputs(refStateFor(project));
@@ -7638,10 +7743,15 @@ if (typeof document !== 'undefined') {
     const name = event.target?.name;
     if (name === 'ref_type' || name === 'ref_file') onRefChange(event.target);
     if (name === 'nref_type' || name === 'nref_file') onNewRefChange(event.target);
+    if (name === 'aref_type' || name === 'aref_file') onUploadFieldChange('aref', event.target);
+    if (name === 'qref_type' || name === 'qref_file') onUploadFieldChange('qref', event.target);
   });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
-    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-nref-action],[data-nref-remove]');if(!target)return;
+    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send]');if(!target)return;
+    if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
+    if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
+    if(target.dataset.qrefSend!==undefined){void sendUploadedReference('qref',target);return;}
     if(target.dataset.nrefAction==='add'){const state=newRefsOf();state.open=true;queueNewRef(state);render();return;}
     if(target.dataset.nrefRemove!==undefined){const state=newRefsOf();state.items=(state.items||[]).filter((_,index)=>String(index)!==target.dataset.nrefRemove);state.error='';render();return;}
     if(target.dataset.refAction==='send'){const refProject=currentRefProject();if(refProject)void submitReference(refProject);return;}

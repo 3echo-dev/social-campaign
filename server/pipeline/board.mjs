@@ -11,7 +11,7 @@ import { UserFacingError } from '../lib/errors.mjs';
 import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { addReference, checkReference, referenceSummaries } from './references.mjs';
-import { answerQuestion, listQuestions, plainWordsProblem, validateAnswer } from './questions.mjs';
+import { answerQuestion, closeUploadQuestion, listQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
 import { assertContentQc } from './label-qc.mjs';
@@ -22,7 +22,8 @@ import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from '.
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
 import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
-import { PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { REFERENCE_TYPES } from './references.mjs';
 import { finishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
@@ -972,6 +973,7 @@ function questionItem(question, place) {
   if (question.inChat) return { kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: false, inChat: true, need: NEEDS_ANSWER_IN_CHAT, questionId: question.questionId, options: [], allowText: false, at: inboxAt(question.askedAt) };
   return {
     kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: true,
+    ...(question.wantsUpload ? { wantsUpload: { type: question.wantsUpload.type } } : {}),
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,
     at: inboxAt(question.askedAt),
   };
@@ -1497,7 +1499,8 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
 
 // A reference upload: exactly these fields, a job that exists, a known type and a file kind that type accepts.
 // The bytes are checked again when the request is applied; here only what a request can show without them.
-const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision']);
+// `to` says the reference came from that agent's chat (the chat then shows it as a chip); `questionId` is the open question that asked for the file.
+const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision', 'to', 'questionId']);
 
 function validateAddReference(root, args) {
   if (!plainObject(args)) throw new Error('Say which job this is for.');
@@ -1505,6 +1508,19 @@ function validateAddReference(root, args) {
   if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
   if (typeof args.brand !== 'string' || typeof args.jobId !== 'string' || !facts.jobAt(root, args.brand.trim(), args.jobId.trim())) throw new Error('That job could not be found for that brand.');
   checkReference(args.reference, { shapeOnly: !(typeof args.reference?.dataBase64 === 'string' && args.reference.dataBase64) && !args.reference?.path });
+  const job = facts.jobAt(root, args.brand.trim(), args.jobId.trim());
+  if (args.to !== undefined) {
+    if (typeof args.to !== 'string') throw new Error('Choose who the file is for.');
+    const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
+    const roster = rosterOf({ rows: snapshot.plan?.rows, route: snapshot.route });
+    if (!roster.includes(args.to)) throw new Error('That agent is not part of this job.');
+  }
+  if (args.questionId !== undefined) {
+    let question = null;
+    try { question = readQuestion({ root, questionId: args.questionId }); } catch { /* reported below */ }
+    if (!question || question.jobId !== job.jobId || !question.wantsUpload) throw new Error('That question is not asking for a file on this job.');
+    if (question.status === 'withdrawn') throw new Error('This question was taken back, so it no longer needs a file.');
+  }
 }
 
 // The deliverable the way the person sees it ("the Instagram Reel"), never its id.
@@ -2202,6 +2218,13 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const job=facts.jobAt(root,String(args.brand||'').trim(),String(args.jobId||'').trim());
     if(!job) throw new Error('That job could not be found for that brand.');
     const {reference,added}=addReference({jobDir:job.dir,reference:args.reference,requestId:args.requestId,by:args.requestedBy});
+    const shown=reference.originalName||reference.label;
+    if(args.to) {
+      const said=`Added a reference: ${reference.label.toLowerCase()} "${shown}"${reference.note?` (${reference.note})`:''}. It is saved on the job.`;
+      const { roster } = checkAgentMessage(root,{requestId:args.requestId,brand:args.brand,jobId:args.jobId,agent:args.to,text:said,workspaceId:runtime.readWorkspace({root}).workspaceId});
+      saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.to,text:said.slice(0,MESSAGE_TEXT_LIMIT),requestId:`${args.requestId}-chat`,roster,attachment:{label:reference.label,name:shown,type:reference.type}});
+    }
+    if(args.questionId) closeUploadQuestion({root,questionId:args.questionId,jobId:job.jobId,summary:`Added ${reference.label.toLowerCase()}: ${shown}`});
     if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {jobId:job.jobId,reference,added,message:`${reference.label} saved to this job. Your Claude session can now use it.`};
   }

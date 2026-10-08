@@ -263,7 +263,11 @@ Look for the product's own page on the brand's official website, with web search
 
 When it returns attached, call pipeline_job_read and continue from the refreshed, no longer blocked route.
 
-When it returns not_found, ask the one plain question, "Can you add a photo of the product?", the same as any other missing brief field.
+When it returns not_found, first look for a photo the brand already confirmed on an earlier job: read the brand's earlier jobs with `pipeline_job_read` and look for a `productAsset` whose rights were confirmed (`ownedByBrand` true, or the person's own confirmation), and the brand's `inputs/<brand>/product-*` files that match it.
+When there is one for the same product or character, offer it instead of asking for a new upload: `pipeline_board_ask` with the job's `jobId`, the question "Use the photo from the last job?", the options "Use it" and "Upload a new one", and `wantsUpload` `{type: "picture"}` so the card also shows the upload control.
+On "Use it", attach that earlier file with `pipeline_product_photo_attach` (its saved path, `ownedByBrand` as it was confirmed before) and continue; on an upload, the picture arrives as a reference on the job (see board-sync), so attach it from the job's references.
+Only when the brand has no earlier confirmed photo, ask the one plain question, "Can you add a photo of the product?", as `pipeline_board_ask` with `wantsUpload` `{type: "picture"}`, the same as any other missing brief field.
+Whenever a question asks the person for a photo, a clip, audio or any file, pass `wantsUpload`, so the person can add it right in that card or from the paperclip in this chat, and never tell them to hunt for the Add a reference panel.
 
 The person can still replace the picture on the board at any time.
 

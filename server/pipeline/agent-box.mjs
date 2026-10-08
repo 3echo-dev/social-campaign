@@ -837,7 +837,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
     const activity = isDirector
       ? [...directorActivity({ dir: folder, decisions: project.decisions }), ...messageActivity(sent, agent)]
       : [...runs.flatMap(runActivity), ...messageActivity(sent, agent)];
-    const shown = sent.slice(-MESSAGES_SHOWN).map(({ id, text: body, at: sentAt, status, deliveredAt, reply }) => ({ id, text: body, at: sentAt, status, deliveredAt, reply }));
+    const shown = sent.slice(-MESSAGES_SHOWN).map(({ id, text: body, at: sentAt, status, deliveredAt, reply, attachment }) => ({ id, text: body, at: sentAt, status, deliveredAt, reply, ...(attachment ? { attachment } : {}) }));
     const model = isDirector ? eventModel(snapshot?.events) : (shortModel(registry.get(agent)?.model) ?? shortModel(runs.map(run => run.model).filter(Boolean).pop()));
     const card = {
       id: agent,

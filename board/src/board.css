@@ -1301,3 +1301,7 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .new-refs>summary{cursor:pointer;font-size:13px}
 .new-refs-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
 .new-refs-body .ab-chips li{display:flex;align-items:center;gap:8px}
+.cmp-row button.attach{flex:none;width:40px;min-height:40px;padding:0;border-radius:50%;background:transparent;color:var(--dim)}
+.ab-attach{padding:10px 0 4px}
+.inbox-upload{margin-top:8px}
+.ab-chip.att{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line2);margin-top:6px}
