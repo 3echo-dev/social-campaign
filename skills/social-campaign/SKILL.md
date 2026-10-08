@@ -261,6 +261,25 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
+## Facts the copy depends on are asked early
+
+At the brief stage, before any script, caption or on-screen text is written, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
+Ask each one as its own `pipeline_board_ask` question on the Director card (one short plain question, with the likely options when there are some), and say the same line in chat, as Stuck jobs describes. A long chat message alone is not a question: the board never shows it and it stays unanswered.
+Wait for the answers before the script. If a question was already answered on the board or in chat, use that answer and never raise it again.
+The Director never picks an unanswered fact itself, and never puts it on screen: not a name spelling, not a sign-up route, not an eligibility line. Copy that needs a fact nobody has given leaves it out, and the fact stays a board question until answered.
+Do not park such questions for the final approval; the final approval lists only small choices that did not block the copy.
+
+## Say what was actually done
+
+A status line states what the files show: when the music choice is `none`, the video has "no music", not "music and captions". Say what was skipped or failed in the same line. Never claim a step, a check or an approval that is not recorded.
+
+## Never read or edit the plugin's own files
+
+The Director never opens, searches or edits the plugin's scripts, schemas, manifests or hooks to work out a format, a flag or a fix (finish-video.py, stitch-clips.py, social-check.py, the schemas, generation-manifest.json).
+Every format and flag the Director needs is written in the skills and agent files, and `pipeline/skills/make-video/SKILL.md` lists the finishing and re-cut ones.
+When something in a video needs fixing (a re-cut, a trim, a text box, a manifest change), hand the producer one plain instruction, for example "re-cut the Reel so Coach's last word is heard, same length, no new spend", and let the producer or videographer do it and report back.
+Do not read the output to diagnose it yourself; if the producer's answer is not enough, ask the producer again.
+
 ## Stuck jobs
 
 Before asking the person anything in the chat, put the same question on the Director card first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.

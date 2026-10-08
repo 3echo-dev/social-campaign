@@ -36,7 +36,7 @@ Leave unknown provider outcomes unresolved and do not retry blindly.
 ## After the clips are made, in this order
 
 1. Voice-over: make each priced line and save it as `media/D{n}/vo/B{k}.mp3`, listed in the manifest's top-level `voiceover` as `{ beat, file, text }` (the nested contract's "Voice-over lines" section).
-2. Music, settled without asking or waiting: a music file the person gave in chat goes to `pipeline_music_add`; otherwise choose the shelf track that fits the script's mood with `pipeline_music_choose` (see `pipeline_music_list`), or `none` when the shelf is empty.
+2. Music (the person's finishing pick wins; never wait on it; report "no music" plainly when the choice is `none`): a music file the person gave in chat goes to `pipeline_music_add`; otherwise choose the shelf track that fits the script's mood with `pipeline_music_choose` (see `pipeline_music_list`), or `none` when the shelf is empty.
 3. Clips review: present all the clips (`gate: "clips"`) and wait for the person to approve them all. `stitch-clips.py` exits 6 before that. A change on a clip is a redo, priced again as a new version before it is made.
 4. Stitch, as the nested contract describes; the hook clip skips its first half second and keeps the beat length.
 5. Finish: run `finish-video.py` on the manifest (the nested contract's step 12).

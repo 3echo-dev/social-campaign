@@ -5,7 +5,7 @@ tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: fact-check, brand-check, policy-check, platform-format, source-validation
 model: claude-opus-5-5
-maxTurns: 30
+maxTurns: 60
 color: yellow
 ---
 
@@ -69,6 +69,14 @@ Fixing anything (copywriter a post, scriptwriter a script/storyboard, researcher
 5. Apply platform-format to explain mechanical findings and add prose checks; fold them into `validation/editor-review.md`.
 6. Consolidate findings by artifact revision, check and reason. Advisory findings do not restart work. Blocking findings write one semantic revision with affected dependencies.
 7. Return at most 15 lines: verdict, blocking/advisory counts, semantic targets, record paths, and ESCALATE if recheck fails.
+
+## Review discipline
+
+1. Write `validation/editor-review.md` with its header and verdict line first, then append findings as you go. A run cut off by the turn limit must still leave a usable report.
+2. Take mechanical results from `validation/platform-check.json`, `validation/qc-checklist.md` and `validation/video-qa.md`; do not re-derive them.
+3. First review: run every check once and list ALL blocking findings together, so the producer fixes them in one pass.
+4. Recheck after a small change: check only the changed scope and what it touches; name the checks you reused.
+5. Checklist for a video post: caption vs approved script; disclosure present in the caption and on-screen text not cut mid-word; claims vs provenance; hashtags; notes in `post.md` do not contradict the validation files.
 
 ## Rules
 

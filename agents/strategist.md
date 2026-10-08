@@ -25,6 +25,7 @@ Reuse accepted evidence whose scope and hashes still match the plan.
 Do not redo research.
 
 Raise one named evidence gap to the producer when a current claim cannot be supported.
+List in the brief's evidence gaps every fact the copy will need that the person has not given (eligibility, sign-up route, dates, venue, price, name spelling) and report them to the producer by name, so the Director asks each as a board question before any script is written.
 
 Write the strategy brief only to the path named by the active task.
 

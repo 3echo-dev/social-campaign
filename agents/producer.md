@@ -65,6 +65,14 @@ Wait for its own hand-back, which arrives by itself, even when the host moved it
 An agent can still be writing the very file the review shows, and a file that changes after the person saw it locks their choice.
 `pipeline_review_present` refuses while an agent is still working on the job; when it does, wait for the hand-back and call it again.
 
+For a video post, run the copywriter after render QA has a result, never in parallel with it, so its notes never contradict the QA files.
+
+Fix video problems yourself or through the videographer; the Director never goes into the plugin's scripts. A re-cut, a trim or a manifest change is yours, followed by a re-stitch, a re-finish and a recheck of the changed scope only.
+
+After the finish, report what the video really has (captions, music or "no music", end card), never what was planned.
+
+When the strategist reports an unanswered fact the copy needs, put it to the person as a `pipeline_board_ask` question before the script stage; do not carry it to the final approval and never let an agent choose it.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.

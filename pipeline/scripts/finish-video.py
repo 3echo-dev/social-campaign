@@ -176,6 +176,9 @@ def front_matter(path):
     return fm, m.group(2)
 
 
+DISCLOSURE_RE = re.compile(r"\b(made with ai|ai[- ](made|generated)|generated (with|by) ai|real photo of)\b", re.I)
+
+
 def cta_line(post_path):
     """The post's call to action: a cta front-matter value, else the last line of the caption."""
     fm, body = front_matter(post_path)
@@ -185,6 +188,8 @@ def cta_line(post_path):
     if not m:
         return "", fm
     lines = [l.strip() for l in m.group(1).splitlines() if l.strip() and not l.strip().startswith(("#", "{"))]
+    # The AI disclosure is the caption's last line by design. It is not a call to action and is never burned in.
+    lines = [l for l in lines if not DISCLOSURE_RE.search(l)]
     last = re.sub(r"[*_`>]", "", lines[-1]).strip() if lines else ""
     return last, fm
 
@@ -237,7 +242,10 @@ def hook_box(W, H, scale, text):
     top = int(H * 0.62) - int(24 * scale)
     band_h = min(H - top, int(330 * scale))
     im = Image.new("RGBA", (W, band_h), (0, 0, 0, 255))
-    lines = wrap(re.sub(r"\s+", " ", text).strip())[:3]
+    lines = wrap(re.sub(r"\s+", " ", text).strip())
+    if len(lines) > 3:
+        print("finish: the hook does not fit in 3 lines, so it is not burned in (nothing is cut short).", file=sys.stderr)
+        return None, top
     label = text_box("\n".join(lines), scale, W - int(2 * 60 * scale))
     if label is None:
         return None, top
@@ -263,12 +271,13 @@ def end_card(W, H, scale, logo_path, cta):
             print("finish: the logo file could not be read, so the end card has no logo.", file=sys.stderr)
     if cta:
         lines = wrap(cta)
-        if len(lines) > MAX_LINES:
-            lines = lines[:MAX_LINES]
-            lines[-1] = lines[-1][:LINE_CHARS - 3].rstrip() + "..."
-        box = text_box("\n".join(lines), scale, max_w)
-        if box:
-            parts.append(box)
+        if len(lines) > MAX_LINES or DISCLOSURE_RE.search(cta):
+            # Never cut a line short or burn the AI disclosure: it stays in the caption and the platform AI label.
+            print("finish: the call to action is too long for the end card or is the AI disclosure, so the end card shows the logo only. The disclosure stays in the caption and the platform AI label.", file=sys.stderr)
+        else:
+            box = text_box("\n".join(lines), scale, max_w)
+            if box:
+                parts.append(box)
     if not parts:
         return None
     gap = int(40 * scale)

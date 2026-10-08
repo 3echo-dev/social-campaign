@@ -39,6 +39,14 @@ End the turn: the batch waits for their yes.
 11. Only after the person has approved all the clips (the clips review): `python "${CLAUDE_PLUGIN_ROOT}/scripts/stitch-clips.py" "drafts/D{n}/generation-manifest.json"` stitches `stitch.order` and burns the on-screen text; `stitch.captions` in the manifest decides, so pass no `--captions`. It names the file to read, else the deliverable's `script.md`, then `storyboard.md` is used (its Duration and Spoken / on-screen columns, panels marked Cut skipped; with no `script.md`, plain text in that cell is read as on-screen text and quoted text as speech). An empty or `none` `stitch.captions` means no captions, and a script with no on-screen text burns none and exits 0. Exit 4 means captions were wanted but none were burned: the cut is written, the reason is printed, so say so plainly and fix the source or ask.
 12. Right after the stitch and before the logo and label check, finish the video: `python "${CLAUDE_PLUGIN_ROOT}/scripts/finish-video.py" "drafts/D{n}/generation-manifest.json"`. It keeps the stitched cut as `final-raw.mp4`, then writes the finished `final.mp4` with captions for the spoken lines, the job's music from `media/music/choice.json` (quieter under speech, skipped when it is `none` or the file is missing), a logo and call to action over the last 2 seconds, and the loudness set to -14 LUFS. The stitch's burned on-screen text stays. Anything it has no input for is skipped, so exit 0 with no captions or no music is normal. Exit 2 means there was no stitched cut to finish; exit 3 means ffmpeg or Pillow is missing; exit 5 means finishing failed. On exit 3 or 5 the plain cut stays as `final.mp4`: say in one line that the video went out without its finishing, and carry on to the logo and label check.
 
+## Formats and flags (so nobody reads the scripts)
+
+- Manifest trims, per video item: `trimToSeconds` keeps only the first N seconds of the clip; the hook clip's `headroom: { askSec, inSec, useSec }` seeks `inSec` and keeps `useSec`. To keep a spoken word from being clipped, lengthen `trimToSeconds` (or `useSec`) of that clip and shorten a neighbour's by the same amount so the total length stays the same. Only the producer edits the manifest.
+- `stitch-clips.py <manifest> [--out <file>]`; `stitch.captions` in the manifest decides the burned text, so pass no `--captions`.
+- `finish-video.py <manifest> [--out <file>] [--music <choice.json>] [--post <post.md>]` and, for a test version, `--variant <id> --hook "<text>" --cta "<text>"`. Exit 2 no cut, 3 ffmpeg or Pillow missing, 5 finishing failed.
+- The end card shows the logo and the post's `cta` (else the last caption line that is not the AI disclosure) only. The AI disclosure is never burned in: it stays in the caption and the platform AI label. A line too long for the card is left off, never shortened.
+- A re-cut after a trim redoes only the stitch, the finish and the checks of what changed (length, the trimmed clip's frames and speech). It is not a new review of the whole job.
+
 ## Rules
 
 The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
@@ -68,7 +76,8 @@ A deliverable with `talkingCharacter: true` has a person or character speaking t
 
 ## Music
 
-Before the video is finished, settle its music. Never ask the person about it and never wait on it.
+Before the video is finished, settle its music. If the finishing choice offers the person music, their pick wins; otherwise do not wait on it.
+After the finish, say what the video really has: when `media/music/choice.json` says `none`, say "no music" plainly. Never say music was added unless the choice names a file.
 
 1. If the person gave a music file in chat, call `pipeline_music_add` with `brand`, `jobId` and the file's path.
 2. Otherwise call `pipeline_music_list`. Pick the track whose title fits the script's mood and call `pipeline_music_choose` with its id and one short reason. When the shelf is empty, call it with `none`.

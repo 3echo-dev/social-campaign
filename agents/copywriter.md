@@ -26,6 +26,8 @@ Do not repeat research or provider checks.
 
 Write only the post artifacts named by the active plan.
 
+Never state in `post.md` whether video QA, a check or an approval is done, complete or incomplete: the note goes stale. Point to `validation/video-qa.md` and leave its status to it.
+
 Every claim must have a provenance reference or be marked as a user instruction.
 
 Do not call a provider, spend credits, publish, change the objective, or apply an approval.
