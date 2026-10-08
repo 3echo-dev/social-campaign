@@ -1855,7 +1855,7 @@ const REVIEW_WAITING = Object.freeze({
   preparing: 'Claude is preparing the files for this review.',
   loading: 'Loading this review...',
   syncing: 'Waiting for Claude to put this review on the board.',
-  changed: 'These files changed after they were presented. Claude will present them again.',
+  changed: 'This changed after it was shown to you. Ask Claude to show it again.',
 });
 const PLATFORM_NAMES = Object.freeze({ facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', youtube: 'YouTube' });
 const platformName = value => PLATFORM_NAMES[String(value || '').toLowerCase()] || humanize(value);
@@ -3281,6 +3281,15 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
 }
 
 /**
+ * What stands in place of a review that cannot be used yet. A file that changed after it was shown locks the pick, so that one is a
+ * notice the person is told about, not a quiet line: they need to know why nothing can be chosen and what to do.
+ */
+function waitingNote(status) {
+  const line = esc(REVIEW_WAITING[status]);
+  return status === 'changed' ? `<p class="notice review-locked" role="status"><span>${line}</span></p>` : `<p class="muted">${line}</p>`;
+}
+
+/**
  * The review panel for the job's pending decision, drawn from the job document:
  * concept cards, storyboard panels, the itemised price, the final post with its
  * media, or the posting plan, with Approve and Ask for changes.
@@ -3291,7 +3300,7 @@ export function reviewPanel(project, doc, state = {}, { docState = 'loaded', sig
   const gate = review.gate || review.reviewId;
   const status = reviewStatus(project, doc, docState);
   const ready = status === 'ready';
-  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal }) : `<p class="muted">${esc(REVIEW_WAITING[status])}</p>`;
+  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal }) : waitingNote(status);
   const headExtra = ready && gate === 'findings' ? reportDownloads(downloads) : '';
   const decided = state.busy || state.submitted || state.needsReconciliation;
   const plan = ready ? approval(gate, doc, state, recipeState, routeState, postStates) : { disabled: true, label: 'Approve', line: '' };
