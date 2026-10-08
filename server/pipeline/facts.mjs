@@ -978,6 +978,72 @@ function sampleApproved(job, key) {
   return Boolean(latest && latest.sha256 && approval.sha256 === latest.sha256);
 }
 
+// The two media reviews that sit between the sample and the finished cut. Once every storyboard picture is made the person
+// reviews all of them together (gate "pictures"), and once every clip is made they review all of those (gate "clips").
+// Each is decided by a file under approvals/ that lists the exact files shown, so a redo (a new version, a new hash) voids it.
+// Video is not made until the pictures are approved, and the clips are not joined until the clips are approved. A quote with
+// no pictures (clips made from text alone) has no pictures review; a quote with no clips has no clips review.
+export const MEDIA_REVIEWS = Object.freeze({
+  pictures: Object.freeze({ kind: 'image', file: 'approvals/pictures.json' }),
+  clips: Object.freeze({ kind: 'video', file: 'approvals/clips.json' }),
+});
+
+const slotOfKey = key => {
+  const parsed = parseJobKey(key);
+  return parsed ? `${parsed.deliverable}|${parsed.item}` : null;
+};
+const sameKey = (a, b) => (canonicalJobKey(a) || a) === (canonicalJobKey(b) || b);
+
+/**
+ * The newest priced item of each picture (kind image) or clip (kind video) slot and the file it landed as. complete: every slot has
+ * its newest version saved. Reference art and transcription are not part of either set.
+ */
+export function mediaSet(job, kind) {
+  const quote = readQuote(job)?.quote;
+  const newest = new Map();
+  for (const item of Array.isArray(quote?.items) ? quote.items : []) {
+    if (!item || item.provider !== THREE_ECHO || item.kind !== kind || isReferenceItem(item) || isTranscriptionItem(item)) continue;
+    const parsed = parseJobKey(item.key);
+    if (!parsed) continue;
+    const slot = slotOfKey(parsed.key);
+    const held = newest.get(slot);
+    if (!held || parsed.version > held.version) newest.set(slot, { slot, key: parsed.key, deliverable: parsed.deliverable, panel: parsed.item, version: parsed.version });
+  }
+  const landed = readLanded(job).filter(entry => entry.type === 'landed' && typeof entry.file === 'string' && entry.file && typeof entry.sha256 === 'string');
+  const panels = [...newest.values()].map(slot => {
+    const entry = [...landed].reverse().find(item => canonicalJobKey(item.key) === slot.key && existsSync(join(job.dir, ...item.file.split('/'))));
+    return { ...slot, file: entry ? entry.file : null, sha256: entry ? entry.sha256 : null };
+  }).sort((a, b) => a.deliverable.localeCompare(b.deliverable, 'en', { numeric: true }) || a.panel.localeCompare(b.panel, 'en', { numeric: true }));
+  return { kind, panels, complete: panels.length > 0 && panels.every(panel => panel.file) };
+}
+
+/** The set a review gate covers. A new panel-grid review adds its entry to MEDIA_REVIEWS and a case here. */
+export const reviewSet = (job, gate) => mediaSet(job, MEDIA_REVIEWS[gate].kind);
+
+/** Whether the person approved the current pictures or clips, exactly as they are now. */
+export function mediaSetApproved(job, gate) {
+  const spec = MEDIA_REVIEWS[gate];
+  if (!spec) return false;
+  const decision = readJson(join(job.dir, ...spec.file.split('/')));
+  if (!decision || typeof decision !== 'object' || decision.decision !== 'approve' || !Array.isArray(decision.files)) return false;
+  const set = reviewSet(job, gate);
+  if (!set.complete || decision.files.length !== set.panels.length) return false;
+  return set.panels.every(panel => decision.files.some(file => sameKey(file?.key, panel.key) && file.sha256 === panel.sha256));
+}
+
+/** Pictures are reviewed only when clips follow; a quote of clips alone goes straight to the clips review. */
+export function mediaReviewRequired(job, gate) {
+  const spec = MEDIA_REVIEWS[gate];
+  if (!spec) return false;
+  if (!mediaSet(job, spec.kind).panels.length) return false;
+  return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
+}
+
+/** The first of the reviews that is required and not approved, or null. */
+export function mediaReviewOutstanding(job) {
+  return ['pictures', 'clips'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
+}
+
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key
 // that was made, or is being made, could be billed again. A create that ended released with no outputs
 // (failed or cancelled) made nothing, so its key can be tried again; a redo is a new version with its own price.
@@ -1027,6 +1093,8 @@ export function spendDecision(job, toolName, toolInput) {
       if (sample && key !== sample && !sampleApproved(job, sample)) return deny(SPEND_DENY.sampleLock);
     }
   }
+  // Every storyboard picture is shown to the person, together, before any clip is made from them.
+  if (base === 'create_video_job' && !isReferenceItem(item) && mediaReviewRequired(job, 'pictures') && !mediaSetApproved(job, 'pictures')) return deny(SPEND_DENY.picturesLock);
   if (item.provider && item.provider !== provider) return deny(SPEND_DENY.mismatch);
   if (provider === THREE_ECHO && item.kind && item.kind !== (base === 'create_image_job' ? 'image' : 'video')) return deny(SPEND_DENY.mismatch);
   if (provider === THREE_ECHO) {

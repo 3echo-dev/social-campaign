@@ -16,6 +16,7 @@ replaced or ducked. A clip with no audio track gets silence.
 Stdlib only. ffmpeg and ffprobe are called with argument lists, never a shell string.
 Exit 3 means ffmpeg is missing: the clips are listed so the hand-off can ship them
 separately rather than claiming a cut exists.
+Exit 6 means the person has not approved the video clips yet: nothing is joined.
 Exit 4 means captions were requested and none were burned: the cut is written without
 text and the reason is printed.
 """
@@ -218,6 +219,14 @@ def main():
         if not item:
             sys.exit("stitch.order names %s but no video item has that file name" % sid)
         clips.append((sid, resolve(item["file"]), item))
+
+    # The person approves every clip before they are joined (approvals/clips.json); a job with no made clips has nothing to wait for.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import review_gate
+    why = review_gate.stitch_problem(jobdir)
+    if why:
+        print(why, file=sys.stderr)
+        sys.exit(6)
 
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         print("ffmpeg is not installed, so there is no stitched cut and no burned text.", file=sys.stderr)

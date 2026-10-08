@@ -18,6 +18,7 @@ Run only after the active plan and current spending decision authorize the reque
 `pipeline_quote_save` adds to the existing price rather than replacing it; an optional `drop` removes an item not yet made when the person asks for changes.
 The hero panel's item carries `sample: true`.
 Its landed sample is presented for approval on the board and in chat, the same as every other decision, and the rest is held until the person answers.
+Once every picture of the batch is made, present them all together (`pipeline_review_present` with `gate: "pictures"`) and wait: the person approves all of them or asks for changes on single ones, and no video clip is made until they approve. A change on a picture is a redo, priced again as a new version before it is made.
 Reuse an observed provider result when its request ID, hash, and revision still match.
 Leave unknown provider outcomes unresolved and do not retry blindly.
 

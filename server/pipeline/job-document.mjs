@@ -1602,6 +1602,33 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       for (const key of ['thumb', 'poster', 'durationSeconds', 'reviewUrl']) if (ref[key] != null) sample[key] = ref[key];
       document.review.sample = sample;
     }
+    // The pictures or clips review: one card per panel, with the file, the version and the storyboard's own words for it. A clip
+    // (S2) is shown with the storyboard panel of the same number (P2) when the storyboard has no panel of that name.
+    if ((gate === 'pictures' || gate === 'clips') && Array.isArray(review.mediaSet?.panels)) {
+      const boardCache = new Map();
+      const boardOf = deliverable => {
+        if (!boardCache.has(deliverable)) {
+          const path = `drafts/${deliverable}/storyboard.md`;
+          const raw = shaOf.has(path) ? load(path).raw : null;
+          boardCache.set(deliverable, raw == null ? null : parseStoryboard(raw));
+        }
+        return boardCache.get(deliverable);
+      };
+      const number = ref => /(\d+)$/.exec(String(ref ?? ''))?.[1] || null;
+      document.review.mediaSet = {
+        kind: review.mediaSet.kind,
+        panels: review.mediaSet.panels.slice(0, 40).map(item => {
+          const ref = mediaRef(item.path);
+          const board = boardOf(item.deliverable);
+          const found = board ? (board.panels.find(panel => canonicalItem(panel.ref) === item.panel) || board.panels.find(panel => number(panel.ref) && number(panel.ref) === number(item.panel))) : null;
+          const entry = { key: item.key, deliverable: item.deliverable, panel: item.panel, version: item.version, path: item.path, sha256: item.sha256, changed: changedSince(item.path), kind: ref.kind || review.mediaSet.kind };
+          for (const key of ['thumb', 'poster', 'durationSeconds', 'reviewUrl']) if (ref[key] != null) entry[key] = ref[key];
+          if (board) entry.board = { format: board.format ?? null, aspectRatio: board.aspectRatio ?? null, ref: board.ref ?? item.deliverable };
+          if (found) entry.text = { ref: found.ref, label: found.label ?? null, shot: found.shot ?? null, camera: found.camera ?? null, onScreen: found.onScreen ?? null, voiceover: found.voiceover ?? null, durationSeconds: found.durationSeconds ?? null };
+          return entry;
+        }),
+      };
+    }
     if (gate === 'price' && reviewPaths.has(FACT_FILES.quote)) {
       const value = json(FACT_FILES.quote);
       if (value) {
@@ -1641,7 +1668,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       if (variants.length) document.variants = variants;
     }
     // Media registered for the review that no post already shows.
-    document.review.media = gate === 'sample' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
+    document.review.media = gate === 'sample' || gate === 'pictures' || gate === 'clips' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
     if (gate === 'content') {
       const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job, review.artifacts);
       if (labelCheck) document.review.labelCheck = labelCheck;
@@ -1814,6 +1841,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   if (byteSize(document) > budgetBytes && document.review) {
     const strip = ref => { delete ref.thumb; delete ref.poster; };
     (document.review.media || []).forEach(strip);
+    (document.review.mediaSet?.panels || []).forEach(strip);
     (document.review.posts || []).forEach(post => post.media.forEach(strip));
     (document.review.storyboards || []).forEach(board => board.panels.forEach(panel => {
       if (!panel.frame) return;
@@ -1831,7 +1859,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.report.stills.forEach(still => { delete still.thumb; });
   }
   if (byteSize(document) > budgetBytes && document.review) {
-    for (const key of ['studioWorkspace', 'posts', 'storyboards', 'concepts', 'quote', 'media', 'sample', 'labelCheck', 'publish']) {
+    for (const key of ['studioWorkspace', 'posts', 'storyboards', 'concepts', 'quote', 'media', 'sample', 'mediaSet', 'labelCheck', 'publish']) {
       delete document.review[key];
       if (byteSize(document) <= budgetBytes) break;
     }

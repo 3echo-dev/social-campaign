@@ -2147,7 +2147,7 @@ function stageLabel(stageId, workflowId = null) {
 }
 
 const GATE_NAMES = Object.freeze({
-  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', content: 'Final post', publish: 'Posting plan',
+  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', content: 'Final post', publish: 'Posting plan',
   campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report',
 });
 const OFF_FLOW_STATES = new Set(['CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'COMPLETE', 'CANCELLED']);
@@ -2194,7 +2194,7 @@ function gateHistory(decisions, gate) {
 
 function stageOfGate(gate, workflowId = null) {
   if (gate === 'price') return 'your-approval-of-the-price';
-  if (gate === 'sample') return 'making-the-images-and-video';
+  if (gate === 'sample' || gate === 'pictures' || gate === 'clips') return 'making-the-images-and-video';
   return stagesRuntime.forState(statesRuntime.AWAITING_STATE[gate], workflowId)?.stage || null;
 }
 
@@ -2239,7 +2239,22 @@ function sampleFacts(dir) {
   return { current };
 }
 
-function decidedGates(state, decisions, price, sample) {
+// The pictures and the clips reviews that this job has and the ones the person has approved, as the files are now.
+function mediaReviewFacts(dir) {
+  const none = { required: [], approved: new Map() };
+  if (!dir) return none;
+  const job = { dir };
+  const required = ['pictures', 'clips'].filter((gate) => facts.mediaReviewRequired(job, gate));
+  const approved = new Map();
+  for (const gate of required) {
+    if (!facts.mediaSetApproved(job, gate)) continue;
+    const decision = readJson(join(dir, ...facts.MEDIA_REVIEWS[gate].file.split('/')));
+    approved.set(gate, { gate, at: isoTime(decision?.decidedAt) });
+  }
+  return { required, approved };
+}
+
+function decidedGates(state, decisions, price, sample, media = { approved: new Map() }) {
   const ids = statesRuntime.ids();
   const at = ids.indexOf(state);
   const inFlow = at >= 0 && !OFF_FLOW_STATES.has(state);
@@ -2263,6 +2278,7 @@ function decidedGates(state, decisions, price, sample) {
   if (sample?.current) {
     decided.set('sample', { gate: 'sample', at: isoTime(sample.current.decidedAt) });
   }
+  for (const [gate, entry] of media.approved) decided.set(gate, entry);
   return decided;
 }
 
@@ -2426,7 +2442,8 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
   const priced = priceFacts(dir);
   const price = referenceOnly ? { saved: false, quote: false, referencePriced: false, referenceApproved: false, current: null, changesAsked: false, made: false, landedAll: false, inFlight: false } : priced;
   const sample = referenceOnly ? { current: null } : sampleFacts(dir);
-  const decided = decidedGates(state, decisions, price, sample);
+  const media = referenceOnly ? { required: [], approved: new Map() } : mediaReviewFacts(dir);
+  const decided = decidedGates(state, decisions, price, sample, media);
   const gates = planGates(planRows);
   if (statesRuntime.gateOf(state)) gates.add(statesRuntime.gateOf(state));
   const held = new Set(['blocked', 'cancelled']);
@@ -2469,11 +2486,11 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
     }
     if (referenceOnly && !pastMaking && stage.id === 'pricing-the-media' && priced.saved && !held.has(stage.status)) stage.note = 'Reference pictures only so far.';
     const stageGates = stage.id === 'your-approval-of-the-price' ? ['price']
-      : stage.id === 'making-the-images-and-video' ? ['sample']
+      : stage.id === 'making-the-images-and-video' ? ['sample', ...media.required]
       : [...gates].filter((gate) => stageOfGate(gate, workflowId) === stage.id);
     const approved = stageGates.filter((gate) => decided.has(gate));
     stage.approvals = approved.map((gate) => decided.get(gate));
-    stage.gates = stageGates.filter((gate) => gate !== 'sample' || decided.has('sample')).map((gate) => {
+    stage.gates = stageGates.filter((gate) => !['sample', 'pictures', 'clips'].includes(gate) || decided.has(gate)).map((gate) => {
       const history = gateHistory(decisions, gate);
       return {
         gate,

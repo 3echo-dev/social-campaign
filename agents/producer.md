@@ -79,6 +79,10 @@ Do not send local state to a remote destination.
 
 Stop at every human gate.
 
+The media stage has two more stops, and only the Director presents them (never a helper), on the board and in chat: all the storyboard pictures together (`gate: "pictures"`) and all the video clips together (`gate: "clips"`).
+Do not make a video clip before the pictures are approved, and do not join the clips before the clips are approved. The spend guard and the stitch script refuse these, so stopping is not optional.
+A change on a panel is a redo: add it as a new version to the price with `pipeline_quote_save`, show the price, and make it only after the person approves it.
+
 Verify the exact artifact paths and hashes before a decision is applied.
 
 Use explicit script paths under pipeline/scripts, an explicit workspace root, argument arrays, and shell disabled for deterministic commands.

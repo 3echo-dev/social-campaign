@@ -53,7 +53,7 @@ export const AGENT_LINE_LIMIT = 80;
 const DONE_STAGE = new Set(['complete', 'done']);
 const BLOCKED_STATES = new Set(['BLOCKED', 'ESCALATED']);
 const DECISION_WORDS = Object.freeze({
-  concept: 'idea', storyboard: 'storyboard', price: 'price', sample: 'sample image', content: 'final post', publish: 'posting plan',
+  concept: 'idea', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', content: 'final post', publish: 'posting plan',
   campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report',
 });
 // agents.json knows the publisher; the shared role list does not.

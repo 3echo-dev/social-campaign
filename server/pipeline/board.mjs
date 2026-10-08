@@ -579,7 +579,7 @@ function priceOpen(root, brand, jobId) {
 }
 export const FINDINGS_GATE = 'findings';
 const REVIEW_GATES = Object.freeze(['concept', 'storyboard', 'content', 'publish', 'campaign_proposal', 'campaign_activation', FINDINGS_GATE]);
-const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
+const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
 const REPORT_FILE = 'report/report.md';
 const REPORT_STILLS_DIR = 'report/stills';
 const STILL_TYPES = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
@@ -628,6 +628,52 @@ export function sampleReview(root, brand, jobId, snapshot) {
   };
 }
 
+export const PICTURES_GATE = 'pictures';
+export const CLIPS_GATE = 'clips';
+export const MEDIA_GATES = Object.freeze([PICTURES_GATE, CLIPS_GATE]);
+const MEDIA_GATE_WORDS = Object.freeze({ pictures: 'pictures', clips: 'video clips' });
+
+/**
+ * The review of every storyboard picture (gate pictures) or every clip (gate clips), shown together once the whole set is made and
+ * not before. It is derived from the saved price and the files that landed, like the sample: pending until a decision on exactly
+ * these files is recorded (approvals/pictures.json or approvals/clips.json), so a redo of one panel (a new file) opens it again.
+ * Clips wait for the pictures, and both wait for the sample.
+ */
+export function mediaReview(root, brand, jobId, snapshot, gate) {
+  const spec = facts.MEDIA_REVIEWS[gate];
+  if (!spec || !priceOpen(root, brand, jobId)) return null;
+  const job = facts.jobAt(root, brand, jobId);
+  if (!job || !facts.mediaReviewRequired(job, gate)) return null;
+  if (gate === CLIPS_GATE && facts.mediaReviewRequired(job, PICTURES_GATE) && !facts.mediaSetApproved(job, PICTURES_GATE)) return null;
+  const set = facts.reviewSet(job, gate);
+  return set.complete ? panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile: spec.file, kind: spec.kind, panels: set.panels }) : null;
+}
+
+/**
+ * A "panel grid" review: one card per media item, approved all together or with changes asked on single cards. Used by the pictures
+ * and clips reviews; a later review of the same shape (a joined video) registers itself by adding an entry to facts.MEDIA_REVIEWS,
+ * its decision file, and calling this with its items.
+ *
+ * panels: [{ key, deliverable, panel, version, file (job-relative path), sha256 }]. kind: 'image' | 'video'. decisionFile: where the
+ * decision is saved (approvals/<gate>.json). Returns the pending review record { brand, jobId, gate, revision, artifacts, mediaSet },
+ * or null when the files cannot be read or a decision on exactly these files (same keys and hashes) is already saved.
+ */
+export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile, kind, panels }) {
+  const artifacts = [];
+  for (const panel of panels) {
+    let bytes;
+    try { bytes = readFileSync(artifactFile(job.dir, panel.file)); } catch { return null; }
+    artifacts.push({ path: panel.file, sha256: digest(bytes), bytes: bytes.length });
+  }
+  const decided = readJsonFile(join(job.dir, ...decisionFile.split('/')), null);
+  const same = decided && Array.isArray(decided.files) && decided.files.length === panels.length && panels.every(panel => decided.files.some(file => facts.canonicalJobKey(file?.key) === panel.key && file.sha256 === panel.sha256));
+  if (same && ['approve', 'changes'].includes(decided.decision)) return null;
+  return {
+    brand, jobId, gate, revision: snapshot.project.revision, artifacts,
+    mediaSet: { kind, panels: panels.map(panel => ({ key: panel.key, deliverable: panel.deliverable, panel: panel.panel, version: panel.version, path: panel.file, sha256: panel.sha256 })) },
+  };
+}
+
 /** The review the job is waiting on: its state gate, or an undecided price review. */
 function pendingReview(root, brand, jobId, snapshot) {
   const gate = states.gateOf(snapshot.project.state);
@@ -636,10 +682,15 @@ function pendingReview(root, brand, jobId, snapshot) {
   const record = readReviewRecord(root, brand, jobId, PRICE_GATE);
   if (record && record.revision === snapshot.project.revision && !record.decision) return { gate: PRICE_GATE, review: record };
   const sample = sampleReview(root, brand, jobId, snapshot);
-  return sample ? { gate: SAMPLE_GATE, review: sample } : { gate: null, review: null };
+  if (sample) return { gate: SAMPLE_GATE, review: sample };
+  for (const media of MEDIA_GATES) {
+    const review = mediaReview(root, brand, jobId, snapshot, media);
+    if (review) return { gate: media, review };
+  }
+  return { gate: null, review: null };
 }
 
-const COPY_GATES = new Set(['sample', 'content', 'publish']);
+const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'content', 'publish']);
 
 export function reviewCopyGaps({ root, brand, jobId } = {}) {
   root = rootOf(root);
@@ -972,6 +1023,9 @@ function decisionItem({ root, snapshot, gate, review, place, dir }) {
   } else if (gate === SAMPLE_GATE) {
     const words = sampleRestWords(review.sample?.rest);
     item.summary = words ? `Approving lets Claude make the other ${words}.` : 'Approving lets Claude make the rest.';
+  } else if (MEDIA_GATES.includes(gate)) {
+    const count = review.artifacts.length;
+    item.summary = `${plural(count, gate === PICTURES_GATE ? 'picture' : 'video clip')} to check. ${gate === PICTURES_GATE ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.'}`;
   } else {
     item.summary = reviewSummary(dir, gate, review.artifacts.map(artifact => artifact.path));
   }
@@ -2302,6 +2356,34 @@ function validatePanels(dir, artifacts, panels, decision, note) {
   if(decision==='request_changes' && !panels.some(entry=>entry.verdict==='changes') && !(typeof note==='string' && note.trim())) throw new Error('Say what should change.');
 }
 
+// The pictures and the clips are decided panel by panel: each is approved, or has changes asked with a note. Approving all needs
+// every panel approved; asking for changes needs a panel with changes, or a note that says what to change.
+function validateMediaPanels(registered, panels, decision, note) {
+  const known = registered?.mediaSet?.panels || [];
+  const word = MEDIA_GATE_WORDS[registered?.gate] || 'panels';
+  const seen = new Set();
+  if(panels!==undefined) {
+    if(!Array.isArray(panels) || !panels.length || panels.length>200) throw new Error('The panel decisions are not valid.');
+    for(const entry of panels) {
+      if(!plainObject(entry) || Object.keys(entry).some(key=>!PANEL_ENTRY_KEYS.has(key))) throw new Error('The panel decisions are not valid.');
+      if(typeof entry.panel!=='string' || !PANEL_REF.test(entry.panel)) throw new Error('Each panel decision needs its panel, such as P1.');
+      if(entry.deliverable!==undefined && (typeof entry.deliverable!=='string' || !DELIVERABLE_ID.test(entry.deliverable))) throw new Error('Each panel decision can only name its post, such as D1.');
+      if(!['approve','changes'].includes(entry.verdict)) throw new Error('Each panel is either approved or has changes asked.');
+      if(entry.note!==undefined && (typeof entry.note!=='string' || entry.note.length>1000)) throw new Error('A panel note must be text of at most 1000 characters.');
+      if(entry.verdict==='changes' && !(typeof entry.note==='string' && entry.note.trim())) throw new Error(`Say what should change in ${entry.panel}.`);
+      const matches = known.filter(item=>item.panel===entry.panel && (entry.deliverable===undefined || item.deliverable===entry.deliverable));
+      if(!matches.length) throw new Error(`${entry.panel} is not one of these ${word}.`);
+      if(matches.length>1) throw new Error(`Say which post ${entry.panel} belongs to, such as D1.`);
+      const key = matches[0].key;
+      if(seen.has(key)) throw new Error(`${entry.panel} has more than one decision.`);
+      seen.add(key);
+    }
+  }
+  const changes = (panels || []).filter(entry=>entry.verdict==='changes');
+  if(decision==='approve' && (changes.length || (panels!==undefined && seen.size!==known.length))) throw new Error(`Approve every one of the ${word} before approving them all.`);
+  if(decision==='request_changes' && !changes.length && !(typeof note==='string' && note.trim())) throw new Error(`Say what should change in the ${word}.`);
+}
+
 export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,decision,chosen,credits,totals,note,recipe,panels,acceptedFlagIds}) {
   const snapshot = runtime.readJobSnapshot({root,brand,jobId});
   if(snapshot.project.revision!==revision) throw new Error('This job revision has changed. Refresh and review it again.');
@@ -2326,10 +2408,10 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
     const verdict=suppliedChecks({root,brand:snapshot.brand?.slug || brand,jobId});
     if(!verdict.ready) throw new Error(`Fix these first: ${Object.values(verdict.posts).flat().find(item=>!item.ok)?.text || 'a check on the final post has not passed.'}`);
   }
-  if(panels!==undefined && reviewId!=='storyboard') throw new Error('Only the storyboard takes a decision per panel.');
+  if(panels!==undefined && reviewId!=='storyboard' && !MEDIA_GATES.includes(reviewId)) throw new Error('Only the storyboard takes a decision per panel.');
   if(reviewId===SAMPLE_GATE && decision==='request_changes' && !(typeof note==='string' && note.trim())) throw new Error('Say what should change in the sample.');
   if(!Array.isArray(artifacts) || !artifacts.length) throw new Error('No review files are registered. Ask Claude to prepare the review.');
-  const registered = reviewId===SAMPLE_GATE ? pending.review : read(reviewFile(root,brand,jobId,reviewId));
+  const registered = reviewId===SAMPLE_GATE || MEDIA_GATES.includes(reviewId) ? pending.review : read(reviewFile(root,brand,jobId,reviewId));
   if(!registered) throw new Error('This review is no longer awaiting a decision.');
   const identity = items => JSON.stringify(items.map(item=>[item.path,item.sha256]).sort((a,b)=>a[0].localeCompare(b[0])));
   if(registered.revision!==revision || identity(registered.artifacts)!==identity(artifacts)) throw new Error('The decision must cover the exact registered review files.');
@@ -2338,7 +2420,8 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
     if(!/^[a-f0-9]{64}$/.test(artifact.sha256 || '')) throw new Error('A review file is missing its content hash.');
     if(digest(readFileSync(artifactFile(dir,artifact.path)))!==artifact.sha256) throw new Error('A review file has changed. Refresh and review it again.');
   }
-  if(panels!==undefined) validatePanels(dir,artifacts,panels,decision,note);
+  if(MEDIA_GATES.includes(reviewId)) validateMediaPanels(registered,panels,decision,note);
+  else if(panels!==undefined) validatePanels(dir,artifacts,panels,decision,note);
   return {snapshot,dir,registered};
 }
 
@@ -2446,6 +2529,12 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(!sampleReview(root,brand,jobId,snapshot)) throw new Error('There is no sample waiting for a decision. It shows once the sample has been made and before the rest is made.');
     throw new Error('Another decision on this job comes first.');
   }
+  if(MEDIA_GATES.includes(requested)) {
+    const pending=pendingReview(root,brand,jobId,snapshot);
+    if(pending.gate===requested) return pending.review;
+    if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(`There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}.`);
+    throw new Error('Another decision on this job comes first.');
+  }
   if(requested===PRICE_GATE) {
     const job=facts.jobAt(root,brand,jobId);
     const saved=job ? facts.readQuote(job) : null;
@@ -2462,6 +2551,12 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     const workflowId=snapshot.route?.workflowId || null;
     const aimed=requested ?? current ?? inferredGate(snapshot.project.state,paths,workflowId);
     if(aimed && !current) assertReviewFits(aimed,workflowId);
+    // The final post and the posting plan come after the person has seen every picture and every clip.
+    if(aimed==='content' || aimed==='publish') {
+      const mediaJob=facts.jobAt(root,brand,jobId);
+      const open=mediaJob ? facts.mediaReviewOutstanding(mediaJob) : null;
+      if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} have not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:`Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
+    }
     assertNoHelperRunning(root,brand,jobId);
     assertNoQuestionOpen(root,jobId);
     // Post-production comes before the final approval: never ask for both at once, and never ask while the edit is away.
@@ -2595,6 +2690,7 @@ export function applyBoardDecision({root,requestId,confirmedBy,maxCredits}) {
   const validated = validateDecision({...args,root});
   if(args.reviewId===PRICE_GATE) return applyPriceDecision({root,file,record,args,validated,confirmedBy});
   if(args.reviewId===SAMPLE_GATE) return applySampleDecision({file,record,args,validated,confirmedBy});
+  if(MEDIA_GATES.includes(args.reviewId)) return applyMediaDecision({file,record,args,validated,confirmedBy});
   if(args.reviewId==='concept' && args.decision==='approve' && (!Number.isInteger(maxCredits) || maxCredits<0)) throw new Error('Concept approval needs the spending limit the user selected.');
   // A board approval is at the amount the board showed, never another figure.
   if(args.reviewId==='concept' && args.decision==='approve' && Number.isInteger(args.credits) && maxCredits!==args.credits) throw new Error(`Approve this concept at the ${args.credits} credits the board showed.`);
@@ -2654,6 +2750,40 @@ function applySampleDecision({file,record,args,validated,confirmedBy}) {
   const decision = {decision:args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,sample:saved};
   const summary = approve ? 'Sample approved' : `Changes asked on the sample${note ? `: ${note}` : ''}`;
   const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:SAMPLE_GATE},{gate:SAMPLE_GATE,decision:args.decision,note:summary},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
+  appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
+  const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
+  writeJsonAtomic(file,next);
+  return next;
+}
+
+// A pictures or clips decision is saved with the exact files the person saw and what they said about each panel. Approving all
+// unlocks the next step in code (video is not made, and clips are not joined, without it). Asking for changes unlocks nothing: a
+// redo of a panel is a new version with its own price line, approved on the price card, and a new file opens the review again.
+function applyMediaDecision({file,record,args,validated,confirmedBy}) {
+  const review = validated.registered;
+  const gate = args.reviewId;
+  const approve = args.decision==='approve';
+  const note = typeof args.note==='string' ? args.note.trim().slice(0,4000) : '';
+  const claimed = claimBoardRequest(file);
+  if(claimed) return claimed;
+  const decidedAt = new Date().toISOString();
+  const said = (Array.isArray(args.panels) ? args.panels : []).map(entry=>{
+    const match = review.mediaSet.panels.find(item=>item.panel===entry.panel && (entry.deliverable===undefined || item.deliverable===entry.deliverable));
+    return {key:match.key,deliverable:match.deliverable,panel:match.panel,verdict:entry.verdict,...(entry.verdict==='changes' ? {note:entry.note.trim()} : {})};
+  });
+  const saved = {
+    gate,decision:approve?'approve':'changes',decidedAt,by:confirmedBy,requestId:record.requestId,
+    ...(note ? {note} : {}),
+    files:review.mediaSet.panels.map(item=>({key:item.key,deliverable:item.deliverable,panel:item.panel,file:item.path,sha256:item.sha256})),
+    panels:said,
+  };
+  mkdirSync(join(validated.dir,'approvals'),{recursive:true});
+  writeJsonAtomic(join(validated.dir,...facts.MEDIA_REVIEWS[gate].file.split('/')),saved);
+  const changed = said.filter(entry=>entry.verdict==='changes');
+  const word = MEDIA_GATE_WORDS[gate];
+  const summary = approve ? `All ${word} approved` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}`;
+  const decision = {decision:args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,[gate]:saved};
+  const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:gate},{gate,decision:args.decision,note:summary},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
   appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
   const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
   writeJsonAtomic(file,next);

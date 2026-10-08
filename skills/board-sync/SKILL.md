@@ -22,6 +22,7 @@ user-invocable: false
 - Decisions on the board and in chat
   - Storyboard panels
   - Sample image
+  - Pictures and clips
   - The report
   - Final approval and the label check
   - Review media on the board
@@ -332,7 +333,7 @@ An empty file list cannot authorize production or spending.
 ## Decisions on the board and in chat
 
 Every decision is answered once, on the board or in chat, and both always show the same state.
-This applies to each one: pick a concept, approve the storyboard, approve the price, approve the sample image, approve the final post, confirm where and when to post, approve the report, and for paid work the campaign plan and going live.
+This applies to each one: pick a concept, approve the storyboard, approve the price, approve the sample image, approve every picture, approve every clip, approve the final post, confirm where and when to post, approve the report, and for paid work the campaign plan and going live.
 
 What to present, by decision:
 
@@ -341,6 +342,7 @@ What to present, by decision:
 - Approve the storyboard: each `drafts/D*/storyboard.md`.
 - Approve the price: the job sits in `STORYBOARD_APPROVED` while media is priced, so save it with `pipeline_quote_save`, then pass `gate: "price"` with no files; the plugin presents the saved quote.
 - Approve the sample image: nothing to present; it shows on its own once the sample is saved, as described under Sample image below.
+- Approve the pictures and the clips: nothing to present by hand; call `pipeline_review_present` with `gate` `pictures` or `clips` and no files (see Pictures and clips below).
 - Approve the final post: each `drafts/D*/post.md` with its media files.
 - Confirm where and when to post: each `drafts/D*/post.md`, whose Publish plan table gives the platform, account, time and destination.
 - Campaign plan and going live: the proposal and the activation checklist.
@@ -391,6 +393,18 @@ When the person answers in chat instead, first work out which job it answers the
 An answer in chat is landed as a `submit_decision` with `reviewId` `sample`, the `revision` and `artifacts` from calling `pipeline_review_present` with `gate: "sample"`, `decision` `approve` or `request_changes`, and the person's words in `note` (a request for changes needs one).
 Then apply it with `pipeline_decision_apply` and `confirmedBy` `chat`, and tell the person in one plain line naming the job's brand and title what happened, for example 'SK-II "Anna Sawai serum Reel": sample approved.'
 The applied decision is saved as the job's `approvals/sample.json`; make the rest of the batch only after an approval, and after a request for changes redo the sample first.
+
+### Pictures and clips
+
+The sample is not the only look the person gets. Two more reviews sit between it and the final post, each shown on the board as a grid with one card per panel (the picture or a player, and the storyboard's words for it), a per-card "Ask for changes" with a note, and "Approve all" under the grid. Only the Director presents them; a helper never does.
+
+1. **Pictures** (`gate` `pictures`): once every storyboard picture is made and the sample is approved, stop. Call `pipeline_review_present` with `gate: "pictures"`, prepare review copies of every picture (`pipeline_review_copies_prepare`, then upload them as described under Review media on the board), write the returned `documents`, and post one chat line naming the job. No video clip is made until the person approves all the pictures: the spend guard refuses `create_video_job` before that, so do not start a clip while the review is open.
+2. **Clips** (`gate` `clips`): once every clip is made, stop the same way. The clips are not joined until the person approves them all: `stitch-clips.py` refuses (exit 6) before that.
+
+A board answer arrives as a `submit_decision` with `reviewId` `pictures` or `clips`: apply it with `pipeline_decision_apply` right away. Each panel with `changes` carries what the person wants in its `note` (the `panels` list names them). An approval needs every panel approved.
+The applied decision is saved as `approvals/pictures.json` or `approvals/clips.json`, with the exact files shown, so a redo (a new file) opens the review again.
+
+**A change is a redo, and a redo is priced again.** For each panel with changes, have the Creative Director rewrite that one prompt, then add the redo as a new version of that panel (`-v2`) with `pipeline_quote_save`, present the price (`gate: "price"`), and wait for the person to approve the extra cost. Nothing is made before that: the spend guard refuses an item that is not in the approved price.
 
 ### The report
 

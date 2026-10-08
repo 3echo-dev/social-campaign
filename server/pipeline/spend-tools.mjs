@@ -65,6 +65,7 @@ export const SPEND_DENY = Object.freeze({
   notInQuote: "This item isn't in the approved price. Anything new or redone needs its own price approval first.",
   mismatch: "This call doesn't match the approved item it names.",
   sampleLock: 'Show the sample and wait for approval before making the rest.',
+  picturesLock: 'Show every storyboard picture and wait for approval before making any video. Present the pictures review (pipeline_review_present with gate pictures), then wait.',
   videoTooEarly: 'Video waits until the storyboard is approved. Only reference pictures can be made until then.',
   voiceTooEarly: 'Voice waits until the storyboard is approved. Only reference pictures can be made until then.',
   jobFinished: 'This job is finished, so nothing more can be made for it.',

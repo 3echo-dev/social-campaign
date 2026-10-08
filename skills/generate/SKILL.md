@@ -66,6 +66,7 @@ Use the provider only through the person's own claude.ai connector; the plugin h
 Keep hero first, then batch, exactly as `pipeline/skills/make-image/SKILL.md` and `pipeline/skills/make-video/SKILL.md` detail, with the job key as `idempotencyKey`.
 The hero item's `pipeline_quote_save` entry carries `sample: true`.
 Once that sample lands, present it for approval on the board and in chat like every other decision, and hold the rest until the person answers.
+After the whole batch of pictures is made, stop for the pictures review (`gate: "pictures"`) before any video; after the whole batch of clips is made, stop for the clips review (`gate: "clips"`) before joining them. Never go on to the next stage without the person's approval, and a redo of any picture or clip is a new priced version the person approves first.
 A redo of the sample is priced the same way: its new version's `pipeline_quote_save` entry also carries `sample: true`, so the rest of the batch keeps waiting on it.
 
 The hooks record every paid call and its credits, land every output the moment a download link comes back, and move the job's state at the first paid call and once every quoted item lands; never write credits, a manifest `status` or `file`, or the job state for media by hand.

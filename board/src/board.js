@@ -1845,6 +1845,8 @@ const GATE_TITLES = Object.freeze({
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
   sample: 'Approve the sample image',
+  pictures: 'Check the pictures',
+  clips: 'Check the video clips',
   content: 'Approve the final post',
   publish: 'Confirm where and when to post',
   campaign_proposal: 'Approve the campaign plan',
@@ -2357,6 +2359,48 @@ export function sampleView(doc) {
   const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(sample.deliverable))}${refTag(trimmed(sample.panel))}${version}</div>`;
   const strips = boards.map(board => storyboardStrip(board, { highlight: found?.key || null })).join('');
   return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${found ? panelFields(found.panel, found.board) : ''}</div></div>${strips}`;
+}
+
+// The pictures, the clips and the joined video are each reviewed as a grid: one card per panel with its picture or player and the
+// storyboard's words for it, and a per-card "Ask for changes" with a note. Every card counts as approved until a change is asked on
+// it; "Approve all" sits under the grid. A change goes back to the named panels, and a redo of one is priced again first.
+const MEDIA_GATE_IDS = new Set(['pictures', 'clips']);
+const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'] });
+const mediaPanelKey = panel => `${trimmed(panel?.deliverable)}|${trimmed(panel?.panel)}`;
+export const mediaPanelsOf = doc => (Array.isArray(doc?.review?.mediaSet?.panels) ? doc.review.mediaSet.panels : []);
+const mediaPanelTitle = panel => trimmed(panel?.text?.label) || trimmed(panel?.panel) || 'Panel';
+
+export function mediaPanelStates(doc, saved = {}) {
+  return Object.fromEntries(mediaPanelsOf(doc).map(panel => {
+    const key = mediaPanelKey(panel);
+    return [key, saved?.[key]?.verdict === 'changes' ? saved[key] : { verdict: 'approve', note: '' }];
+  }));
+}
+
+export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
+  const panels = mediaPanelsOf(doc);
+  if (!panels.length) return '';
+  const gate = doc.review.gate;
+  const dis = disabled ? 'disabled' : '';
+  const states = mediaPanelStates(doc, state.mediaPanels);
+  const cards = panels.map(panel => {
+    const key = mediaPanelKey(panel);
+    const mine = states[key];
+    const editing = state.mediaEditing === key;
+    const title = mediaPanelTitle(panel);
+    const media = mediaTile({ kind: panel.kind, title, thumb: panel.thumb, poster: panel.poster, reviewUrl: panel.reviewUrl, durationSeconds: panel.durationSeconds }, { className: 'sample-frame' });
+    const version = Number(panel.version) > 1 ? `<span class="count">Version ${esc(Number(panel.version))}</span>` : '';
+    const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(panel.deliverable))}${refTag(trimmed(panel.panel))}${version}</div>`;
+    const verdict = mine.verdict === 'changes'
+      ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Change asked: ${mine.note}` : 'Change asked')}</span></p>`
+      : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
+    const error = editing && state.mediaError ? `<p class="field-error" role="alert">${esc(state.mediaError)}</p>` : '';
+    const actions = editing
+      ? `<div class="sb-change"><label for="mr-note">What should change in ${esc(title)}?</label><textarea id="mr-note" name="mr_note" maxlength="1000" placeholder="For example: make the light warmer." ${dis}>${esc(state.mediaDraft ?? mine.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-mr-action="cancel" ${dis}>Cancel</button><button type="button" data-mr-action="save" data-mr-key="${esc(key)}" ${dis}>Save change</button></div></div>`
+      : `<div class="sb-slot-actions">${mine.verdict === 'changes' ? `<button type="button" class="quiet" data-mr-action="undo" data-mr-key="${esc(key)}" ${dis}>Keep as is</button>` : ''}<button type="button" data-mr-action="change" data-mr-key="${esc(key)}" ${dis}>Ask for changes</button></div>`;
+    return `<article class="sb-slot media-card" style="--sb-ratio:${frameRatio(panel.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${panel.text ? panelFields(panel.text, panel.board) : ''}${verdict}${actions}</div></article>`;
+  }).join('');
+  return `<div class="media-review-grid">${cards}</div>`;
 }
 
 export function labelCheckSection(check, accepted = {}, { disabled = false } = {}) {
@@ -3112,6 +3156,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     parts.push(review.storyboards.map(board => storyboardStrip(board)).join(''));
   }
   if (gate === 'sample') parts.push(sampleView(doc));
+  if (MEDIA_GATE_IDS.has(gate)) parts.push(mediaSetView(doc, state, { disabled: locked }));
   if (gate === 'price' && review.quote) {
     parts.push(priceTable(review.quote, { used: project?.usage?.generation }));
     parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked }));
@@ -3142,7 +3187,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   return parts.join('');
 }
 
-const COPY_GATES = new Set(['sample', 'content', 'publish']);
+const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'content', 'publish']);
 const copiesWaiting = refs => {
   const kinds = new Set(refs.map(ref => ref.kind));
   const what = kinds.has('image') && kinds.has('video') ? 'pictures and video' : kinds.has('video') ? 'video' : 'pictures';
@@ -3155,6 +3200,7 @@ function unviewableMedia(doc) {
   const urls = doc.reviewUrls && typeof doc.reviewUrls === 'object' ? doc.reviewUrls : {};
   const refs = [
     ...(review.sample ? [review.sample] : []),
+    ...mediaPanelsOf(doc),
     ...(review.media || []),
     ...(review.posts || []).flatMap(post => post.media || []),
   ];
@@ -3171,7 +3217,7 @@ function unviewableMedia(doc) {
  */
 function approval(gate, doc, state, recipeState = {}, routeState = {}, postStates = {}) {
   const unviewable = COPY_GATES.has(gate) ? unviewableMedia(doc) : [];
-  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : 'Approve', line: copiesWaiting(unviewable) };
+  if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? 'Approve all' : 'Approve', line: copiesWaiting(unviewable) };
   if (gate === 'concept') {
     const concepts = doc?.review?.concepts;
     const concept = concepts?.concepts?.find(item => item.id === state.choice);
@@ -3197,6 +3243,14 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
     const changes = Object.values(panelStates(doc?.review?.storyboards, state.panels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} ${word}${changes === 1 ? '' : 's'} to change, ${all.length - changes} approved.` };
     return { label: 'Approve storyboard', line: all.length === 1 ? `The ${word} is approved.` : `All ${all.length} ${word}s approved.` };
+  }
+  if (MEDIA_GATE_IDS.has(gate)) {
+    const all = mediaPanelsOf(doc);
+    const [one, many] = MEDIA_GATE_NOUNS[gate];
+    const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
+    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again before it is made.` };
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.';
+    return { label: 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
     const sample = doc?.review?.sample;
@@ -3243,6 +3297,18 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     // The server hears a verdict for every panel: "approve" for each one with no change asked.
     const decided = panelVerdicts(boards, panelStates(boards, panels));
     if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on a panel, so send the changes instead.' };
+    if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
+    if (decided.length) args.panels = decided;
+    if (note) args.note = note;
+    return { args };
+  }
+  if (MEDIA_GATE_IDS.has(gate)) {
+    const states = mediaPanelStates(doc, panels);
+    const decided = mediaPanelsOf(doc).map(panel => {
+      const mine = states[mediaPanelKey(panel)];
+      return { panel: trimmed(panel.panel), ...(trimmed(panel.deliverable) ? { deliverable: trimmed(panel.deliverable) } : {}), verdict: mine.verdict, ...(mine.verdict === 'changes' && trimmed(mine.note) ? { note: trimmed(mine.note) } : {}) };
+    });
+    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on one, so send the changes instead.' };
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
     if (decided.length) args.panels = decided;
     if (note) args.note = note;
@@ -3323,7 +3389,7 @@ export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'A few answers are missing from the brief.';
-const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
+const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
 const hasQuestionId = item => item?.questionId !== undefined && item?.questionId !== null && String(item.questionId).trim() !== '';
 
@@ -4369,7 +4435,7 @@ function messageBubbles(agent) {
   }).join('');
 }
 
-const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
+const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
 // The picture for a step is picked from what the step is: its short name says it.
 const STEP_PICTURES = Object.freeze([
   [/request|setting the plan/, 'folder'], [/price|cost/, 'money'], [/storyboard|media spec|shot plan|slide plan|cut plan|still frames/, 'picture'],
@@ -4490,7 +4556,7 @@ export function stageItems(project, { pendingGate = null } = {}) {
   });
   // A pending review the plan never named still gets its place: the sample in the stage that makes the media, any other at the end.
   if (pendingGate && !placed.has(pendingGate) && stages.length) {
-    const home = (pendingGate === 'sample' ? stages.find(stage => stage.id === 'making-the-images-and-video') : null) || stages[stages.length - 1];
+    const home = (pendingGate === 'sample' || MEDIA_GATE_IDS.has(pendingGate) ? stages.find(stage => stage.id === 'making-the-images-and-video') : null) || stages[stages.length - 1];
     home.items.push(gateItemOf(pendingGate, 'waiting', home.source));
   }
   for (const stage of stages) {
@@ -4644,6 +4710,8 @@ const GATE_COMMENT_NAMES = Object.freeze({
   storyboard: 'Storyboard',
   price: 'Price',
   sample: 'Sample',
+  pictures: 'Pictures',
+  clips: 'Video clips',
   content: 'Final post',
   publish: 'Posting plan',
   campaign_proposal: 'Campaign plan',
@@ -5453,7 +5521,7 @@ if (typeof document !== 'undefined') {
     const report = pendingGate === 'findings' ? '' : reportPanel(doc, { downloads, jobTitle: project.title });
     const reportJob = isReportJob(project);
     const recipeStandalone = doc && pendingGate !== 'concept' ? recipePanel(doc, ui.recipe, ui.recipeStatus) : '';
-    const storyboard = pendingGate === 'sample' || pendingGate === 'storyboard' ? '' : storyboardPanel(doc);
+    const storyboard = pendingGate === 'sample' || pendingGate === 'storyboard' || MEDIA_GATE_IDS.has(pendingGate) ? '' : storyboardPanel(doc);
     const omitted = project.artifactsOmitted || 0;
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
     // The Inbox and the chats replace the Inbox panel, the Director card and the agent rail. A job document with no agents
@@ -5990,7 +6058,7 @@ if (typeof document !== 'undefined') {
   }
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
-    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-kit-action],[data-photo-action],[data-recipe-save]');if(!target)return;
+    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save]');if(!target)return;
     if(target.dataset.publishToggle!==undefined){
       const key=target.dataset.publishToggle;
       if(openKeys.has(key))openKeys.delete(key);else openKeys.add(key);
@@ -6082,6 +6150,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.viewMedia){const src=safePreviewUrl(target.dataset.viewMedia);if(!src)return;captureInlineValues();returnFocus=target;returnSelector=`[data-view-media="${CSS.escape(target.dataset.viewMedia)}"]`;viewer={src,alt:target.dataset.viewAlt || ''};render();app.querySelector('.viewer-close')?.focus();return;}
     if(target.dataset.sbPanel!==undefined){panelAction('select', target.dataset.sbPanel);return;}
     if(target.dataset.sbAction){panelAction(target.dataset.sbAction);return;}
+    if(target.dataset.mrAction){mediaPanelAction(target.dataset.mrAction, target.dataset.mrKey);return;}
     if(target.dataset.flagAccept||target.dataset.flagUndo){flagAction(target.dataset.flagAccept || target.dataset.flagUndo, Boolean(target.dataset.flagAccept));return;}
     if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref);return;}
     if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project, target.dataset.recipeSave);return;}
@@ -6940,6 +7009,35 @@ if (typeof document !== 'undefined') {
       focusQuietly('[data-sb-action="change"]');
     }
   }
+  // One card of the pictures, clips or joined-video grid: ask for a change with a note, keep it as it is, or leave the box.
+  function mediaPanelAction(action, key = null) {
+    const project = current();
+    if (!project) return;
+    const state = uiFor(project).review;
+    if (state.busy || state.submitted || state.needsReconciliation) return;
+    state.mediaPanels ||= {};
+    if (action === 'change') {
+      state.mediaEditing = key;
+      state.mediaDraft = state.mediaPanels[key]?.note || '';
+      state.mediaError = '';
+      render();
+      const box = focusQuietly('#mr-note');
+      if (box) { const end = box.value.length; try { box.setSelectionRange(end, end); } catch { box.blur(); box.focus({ preventScroll: true }); } }
+      return;
+    }
+    if (action === 'cancel') { state.mediaEditing = null; state.mediaError = ''; render(); return; }
+    if (action === 'undo') { delete state.mediaPanels[key]; state.error = ''; render(); return; }
+    if (action === 'save') {
+      const note = String(app.querySelector('#mr-note')?.value ?? state.mediaDraft ?? '').trim();
+      if (!note) { state.mediaError = 'Say what should change.'; render(); focusQuietly('#mr-note'); return; }
+      state.mediaPanels[key] = { verdict: 'changes', note };
+      state.mediaEditing = null;
+      state.mediaDraft = '';
+      state.mediaError = '';
+      state.error = '';
+      render();
+    }
+  }
   function flagAction(id, accept) {
     const project = current();
     if (!project || !id) return;
@@ -7028,6 +7126,7 @@ if (typeof document !== 'undefined') {
     if (field.dataset?.kitLink !== undefined) { const state = postStateOf(project, field.dataset.kitLink); state.link = field.value; if (state.linkError) { state.linkError = ''; field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); field.closest('.kit-mark')?.querySelector('.field-error')?.remove(); } return; }
     if (field.id === 'review-comment') { uiFor(project).review.comment = field.value; return; }
     if (field.id === 'sb-note') { uiFor(project).review.panelDraft = field.value; return; }
+    if (field.id === 'mr-note') { uiFor(project).review.mediaDraft = field.value; return; }
     const recipeName = recipeFieldFromName(field.name);
     if (recipeName?.own) recipeFieldState(uiFor(project).recipe, recipeName.deliverableId, recipeName.field).own[recipeName.subkey] = field.value;
   });

@@ -86,6 +86,8 @@ const GATE_ASKS = Object.freeze({
   publish: 'Confirm where and when to post.',
   campaign_proposal: 'Approve the campaign plan, or say what to change.',
   campaign_activation: 'Approve going live, or say what to change.',
+  pictures: 'Look at every picture, then approve them all or say what to change on single ones.',
+  clips: 'Watch every clip, then approve them all or say what to change on single ones.',
   findings: 'Read the report, then approve it or say what to change.',
 });
 const gateAsk = gate => GATE_ASKS[gate] || 'Claude needs your decision.';
