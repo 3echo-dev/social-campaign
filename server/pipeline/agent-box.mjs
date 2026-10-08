@@ -59,6 +59,8 @@ const DECISION_WORDS = Object.freeze({
 // agents.json knows the publisher; the shared role list does not.
 const FALLBACK_ACTION = Object.freeze({ publisher: 'Packaging what you approved for posting.' });
 const DEFAULT_ACTION = 'Working on this part of the job.';
+/** The note of an agent whose finished work is waiting on the person's decision. The board shows it as a plain line, never as a question. */
+export const HANDED_NOTE = 'Handed to the Director for your decision';
 
 const plain = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
@@ -804,8 +806,10 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
       agentState = 'working';
       at = text(snapshot?.status?.updatedAt);
     } else if (!isDirector && !finished && files.some(file => pendingPaths.has(file.path))) {
+      // One voice: only the Director asks the person. The agent that wrote the files under review has handed them over, so it
+      // is not waiting on the person and never needs_you.
       agentState = 'waiting';
-      note = 'Waiting for your decision';
+      note = HANDED_NOTE;
     } else if (!isDirector && !finished && !rowsDone && lastRun && (lastRun.ended === 'failed' || (isOpen(lastRun) && !isFresh(lastRun, clock)))) {
       agentState = 'waiting';
       note = lastRun.ended === 'failed' ? 'The last run did not finish' : 'The last run stopped responding';

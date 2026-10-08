@@ -5250,6 +5250,11 @@ export function agentStateOf(value) {
   return AGENT_STATES[key] ? key : 'waiting';
 }
 const isDirectorAgent = agent => agent?.id === 'producer';
+export const AGENT_HANDED_NOTE = 'Handed to the Director for your decision';
+/** One voice: the review card of a pending gate is in the Director's chat only. Any other agent's chat never carries it. */
+export const chatDecisionCard = (agent, decision, gate) => Boolean(decision && gate) && isDirectorAgent(agent);
+/** The plain line in the chat of the agent whose finished work waits on a decision: it is handed over, nothing is asked of the person there. */
+export const agentHandedLine = agent => (!isDirectorAgent(agent) && trimmed(agent?.note) === AGENT_HANDED_NOTE ? AGENT_HANDED_NOTE : '');
 const agentNameOf = agent => trimmed(agent?.name) || humanize(agent?.id);
 // The Director first, then the others in the order the projection gives them; null when this job has no agents section.
 export function agentBoxOf(doc) {
@@ -5409,7 +5414,8 @@ export function blob(name, mood, size = 34) {
   return `<span class="av face m-${face}" style="width:${size}px;height:${size}px;--h:${BLOB_HUES[name] ?? (205 + index * 47) % 360};--d:-${((index * 0.83) % 4).toFixed(2)}s;border-radius:${BLOB_SHAPES[index % BLOB_SHAPES.length]}" aria-hidden="true"><svg viewBox="0 0 40 40">${faceSvg(face)}</svg></span>`;
 }
 
-// What an agent's row and chat say about it. A card waiting for the person's decision reads "Waiting on you"; an agent
+// What an agent's row and chat say about it. Only the Director asks the person, so only its card reads "Waiting on you";
+// an agent whose work waits on a decision reads "Waiting" with the note "Handed to the Director for your decision". An agent
 // nobody has used yet is "not called yet".
 const AGENT_VIEWS = Object.freeze({
   needs_you: { word: 'Waiting on you', tone: 'ask', mood: 'surprised' },
@@ -5421,7 +5427,6 @@ const AGENT_VIEWS = Object.freeze({
 export function agentView(agent) {
   let state = agentStateOf(agent?.state);
   const note = trimmed(agent?.note);
-  if (state === 'waiting' && note === 'Waiting for your decision') state = 'needs_you';
   const lists = [agent?.files, agent?.messages, agent?.runs];
   const used = state === 'working' || state === 'done' || state === 'needs_you' || lists.some(list => Array.isArray(list) && list.length > 0) || (state === 'waiting' && note !== '' && !/^starts after/i.test(note));
   if (used) return { state, called: true, ...AGENT_VIEWS[state] };
@@ -6781,7 +6786,6 @@ if (typeof document !== 'undefined') {
     // The right column: the Inbox, or the chat with one agent.
     const tasksOf = id => (project.stages || []).flatMap(stage => (Array.isArray(stage?.tasks) ? stage.tasks : [])).filter(task => planWord(task?.agent) === id).map(task => ({ name: trimmed(task.name) || 'Step', line: trimmed(task.line), status: STEP_STATUSES.has(task.status) ? task.status : 'pending', outputs: Array.isArray(task.outputs) ? task.outputs : [], startedAt: trimmed(task.startedAt), doneAt: trimmed(task.doneAt) }));
     const decision = pendingGate ? needItems.find(item => item.kind === 'decision' && item.gate === pendingGate) : null;
-    const author = decision ? (agentBox?.director?.needs || []).find(need => need?.kind === 'decision' && need.gate === pendingGate)?.from || null : null;
     let side;
     // On a phone the Inbox stacks under every stage, so the same "What you need to do" block also sits under the job header;
     // CSS shows only one of the two, and both buttons are the same jump.
@@ -6792,14 +6796,12 @@ if (typeof document !== 'undefined') {
       const steps = tasksOf(chatAgent.id);
       const todo = steps.find(step => step.status !== 'done') || steps.at(-1);
       const needs = director ? inboxAside({ ...inboxView, items: needItems }, { project, bare: true }) : '';
-      // The card goes to the agent whose work the waiting gate shows. The server marks that agent "waiting on you" (it owns the files
-      // under review), and the plan names a gate's author separately (the last agent before the gate, which can be another one,
-      // like the Editor). The marked agent gets the card; the author only when nobody is marked. The Director gets it for its own gates.
-      const holders = box.all.filter(item => !isDirectorAgent(item) && agentView(item).state === 'needs_you');
-      const waiting = Boolean(decision) && (director ? !author : holders.length ? holders.some(item => item.id === chatAgent.id) : chatAgent.id === author);
+      // One voice: the decision card is the Director's. The agent that wrote the work behind the gate shows a plain "handed over" line.
+      const waiting = chatDecisionCard(chatAgent, decision, pendingGate);
+      const handed = agentHandedLine(chatAgent);
       side = agentChat(chatAgent, {
         now, tasks: steps, chipContext, needs, openKeys, jobId: project.jobId,
-        status: director ? handoffStatusLine(project) : '',
+        status: director ? handoffStatusLine(project) : handed,
         stuck: director ? agentStuckBanner(agentBox?.director?.stuck, boxUi.retry, signalInfo(), project) : '',
         item: waiting ? { gate: pendingGate, jobId: project.jobId, title: GATE_TITLES[pendingGate] || humanize(pendingGate), line: trimmed(decision.summary) } : null,
         compose: agentBox ? agentComposer(chatAgent, { about: director ? 'the job' : todo?.name || 'its work', ui: boxUi, signal: signalInfo() }) : '',
