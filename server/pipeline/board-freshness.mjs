@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, s
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBoard } from '../../scripts/build-board.mjs';
+import { buildBoardShellText } from '../../scripts/build-board.mjs';
 import { factsFingerprint, isFinishedState, landingReport, listJobs, readSessionBinding, sessionBindings } from './facts.mjs';
 import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
@@ -156,7 +156,7 @@ export function readBoardLink(root) {
 export function currentBoardSourceHash(root) {
   const workspaceId = workspaceIdOf(root);
   if (!workspaceId) return null;
-  const html = buildBoard({ config: { workspaceId, mode: 'artifact' } });
+  const html = buildBoardShellText({ config: { workspaceId, mode: 'artifact' } });
   return sha256(Buffer.from(html, 'utf8'));
 }
 

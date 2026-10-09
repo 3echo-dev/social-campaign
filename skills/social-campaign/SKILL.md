@@ -365,7 +365,7 @@ Keep the board projection scoped to the selected workspace and job.
 
 Local paths are valid only for the local runner.
 
-pipeline_board_source returns a filePath for the host Artifact tool, the `documents` to write, and the same short summary.
+pipeline_board_source returns a filePath and a files map (board.js, board.css) for the host Artifact tool, the `documents` to write, and the same short summary.
 
 Keep that file path out of the artifact database.
 

@@ -41,7 +41,7 @@ import { recordProjectWorkspace } from '../workspace/index.mjs';
 import { readWorkspace as readPipelineWorkspace } from '../pipeline/runtime.mjs';
 import { readArtifactBinding } from '../pipeline/artifact.mjs';
 import { listBoardRequests } from '../pipeline/board.mjs';
-import { buildBoard } from '../../scripts/build-board.mjs';
+import { buildBoardShellText } from '../../scripts/build-board.mjs';
 import { YtDlpBackend } from '../social/backends/ytdlp.mjs';
 import { detect as detectResearchHelper, installPlan, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
 import { hasUsableResearchHelperRecord, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
@@ -432,7 +432,7 @@ function boardCheck(root, pipelineWorkspace) {
   // The board page is built with the pipeline catalogue; one that does not line up with the registries fails the build.
   let currentHtml;
   try {
-    currentHtml = buildBoard({ config: { workspaceId, mode: 'artifact' } });
+    currentHtml = buildBoardShellText({ config: { workspaceId, mode: 'artifact' } });
   } catch (error) {
     return {
       ...base,
