@@ -42,10 +42,10 @@ Before any of this, if this session's first successful `pipeline_status`, `pipel
 
 When the artifact tools are not available, stop and name the missing host tool.
 
-At the start of every new session or resume, and whenever a reminder says to re-arm the board's wake-up, read the bound board with the Artifact tool's `read` action, then republish that same page to the same `url` right away, even when nothing else changed.
-Read any saved file that returns completely, in parallel chunks, before publishing, as board-setup's order describes.
+At the start of every new session or resume, and whenever a reminder says to re-arm the board's wake-up, read the bound board with the Artifact tool's `read` action (together with its `list` action, `scope: "files"`, as board-setup's order describes), then republish that same page to the same `url` right away, even when nothing else changed.
+Only the one-time migration from the old large board has a saved file to Read completely, in line-sized parallel chunks, before publishing, as board-setup's order describes.
 Reading it that way records its long id as the alias automatically; there is no separate call to make for that.
-When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source`, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action, publish the returned `filePath` to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
+When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source`, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action, publish the returned `filePath` and `files` to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
 That refresh already re-arms the wake-up too, so no separate republish is needed after it.
 Then list the board's saved `requests` and handle every one still marked `requested` through Land and apply requests below, exactly as if a comment had just woken the session.
 A comment that names the board by its long `claude.ai/code/artifact/<uuid>` form is the same board as the bound `claude.ai/artifact/<id>` link; treat either address as this session's board.
@@ -81,7 +81,7 @@ If a write fails, retain all local data and report that the artifact is waiting 
 Write the documents again whenever research or strategy lands, whenever a stage produces reviewable output, and after every applied request or decision, so the board always shows the current stage and its output.
 For each video job, call `pipeline_handoff_post_status` before writing, and follow `skills/send-to-post/SKILL.md` when it says to offer, wait or bring the final video back.
 
-When `pipeline_board_open` reports `sourceStatus: needs_refresh`, call `pipeline_board_source`, read the existing board with the Artifact tool's `read` action, then publish the returned `filePath` with that same `url` and the returned `capabilities`, which declare the `jobDocs` collection.
+When `pipeline_board_open` reports `sourceStatus: needs_refresh`, call `pipeline_board_source`, read the existing board with the Artifact tool's `read` action, then publish the returned `filePath` and `files` with that same `url` and the returned `capabilities`, which declare the `jobDocs` collection.
 Call `pipeline_board_bind` with the same URL and the new publish receipt only after the host update succeeds.
 A changed source hash does not prove that the host update happened.
 Keep the source file path out of the artifact database.

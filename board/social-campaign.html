@@ -5646,7 +5646,7 @@ markPlanNote,
 if(typeof document!=='undefined'){
 const config=JSON.parse(document.getElementById('board-config')?.textContent||'{}');
 configurePipelines(config);
-const logoData=String(document.getElementById('board-logo')?.textContent||'').trim();
+const logoData=String(globalThis.__boardLogo||document.getElementById('board-logo')?.textContent||'').trim();
 const logoSrc=logoData.startsWith('data:image/')?logoData:'';
 const app=document.getElementById('app');
 let transport,data={projects:[],brands:[]},error='',loading=false,drawer=null,drawerTab='output',returnFocus=null,unsubscribe=null,inline=null,inlineDrafts=new Map(),starterValues={},starterRefs=freshNewJobRefs();

@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { buildBoard } from '../../scripts/build-board.mjs';
+import { BOARD_SHELL_FILES, boardShellHashInput, buildBoardShell, buildBoardShellText } from '../../scripts/build-board.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import * as runtime from './runtime.mjs';
 import { boardJobDocuments, boardSnapshot, boardSummary } from './board.mjs';
@@ -505,10 +505,14 @@ function preserveBindingBytes(root, bytes) {
  */
 export function sourceArtifactBoard({ root }) {
   const workspace = workspaceFor(root);
-  const html = buildBoard({ config: { workspaceId: workspace.workspaceId, mode: 'artifact' } });
+  const parts = buildBoardShell({ config: { workspaceId: workspace.workspaceId, mode: 'artifact' } });
   const filePath = sourcePath(root);
-  writeTextAtomic(filePath, html);
-  const sourceHash = createHash('sha256').update(html, 'utf8').digest('hex');
+  const jsPath = join(boardDirPath(root), BOARD_SHELL_FILES.js);
+  const cssPath = join(boardDirPath(root), BOARD_SHELL_FILES.css);
+  writeTextAtomic(jsPath, parts.js);
+  writeTextAtomic(cssPath, parts.css);
+  writeTextAtomic(filePath, parts.html);
+  const sourceHash = createHash('sha256').update(boardShellHashInput(parts), 'utf8').digest('hex');
   updateJsonFile(sourceMetaPath(root), (current) => ({
     ...current,
     sourceVersion: ARTIFACT_SOURCE_VERSION,
@@ -519,6 +523,8 @@ export function sourceArtifactBoard({ root }) {
   const projection = writeBoardDocuments({ root, snapshot });
   return {
     filePath,
+    // Supporting files for the Artifact tool's `files` parameter: published path -> source file.
+    files: { [BOARD_SHELL_FILES.js]: jsPath, [BOARD_SHELL_FILES.css]: cssPath },
     relativePath: join(BOARD_DIR, SOURCE_FILE).replaceAll('\\', '/'),
     sourceVersion: ARTIFACT_SOURCE_VERSION,
     sourceHash,
@@ -541,9 +547,9 @@ export function sourceArtifactBoard({ root }) {
  * Open the board. Artifact mode is the only mode and never falls back to a
  * localhost URL when publication has not happened.
  *
- * @param {{root:string, mode?:'artifact', sourceBuilder?: typeof buildBoard}} options
+ * @param {{root:string, mode?:'artifact', sourceBuilder?: typeof buildBoardShellText}} options
  */
-export function openArtifactBoard({ root, mode = 'artifact', sourceBuilder = buildBoard }) {
+export function openArtifactBoard({ root, mode = 'artifact', sourceBuilder = buildBoardShellText }) {
   const workspace = workspaceFor(root);
   if (mode !== 'artifact') throw new Error('Board mode must be artifact.');
   const snapshot = boardSnapshot({ root });
