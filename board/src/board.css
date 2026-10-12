@@ -1330,3 +1330,13 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .jr-state .pill{white-space:normal;text-align:left;line-height:1.25}
 .doors-section{display:flex;flex-direction:column;gap:12px}
 @media (max-width:720px){.job-row{grid-template-columns:minmax(0,1fr);gap:8px}.jr-state{justify-self:start}}
+/* Ready check: a short list above the review buttons. */
+.ready-checks{margin:var(--gap) 0 0;padding:10px 12px;border:1px solid var(--line2);border-radius:var(--radius)}
+.ready-checks h3{margin:0 0 6px;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.ready-checks ul{display:grid;gap:4px;margin:0;padding:0;list-style:none;font-size:13px}
+.ready-checks li{display:flex;gap:8px;align-items:baseline;min-width:0;overflow-wrap:anywhere}
+.ready-mark{flex:none;width:1em;text-align:center;font-weight:800}
+.ready-ok .ready-mark{color:var(--go)}.ready-ok .ready-mark::before{content:"\2713"}
+.ready-bad{color:var(--hold)}.ready-bad .ready-mark::before{content:"\2715"}
+.ready-warn{color:var(--tape)}.ready-warn .ready-mark::before{content:"!"}
+@media(max-width:720px){.ready-checks{padding:8px 10px}.ready-checks ul{font-size:12px}}

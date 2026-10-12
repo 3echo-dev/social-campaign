@@ -28,6 +28,7 @@ import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
 import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId } from './session-claims.mjs';
+import { readyChecks } from './ready-checks.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
@@ -800,6 +801,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     }
     const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot), agents: { snapshot, requests: stuckCtx.requests.get(job.jobId) || [], retriedAt: stuckCtx.retriedAt(job), blockedLine: blockedReason(snapshot) } });
     if (gate === 'content' && document.review && kinds.suppliesMedia(snapshot.job?.kind)) suppliedCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId });
+    if (document.review) readyCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId, gate });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
   });
 }
@@ -814,6 +816,16 @@ function suppliedCardChecks(review, { root, brand, jobId }) {
   } catch {
     review.checks = { ready: false, posts: [], reason: REVIEW_NOT_READY };
   }
+}
+
+// The Ready check on a review card (review.readyChecks): [{ label, ok, level }], computed from the functions that enforce each rule.
+function readyCardChecks(review, { root, brand, jobId, gate }) {
+  try {
+    const found = facts.jobAt(root, brand, jobId);
+    const gaps = gate === 'storyboard' ? storyboardGaps({ root, brand, jobId, paths: (review.paths || review.storyboards?.map(board => board.path) || []) }) : null;
+    const list = readyChecks({ gate, job: found, review, gaps });
+    if (list.length) review.readyChecks = list;
+  } catch { /* A card without its checks still works; approval enforces the rules itself. */ }
 }
 
 function rawBrandProfile(brandDir) {
@@ -2682,28 +2694,35 @@ function assertNoQuestionOpen(root,jobId) {
  * storyboard approves those pictures as the start pictures for the clips. A panel that reuses a supplied image or is filmed
  * footage needs none.
  */
-function withStoryboardPictures({root,brand,jobId,paths}) {
-  const boards = paths.filter(path=>/(^|\/)storyboard\.md$/i.test(String(path)));
+export function storyboardGaps({root,brand,jobId,paths}) {
+  const gaps = {asked:0,panels:0,unanswered:[],lacking:[],files:[]};
+  const boards = (Array.isArray(paths) ? paths : []).filter(path=>/(^|\/)storyboard\.md$/i.test(String(path)));
   const job = facts.jobAt(root,brand,jobId);
-  if(!boards.length || !job) return paths;
+  if(!boards.length || !job) return gaps;
   const dir = jobDirectory(root,brand,jobId);
   const pictures = new Map(facts.mediaSet(job,'image').panels.map(panel=>[`${panel.deliverable}|${panel.panel}`,panel]));
-  const lacking = [];
-  const unanswered = [];
-  const files = [];
   for(const path of boards) {
     let board;
     try { board = parseStoryboard(readFileSync(artifactFile(dir,path),'utf8')); } catch { continue; }
     const deliverable = facts.canonicalDeliverable(board.ref) || facts.canonicalDeliverable(/(?:^|\/)(D\d+)\//i.exec(path)?.[1]) || null;
     const name = deliverable ? `${deliverable} ` : '';
     // A video has time to fit a voice to; a picture post or a carousel has none.
-    if(board.format!=='carousel' && board.panels.some(panel=>panel.durationSeconds>0) && !board.voiceOver) unanswered.push(name.trim() || 'the storyboard');
+    if(board.format!=='carousel' && board.panels.some(panel=>panel.durationSeconds>0)) {
+      gaps.asked += 1;
+      if(!board.voiceOver) gaps.unanswered.push(name.trim() || 'the storyboard');
+    }
     for(const panel of board.panels) {
       if(!panelNeedsPicture(panel)) continue;
+      gaps.panels += 1;
       const made = deliverable ? pictures.get(`${deliverable}|${facts.canonicalItem(panel.ref)}`) : null;
-      if(made?.file) files.push(made.file); else lacking.push(`${name}${panel.ref}`);
+      if(made?.file) gaps.files.push(made.file); else gaps.lacking.push(`${name}${panel.ref}`);
     }
   }
+  return gaps;
+}
+
+function withStoryboardPictures({root,brand,jobId,paths}) {
+  const {unanswered,lacking,files} = storyboardGaps({root,brand,jobId,paths});
   if(unanswered.length) throw new UserFacingError(`The voice-over question has not been answered for ${unanswered.join(', ')}, so the storyboard is not ready to show.`,{
     code:'storyboard_voiceover_missing',
     fix:'Ask the person once, with pipeline_board_ask: "Voice-over: yes or no, and which voice?" (options Yes and No, and a text box for the voice). Then have the Creative Director fit the script and clip lengths to it and write it in the storyboard front matter as voice_over: yes or no and voice: the voice. Then present again.',

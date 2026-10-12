@@ -1210,6 +1210,15 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .jr-state .pill{white-space:normal;text-align:left;line-height:1.25}
 .doors-section{display:flex;flex-direction:column;gap:12px}
 @media (max-width:720px){.job-row{grid-template-columns:minmax(0,1fr);gap:8px}.jr-state{justify-self:start}}
+.ready-checks{margin:var(--gap) 0 0;padding:10px 12px;border:1px solid var(--line2);border-radius:var(--radius)}
+.ready-checks h3{margin:0 0 6px;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.ready-checks ul{display:grid;gap:4px;margin:0;padding:0;list-style:none;font-size:13px}
+.ready-checks li{display:flex;gap:8px;align-items:baseline;min-width:0;overflow-wrap:anywhere}
+.ready-mark{flex:none;width:1em;text-align:center;font-weight:800}
+.ready-ok .ready-mark{color:var(--go)}.ready-ok .ready-mark::before{content:"\2713"}
+.ready-bad{color:var(--hold)}.ready-bad .ready-mark::before{content:"\2715"}
+.ready-warn{color:var(--tape)}.ready-warn .ready-mark::before{content:"!"}
+@media(max-width:720px){.ready-checks{padding:8px 10px}.ready-checks ul{font-size:12px}}
 
 </style>
 </head>
@@ -3955,7 +3964,21 @@ if(gate==='content')parts.push(socialCheckSection(review.socialCheck,openKeys));
 const covered=new Set([review.concepts?.path,...(review.storyboards||[]).map(item=>item.path),...(review.posts||[]).map(item=>item.path),review.quote?.path,review.sample?.path,...(review.media||[]).map(item=>item.path)].filter(Boolean));
 const rest=(review.paths||[]).filter(path=>!covered.has(path)&&!/^publish\//i.test(path)&&!/\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)$/i.test(path));
 if(rest.length)parts.push(reviewFilesHtml(doc,rest));
+parts.push(readyChecksList(review.readyChecks));
 return parts.join('');
+}
+function readyChecksList(checks){
+const list=(Array.isArray(checks)?checks:[]).filter(item=>item&&typeof item.label==='string'&&item.label);
+if(!list.length)return'';
+const rows=list.map(item=>{
+const tone=item.ok?'ok':item.level==='warning'?'warn':'bad';
+const said=item.ok?'Done: ':tone==='warn'?'Check this: ':'Not ready: ';
+return`<li class="ready-${tone}"><span class="ready-mark" aria-hidden="true"></span><span><span class="visually-hidden">${said}</span>${esc(item.label)}</span></li>`;
+}).join('');
+return`<section class="ready-checks" aria-label="Ready check"><h3>Ready check</h3><ul>${rows}</ul></section>`;
+}
+export function readyBlockers(doc){
+return(Array.isArray(doc?.review?.readyChecks)?doc.review.readyChecks:[]).filter(item=>item&&item.ok===false&&item.level!=='warning'&&typeof item.label==='string');
 }
 const COPY_GATES=new Set(['sample','pictures','clips','cut','finish','content','publish']);
 const copiesWaiting=refs=>{
@@ -3980,6 +4003,12 @@ return ref.kind==='video'||!safePreviewUrl(ref.thumb);
 });
 }
 function approval(gate,doc,state,recipeState={},routeState={},postStates={}){
+const plan=approvalBase(gate,doc,state,recipeState,routeState,postStates);
+const blockers=plan.disabled||plan.action==='send-panels'?[]:readyBlockers(doc);
+if(!blockers.length)return plan;
+return{...plan,disabled:true,line:`Not ready yet: ${blockers[0].label}${blockers.length>1?` (and ${blockers.length-1} more)`:''}`};
+}
+function approvalBase(gate,doc,state,recipeState={},routeState={},postStates={}){
 const unviewable=COPY_GATES.has(gate)?unviewableMedia(doc):[];
 if(unviewable.length)return{disabled:true,label:gate==='sample'?'Approve sample':MEDIA_GATE_IDS.has(gate)?(gate==='cut'||gate==='finish'?'Approve':'Approve all'):'Approve',line:copiesWaiting(unviewable)};
 if(gate==='concept'){

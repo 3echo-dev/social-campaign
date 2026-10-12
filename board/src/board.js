@@ -3449,7 +3449,26 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   // The posting plan (publish/intent.json and the rest of publish/) is shown by the publish card, never as a file panel.
   const rest = (review.paths || []).filter(path => !covered.has(path) && !/^publish\//i.test(path) && !/\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)$/i.test(path));
   if (rest.length) parts.push(reviewFilesHtml(doc, rest));
+  parts.push(readyChecksList(review.readyChecks));
   return parts.join('');
+}
+
+// The short "Ready check" above the buttons: a green tick for a check that passes, a red mark for a required one that does not
+// (it holds Approve, see approval()), an amber mark for a warning that lets the review go.
+function readyChecksList(checks) {
+  const list = (Array.isArray(checks) ? checks : []).filter(item => item && typeof item.label === 'string' && item.label);
+  if (!list.length) return '';
+  const rows = list.map(item => {
+    const tone = item.ok ? 'ok' : item.level === 'warning' ? 'warn' : 'bad';
+    const said = item.ok ? 'Done: ' : tone === 'warn' ? 'Check this: ' : 'Not ready: ';
+    return `<li class="ready-${tone}"><span class="ready-mark" aria-hidden="true"></span><span><span class="visually-hidden">${said}</span>${esc(item.label)}</span></li>`;
+  }).join('');
+  return `<section class="ready-checks" aria-label="Ready check"><h3>Ready check</h3><ul>${rows}</ul></section>`;
+}
+
+/** The required checks on the card that are not met yet (they hold Approve). */
+export function readyBlockers(doc) {
+  return (Array.isArray(doc?.review?.readyChecks) ? doc.review.readyChecks : []).filter(item => item && item.ok === false && item.level !== 'warning' && typeof item.label === 'string');
 }
 
 const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'finish', 'content', 'publish']);
@@ -3481,6 +3500,13 @@ function unviewableMedia(doc) {
  * cannot be approved yet.
  */
 function approval(gate, doc, state, recipeState = {}, routeState = {}, postStates = {}) {
+  const plan = approvalBase(gate, doc, state, recipeState, routeState, postStates);
+  const blockers = plan.disabled || plan.action === 'send-panels' ? [] : readyBlockers(doc);
+  if (!blockers.length) return plan;
+  return { ...plan, disabled: true, line: `Not ready yet: ${blockers[0].label}${blockers.length > 1 ? ` (and ${blockers.length - 1} more)` : ''}` };
+}
+
+function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postStates = {}) {
   const unviewable = COPY_GATES.has(gate) ? unviewableMedia(doc) : [];
   if (unviewable.length) return { disabled: true, label: gate === 'sample' ? 'Approve sample' : MEDIA_GATE_IDS.has(gate) ? (gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all') : 'Approve', line: copiesWaiting(unviewable) };
   if (gate === 'concept') {
