@@ -167,7 +167,7 @@ export const workspaceTools = [
     handler: (args, { workspace }) => {
       if (!CONNECTABLE_PROVIDERS.includes(String(args.provider))) {
         throw new InvalidInputError(`"${args.provider}" is not something Social Campaign connects to.`, {
-          fix: `Use one of ${CONNECTABLE_PROVIDERS.join(', ')}. Social and ad research need no connection; their coverage is checked automatically. Metricool is recorded only by integration_probe.`,
+          fix: `Use one of ${CONNECTABLE_PROVIDERS.join(', ')}. Social and ad research need no connection; their coverage is checked automatically. Metricool, Meta ads and TikTok ads are recorded only by integration_probe.`,
         });
       }
       if (!CONNECTION_STATES.includes(String(args.state))) {

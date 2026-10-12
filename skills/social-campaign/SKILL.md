@@ -148,6 +148,8 @@ Diagnose in this order:
 4. Create the job and route it as new-job describes, with the `kind` you picked and, in `kindReason`, one short plain sentence of why.
    The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>".
 
+When the person asks how their ads did, that is not a new job: follow the ad-results skill on the job it is about.
+
 When two or more pipelines fit, or none does, never ask before the job exists: create the job right away with the likeliest pipeline and ask which one on that job, as new-job describes, so the person lands on the job and the Director asks there.
 Board-sync's Questions on the board describes how to ask it.
 

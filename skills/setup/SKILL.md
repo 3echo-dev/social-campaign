@@ -107,12 +107,23 @@ When it reports `chosen`, say nothing; the brand card shows where posts go.
 When it reports `needsChoice`, a brand that already posted through one Metricool brand has lost it, and it is never replaced silently: say in one plain line which brand lost which Metricool brand (`was`) and that Claude needs to know which one to use now, after publishing the workspace projection so the Needs you list shows the question.
 The same check runs again, without a second walkthrough, when a `connect_provider` request names `metricool` (the board's Connect or Refresh brands): repeat the detection, the read-only call, `integration_probe` and `pipeline_metricool_brands_save`, then apply the request only if the probe was `ok: true`, or decline it with one plain reason such as that Metricool is not connected yet.
 
+Meta ads (`meta_ads`) and TikTok ads (`tiktok_ads`) are optional and detected the same way.
+Meta ads is present when a tool's base name is `ads_get_ad_accounts`, under any prefix; TikTok ads is present when a tool's base name is `auth_advertiser_get`.
+When one is present, call only that read-only account listing tool, then `integration_probe` with that provider (`ok: true` and the namespace that answered, or `ok: false` and one plain sentence), then `pipeline_ad_accounts_save` with the list exactly as returned.
+Never call a tool that creates, updates, activates, pauses or deletes anything in an ad account, or one that uploads to it. These connectors are read-only here.
+If no surface is present, make no call and do not push it: it stays an optional card on the board.
+When one is missing and the person wants it, say in plain words that Meta ads is added in claude.ai Settings > Connectors as a custom connector with the URL https://mcp.facebook.com/ads, and TikTok ads from the connector directory as "TikTok for Business"; then they come back and say done.
+Recommend they keep write permissions for Meta switched off in Business Suite.
+When `pipeline_ad_accounts_save` reports `asked`, publish the workspace projection so Needs you shows the question, and say in one plain line that Claude needs to know which ad account belongs to each brand.
+When it reports `chosen`, say nothing. When it reports `needsChoice`, say in one plain line which brand lost which ad account (`was`) and that Claude needs to know which one to use now.
+A `connect_provider` request that names `meta_ads` or `tiktok_ads` repeats this check, the same as for Metricool.
+
 A new workspace's board always opens on its Connectors step, `setupStep: "connectors"`, even when every connector already answered, so the person sees what is connected.
 It stays there until the person presses Continue (a `connectors_continue` request), which skips for now anything not connected yet.
 After that, the step comes back only when a required connector is neither `connected` nor `skipped`.
 When you give the board link, say in one plain line which connectors are already connected and that they can connect the rest or skip, then press Continue to set up their brand.
 If they say in chat to carry on, record it through the same `connectors_continue` board request path a board click would use: land the request, then apply it immediately.
-A connector marked `optional`, which is Metricool, never holds the step back and stays reachable from the board's Connectors link.
+A connector marked `optional`, which is Metricool, Meta ads and TikTok ads, never holds the step back and stays reachable from the board's Connectors link.
 A Skip the person gives in chat is recorded through the same `skip_provider` board request path a board click would use: land the request, then apply it immediately, the same as a board click; the person's answer in chat is the approval.
 A connector the user skips is not asked again during this setup.
 It can still be connected later, from the board or the next time a stage needs it.

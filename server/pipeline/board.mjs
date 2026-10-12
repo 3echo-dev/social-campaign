@@ -17,6 +17,7 @@ import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copi
 import { assertContentQc } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, checkRecipePicks, chooseRecipe, readJobRecipes } from './recipe.mjs';
 import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceList, studioWorkspaceReach, studioWorkspaceInfo } from './studio-workspace.mjs';
+import { brandAdAccountsInfo, isAdAccountQuestion, reconcileAdAccountChoices, reconcileAdAccountChoicesQuietly } from './ad-accounts.mjs';
 import { brandPublishingInfo, chooseMetricoolBrand, readBrandOptedOut, unlinkMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, metricoolQuestionOptions, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
@@ -1235,6 +1236,8 @@ export const CONNECTORS = [
   { key: 'threeecho_studio', name: '3Echo Studio', description: 'Makes the images and videos.' },
   { key: 'elevenlabs', name: 'ElevenLabs', description: 'Makes the voice-over.' },
   { key: 'metricool', name: 'Metricool', description: 'Schedules your posts to Facebook, Instagram and TikTok.', optional: true },
+  { key: 'meta_ads', name: 'Meta ads', description: 'Reads your Facebook and Instagram ad results. Read-only.', optional: true },
+  { key: 'tiktok_ads', name: 'TikTok ads', description: 'Reads your TikTok ad results. Read-only.', optional: true },
 ];
 const CONNECTOR_KEYS = CONNECTORS.map(connector => connector.key);
 
@@ -1353,9 +1356,10 @@ export function boardSnapshot({ root } = {}) {
       ? { workspaceId: brandChoice.workspaceId, name: studioWorkspaces.find(item => item.id === brandChoice.workspaceId)?.name || brandChoice.name }
       : null;
     const publishing = brandPublishingInfo({ brandDir: brand.path, channels: raw?.channels, brands: metricoolBrands, connected: metricoolOn });
+    const adAccounts = brandAdAccountsInfo({ brandDir: brand.path, root });
     // The agents behind onboarding (the Director and the Researcher), shown on the Brand onboarding page until the brand is ready.
     const agents = !readyForJobs || usage.status === 'running' ? onboardingAgents({ brandDir: brand.path, brandName: brand.name, usage, onboardingStatus: brand.onboardingStatus, readyForJobs }) : null;
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(agents ? { agents } : {})};
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -2201,6 +2205,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
       try { chooseMetricoolBrandForJobs({root,brand:result.brand.slug,blogId:args.metricoolBlogId.trim()}); } catch { /* The question below asks instead. */ }
     }
     reconcileMetricoolChoicesQuietly({root});
+    reconcileAdAccountChoicesQuietly({root});
     return result;
   }
   if(operation==='create_brand') return runtime.createBrand({root,name:args.name,requestId:args.requestId});
@@ -2208,6 +2213,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const result = runtime.completeBrandOnboarding({root,brand:args.brand,profile:args.profile});
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
     reconcileMetricoolChoicesQuietly({root});
+    reconcileAdAccountChoicesQuietly({root});
     return result;
   }
   if(operation==='create_job') {
@@ -2719,6 +2725,10 @@ function answeredQuestion(root,record) {
   const question=answerQuestion({root,questionId:record.args.questionId,choice:record.args.choice,text:record.args.text,via:'board',requestId:record.requestId});
   if(isMetricoolQuestion(question)) {
     try { reconcileMetricoolChoices({root}); if(question.brand) refreshPlansForBrand(root,question.brand); } catch { /* Applied on the next save of the Metricool brands. */ }
+  }
+  for(const provider of ['meta_ads','tiktok_ads']) {
+    if(!isAdAccountQuestion(question,provider)) continue;
+    try { reconcileAdAccountChoices({root,provider}); } catch { /* Applied on the next save of the ad accounts. */ }
   }
   return question;
 }

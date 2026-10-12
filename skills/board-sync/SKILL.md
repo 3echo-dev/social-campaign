@@ -250,6 +250,13 @@ Call `getBrandSettings` (read-only), then `integration_probe` with provider `met
 Apply the request only when the probe was `ok: true`; when Metricool is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
 Never call a Metricool tool that creates, updates or sends a post while handling a connection request.
 
+For `meta_ads` and `tiktok_ads`, a `connect_provider` request is verified the same way, with the full check in `skills/setup/SKILL.md`.
+Find Meta ads by the tool base name `ads_get_ad_accounts` and TikTok ads by `auth_advertiser_get`, under any prefix.
+Call only that read-only listing tool, then `integration_probe` with provider `meta_ads` or `tiktok_ads`, then `pipeline_ad_accounts_save` with the list exactly as returned.
+Apply the request only when the probe was `ok: true`; when the connector is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
+Never call an ad tool that creates, updates, activates, pauses or deletes anything while handling a connection request.
+When a person answers the "Which Meta ad account belongs to ..." or "Which TikTok ad account belongs to ..." question in chat, call `pipeline_ad_account_choose`; a board answer is applied for you.
+
 For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions on the board below.
 
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.

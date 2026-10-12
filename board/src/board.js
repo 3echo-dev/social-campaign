@@ -1148,6 +1148,20 @@ export function brandVoiceLine(brand) {
   return reasons.length ? `<p class="muted brand-chip-voice">${esc(reasons.join(' '))}</p>` : '';
 }
 
+// Which ad account each connected ad platform reads for this brand. A small line, shown only once an account is saved.
+export function brandAdAccountsLine(brand) {
+  const saved = brand?.adAccounts;
+  if (!saved || typeof saved !== 'object') return '';
+  const parts = [];
+  for (const [provider, label] of [['meta_ads', 'Meta ad account'], ['tiktok_ads', 'TikTok ad account']]) {
+    const item = saved[provider];
+    if (!item) continue;
+    if (item.unreadable) { parts.push(`${label} could not be read`); continue; }
+    parts.push(`${label} <strong>${esc(item.name)}</strong>${item.found === false ? ' (no longer listed)' : ''}`);
+  }
+  return parts.length ? `<div class="brand-chip-publish"><p class="muted">Ad results: ${parts.join(' &middot; ')}</p></div>` : '';
+}
+
 export function brandChip(brand, metricool = {}) {
   const ready = brandReady(brand);
   const researching = brandResearchPhase(brand) === 'running';
@@ -1157,7 +1171,7 @@ export function brandChip(brand, metricool = {}) {
     ? '<button class="quiet" type="button" disabled>Researching...</button>'
     : `<button class="quiet" data-onboard="${esc(brand.slug)}">${ready ? 'Update' : 'Continue'}</button>`;
   const pillars = researching ? '' : brandPillarsPill(brand);
-  return `<div class="brand-chip"><span class="avatar">${esc((brand.name || 'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready ? 'Ready for jobs' : 'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}${brandMetricoolLine(brand, metricool)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
+  return `<div class="brand-chip"><span class="avatar">${esc((brand.name || 'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready ? 'Ready for jobs' : 'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}${brandMetricoolLine(brand, metricool)}${brandAdAccountsLine(brand)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
 }
 
 // Where this brand's posts go: the Metricool brand it posts through, with one chip per
@@ -1237,6 +1251,8 @@ export function brandStudioWorkspaceLine(brand) {
 const CONNECTOR_GUIDANCE = Object.freeze({
   threeecho_studio: 'Add 3Echo Studio in claude.ai: Settings, Connectors, then come back and say done.',
   metricool: 'Add Metricool in claude.ai: Settings, Connectors, then come back and say done.',
+  meta_ads: 'Add Meta ads in claude.ai: Settings, Connectors, as a custom connector with the URL https://mcp.facebook.com/ads, then come back and say done.',
+  tiktok_ads: 'Add TikTok for Business in claude.ai: Settings, Connectors, then come back and say done.',
 });
 
 export function connectorCard(connector, { busy = false } = {}) {
@@ -5582,7 +5598,7 @@ if (typeof document !== 'undefined') {
   function connectorsPanel(forced) {
     const connectors = data.connectors || [];
     const back = forced ? '' : '<div class="toolbar"><button class="quiet" data-action="connectors-close">&larr; Back</button></div>';
-    const optional = connectors.some(connector => connector.optional) ? ' Metricool is optional: it schedules your posts, and setup does not wait for it.' : '';
+    const optional = connectors.some(connector => connector.optional) ? ' Metricool, Meta ads and TikTok ads are optional: Metricool schedules your posts, the ad connectors only read ad results, and setup does not wait for any of them.' : '';
     const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional}${forced ? ' You can skip and connect later from Connectors at the top.' : ''}</p>`;
     const busy = connectorPending.size > 0;
     const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected is skipped for now.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
