@@ -59,14 +59,14 @@ function postingZone(publishAt, jobSchedule, brandZone) {
 
 // The first text file in a built hand-off that names a vendor or an AI model, or null. The client
 // keeps this package, so it must not say which tool made the work.
-function textFilesWithVendorName(dir) {
+function textFilesWithVendorName(dir, allow) {
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => {
     const full = path.join(d, e.name);
     return e.isDirectory() ? walk(full) : [full];
   });
   for (const file of walk(dir)) {
     if (!/\.(txt|md|csv|json)$/i.test(file)) continue;
-    const name = vendorNames.findVendorName(fs.readFileSync(file, 'utf8'));
+    const name = vendorNames.findVendorName(fs.readFileSync(file, 'utf8'), allow);
     if (name) return { file: path.relative(dir, file).split(path.sep).join('/'), name };
   }
   return null;
@@ -356,7 +356,14 @@ fs.writeFileSync(readmePath, readme);
 files.push(readmePath);
 
 // 5b. The client keeps this package, so it must never name a vendor or an AI model.
-const named = textFilesWithVendorName(out);
+// The brand's own name is not a vendor name: a brand called "3echo" may say it.
+const ownNames = [brand, wsCfg && wsCfg.name, wsCfg && wsCfg.brandName, wsCfg && wsCfg.displayName,
+  profile && profile.name, profile && profile.brandName];
+try {
+  const accepted = readJson(path.join(ws.wsDir(brand), 'brand', 'accepted-words.json'));
+  ownNames.push(...(Array.isArray(accepted) ? accepted : Array.isArray(accepted && accepted.words) ? accepted.words : []));
+} catch {}
+const named = textFilesWithVendorName(out, ownNames.filter(n => typeof n === 'string'));
 if (named) {
   fs.rmSync(out, { recursive: true, force: true });
   console.error('REFUSED: the hand-off names "' + named.name + '" in ' + named.file + ', and a client hand-off must not name a vendor or an AI model.');
