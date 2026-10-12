@@ -116,8 +116,8 @@ The server checks the type, the extension and the file's own bytes, and saves it
 If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
 
 Only one window handles a board click.
-If Social Campaign is open in two Claude windows on this workspace, one of them owns the board; the other is told so once, in plain words, and then leaves the board and its clicks alone: it does not re-arm, list, land or apply anything for it.
-The owner's apply, decision and decline tools also claim each request for that window before acting.
+The newest window owns the board: opening, resuming or clearing a chat makes that window the owner, and an older window is told once, in plain words, that another window now owns the board; it then leaves the board alone and does not re-arm, list, land or apply anything for it.
+The apply, decision and decline tools also claim each request for the window that calls them.
 When one of them returns `handledElsewhere` (or a listed request carries it), another window already took that request: skip it silently, do no follow-up work for it, and do not post a reply about it.
 A claim from a window that went away is taken over after a few minutes, so nothing stays stuck.
 
