@@ -476,6 +476,16 @@ export function validateIntakePatch(patch) {
       if (!INTAKE_OPTIONS[key].some(entry => entry.value === value)) throw new TypeError(`Choose a supported ${INTAKE_FIELD_SPECS[key].label.toLowerCase()}.`);
       continue;
     }
+    // The topic and the direction the person agreed to before research (plan 0.17); runtime.updateJobIntake cleans the direction itself.
+    if (key === 'topic') { intakeText(value, key); continue; }
+    if (key === 'direction') {
+      onlyKeys(value, ['goal', 'audience', 'message', 'offer', 'cta', 'landingPageUrl', 'referenceKeep', 'referenceChange', 'successMeasure', 'mustSay', 'mustNotSay', 'assumptions', 'sources'], key);
+      continue;
+    }
+    if (key === 'directionApproved') {
+      if (typeof value !== 'boolean') throw new TypeError('Intake field directionApproved must be true or false.');
+      continue;
+    }
     if (key === 'links') {
       if (!Array.isArray(value) || !value.length || value.length > LINK_LIMIT) throw new TypeError(`Add between one and ${LINK_LIMIT} links.`);
       if (value.some(item => typeof item !== 'string' || !runtime.webLink(item))) throw new TypeError('Each link must be a full https address.');

@@ -355,10 +355,11 @@ function derivePlacement(d) {
   if (d.placement === undefined || d.placement === null) {
     if (placementBelongs(d.platform, d.postType)) return d.postType;
   }
-  const open = validPlacementsFor(d);
+  // Without a format nothing has been judged yet (a bare Instagram or Facebook deliverable passes only as a post by default), so no post type is read from the rules.
+  const noFormat = d.creativeDiscipline === undefined || d.creativeDiscipline === null || d.creativeDiscipline === '';
+  const open = noFormat ? [] : validPlacementsFor(d);
   if (open.length === 1) return open[0];
   // TikTok alone is a video unless the brief points at photos (slides). Only when the format is not stated: a stated format is judged by the rules above.
-  const noFormat = d.creativeDiscipline === undefined || d.creativeDiscipline === null || d.creativeDiscipline === '';
   const hasSlides = d.slides !== undefined && d.slides !== null;
   if (d.platform === 'tiktok' && noFormat && !hasSlides && !ratiosOf(d).some(ratio => ratio !== '9:16')) return 'video';
   return null;

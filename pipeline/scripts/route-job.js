@@ -102,7 +102,11 @@ const hasCaption = typeof job.caption === 'string' && job.caption.trim().length 
 
 // Rule 1: schema and v1 platforms
 for (const e of validate(schema, job)) {
-  const field = e.path.replace(/^\$\.?/, '');
+  // A deliverable that has an id is pointed at by it (deliverables.D1.creativeDiscipline), the way its post type and source are; one without is pointed at by position.
+  const field = e.path.replace(/^\$\.?/, '').replace(/^deliverables\[(\d+)\]/, (whole, index) => {
+    const id = Array.isArray(job.deliverables) && job.deliverables[Number(index)] ? job.deliverables[Number(index)].id : null;
+    return typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id) ? 'deliverables.' + id : whole;
+  });
   if (e.keyword === 'required') missing(field);
   else missing(field + ' (' + e.message + ')');
 }
