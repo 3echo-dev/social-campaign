@@ -24,6 +24,8 @@ import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, op
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
+import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId, hostSessionKnown } from './session-claims.mjs';
+import { otherBoardOwner } from './board-freshness.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
@@ -1428,6 +1430,14 @@ export function boardSnapshot({ root } = {}) {
   return applyProjectionBudget(projection);
 }
 
+function liveSessionClaim(file) {
+  const held=readClaimRecord(file);
+  if(!held) return null;
+  const at=Date.parse(held.claimedAt ?? '');
+  if(!Number.isFinite(at) || Date.now()-at>REQUEST_CLAIM_TTL_MS) return null;
+  return held;
+}
+
 function requestsDirectory(root) {
   const dir = join(root,'.social-pipeline','board','requests');
   mkdirSync(dir,{recursive:true});
@@ -1441,11 +1451,15 @@ function requestFile(root,requestId) {
   return join(requestsDirectory(root),`${requestId}.json`);
 }
 
-export function listBoardRequests({ root }) {
+export function listBoardRequests({ root, sessionId = null }) {
   root = rootOf(root);
+  const me = sessionId || windowSessionId();
   return readdirSync(requestsDirectory(root)).filter(name=>name.endsWith('.json')).map(name=>{
     const file=join(requestsDirectory(root),name),record=read(file);
-    return record.status==='requested' && existsSync(`${file}.claim`)?{...record,status:'needs_reconciliation',detail:'An earlier runner claimed this request. Inspect its local effects before retrying.'}:record;
+    const listed=record.status==='requested' && existsSync(`${file}.claim`)?{...record,status:'needs_reconciliation',detail:'An earlier runner claimed this request. Inspect its local effects before retrying.'}:record;
+    // A request another live window has already taken is that window's to handle: say so, so this one skips it.
+    const held=listed.status==='requested' ? liveSessionClaim(`${file}.session`) : null;
+    return held && held.sessionId!==me ? {...listed,handledElsewhere:true,heldBy:held.sessionId} : listed;
   }).filter(item=>item.status!=='applied' && item.status!=='declined');
 }
 
@@ -2695,7 +2709,36 @@ function answeredQuestion(root,record) {
   return question;
 }
 
-export function applyBoardRequest({root,requestId,confirmedBy}) {
+// Two windows open on one workspace both see the same board click. The window that takes the request's session claim
+// first acts on it; any other window gets the request back untouched, marked handledElsewhere, and skips it silently.
+// A claim the acting window never used (the request was refused before the work began) is given back, so the request can
+// still be declined or tried again; a claim from a window that went away is taken over after REQUEST_CLAIM_TTL_MS.
+const sessionClaimFile = (root,requestId) => `${requestFile(root,requestId)}.session`;
+
+function actOnce(root,requestId,sessionId,run) {
+  root=rootOf(root);
+  const file=requestFile(root,requestId),record=read(file);
+  if(record.status!=='requested' && record.status!=='needs_reconciliation') return run();
+  const me=sessionId || windowSessionId(),claimFile=sessionClaimFile(root,requestId);
+  // The board's clicks belong to the window that owns the board. (Only checked when this window's id is the host's own,
+  // the one the owner was recorded under.)
+  const other=record.source==='artifact' && (sessionId || hostSessionKnown()) ? otherBoardOwner(root,me) : null;
+  if(other) return {...record,handledElsewhere:true,heldBy:other,message:'Another window owns this board and handles its clicks.'};
+  const taken=takeClaim(claimFile,me,{ttlMs:REQUEST_CLAIM_TTL_MS});
+  if(!taken.claimed) return {...record,handledElsewhere:true,heldBy:taken.owner?.sessionId ?? null,message:'Another window is already handling this request.'};
+  try { return run(); }
+  catch(error) {
+    // Nothing started (no runner claim, still waiting): hand the request back to whichever window tries next.
+    if(!existsSync(`${file}.claim`)) releaseClaim(claimFile,me);
+    throw error;
+  }
+}
+
+export function applyBoardRequest(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>applyBoardRequestNow(args)); }
+export function declineBoardRequest(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>declineBoardRequestNow(args)); }
+export function applyBoardDecision(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>applyBoardDecisionNow(args)); }
+
+function applyBoardRequestNow({root,requestId,confirmedBy}) {
   root=rootOf(root);
   if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error('Confirm the requester before applying this artifact request.');
   const file=requestFile(root,requestId),record=read(file);
@@ -2745,7 +2788,7 @@ export function applyBoardRequest({root,requestId,confirmedBy}) {
   return next;
 }
 
-export function declineBoardRequest({root,requestId,confirmedBy,reason,handled}) {
+function declineBoardRequestNow({root,requestId,confirmedBy,reason,handled}) {
   root=rootOf(root);
   if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error('Confirm the requester before declining this request.');
   const file=requestFile(root,requestId),record=read(file);
@@ -2768,7 +2811,7 @@ export function declineBoardRequest({root,requestId,confirmedBy,reason,handled})
   return next;
 }
 
-export function applyBoardDecision({root,requestId,confirmedBy,maxCredits}) {
+function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   root = rootOf(root);
   if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error('The runner must identify the person who confirmed this decision.');
   const file = requestFile(root,requestId), record = read(file);

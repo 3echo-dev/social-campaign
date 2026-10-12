@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { asObject, resolveWorkspaceRoot } from '../../server/pipeline/facts.mjs';
 import {
-  BOARD_TEXT, WORKSPACE_DOCUMENT, isBoardUrl, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed,
+  BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed,
 } from '../../server/pipeline/board-freshness.mjs';
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
@@ -119,7 +119,8 @@ function recordAlias(ctx) {
 function recordArming(ctx) {
   if (flaggedAsError(ctx.response)) return;
   const armed = ctx.tool === 'Artifact' ? publishesBoard(ctx) : ctx.tool === 'ArtifactComments' ? watchesBoard(ctx) : false;
-  if (armed) recordBoardArmed(ctx.root, ctx.sessionId);
+  // Only the window that owns the board arms its wake-up.
+  if (armed && claimBoardOwner(ctx.root, ctx.sessionId).owner) recordBoardArmed(ctx.root, ctx.sessionId);
 }
 
 async function main() {
@@ -128,7 +129,13 @@ async function main() {
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root) return;
   if (event.hook_event_name === 'UserPromptSubmit') {
-    if (event.session_id && needsRearm(root, event.session_id)) tell(BOARD_TEXT.rearm);
+    if (!event.session_id || !readBoardLink(root)) return;
+    const ownership = claimBoardOwner(root, event.session_id);
+    if (!ownership.owner) {
+      if (noteOtherWindowOnce(root, event.session_id, ownership.by)) tell(BOARD_TEXT.otherWindow);
+      return;
+    }
+    if (needsRearm(root, event.session_id)) tell(BOARD_TEXT.rearm);
     return;
   }
   const link = readBoardLink(root);
