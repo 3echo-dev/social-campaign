@@ -103,14 +103,23 @@ function missingSources(kind, refs, job) {
 const TOPIC_QUESTION = 'What should this post be about: a product, a service, an offer or a message?';
 const hasText = value => typeof value === 'string' && value.trim().length > 0;
 
-function missingFields(job) {
+// The direction is agreed with the person before any research (plan 0.17): the goal, the message, the offer,
+// the call to action. A content job is not routed until job.directionApproved is true, so the intake
+// questions carry it like any other missing field. A job already past intake is never asked for it.
+const DIRECTION_QUESTION = 'Approve the direction for this job';
+const needsDirection = kind => (requirementsOf(kind).requiredFields || []).includes('direction');
+const directionApproved = job => Boolean(job && typeof job === 'object' && job.directionApproved === true);
+
+function missingFields(job, options = {}) {
   const record = job && typeof job === 'object' ? job : {};
   const fields = requirementsOf(record.kind).requiredFields || [];
   const absent = fields
-    .filter(field => field === 'topic'
-      ? !hasText(record.topic) && !hasText(record.offer)
-      : !(field in record) || record[field] === undefined)
-    .map(field => (field === 'topic' ? TOPIC_QUESTION : field));
+    .filter(field => {
+      if (field === 'topic') return !hasText(record.topic) && !hasText(record.offer);
+      if (field === 'direction') return !(options && options.pastIntake === true) && !directionApproved(record);
+      return !(field in record) || record[field] === undefined;
+    })
+    .map(field => (field === 'topic' ? TOPIC_QUESTION : field === 'direction' ? DIRECTION_QUESTION : field));
   return absent.concat(missingSources(record.kind, record.sourceRefs, record));
 }
 
@@ -118,6 +127,9 @@ module.exports = {
   NO_BRAND,
   SOURCE_NEEDS,
   TOPIC_QUESTION,
+  DIRECTION_QUESTION,
+  needsDirection,
+  directionApproved,
   registry,
   normalizedKind,
   kindOf,

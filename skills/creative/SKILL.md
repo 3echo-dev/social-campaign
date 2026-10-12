@@ -40,9 +40,27 @@ Keep generated media requests as producer inputs.
 
 Leave concept, storyboard, and content decisions to the board and pipeline decision tools.
 
+## Angles for every post that makes pictures or video
+
+Every post that makes pictures or video gets 2 or 3 angles to pick from before the storyboard, whether or not a reference video exists.
+Write them from the approved brief and the approved direction, and never change the topic or the message.
+Each angle has a short name, the hook line, the call to action, and one line on why it should work for this brand.
+The hook line and the call to action are the real ones, so the person picks the words they will see.
+The angles must differ in their idea, not only in wording.
+When the person gave a reference video, every angle keeps its format (its look, structure and pacing) and changes the subject, the hook line, the steps and the ending.
+
+Open the choice with a short summary of the brief: the message, who it is for, the proof, and what is kept from or changed for a reference.
+The person picks one angle, mixes two, or says "pick for me".
+Offer "Pick for me" as an option every time.
+When they say it, choose the angle you think is strongest, say which and why in one line, and carry on.
+
+The storyboard and the copy follow the pick.
+The hook line and the call to action of the picked angle are used as they are, and are never asked again.
+
 ## Copy choices at the concept step
 
 Before any copy is written, the person picks, for every post (D1, D2 and so on), the content pillar, the angle, the hook family, the call to action and the hashtag set.
+A hook line and a call to action already fixed by the angle pick are not asked again; only what is still open is.
 Do this at the concept step, alongside the concepts.
 A post that goes straight to copy with no concept step gets the same choices first, as their own question.
 

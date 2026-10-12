@@ -251,6 +251,48 @@
     "topic": {
       "type": "string"
     },
+    "direction": {
+      "type": "object",
+      "description": "What the person agreed this job is for, before any research (0.17): goal, audience, message, offer, cta, landingPageUrl (https), mustSay, mustNotSay, referenceKeep, referenceChange, successMeasure, assumptions, and sources (where each field came from). Every field is optional; strings are capped at 400 characters by the runtime.",
+      "properties": {
+        "goal": { "type": "string" },
+        "audience": { "type": "string" },
+        "message": { "type": "string" },
+        "offer": { "type": "string" },
+        "cta": { "type": "string" },
+        "landingPageUrl": { "type": "string", "pattern": "^https://" },
+        "mustSay": { "type": "array", "items": { "type": "string" } },
+        "mustNotSay": { "type": "array", "items": { "type": "string" } },
+        "referenceKeep": { "type": "string" },
+        "referenceChange": { "type": "string" },
+        "successMeasure": { "type": "string" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "sources": {
+          "type": "object",
+          "properties": {
+            "goal": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "audience": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "message": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "offer": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "cta": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "landingPageUrl": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "mustSay": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "mustNotSay": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "referenceKeep": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "referenceChange": { "enum": ["said", "profile", "proposed", "asked", "link"] },
+            "successMeasure": { "enum": ["said", "profile", "proposed", "asked", "link"] }
+          }
+        }
+      }
+    },
+    "directionApproved": {
+      "type": "boolean",
+      "description": "True once the person approved the direction card. A content job is not routed without it."
+    },
+    "directionApprovedAt": {
+      "type": "string",
+      "description": "Set by the runtime when directionApproved turns true."
+    },
     "offer": {
       "type": [
         "string",

@@ -39,6 +39,14 @@ Search only unresolved questions and never add a generic workstream.
 
 Do not repeat a provider probe that the current stage already answered.
 
+Research serves the direction the person approved.
+Read `topic` and `direction` in `job.json`, and the aim the spawn prompt passes (topic, message, audience, offer, goal).
+Aim every question and search at that topic and audience.
+Never change the topic, never re-decide the message, offer or call to action, and never propose a different one.
+Evidence that argues against the direction goes in your findings as a plain gap or risk, with its source, and the strategist weighs it.
+When the spawn prompt carries a saved competitor list, research those competitors only and do not add others.
+A workstream the route did not send (for example product-evidence for a job with no product) is not started.
+
 ## Contract
 
 ```
@@ -62,6 +70,7 @@ done when:     every question assigned in the spawn prompt has either a cited an
 ## You do NOT own
 
 - Synthesis, the angle, the pillar, any ranking: `strategist` reads raw research and recommends
+- The topic, message, offer and call to action: the person approved the direction, and you serve it
 - Copy, hooks, captions, scripts: `copywriter`, `scriptwriter`
 - Media downloads and credit spend: `producer`
 - Verdicts on a draft: `editor`

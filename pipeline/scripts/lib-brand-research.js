@@ -666,7 +666,52 @@ function normalizeQuestion(question, index, scope) {
     evidenceType: item.evidenceType || item.acceptableEvidenceType || null,
     scope: normalizeScope(item.scope || item.requiredScope || item.required_scope || scope || {}),
     historical: Boolean(item.historical || item.historicalAnalysis),
+    ...(item.aim && typeof item.aim === 'object' && Object.keys(item.aim).length ? { aim: clone(item.aim) } : {}),
   };
+}
+
+// What the person agreed this job is about: the topic and the approved direction. Research
+// is aimed at it and never re-decides it. The aim is handed to each workstream beside the
+// scope, and it is not a scope dimension: saved evidence is not excluded because its wording
+// differs from the person's wording.
+function jobAim(job) {
+  const direction = job && job.direction && typeof job.direction === 'object' && !Array.isArray(job.direction) ? job.direction : {};
+  const aim = {};
+  const topic = job && typeof job.topic === 'string' ? job.topic.trim() : '';
+  if (topic) aim.topic = topic.slice(0, 400);
+  for (const key of ['message', 'audience', 'offer', 'goal']) {
+    const text = typeof direction[key] === 'string' ? direction[key].trim() : '';
+    if (text) aim[key] = text.slice(0, 400);
+  }
+  return aim;
+}
+
+function aimedQuestion(aim) {
+  if (!aim || !Object.keys(aim).length) return '';
+  const parts = [aim.topic ? 'Evidence for content about ' + aim.topic : 'Evidence for the agreed direction'];
+  if (aim.message) parts.push('that says: ' + aim.message);
+  if (aim.audience) parts.push('for ' + aim.audience);
+  if (aim.offer) parts.push('with the offer: ' + aim.offer);
+  if (aim.goal) parts.push('so that: ' + aim.goal);
+  return parts.join(', ').slice(0, 1500);
+}
+
+// The workstreams a content job needs, from what the direction leaves open. Only product
+// evidence waits for a product subject, competitors stay on the brand's saved list when it
+// holds three, and audience research follows the direction's audience. A lite job runs one.
+function workstreamsFor(job, depth, profile) {
+  if (depth === 'reuse') return [];
+  const aim = jobAim(job);
+  const subject = job && (job.subject === 'character' || job.subject === 'none') ? job.subject : 'product';
+  const saved = profile && profile.competitors && Array.isArray(profile.competitors.items)
+    ? profile.competitors.items.filter(name => typeof name === 'string' && name.trim()).slice(0, profiles.MAX_COMPETITORS) : [];
+  const audience = { name: 'audience', focus: aim.audience || null };
+  const competitors = saved.length >= profiles.MAX_COMPETITORS
+    ? { name: 'competitors', mode: 'saved_list', names: saved }
+    : { name: 'competitors', mode: 'discover', names: saved };
+  const product = { name: 'product-evidence' };
+  if (depth === 'lite') return [subject === 'product' ? product : audience];
+  return [audience, competitors, ...(subject === 'product' ? [product] : [])];
 }
 
 function questionsForJob(job, options = {}) {
@@ -687,8 +732,9 @@ function questionsForJob(job, options = {}) {
   const claims = job && Array.isArray(job.requiredClaims) ? job.requiredClaims : [];
   if (claims.length) return claims.map((claim, index) => normalizeQuestion(typeof claim === 'object' ? claim : { id: 'Q' + (index + 1), claim }, index, scope));
   if (options.questions && Array.isArray(options.questions) && options.questions.length) return options.questions.map((question, index) => normalizeQuestion(question, index, scope));
-  const request = job && (job.researchQuestion || job.request || job.objective);
-  return request ? [normalizeQuestion({ id: 'Q-request', claim: request, scope }, 0, scope)] : [];
+  const aim = jobAim(job);
+  const request = job && (job.researchQuestion || aimedQuestion(aim) || job.request || job.objective);
+  return request ? [normalizeQuestion({ id: 'Q-request', claim: request, scope, aim }, 0, scope)] : [];
 }
 
 function dimensionValues(value) {
@@ -1092,7 +1138,14 @@ function routeDecision(dir, options = {}) {
   const record = rawResearch(dir);
   const decision = evidenceDecision(record, { ...options, scope, questions, now: options.now || new Date() });
   const workRequired = decision.workRequired;
-  const depth = workRequired ? (['paid', 'both'].includes(job.distribution) || (job.deliverables || []).some(item => ['ugc', 'brand_video', 'video', 'motion_graphic'].includes(item.creativeDiscipline)) ? 'full' : 'lite') : 'reuse';
+  // With an approved direction the message is already agreed, so research is full only for paid work, a
+  // series or more than one platform; a video alone no longer forces it. Without one (a job from before
+  // the direction step) a video deliverable still means full.
+  const paidJob = ['paid', 'both'].includes(job.distribution) || job.kind === 'paid_campaign';
+  const directed = job.directionApproved === true;
+  const videoJob = (job.deliverables || []).some(item => ['ugc', 'brand_video', 'video', 'motion_graphic'].includes(item.creativeDiscipline));
+  const fullJob = paidJob || (directed ? job.kind === 'organic_series' || (Array.isArray(job.platforms) && job.platforms.length > 1) : videoJob);
+  const depth = workRequired ? (fullJob ? 'full' : 'lite') : 'reuse';
   const budget = budgets.createBudget({
     kind: job.kind === 'paid_campaign' || ['paid', 'both'].includes(job.distribution) ? 'campaign' : 'simple_post',
     jobId: job.jobId,
@@ -1100,11 +1153,16 @@ function routeDecision(dir, options = {}) {
     now: options.now instanceof Date ? options.now : options.now ? new Date(options.now) : new Date(),
     policyVersion: decision.policyVersion,
   }).result();
+  let profile = null;
+  try { profile = profiles.read(dir); } catch { profile = null; }
+  const aim = jobAim(job);
   return {
     action: workRequired ? 'dispatch' : 'reuse',
     zeroCall: !workRequired,
     workRequired,
     researchDepth: depth,
+    aim,
+    workstreams: workstreamsFor(job, depth, profile),
     questionIds: questions.filter(question => question.material !== false).map(question => question.id),
     questions: decision.questions || [],
     counts: decision.counts,
@@ -1159,6 +1217,8 @@ module.exports = {
   researchDecision: evidenceDecision,
   routeDecision,
   questionsForJob,
+  jobAim,
+  workstreamsFor,
   taskContext,
   buildContext: taskContext,
   buildTaskContext: taskContext,

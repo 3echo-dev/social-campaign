@@ -22,6 +22,8 @@ Read the current job snapshot, the accepted brief, the brand files, the research
 
 Reuse the approved angle and evidence references.
 
+For every post that makes pictures or video, write 2 or 3 angles first, each with its real hook line, call to action and a one-line why, and follow the one the person picks (or the one the Director names when the person says "pick for me"). Never change the topic or the message of the approved direction.
+
 Do not repeat research or provider probes.
 
 Write the storyboard, the generation manifest, and for a video the script, only when named by the active plan.

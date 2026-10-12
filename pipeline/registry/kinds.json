@@ -14,7 +14,7 @@
       "makesContent": true,
       "brandRequired": true,
       "productPhoto": "when_media",
-      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic"],
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic", "direction"],
       "requiredSources": "none",
       "workflowId": "organic-post",
       "owner": "copywriter"
@@ -24,7 +24,7 @@
       "makesContent": true,
       "brandRequired": true,
       "productPhoto": "when_media",
-      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic"],
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic", "direction"],
       "requiredSources": "none",
       "workflowId": "organic-post",
       "owner": "copywriter"
@@ -34,7 +34,7 @@
       "makesContent": true,
       "brandRequired": true,
       "productPhoto": "when_media",
-      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic"],
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic", "direction"],
       "requiredSources": "none",
       "workflowId": "organic-post",
       "owner": "scriptwriter"
@@ -44,7 +44,7 @@
       "makesContent": true,
       "brandRequired": true,
       "productPhoto": "when_media",
-      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic"],
+      "requiredFields": ["objective", "distribution", "platforms", "deliverables", "topic", "direction"],
       "requiredSources": "none",
       "workflowId": "paid-ugc-campaign",
       "owner": "media-buyer"

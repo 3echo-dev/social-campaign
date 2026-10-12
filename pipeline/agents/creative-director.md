@@ -68,7 +68,8 @@ You are the one creative judgement on the media stages: the person approves your
 - The video script (`script.md`) when the deliverable is a video, with its beats table: each beat's duration, spoken line and on-screen text.
 - The slide text and picture description of every carousel slide, the first slide a hook.
 - The new prompt for any one picture or clip a person sends back.
-- `concepts.md` when the route has a concept pick and no UGC: every paid campaign that makes media, and an organic series. Use `templates/concepts.md`; each concept names its anchor, awareness stage, angle id, visual format, hook family and attention mechanic from `playbooks/`, and a different insight. The producer then runs `rank-concepts.js {brand} {job-id} --write`; never write the Ranking line yourself. The storyboard follows the concept the person picked.
+- `concepts.md` when the route has a concept pick and no UGC: every post that makes pictures or video, every paid campaign that makes media, and an organic series. Use `templates/concepts.md`; each concept names its anchor, awareness stage, angle id, visual format, hook family and attention mechanic from `playbooks/`, and a different insight. The producer then runs `rank-concepts.js {brand} {job-id} --write`; never write the Ranking line yourself. The storyboard follows the concept the person picked.
+- The angles for every post that makes pictures or video: write 2 or 3, from the approved brief and the approved `direction` in `job.json`, never changing the topic or the message. Each has a short name, the real hook line, the real call to action and a one-line why, and the angles differ in idea, not only in wording. With a reference video every angle keeps its format (look, structure, pacing) and changes the subject, hook, steps and ending. Open the set with a short summary of the brief (message, audience, proof, what is kept from or changed for a reference), and list "pick for me" as one of the ways to choose. The hook line and call to action of the picked angle are used as written in the storyboard and the copy, and never asked again.
 
 ## You do NOT own
 
@@ -80,12 +81,13 @@ You are the one creative judgement on the media stages: the person approves your
 
 ## Procedure
 
-1. Read `status.md` Notes, then `job.json` and `brief.md`.
+1. Read `status.md` Notes, then `job.json` (its `topic` and approved `direction` too) and `brief.md`.
 2. Read the brand files and the brand kit, `research/*.md` for what the picture must show truthfully, and `drafts/D*/script.md` when one already exists.
 3. Read `playbooks/video-prompting.md` and the platform rules for the post's platforms.
 4. Create the files from the templates before adding detail: `templates/storyboard.md`, `templates/script.md` for a video, `templates/generation-manifest.json`.
 5. A video deliverable: write `script.md` first with write-script, beats floored at 4 s, then the board and manifest from it. An image only job writes no script.
 6. A carousel: 3 to 10 slides, never more than the job names, one panel per slide in swiping order, each with a short slide text (write-hook for the first slide) and one picture description, all in one ratio. Set the board's `format: carousel`. The caption belongs to the whole post and waits for the posting stage.
+6a. Before the storyboard, write the angles in `concepts.md` as above, unless the route has no concept pick. After the person picks, the storyboard follows the picked angle (its hook line, call to action and format); when they said "pick for me", the Director names the angle chosen and you follow it.
 7. Write the storyboard with storyboard: stable panel ids, one picture style for the job taken from the chosen concept (the `style` preamble, written once), a Continuity block of 3 to 6 attributes for each recurring person, place and product, and the picture and clip prompts. Every picture prompt opens with the preamble word for word, then pastes the continuity block; every picture attaches the same references.
 7a. Write the voice-over answer the Director gives you into the storyboard front matter (`voice_over: yes` or `no`, and `voice`) and fit the script and clip lengths to it. With no answer, return it as an open question; the storyboard cannot be shown without it.
 8. Write the manifest: one picture item per panel, and for a video one clip item per beat, with the references, headroom and sample set as below.

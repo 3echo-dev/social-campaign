@@ -32,7 +32,7 @@ const NOT_AGENTS = Object.freeze(['scripts', 'human']);
 const TAG_WORDS = Object.freeze({
   research: { if: 'when the brief needs research', unless: 'when no research is needed' },
   research_lite: { if: 'when a light research pass is enough', unless: 'when a full research pass is needed' },
-  strategy: { if: 'when a full strategy is needed', unless: 'when a simple brief is enough' },
+  strategy: { if: 'when a strategist writes the brief', unless: 'when a simple brief is enough' },
   ugc: { if: 'when it is a creator-style video', unless: 'when it is not a creator-style video' },
   media: { if: 'when pictures or video are made', unless: 'when no pictures or video are made' },
   video_qa: { if: 'when a video is made', unless: 'when no video is made' },
@@ -53,6 +53,7 @@ const INPUT_WORDS = Object.freeze({
   platforms: 'Which platforms it is for',
   deliverables: 'Which posts you need: the platform, the post type and how many',
   topic: 'What it is about: a product, a service, an offer or a message',
+  direction: 'The direction for the post, agreed with you before research',
   sourceJobId: 'The earlier job whose results to read',
 });
 const SOURCE_WORDS = Object.freeze({

@@ -48,7 +48,7 @@ const INTAKE_PATCH_FIELDS = new Set([
   'deliverables', 'audience', 'evidence', 'requiredClaims', 'prohibitedClaims',
   'offer', 'landingPageUrl', 'schedule', 'budget', 'productAsset', 'account',
   'specWork', 'usesHistoricalData', 'metricsScope', 'links', 'subject', 'kindReason',
-  'caption', 'aiMade', 'sourceJobId', 'chatOnly', 'topic',
+  'caption', 'aiMade', 'sourceJobId', 'chatOnly', 'topic', 'direction', 'directionApproved',
 ]);
 const LINK_LIMIT = 20;
 const LINK_MAX_LENGTH = 2000;
@@ -58,7 +58,14 @@ const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'kindReason', 
 const JOB_SUBJECTS = ['product', 'character', 'none'];
 const INTAKE_PATCH_ARRAYS = new Set(['platforms', 'deliverables', 'requiredClaims', 'prohibitedClaims']);
 const INTAKE_PATCH_OBJECTS = new Set(['audience', 'evidence', 'schedule', 'budget', 'productAsset', 'account', 'metricsScope']);
-const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade', 'chatOnly']);
+const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade', 'chatOnly', 'directionApproved']);
+// The direction agreed with the person before research (plan 0.17). Every field is optional.
+const DIRECTION_TEXT_FIELDS = ['goal', 'audience', 'message', 'offer', 'cta', 'landingPageUrl', 'referenceKeep', 'referenceChange', 'successMeasure'];
+const DIRECTION_LIST_FIELDS = ['mustSay', 'mustNotSay', 'assumptions'];
+const DIRECTION_SOURCE_FIELDS = [...DIRECTION_TEXT_FIELDS, 'mustSay', 'mustNotSay'];
+const DIRECTION_SOURCES = new Set(['said', 'profile', 'proposed', 'asked', 'link']);
+const DIRECTION_TEXT_MAX = 400;
+const DIRECTION_LIST_MAX = 20;
 const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const PHOTO_SOURCES = new Set(['uploaded', 'found-online', 'made']);
@@ -1204,6 +1211,14 @@ function defaultJobInput(options, jobId, brand) {
   if (typeof caption === 'string' && caption.trim()) job.caption = caption;
   const aiMade = supplied.aiMade ?? options.aiMade;
   if (typeof aiMade === 'boolean') job.aiMade = aiMade;
+  // The direction agreed with the person before research; the runtime stamps the time it was approved.
+  const direction = supplied.direction ?? options.direction;
+  if (direction !== undefined && direction !== null) job.direction = directionOf(direction);
+  const directionApproved = supplied.directionApproved ?? options.directionApproved;
+  if (typeof directionApproved === 'boolean') {
+    job.directionApproved = directionApproved;
+    stampDirectionApproval(null, job);
+  }
   // A job run in chat without the board: the board hooks leave it alone.
   if ((supplied.chatOnly ?? options.chatOnly) === true) job.chatOnly = true;
   // The words fit more than one pipeline: the job keeps the likeliest kind but waits, unplanned, for the person's answer.
@@ -1734,6 +1749,50 @@ export function createJob(options = {}) {
   }
 }
 
+/** Check and clean a direction: strings capped at 400 characters, lists of strings, an https landing page, known sources. */
+function directionOf(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('The direction must be an object.');
+  const out = {};
+  for (const field of DIRECTION_TEXT_FIELDS) {
+    const raw = value[field];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== 'string') throw new TypeError(`The direction field ${field} must be a string.`);
+    const text = raw.trim().slice(0, DIRECTION_TEXT_MAX);
+    if (!text) continue;
+    if (field === 'landingPageUrl' && !/^https:\/\/\S+$/i.test(text)) throw new TypeError('The direction landing page must be an https link.');
+    out[field] = text;
+  }
+  for (const field of DIRECTION_LIST_FIELDS) {
+    const raw = value[field];
+    if (raw === undefined || raw === null) continue;
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string')) throw new TypeError(`The direction field ${field} must be a list of strings.`);
+    const list = raw.map((item) => item.trim().slice(0, DIRECTION_TEXT_MAX)).filter(Boolean).slice(0, DIRECTION_LIST_MAX);
+    if (list.length) out[field] = list;
+  }
+  if (value.sources !== undefined && value.sources !== null) {
+    if (typeof value.sources !== 'object' || Array.isArray(value.sources)) throw new TypeError('The direction sources must be an object.');
+    const sources = {};
+    for (const [field, origin] of Object.entries(value.sources)) {
+      if (!DIRECTION_SOURCE_FIELDS.includes(field)) continue;
+      if (!DIRECTION_SOURCES.has(origin)) throw new TypeError(`The source of the direction field ${field} must be said, profile, proposed, asked or link.`);
+      sources[field] = origin;
+    }
+    if (Object.keys(sources).length) out.sources = sources;
+  }
+  return out;
+}
+
+/** The runtime stamps when the direction was approved, and clears the stamp when the approval is withdrawn. */
+function stampDirectionApproval(before, next) {
+  if (next.directionApproved === true) {
+    if (before?.directionApproved !== true || !before.directionApprovedAt) next.directionApprovedAt = now();
+    else next.directionApprovedAt = before.directionApprovedAt;
+  } else {
+    delete next.directionApprovedAt;
+  }
+  return next;
+}
+
 function applyIntakePatch(current, patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     throw new TypeError('An intake patch object is required.');
@@ -1778,6 +1837,14 @@ function applyIntakePatch(current, patch) {
       if (field === 'deliverables') next[field] = deliverableRuntime.withImpliedRatios(next[field]);
       continue;
     }
+    if (field === 'direction') {
+      if (value === null) {
+        delete next.direction;
+        continue;
+      }
+      next.direction = directionOf(value);
+      continue;
+    }
     if (INTAKE_PATCH_OBJECTS.has(field)) {
       if (value === null) {
         delete next[field];
@@ -1796,6 +1863,7 @@ function applyIntakePatch(current, patch) {
       next[field] = value;
     }
   }
+  if (seen.has('directionApproved')) stampDirectionApproval(current, next);
   // The reason belongs to the pipeline it was written for: a new kind with no new reason leaves the old one behind, so it goes.
   if (seen.has('kind') && !seen.has('kindReason') && jobKindOf(next.kind) !== jobKindOf(current?.kind)) delete next.kindReason;
   // Setting the kind is the person's answer to which pipeline they meant, even when it is the one first guessed: the hold ends.
