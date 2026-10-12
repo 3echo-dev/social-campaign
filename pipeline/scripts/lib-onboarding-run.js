@@ -24,6 +24,8 @@ const RUN_ID = /^run-\d{8}T\d{6}Z-[a-f0-9]{6}$/;
 const STATUSES = new Set(['running', 'complete', 'failed', 'abandoned']);
 const CLOSED = new Set(['complete', 'failed', 'abandoned']);
 const MAX_REASON = 500;
+// A run that fails or is given up always says why, even when whoever closed it did not.
+const NO_REASON = 'It stopped without saying why.';
 
 // A Date, epoch milliseconds or an ISO string. Anything unreadable is the current time.
 function msOf(now) {
@@ -156,6 +158,7 @@ function finish(brandDir, runId, options) {
       reported,
       reason: options.reason === undefined ? run.reason : text(options.reason, MAX_REASON),
     };
+    if (options.status !== 'complete' && !result.reason) result.reason = NO_REASON;
     return JSON.stringify(result, null, 2) + '\n';
   });
   return result;

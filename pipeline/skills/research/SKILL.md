@@ -327,4 +327,6 @@ Synthesis and ranking belong to `strategist`. Downloads no media.
 
 Snippet or memory as a citation: fetch it, or write `Not verified`. Persona from two quotes: `unknown`. "Successful ad": write "running since {date}".
 
+Brand research runs on a schedule too, and every run leaves a result. If the browser disconnects or the run cannot finish, close it with `pipeline_brand_research_close` and a plain reason. That puts "The scheduled research refresh failed" in the Director's Inbox. If the person answers "Run it again", start the research again with `pipeline_brand_research_start`. Only one Claude window may drive the browser for research at a time; if the start says another window has it, wait.
+
 Numbers in this file are recorded with their provenance in `docs/sources/research.md`.

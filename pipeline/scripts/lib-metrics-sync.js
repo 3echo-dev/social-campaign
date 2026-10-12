@@ -17,7 +17,7 @@ const ALLOWED = {
   'job.rated': ['rating'],
   'revision.opened': ['reasonCode', 'stage', 'raisedBy'],
   'credits.tallied': ['spentCredits', 'approvedCredits', 'elevenLabsSpentCredits', 'elevenLabsApprovedCredits'],
-  'tokens.observed': ['model', 'provider', 'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'agentType', 'sessionId', 'requestId', 'messageId', 'usageSemantics', 'inputTokensCoverage', 'outputTokensCoverage', 'cacheCreationTokensCoverage', 'cacheReadTokensCoverage'],
+  'tokens.observed': ['model', 'provider', 'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'agentType', 'agentId', 'row', 'rowLabel', 'sessionId', 'requestId', 'messageId', 'usageSemantics', 'inputTokensCoverage', 'outputTokensCoverage', 'cacheCreationTokensCoverage', 'cacheReadTokensCoverage'],
   'tool.completed': ['tool', 'status', 'durationMs', 'requestId'],
   'operation.started': ['operationType', 'status', 'provider'],
   'operation.completed': ['operationType', 'status', 'provider', 'durationMs'],

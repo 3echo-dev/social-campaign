@@ -11,12 +11,14 @@
  */
 
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { UserFacingError } from '../lib/errors.mjs';
 import * as runtime from './runtime.mjs';
+import { askQuestion, listQuestions, plainWordsProblem, withdrawQuestion } from './questions.mjs';
+import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = join(HERE, '..', '..', 'pipeline');
@@ -28,6 +30,8 @@ const researchBudgets = require(join(PIPELINE_ROOT, 'scripts', 'lib-research-bud
 const onboardingRun = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 const durable = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 
+const REFRESH_FAILED = 'The scheduled research refresh failed';
+const BUSY = 'Another Claude window is already using the browser for research. Wait for it to finish, then run it again.';
 const MAX_SOURCES = 12;
 const MAX_EVIDENCE_PER_COMPETITOR = 3;
 const REPLACEABLE_FIELDS = ['sources', 'evidenceMatrix', 'findings', 'gaps', 'competitors', 'competitorDetails'];
@@ -56,6 +60,68 @@ function requireOnboardedBrand(root, brand) {
     throw new UserFacingError('Save the brand profile before brand research.', { code: 'brand_onboarding_incomplete' });
   }
   return entry;
+}
+
+/** One claim per workspace: only one window drives the browser for research at a time. */
+const browserClaimFile = (root) => join(root, '.social-pipeline', 'onboarding', 'browser.claim');
+
+function takeBrowser(root, slug) {
+  const file = browserClaimFile(root);
+  mkdirSync(dirname(file), { recursive: true });
+  const taken = takeClaim(file, windowSessionId(), { ttlMs: onboardingRun.STALE_MS, extra: { brand: slug } });
+  if (!taken.claimed) throw new UserFacingError(BUSY, { code: 'research_browser_busy' });
+}
+
+/** Let the browser go once the run is over, whichever window closes it. */
+function releaseBrowser(root, slug) {
+  const file = browserClaimFile(root);
+  const held = readClaimRecord(file);
+  if (held && (!held.brand || held.brand === slug)) rmSync(file, { force: true });
+}
+
+function refreshQuestions(root, slug) {
+  return listQuestions({ root, status: 'open' }).filter((q) => q.brand === slug && String(q.text).startsWith(REFRESH_FAILED));
+}
+
+function clearRefreshQuestions(root, slug) {
+  try {
+    for (const question of refreshQuestions(root, slug)) withdrawQuestion({ root, questionId: question.questionId });
+  } catch { /* the question is a courtesy; the run's own result is already saved */ }
+}
+
+/** The reason in plain words, short, with no trailing full stop; a reason that reads like code or a file becomes a general one. */
+function plainReason(reason) {
+  const line = String(reason ?? '').replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '').slice(0, 160);
+  if (!line || plainWordsProblem(line)) return 'it stopped without a clear reason';
+  return line[0].toLowerCase() + line.slice(1);
+}
+
+/** A research run that did not finish goes to the Director's Inbox once, replacing any older one for the brand. Never throws. */
+function raiseRefreshFailure(root, slug, reason) {
+  try {
+    clearRefreshQuestions(root, slug);
+    askQuestion({
+      root, brand: slug, text: `${REFRESH_FAILED}: ${plainReason(reason)}. Run it again?`,
+      options: ['Run it again', 'Not now'], allowText: false,
+    });
+  } catch { /* the failed run is already on record */ }
+}
+
+/**
+ * Close any research run left running past its time (a disconnected browser never says it stopped), and tell the Inbox.
+ * Run from the board refresh, so a refresh that died with no message still leaves a result and a question. Never throws.
+ */
+export function settleStaleResearch({ root }) {
+  try {
+    for (const entry of runtime.listBrands({ root })) {
+      for (const run of onboardingRun.list(entry.path)) {
+        if (run.status !== 'running' || !onboardingRun.isStale(run)) continue;
+        onboardingRun.close(root, { brandDir: entry.path, runId: run.runId, status: 'abandoned', reason: 'timed out', now: Math.min(Date.now(), Date.parse(run.startedAt) + onboardingRun.STALE_MS) });
+        raiseRefreshFailure(root, entry.slug, 'it stopped responding and ran out of time, which can happen when the browser disconnects');
+        releaseBrowser(root, entry.slug);
+      }
+    }
+  } catch { /* the board still shows the run as stopped */ }
 }
 
 function blanksAndCompetitors(profile) {
@@ -121,6 +187,8 @@ export function startBrandResearch({ root, brand }) {
 
   const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 12, totalFetches: 12, turns: 25 };
   const workspaceId = runtime.readWorkspace({ root }).workspaceId;
+  takeBrowser(root, entry.slug);
+  const wasStale = onboardingRun.list(brandDir).filter((item) => item.status === 'running' && onboardingRun.isStale(item));
   let started;
   try {
     started = onboardingRun.start(root, {
@@ -137,6 +205,7 @@ export function startBrandResearch({ root, brand }) {
       now: new Date(),
     });
   } catch (error) {
+    releaseBrowser(root, entry.slug);
     if (error && error.code === 'ONBOARDING_RUN_ACTIVE') {
       throw new UserFacingError(
         `Brand research is already running for "${error.brand}". Finish or close that run before starting a new one.`,
@@ -147,6 +216,8 @@ export function startBrandResearch({ root, brand }) {
   }
 
   const run = started.run;
+  // The run this one replaced went quiet (a disconnected browser says nothing): its result is recorded, and the Inbox asked.
+  if (wasStale.length) raiseRefreshFailure(root, entry.slug, 'it stopped responding and ran out of time, which can happen when the browser disconnects');
   const declaredCompetitors = Array.isArray(run.declaredCompetitors) ? run.declaredCompetitors : declared;
   const draftPath = draftPathFor(brandDir, run.runId);
   const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
@@ -658,8 +729,12 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
         now: new Date(),
       });
     } catch { /* the original failure is what must reach the caller */ }
+    releaseBrowser(root, entry.slug);
+    raiseRefreshFailure(root, entry.slug, error.message);
     throw new UserFacingError(reason, { code: 'brand_research_save_failed' });
   }
+  releaseBrowser(root, entry.slug);
+  clearRefreshQuestions(root, entry.slug);
   runtime.writeBrandVoice({ root, brand: entry.slug });
 
   return {
@@ -699,6 +774,7 @@ export function closeBrandResearch({ root, brand, runId, status, reason }) {
     throw new UserFacingError('Brand research can only be closed as failed or abandoned.', { code: 'invalid_input' });
   }
   const entry = resolveBrand(root, brand);
+  const wasOpen = onboardingRun.read(entry.path, runId)?.status === 'running';
   // Only status, reason and completion time change; whatever the run already recorded
   // (filled fields, revisions, budget) is left as it was when it stopped.
   try {
@@ -715,5 +791,7 @@ export function closeBrandResearch({ root, brand, runId, status, reason }) {
     }
     throw error;
   }
+  releaseBrowser(root, entry.slug);
+  if (wasOpen) raiseRefreshFailure(root, entry.slug, reason);
   return { runId, brand: entry.slug, status };
 }

@@ -249,12 +249,36 @@ function runStatus(run, now) {
   return run.status === 'running' && isStale(run, now) ? 'abandoned' : run.status;
 }
 
+const TIMED_OUT = 'It stopped responding and ran out of time.';
+
+// What the board says about the latest research run: ok, or failed with a plain reason. A run still going has no result yet.
+function runResult(run, now) {
+  const status = runStatus(run, now);
+  if (status === 'complete') return { ok: true, reason: null, at: run.completedAt || null, runId: run.runId };
+  if (status !== 'failed' && status !== 'abandoned') return null;
+  const given = typeof run.reason === 'string' && run.reason.trim() ? run.reason.trim() : null;
+  const reason = given === 'timed out' ? TIMED_OUT : given || (status === 'abandoned' ? TIMED_OUT : 'It stopped without saying why.');
+  return { ok: false, reason, at: run.completedAt || null, runId: run.runId };
+}
+
+// Tokens spent setting the brand up before any research run: the chat with no job and no run open, kept in onboarding/setup.
+function brandSetupRow(brandDir, root) {
+  const dir = path.join(brandDir, 'onboarding', 'setup');
+  if (!fs.existsSync(path.join(dir, 'events.jsonl'))) return null;
+  const setup = summarize(dir, root);
+  if (!(setup.observations > 0)) return null;
+  return { id: 'brand-setup', label: 'Brand setup', kind: 'work', tokens: headlineTokens(setup.total),
+    cacheReadTokens: Number(setup.total.cacheReadTokens) || 0, elapsedMs: null, openSince: null };
+}
+
 /** A brand's onboarding research usage: one row, summed across every run. */
 function brandResearchUsage(brandDir, root, { now = Date.now() } = {}) {
   const runs = listOnboardingRuns(brandDir);
   const row = { id: 'brand-research', label: 'Brand research', kind: 'work', tokens: null, cacheReadTokens: null, elapsedMs: null, openSince: null };
   const { state: pending, until: pendingUntil } = pendingInfo(brandDir, { now, runs });
-  if (!runs.length) return { status: null, runId: null, runs: 0, pending, pendingUntil, stages: [row] };
+  const setupRow = brandSetupRow(brandDir, root);
+  const rows = setupRow ? [row, setupRow] : [row];
+  if (!runs.length) return { status: null, runId: null, runs: 0, pending, pendingUntil, result: null, stages: rows };
 
   let tokens = 0, cacheReadTokens = 0, sawTokens = false, elapsedMs = 0, sawTime = false, openSince = null;
   for (const run of runs) {
@@ -277,7 +301,13 @@ function brandResearchUsage(brandDir, root, { now = Date.now() } = {}) {
   row.cacheReadTokens = sawTokens ? cacheReadTokens : null;
   row.elapsedMs = sawTime ? elapsedMs : null;
   row.openSince = openSince;
-  return { status: runStatus(latest, now) || null, runId: latest.runId, runs: runs.length, pending, pendingUntil, stages: [row] };
+  return { status: runStatus(latest, now) || null, runId: latest.runId, runs: runs.length, pending, pendingUntil, result: runResult(latest, now), stages: rows };
 }
 
-module.exports = { classify, timeline, jobUsage, brandResearchUsage };
+/** The board row a job's state sits under, as `{ id, label }`; a state that ends the timeline sits under "other". */
+function rowOf(jobDir, state) {
+  const info = classify(state, jobWorkflowId(jobDir)) || { id: 'other', label: 'Other work' };
+  return { id: info.id, label: info.label };
+}
+
+module.exports = { classify, timeline, jobUsage, brandResearchUsage, rowOf };
