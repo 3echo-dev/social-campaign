@@ -25,8 +25,10 @@ The Director prices, makes the sample, makes the rest, lands, stitches, finishes
 4. For every clip, call `estimate_video_job` with exactly the fields the create call will use: its `ratio`, `resolution`, `durationSeconds`, `generateAudio` and `assetIds`.
 A clip that starts from its storyboard picture has no picture to attach yet at pricing time: once that picture is made, call `estimate_video_job` again with its `assetIds`, right before `create_video_job`, because the guard checks the estimate for that exact call. When it costs no more than the approved item, the approval stands; when it costs more, the guard refuses and the new price needs the person's yes.
 The hook names the saved `estimateId` in one line after the call ("Price saved as est-…"); use that id in the matching quote item.
-5. Put the price beside what they last agreed, never against it, with ways to **keep** it: fewer or shorter clips, audio off, 480p (`${CLAUDE_PLUGIN_ROOT}/docs/PRICING.md`).
+5. Put the price beside what they last agreed, never against it, with ways to **keep** it: fewer or shorter clips, audio off (`${CLAUDE_PLUGIN_ROOT}/docs/PRICING.md`). Do not offer 480p for final clips: finals are 720p or better.
+Show every video price at 720p and at 1080p side by side (estimate each; 1080p costs about three times as much), so the person can choose. 720p is the default for finals. Never carry a sample's lower resolution into the final clips.
 Call `pipeline_quote_save` with one item per clip: `{ key, provider: "threeEcho", kind: "video", deliverable, panel, credits, estimateId }`.
+If the person deliberately picks a final resolution below 720p, add `lowResolutionAccepted: true` to those items; only their own explicit choice sets it, never you. Without it the quote is refused.
 The hero clip's item also carries `sample: true`, so the plugin holds every other item until that sample is approved. When the clips start from the storyboard pictures, the hero picture is the sample instead and no clip is: one sample per post.
 `pipeline_quote_save` adds to the existing price rather than replacing it: items already priced stay, saving the same key again re-prices an item not yet made, and an optional `drop` with those keys removes items not yet made when the person asks for changes.
 Then the price gate: `pipeline_review_present` with `gate: "price"` and no files; it presents the saved quote.
@@ -53,7 +55,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 
 1. Seed every clip with an approved panel image; text to video is a recorded fallback.
 2. Provider clip duration is a whole number 4 to 15 seconds; edited beats may be shorter and are grouped by the storyboard, while a longer beat splits at a hard cut. A short total is never a reason to make stills: the floor is the deliverable's own `durationSeconds.min`.
-3. `ratio` and `resolution` from the board; allowed values in `playbooks/video-prompting.md`, 720p by default.
+3. `ratio` and `resolution` from the board; allowed values in `playbooks/video-prompting.md`, 720p by default for every final clip; only a sample clip may be lower.
 4. `assetIds` takes 9 image, 3 video and 3 audio references at most.
 5. `generateAudio` follows the manifest. The stitch keeps each clip's own audio, dialogue included, normalised per clip to -16 LUFS; it is never replaced, and a clip with no audio track gets silence. Music and captions for spoken lines are added after it by `finish-video.py` (step 12), which also ducks the music under speech.
 6. No added text inside a clip. Every clip prompt ends with "No on-screen text, no captions, no subtitles, no watermark." (text a model draws cannot be removed and would show twice); the text is drawn once by `finish-video.py`, always from the plain `final-raw.mp4`, never from its own output. The product's label from the photo stays.

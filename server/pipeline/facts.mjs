@@ -1309,6 +1309,32 @@ function estimateChoices(estimates, provider, key) {
   return ` Saved estimates: ${list.map(entry => `${entry.estimateId} (${creditText(finite(entry.credits))} credits${entry.key ? `, ${itemLabel(entry.key)}` : ''})`).join('; ')}.`;
 }
 
+// A final video clip is made at 720p or better. Below that the picture is soft and gets stretched when the clips are joined.
+export const FINAL_MIN_HEIGHT = 720;
+export const RESOLUTION_CHOICES = Object.freeze(['720p', '1080p']);
+export function resolutionHeight(value) {
+  const raw = typeof value === 'number' ? `${value}p` : String(value ?? '').trim().toLowerCase();
+  const size = raw.match(/^(\d{3,4})\s*x\s*(\d{3,4})$/);
+  if (size) return Math.min(Number(size[1]), Number(size[2]));
+  const rows = raw.match(/^(\d{3,4})\s*p?$/);
+  return rows ? Number(rows[1]) : null;
+}
+
+// What the same clip costs at 720p and at 1080p, read from the saved estimates: the same tool and the same length, ratio, sound
+// and references, only the resolution differs. Both are shown next to each other so the person can choose.
+function resolutionPrices(estimates, estimate, own) {
+  const same = entry => stableStringify([entry?.inputs?.duration ?? null, entry?.inputs?.ratio ?? null, entry?.inputs?.generateAudio ?? null, entry?.inputs?.assetIds ?? null]);
+  const prices = {};
+  for (const entry of estimates) {
+    if (entry.provider !== estimate.provider || entry.tool !== estimate.tool || same(entry) !== same(estimate)) continue;
+    const height = resolutionHeight(entry.inputs?.resolution);
+    const credits = finite(entry.credits);
+    if (credits !== null) for (const choice of RESOLUTION_CHOICES) if (height === resolutionHeight(choice)) prices[choice] = credits;
+  }
+  if (own && finite(estimate.credits) !== null) prices[own] = finite(estimate.credits);
+  return RESOLUTION_CHOICES.every(choice => prices[choice] !== undefined) ? { '720p': prices['720p'], '1080p': prices['1080p'] } : null;
+}
+
 function quoteItemFrom(job, raw, index, estimates) {
   const at = `Item ${index + 1}`;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`${at} is not a price item.`);
@@ -1342,6 +1368,18 @@ function quoteItemFrom(job, raw, index, estimates) {
   const estimated = finite(estimate.credits);
   if (estimated === null || Math.abs(estimated - credits) > EPSILON) throw new Error(`${label}: its estimate is ${estimated === null ? 'not priced' : `${creditText(estimated)} credits`}, not ${creditText(credits)}.`);
   item.estimateId = estimateId;
+  if (raw.kind === 'video') {
+    const resolution = text(estimate.inputs?.resolution);
+    const height = resolutionHeight(resolution);
+    if (raw.lowResolutionAccepted !== undefined && raw.lowResolutionAccepted !== true && raw.lowResolutionAccepted !== false) throw new Error(`${label}: lowResolutionAccepted must be true or false.`);
+    if (resolution) item.resolution = resolution;
+    if (height !== null && height < FINAL_MIN_HEIGHT && item.sample !== true && raw.lowResolutionAccepted !== true) {
+      throw new Error(`${label}: this clip is priced at ${resolution}, which is too soft for a final video. Final clips are made at 720p or better. Price it again at 720p, or at 1080p for a sharper picture, unless the person chose the lower quality on purpose. A sample clip may stay lower.`);
+    }
+    if (raw.lowResolutionAccepted === true && height !== null && height < FINAL_MIN_HEIGHT && item.sample !== true) item.lowResolutionAccepted = true;
+    const both = resolutionPrices(estimates, estimate, height === resolutionHeight('720p') ? '720p' : height === resolutionHeight('1080p') ? '1080p' : null);
+    if (both) item.resolutionPrices = both;
+  }
   if (raw.kind === 'voice') {
     const recorded = finite(estimate.details?.generationsCount);
     const given = raw.generationsCount === undefined || raw.generationsCount === null ? null : finite(raw.generationsCount);

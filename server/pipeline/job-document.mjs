@@ -866,6 +866,9 @@ function quoteDetail(item, estimate) {
     const seconds = Number(inputs.duration);
     if (Number.isFinite(seconds) && seconds > 0) parts.push(`${seconds} seconds`);
     if (typeof inputs.resolution === 'string' && inputs.resolution.trim()) parts.push(clip(inputs.resolution, 20));
+    const both = item.resolutionPrices;
+    if (both && Number.isFinite(Number(both['720p'])) && Number.isFinite(Number(both['1080p']))) parts.push(`720p ${Number(both['720p'])} credits, 1080p ${Number(both['1080p'])} credits`);
+    if (item.lowResolutionAccepted === true) parts.push('lower quality, your choice');
     if (inputs.generateAudio === false) parts.push('no sound');
   }
   if (item.kind === 'voice' && Number(item.generationsCount) > 1) parts.push(`${Number(item.generationsCount)} versions`);

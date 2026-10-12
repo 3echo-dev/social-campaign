@@ -34,7 +34,7 @@ Find the 3Echo and ElevenLabs tools by their base name under any prefix; the nam
 
 Call `list_workspaces` for every workspace the account can charge and its balance, then `pipeline_studio_workspaces_save` with that list so the board can offer it. Call `pipeline_studio_workspace_get` for the job's current choice; use its `workspaceId` on every paid or estimate call below. With no choice and more than one workspace, the person picks once: the board's price panel offers its own Change control, and Claude also asks in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each saved workspace name as an option. Save whichever answer arrives first with `pipeline_studio_workspace_choose`.
 
-For every clip, call `estimate_video_job` with exactly the fields the create call will use. For every voice line, call `creative_generate_speech` with `estimate_only: true`, `generations_count: 1`, and the job's context tag.
+For every clip, call `estimate_video_job` with exactly the fields the create call will use, once at 720p and once at 1080p, so the price shows both side by side. Final clips default to 720p; a lower resolution is only for a sample, unless the person chose it on purpose (then the quote item carries `lowResolutionAccepted: true`). Never copy a sample's lower resolution into the final clips. For every voice line, call `creative_generate_speech` with `estimate_only: true`, `generations_count: 1`, and the job's context tag.
 After each estimate, the plugin's hook names the saved `estimateId` in one line ("Price saved as est-…").
 Use that id in the matching quote item.
 
