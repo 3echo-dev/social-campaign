@@ -454,7 +454,10 @@ say('Rule 13: status ' + R.status);
 if (wf && wf.status === 'active') {
   let gates = [...(wf.gates || [])];
   const needsMedia = dels.some(d => d.creativeDiscipline !== 'text_only');
-  if (!R.requiredDisciplines.includes('ugc')) gates = gates.filter(g => g !== 'concept');
+  // The concept pick: always for UGC; for every paid campaign that makes media; and for an organic series, so a set of
+  // posts starts from one chosen idea (bob, 2026-10-12). A single organic post skips it to stay fast.
+  const conceptPick = R.requiredDisciplines.includes('ugc') || (job.kind === 'paid_campaign' && needsMedia) || job.kind === 'organic_series';
+  if (!conceptPick) gates = gates.filter(g => g !== 'concept');
   if (!needsMedia) gates = gates.filter(g => g !== 'storyboard');
   if (!R.requiredDisciplines.includes('ads')) gates = gates.filter(g => !g.startsWith('campaign_'));
   // The publish gate is never merged into the content gate, even when a schedule is present and even when the

@@ -41,6 +41,7 @@ const TAG_WORDS = Object.freeze({
   reference_video: { if: 'when you give a reference video', unless: 'when you give no reference video' },
   social_post: { if: 'when Claude writes the caption', unless: 'when you give the caption' },
   carousel: { if: 'when the post is a carousel', unless: 'when the post is not a carousel' },
+  series: { if: 'when it is a series of posts', unless: 'when it is a single post' },
 });
 
 // What each field a kind requires means to a person.

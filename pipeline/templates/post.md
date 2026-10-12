@@ -9,6 +9,11 @@ hook_mechanism: curiosity_gap # from write-hook
 hook_alternates:
   - ""
   - ""
+anchor: ""                    # the pain or desire, in the audience's words, from the brief
+awareness_stage: problem_aware # playbooks/awareness-stages.md
+angle_id: A-STATUS-QUO-COST   # playbooks/angles.md
+format_id: F-TALKING-HEAD     # playbooks/visual-formats.md
+mechanic_id: M-OPEN-LOOP      # playbooks/attention-mechanics.md (M-NONE for a static image)
 char_count: 0                 # platform-check.js recomputes
 visible_cutoff_ok: true       # hook lands inside the platform's visible-before-more cutoff
 hashtags: []

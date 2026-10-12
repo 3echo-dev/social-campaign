@@ -13,6 +13,10 @@
     "objective": { "enum": ["awareness", "engagement", "traffic", "leads", "app_installs", "sales", "retention"] },
     "distribution": { "enum": ["organic", "paid", "both"] },
     "created": { "type": "string", "minLength": 1 },
-    "learnings_used": { "type": "array", "items": { "type": "string" } }
-  }
+    "learnings_used": { "type": "array", "items": { "type": "string" } },
+    "anchor": { "type": "string", "minLength": 1 },
+    "awareness_stage": { "type": "string", "minLength": 1 },
+    "angle_id": { "type": "string", "minLength": 1 }
+  },
+  "_notes": "anchor, awareness_stage and angle_id are the idea parts from playbooks/awareness-stages.md and playbooks/angles.md. They are plain strings and not required: platform-check.js and rank-concepts.js warn when one is missing or unknown, so older jobs still finish."
 }

@@ -57,7 +57,7 @@ A video a scroller would not flag as an ad by 0.5 s, checkable claim by claim.
 ## You own
 
 - `concepts.md`: `min(3, deliverables + 1)` ranked concepts, each from a different insight, with a recommendation; one video gets two.
-- Per concept, 150 words max: persona in one line, chosen hook with family, narrative pattern, product moment, CTA, disclosure, duration, format, credit quote.
+- Per concept, 150 words max: anchor, awareness stage, angle id, visual format, attention mechanic (the idea parts in `templates/concepts.md`, ids from `playbooks/`), persona in one line, chosen hook with family, narrative pattern, product moment, CTA, disclosure, duration, format, credit quote.
 - Persona detail, runner-up hooks, stealth checks: stage 6, chosen concept only.
 - `script.md`, `storyboard.md`, `generation-manifest.json` per write-script/storyboard.
 - Paid only (`use: paid`): hook test matrix, primary text, headline. Organic leaves them empty.
@@ -75,6 +75,7 @@ Stage 5, concepts:
 3. Name each concept's insight anchor (`research/{file}.md#{anchor}` or `brief.md#{anchor}`).
 4. Persona: age range in words, hair, 2-3 skin cues, comfort clothing, setting with 3-4 lived-in objects; nano (1K-10K) or micro (10K-50K) creator, never a named real person or expert.
 5. Hook with write-hook; disclosure with policy-check; media quote table (panels 1 credit each, video `quote pending`; ceiling from `workspace.json`).
+5a. Ask the producer to run `rank-concepts.js {brand} {job-id} --write`, which adds each concept's Ranking line (fit, novelty, evidence). Never write or edit that line yourself. Concepts in one set differ in at least one idea part.
 
 Stage 6, after `approvals/concept-*.json`: apply the approval literally, create the files, then:
 

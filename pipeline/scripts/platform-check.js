@@ -12,6 +12,7 @@ const ws = require('./lib-workspace.js');
 const del = require('./lib-deliverable.js');
 const execution = require('./lib-execution-availability.js');
 const recipes = require('./lib-recipe.js');
+const ideaParts = require('./lib-idea-parts.js');
 const kinds = require('./lib-kinds.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -172,6 +173,8 @@ for (const D of dels) {
     else for (const finding of recipes.comparePost({ data, sections }, recipe)) fail(finding.code, finding.msg);
     const alts = Array.isArray(data.hook_alternates) ? data.hook_alternates.filter(a => String(a).trim()) : [];
     if (alts.length < 2) warn('R-HOOK', 'fewer than two hook alternates recorded');
+    // The idea parts (anchor, stage, angle, format, mechanic) only warn: a post without them still ships.
+    for (const problem of ideaParts.checkParts(data)) warn('R-ANGLE', problem);
     const prov = (sections['Provenance'] || '').trim();
     const claimy = /\d|%|percent|study|report|customers|users|faster|cheaper|best|only|first|guarantee/i.test(caption);
     if (claimy && (!prov || !/->/.test(prov))) fail('R-FACT', 'caption carries a checkable claim but Provenance maps nothing to a source');

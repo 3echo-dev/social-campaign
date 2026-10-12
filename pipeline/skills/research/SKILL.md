@@ -230,6 +230,7 @@ OBSERVATION. {duration}s, {aspect}, {cut count} cuts, average shot {s}s.
 - **Shots:** one line each, `{start}-{end}s | shot type | framing | subject | motion | text overlay`.
 - **Pacing:** cut count, average and shortest shot, where it speeds up or slows down.
 - **Audio:** voice (who, tone, delivery) | music: named sound and artist from the metadata, or "original sound", or "not in metadata"; energy and tempo feel | do the cuts land on the beat (share of cuts on an onset against the chance share the teardown gives) | voice against music level.
+- **Idea parts:** awareness stage, angle id, visual format, hook family and mechanism, attention mechanic, using the ids in `playbooks/awareness-stages.md`, `angles.md`, `visual-formats.md`, `hooks.md` and `attention-mechanics.md`, so the brief and concepts can reuse the breakdown directly. Write `unclear` rather than guess.
 - **Captions style:** burned-in text: position, size, colour, word by word or whole lines.
 - **CTA:** what it asks for, where, in words.
 - **Why it works:** two sentences, tied to what was seen above. This line is INFERENCE.

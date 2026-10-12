@@ -44,6 +44,13 @@ user-invocable: false
 | Proof pattern | demonstration, testimonial, mechanism, comparison, authority, social proof, none |
 | CTA | Ask and destination, or `none` |
 | Funnel stage | awareness, consideration, conversion, retention |
+| Awareness stage | `playbooks/awareness-stages.md` stage, or `unclear` |
+| Angle id | `playbooks/angles.md` id (`A-*`), or `A-OTHER` |
+| Visual format | `playbooks/visual-formats.md` id (`F-*`) |
+| Hook family | `playbooks/hooks.md` family (`H-*`) and mechanism |
+| Attention mechanic | `playbooks/attention-mechanics.md` id (`M-*`), or `M-NONE` |
+
+The last five are the idea parts every concept names, so a watched reference can become a concept candidate directly (marked `source: reference`). A reference's view counts describe its audience, not this brand's; they never rank it above the brand's own results.
 
 ## Confidence
 
