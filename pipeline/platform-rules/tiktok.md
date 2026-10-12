@@ -19,7 +19,7 @@ Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** third-party
     "Open the TikTok app and upload the exact video or photo-carousel files from the hand-off package",
     "Paste the caption exactly; the hook must survive inside the first ~150 visible characters",
     "Add 3-5 hashtags from the hand-off package",
-    "Because every video is AI-generated (Seedance), tap More options and turn on the AI-generated content toggle before posting, every time",
+    "Because every video is AI-generated, tap More options and turn on the AI-generated content toggle before posting, every time",
     "If this is a paid partnership, also turn on the Branded content toggle and select the correct disclosure (promoting your own business vs a paid third-party partnership)",
     "Do not paste the destination link into the caption as clickable text; use the bio link field or TikTok's link sticker if the account is eligible",
     "Post, then log the live URL and publish time in the hand-off package",
@@ -52,7 +52,7 @@ Legend: **[TIKTOK]** TikTok developer docs / help centre · **[MS]** third-party
 
 ## Disclosure and policy
 - TikTok requires labelling AI-generated or significantly AI-altered content across organic posts, branded content, and paid ads. [TIKTOK] creator-academy AI-generated-content-label, checked 2026-09-02
-- Because our video is always AI-generated (Seedance), the AI-generated content toggle is turned on for every post, no exceptions. Decision recorded 2026-09-02.
+- Because our video is always AI-generated, the AI-generated content toggle is turned on for every post, no exceptions. Decision recorded 2026-09-02.
 - Branded content needs both the Branded content toggle and the correct sub-choice (own business vs paid third-party partnership) before posting. [TIKTOK] Direct Post API field docs (brand_content_toggle / brand_organic_toggle), checked 2026-09-02
 
 ## Analytics available to a human in the native app

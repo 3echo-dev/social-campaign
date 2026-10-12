@@ -10,6 +10,7 @@ const path = require('path');
 const { parseFile, jsonBlock } = require('./lib-frontmatter.js');
 const ws = require('./lib-workspace.js');
 const execution = require('./lib-execution-availability.js');
+const { primaryCtaLines } = require('./lib-post.js');
 
 const ROOT = path.join(__dirname, '..');
 const argv = process.argv.slice(2);
@@ -173,7 +174,8 @@ for (const D of dels) {
     }
   }
 
-  const ctas = (sections['CTA'] || '').split('\n').map(l => l.trim()).filter(Boolean);
+  // Only the primary call to action counts; test versions under a sub-heading are other posts.
+  const ctas = primaryCtaLines(sections['CTA']);
   add(D, 'Exactly one CTA', ctas.length === 1 ? 'pass' : 'fail',
     ctas.length === 1 ? ctas[0].slice(0, 60) : ctas.length + ' line(s) in the CTA section',
     source);

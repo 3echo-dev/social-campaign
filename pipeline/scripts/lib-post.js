@@ -27,6 +27,18 @@ function untilSubheading(text) {
   return (cut >= 0 ? body.slice(0, cut) : body).trim();
 }
 
+/**
+ * The lines of the primary call to action. Test versions (`## Variants`, `v2 | hook: ... | cta: ...`)
+ * and comments are other posts' calls to action, so they do not count toward the one-CTA limit.
+ */
+function primaryCtaLines(text) {
+  return untilSubheading(text)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^v\d+\s*\|/i.test(l));
+}
+
 /** The words before the first `# Heading`, which is where a post states what it is. */
 function preamble(body) {
   const at = body.search(/^#\s+/m);
@@ -195,4 +207,4 @@ function readPost(jobDir, deliverable) {
   return parse(text, jobDir);
 }
 
-module.exports = { parse, readPost, flattenTables };
+module.exports = { parse, readPost, flattenTables, primaryCtaLines };
