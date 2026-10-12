@@ -2440,7 +2440,7 @@ function panelFrameHtml(panel, index, { large = false } = {}) {
     : [frame?.thumb];
   const src = sources.map(safePreviewUrl).find(Boolean);
   if (src) return `<img src="${esc(src)}" alt="${esc(panelLabelOf(panel, index))}" loading="lazy">`;
-  if (large) return `<span class="sb-empty">${FRAME_ICON}<span>${panel?.source === 'kept' ? 'Existing image' : frame?.thumbOmitted ? 'Frame is on your computer' : 'Not made yet. Pictures come after you approve the price and the first one.'}</span></span>`;
+  if (large) return `<span class="sb-empty">${FRAME_ICON}<span>${panel?.source === 'kept' ? 'Existing image' : frame?.thumbOmitted ? 'Frame is on your computer' : 'Not made yet.'}</span></span>`;
   const shot = trimmed(panel?.shot);
   return `<span class="sb-sketch">${shot ? inlineMarkdown(shot) : '<span class="muted">No shot described</span>'}</span>`;
 }
@@ -2466,7 +2466,8 @@ function stripCell(board, panel, index, { interactive = false, verdict = null, c
 export function storyboardStrip(board, { interactive = false, verdicts = {}, current = null, highlight = null } = {}) {
   const panels = board?.panels || [];
   const total = Number(board?.totalSeconds) > 0 ? Number(board.totalSeconds) : Number(board?.runtimeSeconds) > 0 ? Number(board.runtimeSeconds) : null;
-  const meta = [board?.platform ? platformName(board.platform) : '', board?.aspectRatio || '', total ? secondsWord(total) : '', `${panels.length} ${board?.format === 'carousel' ? 'slide' : 'panel'}${panels.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+  const voiceOver = board?.voiceOver ? (board.voiceOver.enabled ? `Voice-over: yes${board.voiceOver.voice ? `, ${board.voiceOver.voice}` : ''}` : 'Voice-over: no') : '';
+  const meta = [board?.platform ? platformName(board.platform) : '', board?.aspectRatio || '', total ? secondsWord(total) : '', `${panels.length} ${board?.format === 'carousel' ? 'slide' : 'panel'}${panels.length === 1 ? '' : 's'}`, voiceOver].filter(Boolean).join(' · ');
   const boardRef = boardRefOf(board);
   const cells = panels.map((panel, index) => {
     const key = panelKey(board, panel, index);

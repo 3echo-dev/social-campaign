@@ -30,6 +30,9 @@ Write storyboard shot, on-screen text and voiceover fields in plain words for a 
 
 Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample.
 
+Take the one picture style of the job from the chosen concept and write it once as the storyboard `style` preamble and the manifest `style`. Every image prompt opens with it word for word (after the reference legend), then the continuity block of 3 to 6 attributes for each recurring person, place and product that appears in it. Every picture attaches the same references.
+Write the voice-over answer the Director gives you in the storyboard front matter (`voice_over: yes` or `no`, and `voice`), and fit the script and clip lengths to it. If you were not given one, return it as an open question.
+
 For a redo, rewrite only the one prompt you are given, and leave every other item as it is.
 
 Never spend credits, quote a price, call a provider tool, apply an approval, or spawn another agent.
