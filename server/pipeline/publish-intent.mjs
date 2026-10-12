@@ -55,7 +55,7 @@ import { probeMedia } from './media-probe.mjs';
 import { THREE_ECHO, jobFromDir, legalChain, readLanded, readRecords } from './facts.mjs';
 import { HOSTED_MEDIA_FILE, PUBLISH_INTENT_FILE, hasPublishApproval, hostedAssetFor } from './media-host.mjs';
 import { hasSendRecords } from './publish-attempts.mjs';
-import { brandPublishingInfo, metricoolConnected, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
+import { brandPublishingInfo, metricoolConnected, otherBrandsLinkedTo, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
 import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
 import * as runtime from './runtime.mjs';
 import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-workspace.mjs';
@@ -118,7 +118,7 @@ function findJob(root, brandSlug, jobId) {
  * With `root` and `brandDir` it also says which 3echo workspace is chosen now (`workspaceId`), and `jobRoute` is the
  * route saved on the job: the board compares both with the plan to see whether it is out of date.
  */
-export function publishContext({ root = null, brandDir, jobDir = null, jobRoute = null, channels, brands, connected }) {
+export function publishContext({ root = null, sharedRoot = root, brandDir, jobDir = null, jobRoute = null, channels, brands, connected }) {
   const info = brandPublishingInfo({ brandDir, channels, brands, connected });
   const match = info && !info.unreadable && info.found ? brands.find(item => item.id === info.blogId) || null : null;
   const context = {
@@ -129,6 +129,9 @@ export function publishContext({ root = null, brandDir, jobDir = null, jobRoute 
     timezone: match?.timezone ?? null,
     networks: match ? match.networks : null,
     coverage: info && !info.unreadable ? info.coverage : null,
+    own: info && !info.unreadable ? info.own ?? {} : {},
+    linkedAs: info && !info.unreadable ? info.linkedAs ?? {} : {},
+    sharedWith: sharedRoot && brandDir && info && !info.unreadable && info.blogId ? otherBrandsLinkedTo(sharedRoot, brandDir, info.blogId) : [],
     jobRoute: PUBLISH_ROUTES.includes(jobRoute) ? jobRoute : null,
   };
   if (root && brandDir) {
@@ -140,6 +143,7 @@ export function publishContext({ root = null, brandDir, jobDir = null, jobRoute 
 function connectionOf(root, brandEntry) {
   const profile = readJsonFile(join(brandEntry.path, 'brand', 'profile.json'), null);
   return publishContext({
+    sharedRoot: root,
     brandDir: brandEntry.path,
     channels: plain(profile) ? profile.channels : null,
     brands: readMetricoolBrands(root),
