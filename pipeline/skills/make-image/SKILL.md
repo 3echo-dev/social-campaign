@@ -46,7 +46,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 
 1. Prompt order: subject, setting, style, lighting, composition, technical; the ratio in the prompt and the parameter.
 2. Prompts under 200 words.
-3. Never request added text, headlines or UI screenshots; `stitch-clips.py` burns text in. The product's own label stays as photographed, never hidden.
+3. Never request added text, headlines or UI screenshots; `finish-video.py` draws the text once, after the join. End the prompt with "No text, no captions, no watermark." The product's own label stays as photographed, never hidden.
 4. Every prompt repeats `# Not in frame` verbatim.
 5. Landing is the hook's job: it saves the file the moment `wait_for_job`, `get_job_result` or `get_asset` returns a download link. Never call `fetch_asset_bytes` or a byte-saving script to save an output; that path fails over 1 MB and the hook already has the file.
 6. Validate every landed file: opens with Pillow, short side 200 px or more.

@@ -24,7 +24,7 @@ The copywriter or scriptwriter uses this skill only where a workflow row still n
 1. Aspect ratio from the brief or the deliverable's post type (a Reel, a Story and a TikTok video are 9:16), never inferred any other way. If silent, `aspect_ratio: unconfirmed`, raised first.
 2. Panel count follows the script's editorial beats. A panel may carry a shorter edited beat, but every generated provider clip is 4 to 15 s; group adjacent short beats when the manifest needs one provider clip.
 3. Front matter `style` preamble: treatment, light, colour, casting, setting. Every prompt opens with it and repeats the Continuity block verbatim: 3 to 6 attributes per subject, setting and light. The product's (cap, finish, colour, label placement) are read off its photo, never from memory.
-4. One row per panel on `templates/storyboard.md`; the Frame cell carries first-frame contents, hook text and subtitle positions.
+4. One row per panel on `templates/storyboard.md`; the Frame cell carries first-frame contents only: the picture, never hook text, captions or subtitles (those live in the Spoken / on-screen cell and are drawn once, later, by `finish-video.py`).
 5. Write the Not in frame block.
 6. `generation-manifest.json`: one image item per panel and one clip item per generated video panel; every prompt stands alone (preamble + continuity + panel + negative; clips in the playbook's five-part order), never "same as above". For a `talkingCharacter` deliverable also fill `characters` (one `voice` each, from the script's Voice notes) and each speaking clip's `dialogue: {character, line}`, with `generateAudio: true`.
 7. Revision log line, Decision empty, report path.
@@ -40,7 +40,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 5. Burned captions at 1080p: 42 px+, 32 to 42 characters a line, 2 lines at most, 21 characters a second.
 6. One beat per panel; two actions is two panels. Dialogue and on-screen text are final copy.
 7. Only the brand's product appears; a prompt that could show packaging carries verbatim: "Any other products or packaging in shot are plain and unbranded. No other brand names, labels or logos anywhere in the frame. The only branded item is {product}."
-8. No added text in generated frames or clips; burned at stitch. The product's own label stays as photographed, never angled away, blurred or "not legible".
+8. No added text in generated frames or clips: every image and clip prompt ends with "No on-screen text, no captions, no subtitles, no watermark, no logos other than the product's own." The text is drawn once, after the join, by `finish-video.py`. The product's own label stays as photographed, never angled away, blurred or "not legible".
 9. Product-hero panels use `ASSET: {id}` or the product photo, never a description.
 10. Apply revisions literally; if a cut breaks the flow, say so and ask. Increment `revision` and `boardVersion`; log each change by panel ID; a cut panel stays restorable.
 11. Regeneration after approval targets one panel by ID; a cut or insert returns to this gate. What a job delivers changes only at a gate.

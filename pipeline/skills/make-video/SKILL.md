@@ -1,6 +1,6 @@
 ---
 name: make-video
-description: Renders approved storyboard panels, QCs clips, and stitches the cut. Estimates first, gets approval, then burns on-screen text. Use for media or one-shot regeneration.
+description: Renders approved storyboard panels, QCs clips, and stitches the cut. Estimates first, gets approval, then leaves the on-screen text to finish-video.py, which draws it once. Use for media or one-shot regeneration.
 metadata:
   version: 1.0.0
 user-invocable: false
@@ -56,7 +56,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 3. `ratio` and `resolution` from the board; allowed values in `playbooks/video-prompting.md`, 720p by default.
 4. `assetIds` takes 9 image, 3 video and 3 audio references at most.
 5. `generateAudio` follows the manifest. The stitch keeps each clip's own audio, dialogue included, normalised per clip to -16 LUFS; it is never replaced, and a clip with no audio track gets silence. Music and captions for spoken lines are added after it by `finish-video.py` (step 12), which also ducks the music under speech.
-6. No added text inside a clip, burned in at the stitch; the product's label from the photo stays.
+6. No added text inside a clip. Every clip prompt ends with "No on-screen text, no captions, no subtitles, no watermark." (text a model draws cannot be removed and would show twice); the text is drawn once by `finish-video.py`, always from the plain `final-raw.mp4`, never from its own output. The product's label from the photo stays.
 7. Watch every clip and say what you saw in one line: warped hands, changed framing, a redesigned product, unrequested brands. The person decides what is redone.
 8. Stitching, loudness and drawtext escaping: `playbooks/video-prompting.md`, before the concat.
 9. **The deliverable stays a video.** A price, a failure or a refusal is a gate, never a swap to stills, as fallback or as recommendation (`${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md`).
