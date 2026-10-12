@@ -21,11 +21,14 @@ drawn here, once, in one style (bold white on a dark rounded box, inside the saf
     one they come from the script wording (a clip's dialogue, else the manifest's voice-over text, else the
     script's Spoken line column, else the storyboard's quoted speech) and finish-report.json and the printed
     line say "script wording, not checked against the speech".
-    The words turn gold one by one (word times spread evenly over the chunk's span). No spoken lines,
+    On the combine card the captions' source is chosen: "from the voice-over words" uses the voice-over's own transcript
+    (media/voice/transcript.json, or imports/transcripts/<sha256 of the voice-over file>.json), "from the script words" always
+    uses the script wording. The words turn gold one by one (word times spread evenly over the chunk's span). No spoken lines,
     no captions.
-  * Voice-over: the manifest's top-level voiceover [{beat, file, text}] (beat is 1-based, 1 or "B1").
-    Each file is placed at its beat's start. A missing file is skipped with one plain line. When the clip
-    already has its own dialogue, the voice-over text is not captioned a second time.
+  * Voice-over: on the board's combine card the chosen voice-over is media/voice/choice.json, one recording laid over the
+    whole video from the start (the music is ducked under it) and replaces the per-beat files. Otherwise the manifest's
+    top-level voiceover [{beat, file, text}] (beat is 1-based, 1 or "B1") places each file at its beat's start. A missing file is skipped with one plain line. When the clip already has its own dialogue, the
+    voice-over text is not captioned a second time.
   * Music: media/music/choice.json. Trimmed to the video with a 1.5 s fade out, ducked under speech and
     voice-over with sidechaincompress, a plain bed when nothing speaks. Skipped when source is "none" or
     the file is missing.
@@ -41,7 +44,7 @@ Exit 0 finished, or nothing to add (the cut is kept as it is).
 Exit 2 there is no stitched cut to finish.
 Exit 3 ffmpeg, ffprobe or Pillow is missing: the stitched cut stays as final.mp4.
 Exit 6 the joined video is not approved yet, or what to add is not recorded (approvals/cut.json, approvals/finishing.json): nothing is made.
-Exit 7 music was chosen and no music track is saved: nothing is made. Say so, then price a track or pick another choice.
+Exit 7 music or a voice-over was chosen and none is saved: nothing is made. Say so, then price a track or pick another choice.
 Exit 5 finishing failed: final-raw.mp4 is put back as final.mp4 and the reason is printed
 (a failed variant just reports that it was not made).
 """
@@ -463,6 +466,38 @@ def music_file(jobdir, choice_path):
     return None
 
 
+def voice_file(jobdir):
+    """The voice-over recording named by media/voice/choice.json, else None."""
+    path = os.path.join(jobdir, "media", "voice", "choice.json")
+    try:
+        choice = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(choice, dict) or choice.get("source") == "none" or not choice.get("file"):
+        return None
+    f = choice["file"]
+    for p in (f, os.path.join(jobdir, f), os.path.join(os.path.dirname(path), f)):
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def voice_transcript(jobdir, voice_path):
+    """[(start, end, text)] of the voice-over recording itself, and where it was found; ([], '') when there is none."""
+    candidates = [os.path.join(jobdir, "media", "voice", "transcript.json")]
+    try:
+        workspace = os.path.normpath(os.path.join(jobdir, "..", "..", "..", ".."))
+        candidates.append(os.path.join(workspace, "imports", "transcripts", sha256(voice_path) + ".json"))
+    except OSError:
+        pass
+    for c in candidates:
+        if os.path.isfile(c):
+            segs = read_transcript(c)
+            if segs:
+                return segs, c
+    return [], ""
+
+
 def loudnorm_json(stderr):
     m = list(re.finditer(r"\{[^{}]*\"input_i\"[^{}]*\}", stderr, re.S))
     if not m:
@@ -524,6 +559,7 @@ def main():
     ap.add_argument("--post", help="post.md for the call to action (default: next to the manifest)")
     ap.add_argument("--no-captions", action="store_true", help="leave captions out even when the recorded choice has them")
     ap.add_argument("--no-music", action="store_true", help="leave music out even when the recorded choice has it")
+    ap.add_argument("--no-voice", action="store_true", help="leave the chosen voice-over out even when the recorded choice has it")
     ap.add_argument("--no-end-card", action="store_true", help="leave the end card out")
     ap.add_argument("--transcript", help="a transcript file ({segments: [{start_s, end_s, text}]}) to build the captions from")
     ap.add_argument("--onscreen", help="the on-screen text plan (default: onscreen.json next to the cut)")
@@ -577,11 +613,15 @@ def main():
         print(why, file=sys.stderr)
         sys.exit(6)
     want_captions, want_music, choice = review_gate.finishing(jobdir)
+    want_voice, caption_choice, uses_combine = review_gate.combine_picks(jobdir)
     a.want_captions = want_captions and not a.no_captions
     a.want_music = want_music and not a.no_music
+    a.want_voice = want_voice and not a.no_voice
+    a.caption_choice = caption_choice
+    a.uses_combine = uses_combine
     plan_path = a.onscreen or os.path.join(os.path.dirname(final), "onscreen.json")
     has_onscreen = bool(read_onscreen(plan_path)[0])
-    if not (a.want_captions or a.want_music or has_onscreen):
+    if not (a.want_captions or a.want_music or a.want_voice or has_onscreen):
         # Skip: the joined video is used as it is. An earlier finished final.mp4 is put back to the plain cut.
         if not a.variant and os.path.isfile(raw):
             try:
@@ -596,6 +636,10 @@ def main():
     if a.want_music and not music_file(jobdir, a.music or os.path.join(jobdir, "media", "music", "choice.json")):
         print("Background music was chosen but no music track is saved for this job, so nothing was made. Say so plainly: price a track "
               "(music costs credits) or ask for a saved one, or record a different choice.", file=sys.stderr)
+        sys.exit(7)
+    if a.want_voice and not voice_file(jobdir):
+        print("A voice-over was chosen but none is saved for this job, so nothing was made. Say so plainly: price it (a voice-over costs "
+              "credits and needs the person's click on the price) or ask for a recording, or record a different choice.", file=sys.stderr)
         sys.exit(7)
 
     if a.variant:
@@ -712,7 +756,17 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         t += dur
 
     # Voice-over files placed at their beat's start.
+    # The per-beat files of the manifest are placed as before. A voice-over chosen on the combine card is one recording over the
+    # whole video and replaces them, so the same lines are never heard twice.
     vos = read_voiceover(manifest, order, spans, resolve)
+    whole_voice = voice_file(jobdir) if a.want_voice else None
+    if whole_voice:
+        vinfo = probe(whole_voice)
+        if vinfo and vinfo["audio"] and vinfo["duration"]:
+            vos = [{"beat": 0, "file": os.path.abspath(whole_voice), "text": "", "start": 0.0, "dur": vinfo["duration"], "whole": True}]
+        else:
+            print("The chosen voice-over has no sound, so it is left out.", file=sys.stderr)
+            whole_voice = None
     vos = [v for v in vos if v["start"] < D]
 
     # Spoken line per clip: its own dialogue, else the voice-over text, else the script's beat at the same position.
@@ -736,7 +790,13 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         lines.append("" if text.strip().lower() in NO_SPEECH or not a.want_captions else text.strip())
     # The words come from the transcript of the approved cut when there is one. Without it they are the script's wording,
     # and the report says so: the captions were not checked against what is actually said.
-    segments, transcript_path = transcript_for(a, jobdir, raw, final) if a.want_captions else (None, "")
+    segments, transcript_path = None, ""
+    if a.want_captions and a.caption_choice != "script":
+        if whole_voice and a.caption_choice == "voice":
+            heard, transcript_path = voice_transcript(jobdir, whole_voice)
+            segments = heard or None
+        else:
+            segments, transcript_path = transcript_for(a, jobdir, raw, final)
     caption_source = "none"
     if a.want_captions:
         if segments:
@@ -883,7 +943,7 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
     source_words = {"transcript": "from the transcript of the approved cut", "script": "from the script wording, not checked against the speech", "none": ""}[caption_source]
     try:
         report = {"captions": has_lines, "captionSource": caption_source, "transcript": transcript_path.replace(os.sep, "/") if transcript_path else None,
-                  "onScreenText": drawn_text, "music": bool(music), "finalSha256": sha256(final)}
+                  "onScreenText": drawn_text, "music": bool(music), "voiceOver": bool(whole_voice), "finalSha256": sha256(final)}
         if not a.variant:
             with open(os.path.join(os.path.dirname(final), "finish-report.json"), "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)

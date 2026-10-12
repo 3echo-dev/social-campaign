@@ -1,19 +1,19 @@
 /**
  * Music shelf and a job's music choice (plan 0.13, A2).
  *
- * The brand's shelf is `<brand>/music/` with `index.json` (one entry per track, deduplicated by sha256).
+ * Tracks live in the workspace library (library.mjs, deduplicated by sha256, each tagged with a brand). The old per-brand shelf
+ * `<brand>/music/` with `index.json` is still read there, so nothing saved earlier is lost.
  * A job's choice is `<job>/media/music/choice.json`, and always points at a copy of the track inside the job
  * (`file` is job-relative), so the finishing script never has to look at the shelf.
  */
 
-import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
 import { probeFile } from '../media/probe.mjs';
+import { AUDIO_EXTENSIONS, addToLibrary, findItem, listLibrary } from './library.mjs';
 
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac']);
 const DEFAULT_LICENCE = "the brand's own";
 
 function readJson(file, fallback) {
@@ -24,10 +24,6 @@ function writeJson(file, value) {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(tmp, file);
-}
-
-function sha256Of(file) {
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
 function resolveBrand(root, value) {
@@ -83,7 +79,7 @@ function writeChoice(jobDir, choice) {
   writeJson(choicePath(jobDir), { ...choice, chosenAt: new Date().toISOString() });
 }
 
-/** Copy a local audio file into the job and the brand shelf, and make it the job's choice. */
+/** Copy a local audio file into the job and the workspace library (tagged with the brand), and make it the job's choice. */
 export async function addMusic({ root, brand: brandValue, jobId, path, title, licence }) {
   const { brand, dir } = resolveJob(root, brandValue, jobId);
   const source = typeof path === 'string' ? path.trim() : '';
@@ -93,37 +89,17 @@ export async function addMusic({ root, brand: brandValue, jobId, path, title, li
   const info = await probeFile(source);
   if (!info.has_audio || !info.duration) throw new Error('That file does not contain audio.');
 
-  const sha256 = sha256Of(source);
-  const shelf = readShelf(brand.path);
-  let entry = shelf.find((item) => item.sha256 === sha256);
-  const savedToShelf = !entry;
-  const fileName = safeFileName(source);
-  if (!entry) {
-    const musicDir = shelfDir(brand.path);
-    mkdirSync(musicDir, { recursive: true });
-    const id = `m-${sha256.slice(0, 8)}`;
-    const file = `${id}-${fileName}`;
-    copyFileSync(source, join(musicDir, file));
-    entry = {
-      id,
-      title: (typeof title === 'string' && title.trim()) || tidyTitle(source),
-      file,
-      sha256,
-      licence: (typeof licence === 'string' && licence.trim()) || DEFAULT_LICENCE,
-      addedFrom: `job:${jobId}`,
-      addedAt: new Date().toISOString(),
-    };
-    writeJson(join(musicDir, 'index.json'), [...shelf, entry]);
-  }
-  const file = copyIntoJob(dir, source, fileName);
-  writeChoice(dir, { source: 'job', title: entry.title, file, sha256, licence: entry.licence, why: 'The person gave this track for this video.' });
-  return { id: entry.id, title: entry.title, seconds: Math.round(info.duration), savedToShelf, shelfCount: readShelf(brand.path).length };
+  const { item: entry, saved: savedToShelf } = await addToLibrary({ root, kind: 'music', path: source, brand: brand.slug, title, licence, origin: 'upload', addedFrom: `job:${jobId}` });
+  const file = copyIntoJob(dir, source, safeFileName(source));
+  writeChoice(dir, { source: 'job', title: entry.title, file, sha256: entry.sha256, licence: entry.licence, why: 'The person gave this track for this video.' });
+  return { id: entry.id, title: entry.title, seconds: Math.round(info.duration), savedToShelf, shelfCount: listLibrary({ root, kind: 'music', brand: brand.slug }).items.length };
 }
 
-/** The brand's shelf in plain words, plus the ids to choose by. */
+/** The workspace library's music in plain words (this brand's items when a brand is given), plus the ids to choose by. */
 export function listMusic({ root, brand: brandValue }) {
   const brand = resolveBrand(root, brandValue);
-  const tracks = readShelf(brand.path).map((item) => ({ id: item.id, title: item.title, licence: item.licence }));
+  const listed = listLibrary({ root, kind: 'music', brand: brand.slug });
+  const tracks = listed.items.map((item) => ({ id: item.id, title: item.title, licence: item.licence, brand: item.brand }));
   return {
     brand: brand.slug,
     tracks,
@@ -131,9 +107,9 @@ export function listMusic({ root, brand: brandValue }) {
   };
 }
 
-/** Record the job's choice: a shelf id, or `none`. */
+/** Record the job's choice: a library track id (any brand's), or `none`. */
 export function chooseMusic({ root, brand: brandValue, jobId, id, why }) {
-  const { brand, dir } = resolveJob(root, brandValue, jobId);
+  const { dir } = resolveJob(root, brandValue, jobId);
   const reason = typeof why === 'string' ? why.trim() : '';
   const wanted = typeof id === 'string' ? id.trim() : '';
   if (!wanted) throw new Error('Say which track, or none.');
@@ -141,13 +117,12 @@ export function chooseMusic({ root, brand: brandValue, jobId, id, why }) {
     writeChoice(dir, { source: 'none', title: null, file: null, sha256: null, licence: null, why: reason || 'No music for this video.' });
     return { none: true };
   }
-  const entry = readShelf(brand.path).find((item) => item.id === wanted);
-  if (!entry) throw new Error(`No track with id ${wanted} on this brand's shelf.`);
-  const shelfFile = join(shelfDir(brand.path), entry.file);
-  if (!existsSync(shelfFile)) throw new Error("That track's file is missing from the shelf.");
-  const file = copyIntoJob(dir, shelfFile, safeFileName(entry.file.replace(/^m-[0-9a-f]{8}-/, '')));
-  writeChoice(dir, { source: 'brand', title: entry.title, file, sha256: entry.sha256, licence: entry.licence, why: reason || 'Fits the video.' });
-  return { id: entry.id, title: entry.title };
+  const found = findItem({ root, id: wanted, kind: 'music' });
+  if (!found) throw new Error(`No track with id ${wanted} in the library.`);
+  const { item, file: libraryFile } = found;
+  const file = copyIntoJob(dir, libraryFile, safeFileName(item.file.replace(/^m-[0-9a-f]{8}-/, '')));
+  writeChoice(dir, { source: 'brand', title: item.title, file, sha256: item.sha256, licence: item.licence, why: reason || 'Fits the video.' });
+  return { id: item.id, title: item.title };
 }
 
 /** The job document's music field: { title, source, licence } | { none: true } | null when nothing is chosen yet. */
@@ -156,7 +131,7 @@ export function musicSection(jobDir) {
     const choice = readChoice(jobDir);
     if (!choice) return null;
     if (choice.source === 'none' || !choice.title) return { none: true };
-    return { title: String(choice.title), source: choice.source === 'brand' ? 'your library' : 'job', licence: String(choice.licence || DEFAULT_LICENCE) };
+    return { title: String(choice.title), source: choice.source === 'brand' || choice.source === 'library' ? 'your library' : 'job', licence: String(choice.licence || DEFAULT_LICENCE) };
   } catch {
     return null;
   }

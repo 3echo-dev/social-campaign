@@ -43,6 +43,7 @@ import { publishTools } from './publish.mjs';
 import { catalogueTools } from './catalogue.mjs';
 import { agentTools } from './agents.mjs';
 import { musicTools } from './music.mjs';
+import { combineTools } from './combine.mjs';
 import { handoffTools } from './handoff.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
@@ -80,6 +81,7 @@ export const ALL_TOOL_MODULES = [
   catalogueTools,
   agentTools,
   musicTools,
+  combineTools,
   handoffTools,
 ];
 

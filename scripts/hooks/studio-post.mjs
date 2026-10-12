@@ -1,5 +1,5 @@
 import {
-  ELEVEN_LABS, THREE_ECHO, VOICE_RESULTS, VOICE_SPENDERS,
+  ELEVEN_LABS, THREE_ECHO, VOICE_RESULTS, VOICE_SPENDERS, isMusicCall,
   appendEstimate, appendLinks, appendRecord, asObject, currentPriceApproval, findGenerationOwner, isLanded, isReferenceItem, isTranscriptionItem, itemKeyFor,
   jobAt, latestEstimate, mediaLinks, parseToolResponse, priceKey, quoteItem, readRecords, readSessionBinding,
   resolveJobForCall, resolveWorkspaceRoot, startMediaIfDue, toolBase, voiceOutputs, voiceRunCredits, voiceRunFinished,
@@ -14,7 +14,7 @@ const VOICE_PENDING_NOTES = Object.freeze({
 });
 const VIDEO_PRICE_FIELDS = ['duration', 'resolution', 'ratio', 'generateAudio', 'assetIds'];
 const THREE_ECHO_INPUTS = ['workspaceId', 'aspectRatio', 'assetIds', 'duration', 'resolution', 'ratio', 'generateAudio'];
-const VOICE_INPUTS = ['model_id', 'voice_id', 'generations_count', 'language', 'voice_description', 'text', 'connect_from', 'flow_id', 'guidance_scale', 'loudness', 'quality', 'seed', 'should_enhance'];
+const VOICE_INPUTS = ['node_type', 'model_id', 'voice_id', 'generations_count', 'language', 'voice_description', 'text', 'connect_from', 'flow_id', 'guidance_scale', 'loudness', 'quality', 'seed', 'should_enhance'];
 
 const finite = value => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value));
 const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
@@ -250,7 +250,7 @@ function recordVoiceCreate(ctx) {
     provider: ELEVEN_LABS,
     tool: ctx.base,
     ...tag,
-    kind: 'voice',
+    kind: isMusicCall(ctx.base, ctx.input) ? 'music' : 'voice',
     providerJobId,
     reservedCredits: finite(estimate?.credits) ?? finite(item?.credits),
     estimateId: estimate?.estimateId ?? null,
@@ -327,7 +327,7 @@ async function main() {
   else if (base === 'get_asset') recordThreeEchoAsset(ctx);
   else if (base === 'estimate_video_job') recordVideoEstimate(ctx);
   else if (VOICE_RESULTS.includes(base)) recordVoiceResult(ctx);
-  else if (VOICE_SPENDERS.includes(base)) {
+  else if (VOICE_SPENDERS.includes(base) || isMusicCall(base, ctx.input)) {
     if (ctx.input.estimate_only === true) recordVoiceEstimate(ctx);
     else recordVoiceCreate(ctx);
   }

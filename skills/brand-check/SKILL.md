@@ -18,7 +18,9 @@ The final approval is refused until a current check covers every image and video
 Run it once all the images and video for the final approval are in place, and again whenever one of them changes.
 Follow these steps exactly and never read plugin code while doing them.
 
-1. Call `pipeline_qc_frames` with `brand` and `jobId`.
+The Director does not open the frames itself. Steps 1 to 4 run in a fresh editor helper, in the foreground, so the pictures never enter the Director's chat: spawn the editor with `job:<jobId>` on the first line, the brand, the job id and "run the label and brand-mark check, steps 1 to 4 of skills/brand-check/SKILL.md, then answer in at most 5 lines: no flags, or one line per flag with where it is and what it shows, and the saved check id". The Director keeps only that answer and carries on from step 5. If the editor says a file changed, spawn it again.
+
+1. (Editor) Call `pipeline_qc_frames` with `brand` and `jobId`.
    It already takes every image and video registered for the pending review, including a contact sheet, so leave `paths` out unless you will show an image or video at the final approval that is not registered for the review yet.
 2. Open every returned frame `path` with Read, one at a time, and skip none; every slide of a carousel is one frame and gets the same reading as any other picture.
 3. For each frame, write down what it shows:

@@ -24,6 +24,7 @@ metadata:
 - Stuck jobs
 - Stage behavior
 - Operating practice
+- Stay light
 - Artifact handoff
 - Recovery
 
@@ -211,7 +212,7 @@ When the person pastes a link to a Reel, TikTok, YouTube or other video, and a j
 - If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
 - For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
 - A link the tool refuses as `private_address` or `invalid_url` is not retried.
-- Then `video_watch` the saved file when its content matters.
+- When the content of the saved file matters, a fresh helper watches it (the researcher, or the videographer for a teardown) and hands back a few lines and the path of its notes; the Director never watches the video or reads its frames itself.
 
 Use the job snapshot to show the current route, missing fields, questions, plan, stages, artifacts, decisions, and metrics.
 
@@ -299,11 +300,11 @@ Do not park such questions for the final approval; the final approval lists only
 
 The joined video (`gate: "cut"`) is a plain join: no captions, no music, no on-screen text. All of that is added once, by `finish-video.py`, in one style (bold white on a dark box, inside the safe area above the bottom 500 px), so the person approves the cut without being asked to like text that will still change. The order is fixed: joined video, finishing choice, finishing, finished video, post text, checks, final.
 
-1. The cut card carries the finishing choice as its approve buttons: "Approve + add captions", "Approve + add music", "Approve + both", "Approve as is". One click approves the cut and answers the finishing question. When a request arrives from the cut card (a `submit_decision` with `reviewId` `cut`), call `pipeline_decision_apply` right away and do nothing else: the server records the choice in `approvals/finishing.json` in the same step. Do not ask the finishing question again, and do not decline, re-record or "convert" these requests yourself.
+1. The cut card is the combine card: three rows, each with its own choice. Music: from your library, upload a track, make with ElevenLabs (priced), none. Voice-over: from your library, upload your recording, make with ElevenLabs from the script (priced), none; it starts from the storyboard's `voice_over` answer. Captions: from the voice-over words, from the script words, none. The library is one for the whole workspace, filterable by brand. One click ("Approve + add these") approves the cut and records the picks. When a request arrives from the cut card (a `submit_decision` with `reviewId` `cut`), call `pipeline_decision_apply` right away and do nothing else: the server records the picks in `approvals/finishing.json` in the same step and its reply lists what is left (`next`). Do not ask the finishing question again, and do not decline, re-record or "convert" these requests yourself.
 2. A change note on the cut that only asks for finishing ("add captions and background music") is not a redo: `pipeline_decision_apply` approves the cut and records the choice read from the note. A note that asks for a real edit (order, trims, a shot, a redo) reopens the cut as before. A request that repeats something already decided is declined with `pipeline_board_request_decline` and `handled: true`, so the board shows "Already handled".
-3. Only when the cut was approved some other way (in chat) and no choice is recorded, ask ONE question with `pipeline_board_ask` ("Add captions", "Add background music", "Both", "Skip, use as is") and record it with `pipeline_finishing_choice`.
+3. Only when the cut was approved some other way (in chat) and no choice is recorded, ask ONE question with `pipeline_board_ask` ("Add captions", "Add background music", "Both", "Skip, use as is") and record it with `pipeline_finishing_choice` (pass `combine`, or captions, music, both, skip).
 4. Captions: before running `finish-video.py` with captions, get the words that were actually spoken. Call `media_transcribe` on `media/D{n}/final-raw.mp4`; when it answers `needs_transcription_provider`, follow its steps (`creative_transcribe_audio` when ElevenLabs is connected, priced as a transcription item; `transcript_save` to keep it). Finishing builds the captions from that transcript. Without one it uses the script wording, and you must say so: "captions come from the script, not checked against the speech".
-5. Music has no maker in this plugin and none is invented. With the shelf empty (`pipeline_music_list`), ask the person for a track (a file path) or a link to one, add it with `pipeline_music_add`, then finish. Or offer captions only. Never create audio by hand, with Python or any other script, unless you say so plainly and the person agrees; never say the video has music before a track is added.
+5. Music and voice-over need an owner-clicked price when ElevenLabs makes them, and that is the only way to make them. Music: `creative_generate_in_flow` with `node_type: "music"` and an `eleven_music` model, priced with `estimate_only: true`, saved as a `music` item with `pipeline_quote_save`, made once after the price click (the spend guard lets only that call through, and only with an approved music price; pictures and video stay refused on this route). Voice-over: `creative_generate_speech` as for any voice line, with `generations_count` 2 or 3 for takes. Then `pipeline_combine_takes` saves the takes in the job and the library ("made with ElevenLabs", tagged with the brand); several takes are shown side by side on the board and the answer is recorded with `pipeline_combine_set`. Upload rows: ask with `pipeline_board_ask` (`wantsUpload` audio), then `pipeline_combine_set` with source `upload` and the path. Never create audio by hand, with Python or any other script; never say the video has music before a track is added.
 6. After `finish-video.py` exits 0, present the finished video (`pipeline_review_present` with `gate: "finish"`, review copies as for the cut) and wait. "Approve" lets the post text come next. A change asked there reruns finishing only (change the recorded choice with `pipeline_finishing_choice` if the note says so, then run `finish-video.py` again): the approved cut and its text plan stay. Finishing also draws the post's on-screen text (`media/D{n}/onscreen.json`, saved by the join), so "Approve as is" still makes a finished video when the script has on-screen text.
 7. Never re-join the clips yourself or run your own ffmpeg to finish. The stamped output of `finish-video.py` is the only finished video the board accepts.
 
@@ -358,6 +359,20 @@ Before driving a browser for the person, check which account it is signed in to,
 Board requests are only picked up between your turns, so keep every turn short.
 Hand long browser or research work, anything beyond a couple of quick page reads, to a background helper such as the researcher, and carry on with the person while it runs.
 When you must do several slow steps yourself, such as Claude in Chrome page loads, check for pending board requests between them and handle any before the next step.
+
+## Stay light
+
+The Director's chat lasts the whole job, so it stays small. The job files hold the facts; the chat only steers.
+Never ask the person to shrink, reset or restart the chat to keep it light. Keep it light yourself, as below, and carry on from the files.
+
+1. Start every step from the files, not from memory of the chat. Before each step read the job's line in `pipeline_status` (state, `waitingOn`, revision) and, when you need more, `pipeline_job_read` (it answers in a short form; use `verbose: true` only when the short form really lacks what you need). Names, choices, prices, paths and decisions come from the job files and the tools, never from what was said earlier.
+2. Heavy steps run in a fresh helper that works in the foreground, writes its detail to a file in the job folder and hands back at most 5 lines plus file paths. Keep only that summary; do not copy the helper's notes, frames or pictures into the chat. Put `job:<jobId>` on the first line of the spawn prompt, the file paths to look at, and "answer in at most 5 lines and the path of your notes".
+   - Looking at pictures, frames or clips (the label and brand-mark check, a made picture or clip that needs checking): the editor. `skills/brand-check/SKILL.md` has the steps.
+   - Browsing, web research, finding reference videos, the teardown of a reference video, reading a long file or several sources, anything past a couple of quick reads: the researcher (the videographer for video work).
+   - Post-production and render checks (the joined and finished video, the platform and quality checks): the videographer or the editor.
+3. Never open the board page's HTML (`board.html`, `board.js`, `board.css`, the file the board source tool names) or any large JSON file (board documents, projection files, snapshots, manifests, quotes) into the chat. Pass such files by path to the Artifact and ArtifactData tools, and ask a tool for its short summary instead of reading the file.
+4. Ask each tool for the smallest answer that does the step. Do not call a tool again just to show its result, and do not repeat a long tool answer back in chat.
+5. Say less: one short line to the person per step, as in Talking to the person.
 
 ## Artifact handoff
 
