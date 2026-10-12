@@ -183,9 +183,10 @@ function madeVideo(dir) {
   return null;
 }
 
-// Post-production's sound step shortlists three music tracks and cannot pass its picture and sound sign-off without one
-// chosen, so a video is only offered when the brand's music shelf has three tracks to send with it. The job's own
-// chosen track goes first. A job folder sits at <brand>/jobs/<id>, so the brand folder is two levels up.
+// Post-production's sound step shortlists music tracks to choose from. Whatever the brand's music shelf has goes with the
+// video, the job's own chosen track first, but a short or empty shelf never stops the send: the person can add or pick
+// music in Post-production. POST_MUSIC_TRACKS is how many the sound step likes to see, so the send can say when it is short.
+// A job folder sits at <brand>/jobs/<id>, so the brand folder is two levels up.
 export const POST_MUSIC_TRACKS = 3;
 function postMusic(dir) {
   const shelf = join(dirname(dirname(dir)), 'music');
@@ -206,7 +207,6 @@ export function shouldSuggest(job, options = {}) {
     const { state } = readJobState(dir);
     if (!SUGGEST_STATES.includes(state)) return false;
     if (!postAvailable(options)) return false;
-    if (postMusic(dir).length < POST_MUSIC_TRACKS) return false;
     return madeVideo(dir) !== null;
   } catch {
     return false;
@@ -409,7 +409,6 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
   const ratio = POST_RATIOS.has(ratioWanted) ? ratioWanted : null;
   if (!ratio) throw new UserFacingError('Post-production does not take this video shape yet, so this video finishes here.');
   const music = postMusic(job.dir);
-  if (music.length < POST_MUSIC_TRACKS) throw new UserFacingError(`Post-production needs ${POST_MUSIC_TRACKS} music tracks to choose from, and this brand has ${music.length}. Add music to the brand, or finish this video here.`);
   const python = findPython();
   if (!python.name) throw new UserFacingError(EXCEL_REFUSAL, { fix: python.anyPython ? 'Install the Python package openpyxl, then try again.' : 'Install Python and its openpyxl package, then try again.' });
 
@@ -491,6 +490,10 @@ export function prepareHandoff({ root, brand, jobId, home = homedir() } = {}) {
   writeHandoff(job.dir, { status: 'suggested', plugin: found.plugin, packDir: pack, deliverable: deliverableId, suggestedAt: record?.suggestedAt || nowIso(), declinedAt: null });
   return {
     ok: true, plugin: found.plugin, startSkill: found.startSkill, packDir: pack, studioRoot, args,
+    musicTracks: music.length,
+    musicNote: music.length >= POST_MUSIC_TRACKS ? null : (music.length
+      ? `This brand has ${music.length} music track${music.length === 1 ? '' : 's'}, so Post-production may ask for more music when it gets to the sound.`
+      : 'This brand has no music yet, so Post-production will ask for music when it gets to the sound.'),
     startArguments: `--client "${brand}" --title "${title}" --drive-folder "${shoot}" --pre-release "${release}" --aspect-ratio ${ratio} --deliverable-duration-sec ${duration} --audio-led ${audioLed} --footage-source generated --reference-cut-path "${args.referenceCutPath}"`,
     next: `Run the start skill with these arguments, running every Post-production script with --root "${studioRoot}" (or CREATIVE_STUDIO_POST_ROOT set to it), never in this workspace; then record the Post-production job it makes with the started tool.`,
   };
