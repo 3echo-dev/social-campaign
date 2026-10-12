@@ -1124,8 +1124,23 @@ export function mediaReviewRequired(job, gate) {
   return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
 }
 
+/**
+ * A job whose final post was approved before the media reviews existed: it has a content approval and not one media review
+ * file (pictures, clips, joined video, finishing, finished video). Those reviews were never part of its flow, so they never
+ * hold it back. Any job made since writes the review files in order, so a redo there still voids its approval as usual.
+ */
+export function madeBeforeReviews(job) {
+  const approvals = join(job.dir, 'approvals');
+  const reviewFiles = [...Object.values(MEDIA_REVIEWS).map(spec => spec.file), 'approvals/finishing.json'];
+  if (reviewFiles.some(file => existsSync(join(job.dir, ...file.split('/'))))) return false;
+  let names = [];
+  try { names = readdirSync(approvals).filter(name => /^content-\d+\.json$/.test(name)); } catch { return false; }
+  return names.some(name => ['approved', 'approve'].includes(readJson(join(approvals, name))?.decision));
+}
+
 /** The first of the reviews that is required and not approved, or null. */
 export function mediaReviewOutstanding(job) {
+  if (madeBeforeReviews(job)) return null;
   return ['pictures', 'clips', 'cut', 'finish'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
@@ -1137,7 +1152,7 @@ export function mediaReviewOutstanding(job) {
 export function mediaBlocker(job) {
   const open = mediaReviewOutstanding(job);
   if (open) return open;
-  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job)) return 'finishing';
+  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job) && !madeBeforeReviews(job)) return 'finishing';
   return null;
 }
 
