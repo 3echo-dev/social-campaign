@@ -39,7 +39,7 @@ export const HANDOFF_ONLY_TEXT = 'This job was planned before posting through Me
 export const isMetricoolRoute = route => typeof route === 'string' && route.startsWith('metricool_');
 
 /** The route a job takes when none was chosen: Metricool scheduling when it can be used, else the person posts it. */
-export const defaultRoute = context => (context?.connected && context?.found ? 'metricool_schedule' : 'self');
+export const defaultRoute = context => (context?.connected && context?.found ? 'metricool_now' : 'self');
 
 /** The soonest a scheduled post may be, in minutes from now. */
 export const MIN_LEAD_MINUTES = 5;
