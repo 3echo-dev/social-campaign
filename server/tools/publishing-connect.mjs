@@ -48,6 +48,7 @@ export const publishingConnectTools = [
       const result = saveBrandsAndChoose({ root, brands: args.brands });
       // A brand given a Metricool brand just now gets its posting plans brought up to date too.
       for (const item of result.chosen) refreshPlansForBrand(root, item.brand);
+      for (const slug of result.unlinked || []) refreshPlansForBrand(root, slug);
       return result;
     },
   }),
@@ -75,5 +76,16 @@ export const publishingConnectTools = [
       additionalProperties: false,
     },
     handler: (args, { workspace }) => chooseMetricoolBrandForJobs({ root: local(workspace), brand: args.brand, blogId: args.blogId }),
+  }),
+  defineTool({
+    name: 'pipeline_metricool_brand_unlink',
+    description: 'Record that a plugin brand does not post through Metricool (the person chose "Not through Metricool", or the Metricool brand it was linked to is shared and not its own). Removes its Metricool link, takes back its open question, and puts its unapproved posting plans back to the "I\'ll post it myself" route; the brand is not asked again until the person picks a Metricool brand. Never call it on your own: it needs the person\'s word. Write the board documents afterwards.',
+    inputSchema: {
+      type: 'object',
+      properties: { brand: { ...string, description: 'The plugin brand slug.' } },
+      required: ['brand'],
+      additionalProperties: false,
+    },
+    handler: (args, { workspace }) => chooseMetricoolBrandForJobs({ root: local(workspace), brand: args.brand, blogId: 'none' }),
   }),
 ];

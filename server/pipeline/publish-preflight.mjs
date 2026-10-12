@@ -153,18 +153,34 @@ function channelCheck(post, context) {
   if (!context.connected) return check(false, 'Metricool is not connected, so this post cannot go through it.');
   if (!context.found) return check(false, `This brand has no Metricool link of its own yet, so nothing is posted. ${PICK_AGAIN}`);
   if (!METRICOOL_NETWORKS.includes(post.platform)) return check(false, `Metricool cannot post to ${name} from here.`);
-  if (Array.isArray(context.sharedWith) && context.sharedWith.length) return check(false, `The Metricool brand linked here is also linked to another brand, and each brand needs its own. ${PICK_AGAIN}`);
   const status = plain(context.coverage) ? context.coverage[post.platform] : undefined;
   const own = plain(context.own) ? context.own[post.platform] : null;
   const via = plain(context.linkedAs) ? context.linkedAs[post.platform] : null;
-  if (status === 'linked') return check(true, via || own ? `${name} posts as ${via || own}, this brand's own account.` : `${name} is linked in Metricool.`);
+  // A Metricool brand shared with another plugin brand is fine for the brand whose own handle it posts as: only a brand whose handle does not match is refused (below).
+  const shared = Array.isArray(context.sharedWith) && context.sharedWith.length ? ' This Metricool brand is also linked to another brand.' : '';
+  if (status === 'linked') return check(true, (via || own ? `${name} posts as ${via || own}, this brand's own account.` : `${name} is linked in Metricool.`) + shared);
   if (status === 'unverified' && post.platform === 'facebook') return check(true, `${name} is in Metricool. Check that it is the right account there.`);
-  if (status === 'unverified') return check(false, `The ${name} account Metricool posts as${via ? ` (${via})` : ''} could not be matched to this brand's own${own ? ` ${own}` : ''}, so nothing is posted. ${PICK_AGAIN}`);
+  if (status === 'unverified') return check(false, `The ${name} account Metricool posts as${via ? ` (${via})` : ''} could not be matched to this brand's own${own ? ` ${own}` : ''}, so nothing is posted. Choosing the Metricool brand again cannot fix this: check the ${name} link on this brand's profile (update the brand) so it names the same account.`);
   if (status === 'different_handle') return check(false, `${name} would post as ${via || 'another account'}, but this brand's own account is ${own || 'a different one'}. Nothing is posted. ${PICK_AGAIN}`);
   if (status === 'link_changed') return check(false, `The ${name} account in the chosen Metricool brand changed${via ? ` (it now posts as ${via})` : ''} since it was picked for this brand. ${PICK_AGAIN}`);
   if (status === 'only_in_metricool') return check(false, `${name} is in Metricool${via ? ` as ${via}` : ''} but this brand's profile lists no ${name} account to match it against, so nothing is posted. Add the brand's ${name} link to its profile first.`);
   if (status === 'not_linked') return check(false, `The Metricool brand chosen for this brand has no ${name} account${own ? ` for ${own}` : ''}. ${PICK_AGAIN}`);
   return check(false, `This brand's profile lists no ${name} account and Metricool has none for it, so there is nothing to post to.`);
+}
+
+/**
+ * Where one post goes, in the words the posting plan card shows before approval: "Instagram @coachfabian, through Metricool
+ * brand Coach Fabian". It reads the brand's own saved Metricool link (never a default), through the same account check the
+ * send uses. A link that is missing, gone, shared or refused gives `ok: false` and a plain warning instead of a destination.
+ */
+export function postDestination(post, context = {}) {
+  const network = platformName(post.platform);
+  const result = channelCheck(post, context);
+  const brand = context.connected && context.found && typeof context.label === 'string' && context.label ? context.label : null;
+  const handle = (plain(context.linkedAs) && context.linkedAs[post.platform]) || (plain(context.own) && context.own[post.platform]) || null;
+  if (result.ok && brand) return { ok: true, network, handle, brand, text: `${network}${handle ? ` ${handle}` : ''}, through Metricool brand ${brand}` };
+  const warning = String(result.text || '').replace(PICK_AGAIN, '').trim() || `${network} has no Metricool brand to go through.`;
+  return { ok: false, network, handle, brand, text: warning };
 }
 
 const NEEDS = Object.freeze({
@@ -590,6 +606,7 @@ export function projectPublish(intent, context = {}) {
         title: typeof post.title === 'string' && post.title ? post.title : null,
         firstComment: typeof post.firstComment === 'string' ? post.firstComment : '',
         account: accountOf(post.platform, networks[post.platform]),
+        destination: metricool ? postDestination(post, { ...context, route }) : null,
         when: whenFor(post, route, planZone),
         media: (Array.isArray(post.media) ? post.media : []).map(item => ({ name: basename(String(item?.path || '')), path: typeof item?.path === 'string' ? item.path : null, kind: item?.kind || null })),
         // A post with no post type shows the choice in place of the sentence that says to choose.
