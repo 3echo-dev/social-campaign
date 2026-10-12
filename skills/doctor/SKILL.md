@@ -46,7 +46,7 @@ The local flow uses workspace_status, pipeline_status, and the active board bloc
 
 Call the `doctor` tool.
 
-It returns `checks`, each with an `id`, a `name`, a `status` of ok, warn or fail, a `detail`, a `fix` and a `repairable` flag.
+It returns `checks`, each with an `id`, a `name`, a `status` of ok, warn, fail or unchecked, a `detail`, a `fix` and a `repairable` flag.
 It also returns `repairable`, the list of check ids that can be fixed automatically, and a one line `summary`.
 
 Board problems are handled through `board-setup`.
@@ -62,8 +62,13 @@ FAIL  Workspace folders   2 folders are missing: campaigns, generated.
       Fix: I can put them back for you.
 WARN  FFmpeg              Not found on this computer.
       Fix: open Terminal and run: winget install Gyan.FFmpeg
+NOT CHECKED  Instagram account type   Metricool did not say.
+      Fix: check in the Instagram app that it is a Business or Creator account.
 OK    Board
 ```
+
+Put unchecked items after the warnings and before the things that work.
+Not checked is not a problem. It means Social Campaign has not saved that fact, so it did not guess.
 
 Then give the one line `summary` the tool returned.
 
@@ -105,6 +110,12 @@ Translate, do not dump.
   Without yt-dlp, TikTok posts and video addresses fall back to web search; without browser impersonation, or on an old version, TikTok answers about half of its reads with a bot check.
   Read out the version from `detail` and the one line from `fix`, which already names the right command for how yt-dlp was installed.
 - A research helper warning is never urgent. Research still runs on public pages and web search; the helper only adds the ability to read pages that show almost nothing to a plain reader. If a previous attempt failed, `detail` names what happened in full; read it out rather than summarizing it away. Offer to set it up, say it takes several minutes and downloads a few hundred megabytes, and move on either way.
+- Setup checks, per brand:
+  the Publishing link names the Metricool brand and the handle for each channel (Facebook, Instagram, TikTok).
+  A different or missing handle means posts could go to the wrong account or none, so read out the `fix`.
+  The Instagram account type needs a Business or Creator account; a personal one cannot be posted to by Metricool.
+  Studio credits warn only when every known workspace is at zero.
+  Meta ads and TikTok ads are optional connectors; not connected is fine.
 - A provider that is not connected is normal. It only matters when a job reaches a stage that needs it. Say which one: Image & Video, Voice & Audio, or Publishing.
 - A failed pipeline workspace check means the vendored pipeline cannot read its own configuration.
   Offer to run `/social-campaign:setup` again.

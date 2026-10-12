@@ -28,4 +28,12 @@ Fill the item's `references: [{ ref, label, keep }]` in the same order as its `a
 Preflight refuses a mismatch in plain words; a job with no `references` still runs.
 <!-- END labelled references -->
 
+<!-- BEGIN brand photos -->
+Attach the brand's own reference photos by default.
+They are the profile assets of kind `reference`, kept under the brand's `assets/references` folder, 3 to 5 real photos of its place, people and product in use.
+Put them in each picture's `assetIds` after the job's own references, as many as the picture's reference limit allows, each with a label and a `keep` phrase, for example `[Image 3] The shop front: keep the real look of the place.`
+Leave them off a picture only when the person asks for that, or when the picture is of something they do not show.
+When the brand has none, carry on without and add nothing to the picture.
+<!-- END brand photos -->
+
 Read the canonical nested contract for its output shape and checks.

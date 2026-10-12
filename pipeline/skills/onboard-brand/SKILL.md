@@ -18,6 +18,9 @@ The four channel fields are required and accept a full URL or Not available.
 
 Do not require Studio identity, Drive, gate-app, a remote database, or automatic research downloads to complete local onboarding.
 
+Real photos of the brand's world (3 to 5: the place, the people, the product in use) are asked for at onboarding and are optional.
+They are saved under the brand's assets/references folder and listed in the profile as reference assets; a brand can finish without them.
+
 The profile revision is the brand gate for local job creation.
 
 Complete this before starting a new job.

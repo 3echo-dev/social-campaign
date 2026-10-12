@@ -143,6 +143,13 @@ When that kit carries a logo, follow the Handling a board request procedure in `
 Right after the `pipeline_brand_research_start` call, even when it returns `skipped`, call `web_brand_kit` with the brand once.
 Never retry `web_brand_kit` against a blocked site.
 Call it only once per onboarding: when research is restarted after a failure, do not call `web_brand_kit` again, because the first capture already stands.
+The card also asks, as an optional extra, for 3 to 5 real photos of the brand's world: the place, the people, the product in use.
+They travel on the same click as `kit.references` and are saved under the brand's `assets/references` folder and listed in the brand profile as reference assets.
+They are optional.
+A brand finishes onboarding without them; when there are none, say once and gently that real photos make the pictures feel like the brand and can be added any time.
+If the person offers photos in chat, ask them to add them on the board card, or save them with `pipeline_brand_references_save` once they are on this computer.
+Never search the web for them and never make them up.
+
 The logo is upload only: nothing looks for one, so never search a website or a social page for a logo and never offer logo choices.
 `web_brand_kit` reads the website's colours and fonts only, and when the website shows no colours it uses the colours of the brand's social profile picture.
 It returns `{status, brand, captureId, palette, paletteSource, fonts, code, reason, skippedParts}`.
@@ -179,7 +186,7 @@ After a first failure, call `pipeline_brand_research_start` once more to restart
 
 Publish the board so the colours and fonts `web_brand_kit` proposed are visible.
 
-Tell the person in one sentence to check the colours and fonts on the board, add their logo by uploading it if they have one, and click Save and continue.
+Tell the person in one sentence to check the colours and fonts on the board, add their logo by uploading it if they have one, add a few real photos of their place, people or product if they have them, and click Save and continue.
 
 If something about the profile or the research is worth flagging, for example the TikTok account reading as the US market while the website reads as Singapore, say so in chat in one plain sentence once research starts; do not block starting it, and do not turn it into a confirmation question.
 

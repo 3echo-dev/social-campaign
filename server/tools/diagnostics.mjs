@@ -41,6 +41,7 @@ import { recordProjectWorkspace } from '../workspace/index.mjs';
 import { readWorkspace as readPipelineWorkspace } from '../pipeline/runtime.mjs';
 import { readArtifactBinding } from '../pipeline/artifact.mjs';
 import { listBoardRequests } from '../pipeline/board.mjs';
+import { setupChecks } from './doctor-setup.mjs';
 import { buildBoardShellText } from '../../scripts/build-board.mjs';
 import { YtDlpBackend } from '../social/backends/ytdlp.mjs';
 import { detect as detectResearchHelper, installPlan, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
@@ -58,7 +59,7 @@ import {
  * @typedef {object} Check
  * @property {string} id a stable name doctor_repair takes.
  * @property {string} name what the user is shown.
- * @property {'ok'|'warn'|'fail'} status
+ * @property {'ok'|'warn'|'fail'|'unchecked'} status unchecked means the fact was never saved, so it was not looked at.
  * @property {string} detail
  * @property {string|null} fix what a person can do about it, in plain language.
  * @property {boolean} repairable whether doctor_repair can do it for them.
@@ -116,7 +117,9 @@ export const diagnosticsTools = [
     description:
       'Run the Social Campaign self check: workspace, folders, storage, media tools, yt-dlp (version and ' +
       'whether it can imitate a browser for TikTok) and every provider ' +
-      'connection. Every item comes back with a plain language fix, and the ones Social Campaign can put ' +
+      'connection, plus a setup self-test: the Metricool link of each brand and channel handles, the Instagram ' +
+      'account type when Metricool reported it, and Studio credits. A fact that was never saved comes back ' +
+      'as status unchecked, not as a problem. Every item comes back with a plain language fix, and the ones Social Campaign can put ' +
       'right on its own are marked repairable so doctor_repair can be offered. Also returns pluginVersion and ' +
       'updateWaiting: when updateWaiting is true, or pluginVersion is missing, this running server is a ' +
       'superseded install waiting for the session to restart onto the newer one.',
@@ -323,6 +326,7 @@ async function runChecks(workspace) {
     });
   }
 
+  if (root) checks.push(...setupChecks(root));
   return checks;
 }
 

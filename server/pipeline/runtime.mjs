@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import * as facts from './facts.mjs';
 import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
 import { finishingChoice } from './finishing.mjs';
+import { BRAND_REFERENCE_KIND, saveBrandReferenceFiles } from './brand-references.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..', '..');
@@ -976,6 +977,17 @@ export function onboardBrand(options = {}) {
         brandKitRuntime.recordProvided(brand.path, kitNormalized, { requestId, now: now() });
       }
     }
+    // Optional photos of the brand's world. A photo that cannot be saved never stops onboarding.
+    let photos = null;
+    const photoFiles = requestAlreadyCompleted ? [] : brandReferenceFiles(options.kit?.references);
+    if (photoFiles.length) {
+      try {
+        photos = saveBrandReferencesFor(brand, photoFiles);
+        completed = { ...completed, profile: brandProfileRuntime.read(brand.path) || completed.profile };
+      } catch {
+        photos = { added: [], skipped: [{ name: 'Your photos', reason: 'They could not be saved. You can add them again later.' }] };
+      }
+    }
     refreshBrandVoice(brand.path);
     if (!wasComplete) {
       try { onboardingRunRuntime.markPending(root, { brandDir: brand.path, now: now() }); } catch { onboardingRunRuntime.clearPending(brand.path); }
@@ -987,6 +999,7 @@ export function onboardBrand(options = {}) {
       onboarding: completed.onboarding,
       created,
       idempotent: false,
+      ...(photos ? { photos: { saved: photos.added.length, skipped: photos.skipped } } : {}),
     };
     rememberRequest(root, 'onboard_brand', requestId, {
       status: 'complete',
@@ -1039,6 +1052,43 @@ export function saveBrandKit(options = {}) {
     kitResult.commit();
     refreshBrandVoice(brand.path);
     return { brand: brandRecord(root, brand.path), profile, idempotent: false, confirmedBy: options.confirmedBy || null };
+  } finally {
+    release();
+  }
+}
+
+/** The files a kit's `references` list carries, as `{ path | dataBase64, fileName }`. Anything else is left out. */
+function brandReferenceFiles(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(item => item && typeof item === 'object' && ((typeof item.path === 'string' && item.path) || (typeof item.dataBase64 === 'string' && item.dataBase64)))
+    .map(item => ({ fileName: item.fileName, ...(item.path ? { path: item.path } : { dataBase64: item.dataBase64 }) }));
+}
+
+/** Save photos of the brand's world into its folder and list them in its profile. Returns what was added and what was left out. */
+function saveBrandReferencesFor(brand, files) {
+  const existingProfile = brandProfileRuntime.read(brand.path);
+  const existing = existingProfile?.assets || existingProfile?.brandAssets || [];
+  const saved = saveBrandReferenceFiles({ brandDir: brand.path, files, existing });
+  if (saved.added.length) {
+    const others = existing.filter(asset => asset?.kind !== BRAND_REFERENCE_KIND);
+    brandProfileRuntime.save(brand.path, { assets: [...others, ...saved.assets] }, {});
+  }
+  return saved;
+}
+
+/**
+ * Add 3 to 5 real photos of the brand's world after setup, or replace the list's missing ones. Optional.
+ * Files come from the board's upload (saved to a local path first) or inline bytes.
+ */
+export function saveBrandReferences(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const release = acquireRequestLock(root);
+  try {
+    const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
+    const files = brandReferenceFiles(options.files);
+    if (!files.length) throw new Error('Add at least one photo.');
+    const saved = saveBrandReferencesFor(brand, files);
+    return { brand: brandRecord(root, brand.path), saved: saved.added.length, skipped: saved.skipped, references: saved.assets };
   } finally {
     release();
   }
