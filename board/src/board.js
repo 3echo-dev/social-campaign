@@ -4121,7 +4121,7 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
     ? `<ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol>`
     : empty ? `<p class="inbox-announce">${esc(empty)}</p>` : '';
   if (bare) return body ? `<div class="director-inbox">${body}</div>` : '';
-  // The compact strip on the home and new-job pages: only what is not tied to a job, and nothing at all when there is none.
+  // The compact "Needs you" strip at the top of the home and new-job pages, and nothing at all when there is nothing open.
   if (strip) return list.length ? `<section class="needs-strip" aria-labelledby="needs-strip-title"><div class="section-head"><h2 id="needs-strip-title">Needs you</h2>${tag}</div><ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol></section>` : '';
   return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Needs you</h2>${tag}</div>${body}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
 }
@@ -5723,6 +5723,13 @@ if (typeof document !== 'undefined') {
     const activity = agentLineOf(project) || `<p>${esc(project.nextAction || humanize(project.state))}</p>`;
     return `<button class="project-card${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}" style="--h:${hueOf(project.jobId)}"><span class="pc-top card-art"><span class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</span></span><span class="pc-body card-body"><span class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</span>${pill(project.state, project.stateLabel)}</span><span class="pc-act">${activity}</span><span class="pc-dots" aria-hidden="true"></span></button>`;
   }
+  // The home page's row for one job: what it is, its steps from brief to posted, and where it is now. Gold when it waits on the person.
+  function jobRow(project, waiting = false) {
+    const brand = project.brand === NO_BRAND ? '' : project.brandName || '';
+    const sub = [kindLabelOf(project), brand].filter(Boolean).join(' · ');
+    const progress = jobProgress(project) || '<div class="job-progress"><span class="job-progress-text">No steps yet</span></div>';
+    return `<button class="job-row${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state, project.stateLabel)}</span></button>`;
+  }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
     const shown = current();
@@ -6223,13 +6230,17 @@ if (typeof document !== 'undefined') {
       syncInboxDocuments(inbox.items.filter(answeredInPlace).map(item => item.jobId));
       return `${head}${doorRow}<div class="layout"><div>${overviewColumn({ strip, jobs: jobsHtml(), onboarding, onboardFirst: true })}</div>${side(inboxAside(inbox, { workspace: true }))}</div>`;
     }
-    // Home and the new-job page: every job that waits on the person is marked on its own card, so the only items left for
-    // a strip are the ones that belong to no job on the board (a brand's onboarding, a connection, a question with no job).
-    const marked = new Set(projects.filter(project => cardWaiting(project, waitingJobs)).map(project => project.jobId));
-    const loose = inbox.items.filter(item => !item.jobId || item.kind === 'onboarding' || !marked.has(item.jobId));
-    syncInboxDocuments(loose.filter(answeredInPlace).map(item => item.jobId));
-    const needs = loose.length ? inboxAside({ items: loose }, { workspace: true, strip: true }) : '';
-    return `${head}${doorRow}<div class="overview-main">${needs}${overviewColumn({ strip, jobs: jobsHtml(), onboarding })}</div>`;
+    // Home and the new-job page: "Needs you" comes first and holds every open item, the job ones included, with the same
+    // cards (pictures, Approve, Ask for changes) as the Director's chat. Then the jobs, one row each from brief to posted,
+    // waiting ones first. The kinds of job to start come last.
+    const needsItems = inbox.items;
+    syncInboxDocuments(needsItems.filter(answeredInPlace).map(item => item.jobId));
+    const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
+    const rank = project => (cardWaiting(project, waitingJobs) ? 0 : FINAL_JOB_STATES.includes(project?.state) ? 2 : 1);
+    const ordered = projects.map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
+    const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
+    const startRow = doors.length ? `<section class="doors-section" aria-labelledby="doors-title"><div class="section-head"><h2 id="doors-title">Start a new job</h2></div>${doorRow}</section>` : '';
+    return `${head}<div class="overview-main">${needs}${overviewColumn({ strip, jobs: rows, onboarding })}${startRow}</div>`;
   }
   // One pipeline group's page: its own door as the header, the jobs in it, then the composer to start another.
   function pipelinePage(group) {
