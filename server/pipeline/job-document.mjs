@@ -29,6 +29,7 @@ import { attemptState, projectPublishStatus, readAttempts } from './publish-atte
 import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
 import { agentBox, coreOnlyAgentBox } from './agent-box.mjs';
 import { musicSection } from './music.mjs';
+import { combineSection } from './combine.mjs';
 
 const require = createRequire(import.meta.url);
 const recipeRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-recipe.js'));
@@ -863,7 +864,7 @@ export function parsePost(text) {
   };
 }
 
-const QUOTE_KINDS = new Set(['image', 'video', 'voice']);
+const QUOTE_KINDS = new Set(['image', 'video', 'voice', 'music']);
 
 function quoteDetail(item, estimate) {
   const inputs = estimate?.inputs && typeof estimate.inputs === 'object' ? estimate.inputs : {};
@@ -877,7 +878,7 @@ function quoteDetail(item, estimate) {
     if (item.lowResolutionAccepted === true) parts.push('lower quality, your choice');
     if (inputs.generateAudio === false) parts.push('no sound');
   }
-  if (item.kind === 'voice' && Number(item.generationsCount) > 1) parts.push(`${Number(item.generationsCount)} versions`);
+  if ((item.kind === 'voice' || item.kind === 'music') && Number(item.generationsCount) > 1) parts.push(`${Number(item.generationsCount)} versions`);
   return parts.join(', ');
 }
 
@@ -1379,6 +1380,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   if (sent) document.publishStatus = sent;
   const music = musicSection(dir);
   if (music) document.music = music;
+  // The combine card (music, voice-over and captions rows) is drawn while the joined video waits for its approval.
+  if (gate === 'cut' && root) {
+    try { const combine = combineSection({ root, brand: project.brand, jobId: project.jobId }); if (combine) document.combine = combine; } catch { /* the card falls back to the older buttons */ }
+  }
   const recipes = recipesSection(root, project.brand, project.jobId);
   if (recipes) { document.recipes = recipes; document.recipeCatalog = RECIPE_CATALOG; }
 

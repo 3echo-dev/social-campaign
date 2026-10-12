@@ -2138,7 +2138,7 @@ const PRICE_PROVIDERS = Object.freeze(['threeEcho', 'elevenLabs']);
 const PRICE_TOTAL_LABELS = Object.freeze({ threeEcho: '3Echo Studio credits', elevenLabs: 'ElevenLabs voice credits' });
 const PRICE_WORDS = Object.freeze({ threeEcho: ['Studio credit', 'Studio credits'], elevenLabs: ['voice credit', 'voice credits'] });
 const PRICE_PROVIDER_NAMES = Object.freeze({ threeEcho: '3Echo Studio', elevenLabs: 'ElevenLabs' });
-const QUOTE_KIND_LABELS = Object.freeze({ image: 'Image', video: 'Video clip', voice: 'Voice-over' });
+const QUOTE_KIND_LABELS = Object.freeze({ image: 'Image', video: 'Video clip', voice: 'Voice-over', music: 'Music' });
 
 export function priceWords(totals) {
   return PRICE_PROVIDERS.map(provider => {
@@ -3422,6 +3422,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   }
   if (gate === 'sample') parts.push(sampleView(doc));
   if (MEDIA_GATE_IDS.has(gate)) parts.push(mediaSetView(doc, state, { disabled: locked }));
+  if (gate === 'cut' && doc.combine) parts.push(combineCard(doc, state, { disabled: locked }));
   if (gate === 'price' && review.quote) {
     parts.push(priceTable(review.quote, { used: project?.usage?.generation }));
     parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked }));
@@ -3514,7 +3515,7 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again before it is made.` };
-    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? 'Approve it and pick what to add: captions, music, both or nothing.' : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? (doc?.combine ? 'Pick the music, voice-over and captions below, then approve.' : 'Approve it and pick what to add: captions, music, both or nothing.') : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
     return { label: gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
@@ -3540,6 +3541,86 @@ function approval(gate, doc, state, recipeState = {}, routeState = {}, postState
   if (gate === 'findings') return { label: 'Approve report', line: 'Approving finishes this job.' };
   return { label: 'Approve', line: '' };
 }
+// ---- The combine card: music, voice-over and captions, each row with its own choice (one card on the joined video).
+const COMBINE_ROW_TITLES = Object.freeze({ music: 'Music', voice: 'Voice-over', captions: 'Captions' });
+const COMBINE_NOTES = Object.freeze({
+  upload: { music: 'Claude will ask you for the track after you approve.', voice: 'Claude will ask you for the recording after you approve.' },
+  make: { music: 'Made with ElevenLabs. Claude shows the price first and nothing is made until you click it.', voice: 'Made with ElevenLabs from the script. Claude shows the price first and nothing is made until you click it. You pick from the takes side by side.' },
+});
+
+/** The picks the combine card shows now: the storyboard-driven defaults, then whatever the person changed (state.combine). */
+export function combinePicks(doc, state = {}) {
+  const card = doc?.combine;
+  if (!card || typeof card !== 'object') return null;
+  const mine = state?.combine && typeof state.combine === 'object' ? state.combine : {};
+  const picks = {};
+  for (const row of ['music', 'voice', 'captions']) {
+    const options = Array.isArray(card.rows?.[row]) ? card.rows[row] : [];
+    const wanted = mine[row] || card.defaults?.[row] || { source: 'none' };
+    const source = options.some(option => option.id === wanted.source) ? wanted.source : 'none';
+    const pick = { source };
+    if (source === 'library') {
+      const items = combineItems(card, row, mine.brand);
+      const id = trimmed(wanted.id);
+      pick.id = items.some(item => item.id === id) ? id : items[0]?.id || '';
+    }
+    picks[row] = pick;
+  }
+  return picks;
+}
+
+function combineItems(card, row, brand) {
+  const list = Array.isArray(card?.library?.[row === 'voice' ? 'voice' : 'music']) ? card.library[row === 'voice' ? 'voice' : 'music'] : [];
+  const wanted = trimmed(brand);
+  return list.filter(item => item && item.id && (!wanted || (Array.isArray(item.brands) ? item.brands : [item.brand]).includes(wanted)));
+}
+
+/** The combine arguments for the approval, or an error line when a library pick has no item. */
+export function combineArgs(doc, state = {}) {
+  const picks = combinePicks(doc, state);
+  if (!picks) return { error: 'The combine card is not ready yet.' };
+  const out = {};
+  for (const row of ['music', 'voice', 'captions']) {
+    const pick = picks[row];
+    if (pick.source === 'library' && !pick.id) return { error: `The ${row === 'voice' ? 'voice-over' : 'music'} library is empty. Pick another choice.` };
+    out[row] = pick.source === 'library' ? { source: 'library', id: pick.id } : { source: pick.source };
+  }
+  return { combine: out };
+}
+
+/** The one card with three rows for the joined video. Nothing here spends: making with ElevenLabs is priced and clicked later. */
+export function combineCard(doc, state = {}, { disabled = false } = {}) {
+  const card = doc?.combine;
+  const picks = combinePicks(doc, state);
+  if (!card || !picks) return '';
+  const brandNames = new Map((Array.isArray(card.brands) ? card.brands : []).map(item => [item.slug, item.name || item.slug]));
+  const brand = trimmed(state?.combine?.brand);
+  const brandFilter = brandNames.size > 1
+    ? `<label class="combine-filter">Library for <select data-combine-brand ${disabled ? 'disabled' : ''}><option value="">All brands</option>${[...brandNames].map(([slug, name]) => `<option value="${esc(slug)}"${brand === slug ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>`
+    : '';
+  const rows = ['music', 'voice', 'captions'].map(row => {
+    const pick = picks[row];
+    const options = (card.rows?.[row] || []).map(option => {
+      const id = `combine-${row}-${option.id}`;
+      return `<label class="combine-option${pick.source === option.id ? ' is-chosen' : ''}" for="${id}"><input type="radio" id="${id}" name="combine-${row}" value="${esc(option.id)}" data-combine-source="${row}"${pick.source === option.id ? ' checked' : ''}${disabled ? ' disabled' : ''}><span>${esc(option.label)}</span>${option.priced ? '<span class="combine-priced">priced</span>' : ''}</label>`;
+    }).join('');
+    let detail = '';
+    if (pick.source === 'library') {
+      const items = combineItems(card, row, brand);
+      detail = items.length
+        ? `<label class="combine-pick"><span class="visually-hidden">${esc(COMBINE_ROW_TITLES[row])} from your library</span><select data-combine-item="${row}" ${disabled ? 'disabled' : ''}>${items.map(item => `<option value="${esc(item.id)}"${item.id === pick.id ? ' selected' : ''}>${esc(`${item.title} (${[item.licence, item.brand ? brandNames.get(item.brand) || item.brand : ''].filter(Boolean).join(', ')})`)}</option>`).join('')}</select></label>`
+        : `<p class="muted combine-note">Nothing in the ${row === 'voice' ? 'voice' : 'music'} library${brand ? ' for this brand' : ''} yet. Pick another choice.</p>`;
+    } else if (COMBINE_NOTES[pick.source]?.[row]) {
+      detail = `<p class="muted combine-note">${esc(COMBINE_NOTES[pick.source][row])}</p>`;
+    } else if (row === 'voice' && pick.source === 'none' && card.voiceOver?.enabled) {
+      detail = '<p class="muted combine-note">The storyboard said this video has a voice-over.</p>';
+    }
+    const asked = row === 'voice' && card.voiceOver ? `<p class="muted combine-note">${card.voiceOver.enabled ? `The storyboard asked for a voice-over${card.voiceOver.voice ? ` (${esc(card.voiceOver.voice)})` : ''}.` : 'The storyboard said no voice-over.'}</p>` : '';
+    return `<fieldset class="combine-row" data-combine-row="${row}"><legend>${esc(COMBINE_ROW_TITLES[row])}</legend><div class="combine-options" role="radiogroup">${options}</div>${asked}${detail}</fieldset>`;
+  }).join('');
+  return `<section class="combine-card" aria-labelledby="combine-title"><div class="combine-head"><h3 id="combine-title">What goes on the joined video</h3>${brandFilter}</div>${rows}<p class="muted combine-foot">Music and a voice-over made with ElevenLabs always cost credits: Claude shows the price and you click it before anything is made.</p></section>`;
+}
+
 /** What the joined video's approve buttons add; the id is what the server records as the finishing choice. */
 export const FINISHING_PICKS = Object.freeze([
   { id: 'captions', label: 'Approve + add captions' },
@@ -3555,7 +3636,7 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * error to show instead. Concept approvals carry the credits shown; price
  * approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -3585,7 +3666,11 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
     // The joined video is approved together with what to add to it: captions, music, both or as is (skip).
-    if (gate === 'cut' && verdict === 'approve' && finishing !== null) {
+    if (gate === 'cut' && verdict === 'approve' && finishing === 'combine') {
+      const picked = combineArgs(doc, { combine });
+      if (picked.error) return { error: picked.error };
+      args.combine = picked.combine;
+    } else if (gate === 'cut' && verdict === 'approve' && finishing !== null) {
       if (!FINISHING_PICKS.some(pick => pick.id === finishing)) return { error: 'Pick captions, music, both or as is.' };
       args.finishing = finishing;
     }
@@ -3737,7 +3822,9 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   // The joined video is approved with what to add to it, in one click. Once a choice is sent the buttons give way to the one that waits.
   const pickFinishing = gate === 'cut' && ready && !decided && !plan.disabled && plan.action !== 'send-panels';
-  const primaryButtons = pickFinishing
+  const primaryButtons = pickFinishing && doc?.combine
+    ? '<button type="button" class="primary" data-review-action="approve" data-finishing="combine">Approve + add these</button>'
+    : pickFinishing
     ? FINISHING_PICKS.map(pick => `<button type="button"${pick.primary ? ' class="primary"' : ''} data-review-action="approve" data-finishing="${esc(pick.id)}">${esc(pick.label)}</button>`).join('')
     : `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : state.settled ? 'Already handled' : approveLabel)}</button>`;
   const actions = state.commentOpen
@@ -3897,6 +3984,16 @@ function inboxSummary(item) {
 
 const IN_CHAT_LINE = 'Answer this one in the chat. Claude only takes your go-ahead for posting or spending from the chat.';
 
+/** Takes of a voice-over or music track, side by side with a player each; the picking is done with the answer buttons below. */
+export function takeList(takes) {
+  const list = (Array.isArray(takes) ? takes : []).filter(take => take && trimmed(take.label));
+  if (!list.length) return '';
+  return `<div class="takes" role="group" aria-label="Takes to compare, side by side">${list.map(take => {
+    const src = safePreviewUrl(take.url);
+    return `<figure class="take"><figcaption>${esc(take.label)}</figcaption>${src ? `<audio controls preload="metadata" src="${esc(src)}">${esc(take.label)}</audio>` : '<p class="muted take-wait">Getting this ready to play...</p>'}</figure>`;
+  }).join('')}</div>`;
+}
+
 function questionCard(item, state = {}, signal = {}, index = 0) {
   if (item.inChat) return `<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
   const key = String(item.questionId);
@@ -3916,7 +4013,7 @@ function questionCard(item, state = {}, signal = {}, index = 0) {
   const upload = item.wantsUpload && !locked ? questionUpload(item, state.upload || {}) : '';
   const sent = locked && state.text ? `<p class="inbox-sent">${esc(`"${truncateText(state.text, 160)}"`)}</p>` : '';
   const done = state.answered ? '<p class="inbox-note" role="status">Claude has your answer.</p>' : inboxStatus(state, signal);
-  return `${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
+  return `${takeList(item.takes)}${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
 }
 
 function sampleThumb(doc) {
@@ -7339,7 +7436,7 @@ if (typeof document !== 'undefined') {
     const comment = app.querySelector('#review-comment')?.value ?? state.comment ?? '';
     state.comment = comment;
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -7781,6 +7878,22 @@ if (typeof document !== 'undefined') {
     const prefix = `${ref}: `;
     return text.trim() ? `${text}\n${prefix}` : prefix;
   }
+  // The combine card: a row's choice, the library item picked for a row, or the brand the library is filtered by.
+  app.addEventListener('change', event => {
+    const field = event.target;
+    const row = field?.dataset?.combineSource || field?.dataset?.combineItem;
+    if (!row && !field?.hasAttribute?.('data-combine-brand')) return;
+    const project = current();
+    if (!project) return;
+    const state = uiFor(project).review;
+    const doc = docFor(project);
+    const keep = state.combine && typeof state.combine === 'object' ? state.combine : {};
+    if (field.hasAttribute('data-combine-brand')) state.combine = { ...keep, brand: field.value };
+    else if (field.dataset.combineSource) state.combine = { ...keep, [row]: { source: field.value } };
+    else state.combine = { ...keep, [row]: { ...(combinePicks(doc, { combine: keep })?.[row] || {}), id: field.value } };
+    render();
+    focusQuietly(field.dataset.combineSource ? `#combine-${row}-${field.value}` : field.hasAttribute('data-combine-brand') ? '[data-combine-brand]' : `[data-combine-item="${row}"]`);
+  });
   async function reviewAction(action, ref, finishing) {
     const project = current();
     if (!project) return;

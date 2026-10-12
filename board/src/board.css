@@ -1330,3 +1330,22 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .jr-state .pill{white-space:normal;text-align:left;line-height:1.25}
 .doors-section{display:flex;flex-direction:column;gap:12px}
 @media (max-width:720px){.job-row{grid-template-columns:minmax(0,1fr);gap:8px}.jr-state{justify-self:start}}
+/* The combine card on the joined video: three rows (music, voice-over, captions) and, on a question, the takes side by side. */
+.combine-card{display:grid;gap:12px;padding:var(--pad);border:1px solid var(--line2);border-radius:var(--radius-lg);background:var(--panel2)}
+.combine-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.combine-head h3{margin:0;font-size:var(--t3)}
+.combine-filter{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:var(--t1)}
+.combine-row{margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);display:grid;gap:8px;min-width:0}
+.combine-row legend{padding:0 6px;font-weight:700;font-size:var(--t2)}
+.combine-options{display:flex;flex-wrap:wrap;gap:6px}
+.combine-option{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 11px;border:1px solid var(--line2);border-radius:var(--radius);font-size:12.5px;cursor:pointer;max-width:100%}
+.combine-option input{accent-color:var(--tape)}
+.combine-option.is-chosen{border-color:var(--tape);background:rgba(245,200,75,.08);color:var(--paper)}
+.combine-priced{color:var(--spend);font-size:var(--t1);font-weight:700}
+.combine-pick select,.combine-filter select{max-width:100%;min-height:32px}
+.combine-note,.combine-foot{margin:0;font-size:var(--t1)}
+.takes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:8px}
+.take{margin:0;display:grid;gap:6px;padding:10px;border:1px solid var(--line2);border-radius:var(--radius);background:var(--panel2);min-width:0}
+.take figcaption{font-weight:700;font-size:var(--t2)}
+.take audio{width:100%}
+@media(max-width:720px){.takes{grid-template-columns:1fr}}
