@@ -388,6 +388,12 @@ def main():
                 shutil.copyfile(out, os.path.join(os.path.dirname(out), "final-raw.mp4"))
             except OSError as e:
                 sys.exit("could not write final-raw.mp4: %s" % e)
+            # A new plain cut voids whatever was finished from the old one: the finished marker and report go with it.
+            for stale in ("final-finished.sha256", "finish-report.json"):
+                try:
+                    os.remove(os.path.join(os.path.dirname(out), stale))
+                except OSError:
+                    pass
         print("wrote %s  %sx%s  %.2fs  (%d clip(s), sources total %.2fs, clip audio kept from %d, plain join: on-screen text %s)" % (
             out.replace(os.sep, "/"), final.get("width"), final.get("height"),
             final.get("duration", 0.0), len(clips), total, sum(clip_audio), "saved for finishing (onscreen.json)" if planned else "none"))

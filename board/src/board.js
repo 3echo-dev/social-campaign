@@ -954,7 +954,7 @@ export function brandReady(brand) {
 // is the inline draft this form renders for; passing it
 // explicitly, instead of reading a module-level variable, keeps this
 // function usable from outside the browser runtime closure.
-export function inlineOnboardingForm(brand, state = {}, signal = {}) {
+export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool = {}) {
   const existing = Boolean(brand);
   const prefilled = state.prefilled || contextPrefill(existing ? profileFormValues(brand) : {});
   const unlocked = state.unlocked || {};
@@ -982,7 +982,19 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}) {
     : 'Save and continue';
   const buttonDisabled = state.busy || pending || phase === 'running';
   const kit = kitSection(existing ? brand : null, state.kit || {}, state.kitErrors || null, !existing && phase === 'running');
-  return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
+  return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
+}
+
+// Which Metricool brand posts as this brand, asked once on the onboarding form when Metricool is connected and its brands are
+// saved. Leaving it on "Choose later" blocks nothing: the Inbox asks when the brand is ready. The same select changes it later,
+// when the brand is updated. `metricool` is { connected, brands } as the board projection carries them.
+export function metricoolOnboardField(brand, values = {}, metricool = {}) {
+  const brands = Array.isArray(metricool.brands) ? metricool.brands : [];
+  if (!metricool.connected || !brands.length) return '';
+  const saved = brand?.publishing?.optedOut ? NO_METRICOOL : brand?.publishing && brand.publishing.found !== false && typeof brand.publishing.blogId === 'string' ? brand.publishing.blogId : '';
+  const chosen = typeof values.metricoolBlogId === 'string' ? values.metricoolBlogId : saved;
+  const options = [`<option value="" ${chosen ? '' : 'selected'}>Choose later</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.option || item.label)}</option>`), `<option value="${NO_METRICOOL}" ${chosen === NO_METRICOOL ? 'selected' : ''}>Not through Metricool</option>`].join('');
+  return `<div class="channel-grid context-grid metricool-onboard"><label class="field-wide">Metricool brand for this brand's posts<select name="metricoolBlogId" data-saved="${esc(saved)}">${options}</select><span class="muted">Posts for this brand go out only through the Metricool brand you pick. You can change it later from the brand card.</span></label></div>`;
 }
 
 const COMPOSER_TITLE_LIMIT = 80;
@@ -1162,6 +1174,7 @@ const COVERAGE_WORDS = Object.freeze({
   not_linked: ['needed', name => `${name} not linked`, name => `${name} is on this brand card but is not linked in Metricool.`],
   different_handle: ['needed', name => `${name} different handle`, name => `${name} in Metricool is a different account from the one on this brand card.`],
   unverified: ['needed', name => `${name}: check`, name => `Cannot tell whether ${name} in Metricool is the same account as on this brand card: check it in Metricool.`],
+  link_changed: ['needed', name => `${name} changed`, name => `${name} in Metricool is not the account this brand was linked to: pick the Metricool brand again.`],
   only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is linked in Metricool but is not on this brand card.`],
 });
 
@@ -1173,26 +1186,37 @@ export function metricoolCoverageChips(coverage, trailing = '') {
   return chips || trailing ? `<span class="metricool-chips">${chips}${trailing}</span>` : '';
 }
 
+// The Metricool brand picker, the same form on the brand card and on the posting plan card: a select that lists every saved
+// Metricool brand as "Name (Instagram @handle)", and a button that sends choose_metricool_brand for that plugin brand.
+// The pick that says this brand's posts are not sent through Metricool (the server's own word for it).
+const NO_METRICOOL = 'none';
+function metricoolPickerForm({ slug, brands = [], current = '', selected = '', busy = false, error = '', askHere = false, cancel = true } = {}) {
+  const id = esc(slug);
+  const chosen = selected || current;
+  const options = [`<option value="" ${chosen ? '' : 'selected'} disabled>Choose a Metricool brand</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.option || item.label)}</option>`), `<option value="${NO_METRICOOL}" ${chosen === NO_METRICOOL ? 'selected' : ''}>Not through Metricool</option>`].join('');
+  const cancelButton = cancel ? `<button type="button" class="quiet" data-metricool-cancel="${id}" ${busy ? 'disabled' : ''}>Cancel</button>` : '';
+  const label = askHere ? 'Which Metricool brand should this brand post through?' : 'Post through this Metricool brand';
+  return `<div class="brand-chip-publish brand-chip-publish-edit"><label class="muted" for="metricool-select-${id}">${esc(label)}</label><span class="metricool-pick"><select id="metricool-select-${id}" name="metricool_brand_select" data-metricool-brand="${id}" ${busy ? 'disabled' : ''}>${options}</select><button type="button" class="primary" data-metricool-save="${id}" ${busy || !chosen || chosen === current ? 'disabled' : ''}>${busy ? 'Saving...' : 'Use this brand'}</button>${cancelButton}</span>${error ? `<p class="muted metricool-error" role="alert">${esc(error)}</p>` : ''}</div>`;
+}
+
 export function brandMetricoolLine(brand, { brands = [], open = false, busy = false, selected = '', error = '' } = {}) {
   const publishing = brand?.publishing;
   const slug = esc(brand?.slug || '');
   const ready = brandReady(brand);
   if (publishing?.unreadable) return '<div class="brand-chip-publish"><p class="muted metricool-warning">Could not read this brand\'s Metricool details</p></div>';
-  const gone = Boolean(publishing) && publishing.found === false;
-  const askHere = !publishing && brands.length > 6 && ready;
+  const optedOut = Boolean(publishing?.optedOut);
+  const gone = Boolean(publishing) && publishing.found === false && !optedOut;
+  const askHere = !publishing && brands.length > 5 && ready;
   if (!publishing && !askHere) return '';
   if (publishing && publishing.connected === false) return '<div class="brand-chip-publish"><p class="muted">Metricool is not connected</p></div>';
   if ((open || askHere) && ready) {
-    const current = publishing && !gone ? publishing.blogId : '';
-    const chosen = selected || current;
-    const options = [`<option value="" ${chosen ? '' : 'selected'} disabled>Choose a Metricool brand</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.label)}</option>`)].join('');
-    const cancel = publishing ? `<button type="button" class="quiet" data-metricool-cancel="${slug}" ${busy ? 'disabled' : ''}>Cancel</button>` : '';
-    const label = askHere ? 'Which Metricool brand should this brand post through?' : 'Post through this Metricool brand';
-    return `<div class="brand-chip-publish brand-chip-publish-edit"><label class="muted" for="metricool-select-${slug}">${esc(label)}</label><span class="metricool-pick"><select id="metricool-select-${slug}" name="metricool_brand_select" data-metricool-brand="${slug}" ${busy ? 'disabled' : ''}>${options}</select><button type="button" class="primary" data-metricool-save="${slug}" ${busy || !chosen || chosen === current ? 'disabled' : ''}>${busy ? 'Saving...' : 'Use this brand'}</button>${cancel}</span>${error ? `<p class="muted metricool-error" role="alert">${esc(error)}</p>` : ''}</div>`;
+    const current = optedOut ? NO_METRICOOL : publishing && !gone ? publishing.blogId : '';
+    return metricoolPickerForm({ slug: brand?.slug || '', brands, current, selected, busy, error, askHere, cancel: Boolean(publishing) });
   }
   // Change sits at the end of the chips row, or at the end of the warning when the saved brand is gone.
-  const canChange = ready && (brands.length > 1 || (gone && brands.length > 0));
+  const canChange = ready && (brands.length > 1 || ((gone || optedOut) && brands.length > 0) || (brands.length === 1 && !optedOut));
   const change = canChange ? `<button type="button" class="quiet" data-metricool-change="${slug}">Change</button>` : '';
+  if (optedOut) return `<div class="brand-chip-publish"><p class="muted">Posts for this brand are not sent through Metricool${change ? ` ${change}` : ''}</p></div>`;
   if (gone) {
     return `<div class="brand-chip-publish"><p class="muted metricool-warning">Metricool no longer lists the brand <strong>${esc(publishing.label)}</strong>, so posts have nowhere to go.${change ? ` ${change}` : ''}</p></div>`;
   }
@@ -2833,11 +2857,37 @@ function publishRoutes(publish, routeState, { locked = false, held: otherHeld = 
   return `<fieldset class="publish-routes"><legend>How should these posts go out?</legend><div class="route-grid">${cards}</div>${why}${status}</fieldset>`;
 }
 
-function publishDestination(publish) {
+// Where the posts go, said before anything is approved: one line per network ("Instagram @coachfabian, through Metricool brand Coach Fabian"),
+// read from the brand's own saved Metricool link. A post whose link is missing, gone or refused by the posting check gets a plain
+// warning in its place. "Change" switches the BRAND's Metricool brand (the same pick as on the brand card, never a per-job choice) and the
+// plan is rebuilt and has to be approved again; `metricool` carries the picker's state: { slug, brands, current, open, busy, selected, error }.
+function publishDestination(publish, { metricool = null, locked = false } = {}) {
   const lines = [];
-  if (publish.metricool?.label) lines.push(`Posts go to Metricool brand <strong>${esc(publish.metricool.label)}</strong>`);
-  if (publish.studioWorkspace?.name) lines.push(`Media is uploaded to your 3echo workspace <strong>${esc(publish.studioWorkspace.name)}</strong>`);
-  return lines.length ? `<ul class="publish-destination">${lines.map(line => `<li>${line}</li>`).join('')}</ul>` : '';
+  const destinations = (Array.isArray(publish.posts) ? publish.posts : []).map(post => post?.destination).filter(item => item && typeof item === 'object' && typeof item.text === 'string' && item.text);
+  const seen = new Set();
+  for (const item of destinations) {
+    if (seen.has(item.text)) continue;
+    seen.add(item.text);
+    lines.push(item.ok === false
+      ? `<li class="publish-destination-warn metricool-warning" role="alert">${esc(item.text)}</li>`
+      : `<li>${esc(item.text)}</li>`);
+  }
+  if (!destinations.length && publish.metricool?.label) lines.push(`<li>Posts go to Metricool brand <strong>${esc(publish.metricool.label)}</strong></li>`);
+  if (publish.studioWorkspace?.name) lines.push(`<li>Media is uploaded to your 3echo workspace <strong>${esc(publish.studioWorkspace.name)}</strong></li>`);
+  const onMetricool = destinations.length > 0 || Boolean(publish.metricool?.label);
+  const list = lines.length ? `<ul class="publish-destination">${lines.join('')}</ul>` : '';
+  return list + (onMetricool ? metricoolChange(metricool, destinations.some(item => item.ok === false), locked) : '');
+}
+
+// The Change control (or the picker it opens) under the destination lines. Nothing while the card is held or approved, when
+// Metricool lists no other brand to move to, or when the board has no brand to save the pick on.
+function metricoolChange(metricool, _refused, locked) {
+  if (!metricool || !metricool.slug || locked) return '';
+  const brands = Array.isArray(metricool.brands) ? metricool.brands : [];
+  if (metricool.open) return metricoolPickerForm({ slug: metricool.slug, brands, current: metricool.current || '', selected: metricool.selected || '', busy: Boolean(metricool.busy), error: metricool.error || '', cancel: true });
+  // Even a single saved Metricool brand leaves "Not through Metricool" to move to.
+  if (!brands.length) return '';
+  return `<p class="publish-destination-change"><button type="button" class="quiet" data-metricool-change="${esc(metricool.slug)}">Change</button><span class="muted"> the Metricool brand for this brand's posts. The plan is rebuilt and needs your approval again.</span></p>`;
 }
 
 function publishChecks(post, key = '', openKeys = new Set()) {
@@ -2995,7 +3045,7 @@ export function musicLine(music) {
   return `<p class="publish-note music-line muted">${esc(`Music: ${title}${where}`)}</p>`;
 }
 
-export function publishCard(publish, routeState = {}, { disabled = false, openKeys = new Set(), note = '', jobId = '', signal = {}, now = Date.now(), previews = null, postStates = {} } = {}) {
+export function publishCard(publish, routeState = {}, { disabled = false, openKeys = new Set(), note = '', jobId = '', signal = {}, now = Date.now(), previews = null, postStates = {}, metricool = null } = {}) {
   if (!publish || typeof publish !== 'object') return '';
   const posts = Array.isArray(publish.posts) ? publish.posts : [];
   // Anything pending (a route, a post type or a posting time) holds the whole card: one saving line at the top, every control
@@ -3003,7 +3053,7 @@ export function publishCard(publish, routeState = {}, { disabled = false, openKe
   const pending = publishPending(publish, routeState, postStates);
   const held = Boolean(pending);
   const rows = posts.length ? `<div class="publish-posts" role="list">${posts.map(post => publishPostRow(post, jobId, openKeys, typeof previews === 'function' ? previews(post) : '', { state: postStates?.[post.id], signal, now, locked: disabled, held, usesAll: publish.allTime?.state === 'none' })).join('')}</div>` : '<p class="muted">There are no posts in this plan yet.</p>';
-  return `<div class="publish-card"${held ? ' aria-busy="true"' : ''}>${publishSavingLine(pending, { signal, now })}${publishNoteLine(note)}${publishRoutes(publish, routeState, { locked: disabled, held })}${allTimeBlock(publish, postStates?.[ALL_POSTS], { locked: disabled, held })}${publishDestination(publish)}${rows}</div>`;
+  return `<div class="publish-card"${held ? ' aria-busy="true"' : ''}>${publishSavingLine(pending, { signal, now })}${publishNoteLine(note)}${publishRoutes(publish, routeState, { locked: disabled, held })}${allTimeBlock(publish, postStates?.[ALL_POSTS], { locked: disabled, held })}${publishDestination(publish, { metricool, locked: disabled || held })}${rows}</div>`;
 }
 
 /**
@@ -3278,7 +3328,7 @@ function reviewFilesHtml(doc, paths) {
   }).join('');
 }
 
-function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), signal = {} } = {}) {
+function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), signal = {}, metricool = null } = {}) {
   const review = doc.review;
   const gate = review.gate;
   const parts = [];
@@ -3310,7 +3360,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   const used = new Set();
   const planned = gate === 'publish' && review.publish;
   if (gate === 'publish' && review.publish && review.publish.route !== 'self' && !review.publish.studioWorkspace?.name && (review.publish.posts || []).some(post => post.media?.length)) parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked, upload: true }));
-  if (gate === 'publish') parts.push(publishCard(review.publish, routeState, { disabled: locked, openKeys, postStates, note: doc.publishNote, jobId: project?.jobId || doc.jobId || '', signal, previews: planned ? post => publishPreviews(review, post, used) : null }));
+  if (gate === 'publish') parts.push(publishCard(review.publish, routeState, { disabled: locked, openKeys, postStates, metricool, note: doc.publishNote, jobId: project?.jobId || doc.jobId || '', signal, previews: planned ? post => publishPreviews(review, post, used) : null }));
   // The deliverable cards repeat the text in another split, so the publish gate leaves them out once it has the plan.
   if (review.posts?.length && !planned) parts.push(`<div class="post-list">${review.posts.map(post => postPreview(post)).join('')}</div>`);
   if (gate === 'content') parts.push(testVersionsSection(doc.variants));
@@ -3598,14 +3648,14 @@ export function settlesReview(project, request) {
  * concept cards, storyboard panels, the itemised price, the final post with its
  * media, or the posting plan, with Approve and Ask for changes.
  */
-export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), downloads = null } = {}) {
+export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', signal = {}, recipeState = {}, workspaceState = {}, routeState = {}, postStates = {}, openKeys = new Set(), downloads = null, metricool = null } = {}) {
   const review = pendingReview(project);
   if (!review) return '';
   const state = sentDecisionState(project, rawState);
   const gate = review.gate || review.reviewId;
   const status = reviewStatus(project, doc, docState);
   const ready = status === 'ready';
-  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal }) : waitingNote(status);
+  const body = ready ? reviewBody(project, doc, state, { recipeState, workspaceState, routeState, postStates, openKeys, signal, metricool }) : waitingNote(status);
   const headExtra = ready && gate === 'findings' ? reportDownloads(downloads) : '';
   const decided = state.busy || state.submitted || state.needsReconciliation || state.settled;
   const plan = ready ? approval(gate, doc, state, recipeState, routeState, postStates) : { disabled: true, label: 'Approve', line: '' };
@@ -5616,7 +5666,7 @@ if (typeof document !== 'undefined') {
     const brand = inline.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
     reconcileOnboardDraft(inline, brand);
     const signalInfo = { artifact: artifactMode(), availability: signalAvailability, busy: transport?.signalState?.status === 'sending' };
-    return inlineOnboardingForm(brand, inline, signalInfo);
+    return inlineOnboardingForm(brand, inline, signalInfo, { connected: data.metricoolConnected === true, brands: data.metricoolBrands || [] });
   }
   // A job waits on the person when a decision is open or it has something in the Inbox; its card gets the gold ring.
   const jobsWaitingOn = items => new Set((Array.isArray(items) ? items : []).filter(item => item && item.jobId && item.kind !== 'onboarding').map(item => item.jobId));
@@ -5982,7 +6032,7 @@ if (typeof document !== 'undefined') {
       }
     }
     // Once something was sent the plan is frozen, so the status list stands where the posting decision was.
-    const review = sent && pendingGate === 'publish' ? '' : reviewPanel(project, doc, ui.review, { docState, signal: signalInfo(), recipeState: ui.recipe, workspaceState: ui.workspace, routeState: ui.route, postStates: ui.posts, openKeys, downloads });
+    const review = sent && pendingGate === 'publish' ? '' : reviewPanel(project, doc, ui.review, { docState, signal: signalInfo(), recipeState: ui.recipe, workspaceState: ui.workspace, routeState: ui.route, postStates: ui.posts, openKeys, downloads, metricool: planMetricool(project) });
     const sentPanel = publishStatusPanel(sent, ui.posts, { signal: signalInfo() });
     const kitPanel = postingKitPanel(doc?.postingKit, ui.posts, { signal: signalInfo(), jobId: project.jobId, openKeys, platform: typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent, touch: Boolean(globalThis.matchMedia?.('(pointer: coarse)')?.matches) });
     const report = pendingGate === 'findings' ? '' : reportPanel(doc, { downloads, jobTitle: project.title });
@@ -6060,13 +6110,20 @@ if (typeof document !== 'undefined') {
     }
     return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${referencesBox}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
+  // The picker state for the posting plan card: the same brand-level pick and state the brand card uses.
+  function planMetricool(project) {
+    const brand = (data.brands || []).find(item => item.slug === project?.brand);
+    if (!brand || !brandReady(brand) || !data.metricoolConnected) return null;
+    const state = metricoolFor(brand);
+    return { slug: brand.slug, brands: state.brands, current: brand.publishing?.optedOut ? NO_METRICOOL : brand.publishing && brand.publishing.found !== false ? brand.publishing.blogId : '', open: state.open, busy: state.busy, selected: state.selected, error: state.error };
+  }
   function metricoolFor(brand) {
     return { brands: data.metricoolBrands || [], open: metricoolUi.open.has(brand.slug), busy: metricoolUi.busy.has(brand.slug), selected: metricoolUi.picks.get(brand.slug) || '', error: metricoolUi.errors.get(brand.slug) || '' };
   }
   async function submitMetricoolBrand(slug) {
     const brand = (data.brands || []).find(item => item.slug === slug);
     const blogId = metricoolUi.picks.get(slug) || brand?.publishing?.blogId || '';
-    const chosen = (data.metricoolBrands || []).find(item => item.id === blogId);
+    const chosen = blogId === NO_METRICOOL ? { label: 'Not through Metricool' } : (data.metricoolBrands || []).find(item => item.id === blogId);
     if (!transport || !brand || !chosen || metricoolUi.busy.has(slug)) return;
     metricoolUi.busy.add(slug);
     metricoolUi.errors.delete(slug);
@@ -7030,6 +7087,12 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
+  // The Metricool brand picked on the onboarding form travels with the request only when it is a pick the brand does not already have.
+  function metricoolPickArgs(values, brand) {
+    const picked = typeof values.metricoolBlogId === 'string' ? values.metricoolBlogId.trim() : '';
+    const saved = brand?.publishing?.optedOut ? NO_METRICOOL : brand?.publishing && brand.publishing.found !== false ? brand.publishing.blogId : '';
+    return picked && picked !== saved && (picked === NO_METRICOOL || (data.metricoolBrands || []).some(item => item.id === picked)) ? { metricoolBlogId: picked } : {};
+  }
   async function submitInline(event) {
     event.preventDefault();
     const active = inline;
@@ -7076,7 +7139,7 @@ if (typeof document !== 'undefined') {
       ? (active.finalizingOnboarding ? { kit: kitPayload(currentBrand, active.kit || {}) } : { start: true, ...kitKickoffArgs(active.kit || {}) })
       : {};
     const args = active.kind === 'onboard'
-      ? {requestId, name:String(values.name).trim(), ...(active.brand ? {brand:active.brand} : {}), profile:buildProfile(values, active.prefilled, active.unlocked), ...kitArgs}
+      ? {requestId, name:String(values.name).trim(), ...(active.brand ? {brand:active.brand} : {}), profile:buildProfile(values, active.prefilled, active.unlocked), ...metricoolPickArgs(values, currentBrand), ...kitArgs}
       : newJobArgs(values, { brands: data.brands || [], requestId }).args;
     active.operation = operation; active.args = args;
     active.values = values; active.pendingName = values.name; active.busy = true; active.error = ''; active.declined = false; render();

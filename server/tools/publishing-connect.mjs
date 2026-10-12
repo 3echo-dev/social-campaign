@@ -1,6 +1,6 @@
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
-import { METRICOOL_BRAND_LIMIT, saveBrandsAndChoose } from '../pipeline/metricool.mjs';
+import { METRICOOL_BRAND_LIMIT, askMetricoolChoice, saveBrandsAndChoose } from '../pipeline/metricool.mjs';
 import { chooseMetricoolBrandForJobs, refreshPlansForBrand } from '../pipeline/board.mjs';
 
 const string = { type: 'string' };
@@ -14,7 +14,7 @@ function local(workspace) {
 export const publishingConnectTools = [
   defineTool({
     name: 'pipeline_metricool_brands_save',
-    description: 'Save the Metricool brands this account can post through, exactly as the Metricool connector\'s getBrandSettings returned them (its data list), so the board can show where each brand\'s posts go. Call integration_probe for metricool first, then this. It also gives each plugin brand that has no Metricool brand yet one: at once when Metricool has exactly one brand, otherwise it asks in the board\'s Inbox (waiting lists the brands still to be answered, asked the new questions). A chat answer to that question is applied with pipeline_metricool_brand_choose. A brand whose saved Metricool brand is gone is never replaced silently: it is listed in needsChoice (with the brand it had) and asked about, and the person must be told in one plain line. Returns the saved brands, chosen, asked, waiting and needsChoice; write the board documents afterwards so the Inbox shows any new question.',
+    description: 'Save the Metricool brands this account can post through, exactly as the Metricool connector\'s getBrandSettings returned them (its data list), so the board can show where each brand\'s posts go. Call integration_probe for metricool first, then this. It never picks a Metricool brand for a plugin brand by itself, not even when Metricool has exactly one: each plugin brand posts only through its own link, so for each brand with none it asks in the board\'s Inbox (waiting lists the brands still to be answered, asked the new questions). A chat answer to that question is applied with pipeline_metricool_brand_choose. A brand whose saved Metricool brand is gone is never replaced silently: it is listed in needsChoice (with the brand it had) and asked about, and the person must be told in one plain line. Returns the saved brands, chosen, asked, waiting and needsChoice; write the board documents afterwards so the Inbox shows any new question.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,8 +48,20 @@ export const publishingConnectTools = [
       const result = saveBrandsAndChoose({ root, brands: args.brands });
       // A brand given a Metricool brand just now gets its posting plans brought up to date too.
       for (const item of result.chosen) refreshPlansForBrand(root, item.brand);
+      for (const slug of result.unlinked || []) refreshPlansForBrand(root, slug);
       return result;
     },
+  }),
+  defineTool({
+    name: 'pipeline_metricool_brand_ask',
+    description: 'Ask the person, in one question card in the Director chat/Inbox, which Metricool brand posts as one plugin brand. Use it when the publish checks say the brand has no Metricool link of its own, or that the account it would post as is not the brand\'s own handle. Save the Metricool brands first (pipeline_metricool_brands_save). Each option names the Metricool brand and the account it posts as. The answer is saved to that brand only (pipeline_metricool_brand_choose when it comes in chat). Never choose for the person. Write the board documents afterwards.',
+    inputSchema: {
+      type: 'object',
+      properties: { brand: { ...string, description: 'The plugin brand slug.' } },
+      required: ['brand'],
+      additionalProperties: false,
+    },
+    handler: (args, { workspace }) => askMetricoolChoice({ root: local(workspace), brand: args.brand }),
   }),
   defineTool({
     name: 'pipeline_metricool_brand_choose',
@@ -64,5 +76,16 @@ export const publishingConnectTools = [
       additionalProperties: false,
     },
     handler: (args, { workspace }) => chooseMetricoolBrandForJobs({ root: local(workspace), brand: args.brand, blogId: args.blogId }),
+  }),
+  defineTool({
+    name: 'pipeline_metricool_brand_unlink',
+    description: 'Record that a plugin brand does not post through Metricool (the person chose "Not through Metricool", or the Metricool brand it was linked to is shared and not its own). Removes its Metricool link, takes back its open question, and puts its unapproved posting plans back to the "I\'ll post it myself" route; the brand is not asked again until the person picks a Metricool brand. Never call it on your own: it needs the person\'s word. Write the board documents afterwards.',
+    inputSchema: {
+      type: 'object',
+      properties: { brand: { ...string, description: 'The plugin brand slug.' } },
+      required: ['brand'],
+      additionalProperties: false,
+    },
+    handler: (args, { workspace }) => chooseMetricoolBrandForJobs({ root: local(workspace), brand: args.brand, blogId: 'none' }),
   }),
 ];

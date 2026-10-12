@@ -88,6 +88,11 @@ Every job that publishes has its own posting decision, with no exception: it is 
 Each job has one route for its posts: schedule with Metricool, save as drafts in Metricool, post now, or the person posts it themselves.
 Scheduling with Metricool is the route when the brand's Metricool brand is chosen and Metricool is connected, and the person posting it themselves is the route otherwise.
 The person picks the route on the board at the posting decision.
+
+Each brand posts only through its own Metricool link: the Metricool brand (blogId) the person picked for that brand, saved with the Instagram and TikTok accounts it posts as.
+Never fall back to the first, the only or a default Metricool brand, never borrow another brand's link, and never choose one for the person, even when Metricool lists a single brand (it may be their personal profile).
+The posting checks refuse in plain words when the brand has no link of its own, when the account the link posts as is not the brand's own handle in its profile, or when it could not be matched to that handle (then picking again does not help: ask the person to correct the channel link on the brand profile). A link shared with another brand blocks only the brand whose handle does not match.
+When a check says that, do not retry the send. Call `pipeline_metricool_brands_save` if the Metricool brands are not saved, then `pipeline_metricool_brand_ask` with the brand: it posts one question card, "Which Metricool brand should <brand> post through?", whose options name each Metricool brand and the account it posts as. Say in one plain line that the posts wait for their answer, publish the workspace projection, and apply the answer with `pipeline_metricool_brand_choose`. The posting plan is rebuilt and needs approving again.
 A choice made in chat is saved with `pipeline_publish_route_choose` (`brand`, `jobId`, `route`), which takes `metricool_schedule`, `metricool_draft`, `metricool_now` or `self`, then write every entry of the `documents` it returns.
 Post now means a few minutes after the person approves, never the moment of the request.
 

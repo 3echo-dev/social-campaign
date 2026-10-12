@@ -72,8 +72,24 @@ def probe(path):
     d = json.loads(r.stdout or "{}")
     v = next((s for s in d.get("streams", []) if s.get("codec_type") == "video"), {})
     a = next((s for s in d.get("streams", []) if s.get("codec_type") == "audio"), None)
+    tags = {str(k).lower(): str(val) for k, val in (d.get("format", {}).get("tags") or {}).items()}
     return {"duration": float(d.get("format", {}).get("duration") or v.get("duration") or 0),
-            "width": v.get("width"), "height": v.get("height"), "audio": a is not None}
+            "width": v.get("width"), "height": v.get("height"), "audio": a is not None, "tags": tags}
+
+
+FINISHED_TAG = "social-campaign-finished"   # written into every file this script makes, so its own output is always recognised
+
+
+def is_finished(path, stamp=None):
+    """Whether this file is finish-video.py's own output: its checksum is the stamp, or it carries the finished tag.
+    Text drawn into a video cannot be taken out again, so such a file is never finished a second time."""
+    try:
+        if stamp and os.path.isfile(stamp) and open(stamp).read().strip() == sha256(path):
+            return True
+    except OSError:
+        pass
+    info = probe(path)
+    return bool(info and FINISHED_TAG in (info.get("tags") or {}).get("comment", ""))
 
 
 def sha256(path):
@@ -143,6 +159,11 @@ def read_spoken(path):
             continue
         spoken.append(spoken_from_cell(cells[sp], combined))
     return spoken
+
+
+def same_words(a, b):
+    norm = lambda t: re.sub(r"[^\w]+", " ", str(t).lower()).strip()
+    return bool(norm(a)) and norm(a) == norm(b)
 
 
 def wrap(text, width=LINE_CHARS):
@@ -588,12 +609,24 @@ def main():
         print("ffmpeg or Pillow is not installed, so the video is not finished. The plain cut stays as the final video.", file=sys.stderr)
         sys.exit(3)
 
-    # Keep the stitched cut as final-raw.mp4. When final.mp4 is our own earlier output, finish from
-    # the kept raw again instead of finishing twice. A variant always starts from the kept raw.
+    # Always finish from the plain joined cut, final-raw.mp4, never from final.mp4 when that is already finished: a second pass
+    # would draw the text again on top of the first. A variant always starts from the kept raw.
     if not a.variant:
         try:
-            own = os.path.isfile(stamp) and os.path.isfile(raw) and open(stamp).read().strip() == sha256(final)
-            if not own:
+            finished = is_finished(final, stamp)
+            if os.path.isfile(raw):
+                # stitch-clips.py writes final.mp4 and final-raw.mp4 together. A final.mp4 that is neither finished nor
+                # older than the raw is a newer plain cut put there by something else, and replaces the raw.
+                newer_plain = (not finished and sha256(final) != sha256(raw)
+                               and os.path.getmtime(final) > os.path.getmtime(raw) + 1.0)
+                if newer_plain:
+                    shutil.copyfile(final, raw)
+            elif finished:
+                print("%s is already finished (text is drawn into it) and the plain cut %s is missing, so it is not finished again. "
+                      "Join the clips again with stitch-clips.py, check the joined video, then finish." % (
+                          final.replace(os.sep, "/"), raw.replace(os.sep, "/")), file=sys.stderr)
+                sys.exit(5)
+            else:
                 shutil.copyfile(final, raw)
         except OSError as e:
             print("Cannot keep the stitched cut next to %s (%s)." % (final.replace(os.sep, "/"), e), file=sys.stderr)
@@ -717,8 +750,17 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
             caption_source = "transcript" if heard else "script"
         elif any(lines):
             caption_source = "script"
+    spoke = any(lines)
+    # One text layer: a spoken line that is the same words as the post's on-screen text drawn over the same clip is not captioned too.
+    onscreen_items = read_onscreen(a.onscreen or os.path.join(os.path.dirname(raw), "onscreen.json"))[0]
+    if a.variant and a.hook and a.hook.strip():
+        # A variant's hook replaces the on-screen text of its first seconds, so only what is still drawn counts.
+        onscreen_items = [dict(item, start=max(item["start"], HOOK_SECONDS)) for item in onscreen_items if item["end"] > HOOK_SECONDS]
+    for n, (s0, e0) in enumerate(spans):
+        if lines[n] and any(same_words(lines[n], it["text"]) and it["start"] < e0 and it["end"] > s0 for it in onscreen_items):
+            lines[n] = ""
     has_lines = any(lines)
-    has_speech = bool(vos) or has_lines or any(isinstance(by_id[s].get("dialogue"), (dict, str)) or by_id[s].get("generateAudio") is True for s in order)
+    has_speech = bool(vos) or spoke or any(isinstance(by_id[s].get("dialogue"), (dict, str)) or by_id[s].get("generateAudio") is True for s in order)
 
     # Overlays: [(png path, x, y, start, end)]. The captions turn one word gold at a time.
     overlays = []
@@ -734,10 +776,14 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         onscreen = [dict(item, start=max(item["start"], HOOK_SECONDS)) for item in onscreen if item["end"] > HOOK_SECONDS]
         onscreen.insert(0, {"start": 0.0, "end": HOOK_SECONDS, "text": hook, "position": ""})
     drawn_text = 0
+    seen_text = []
     for k, item in enumerate(onscreen):
         start, end = max(0.0, item["start"]), min(D, item["end"])
         if end <= start:
             continue
+        if any(same_words(item["text"], t) and start < te and end > ts for (t, ts, te) in seen_text):
+            continue   # the same words twice at the same time are drawn once
+        seen_text.append((item["text"], start, end))
         box = onscreen_box(W, H, scale, item["text"])
         if box is None:
             continue
@@ -819,7 +865,8 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         "-map", "[vout]", "-map", "[aout]", "-t", "%.3f" % D,
         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
         "-force_key_frames", "expr:gte(t,n_forced*2)",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", work]
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
+        "-metadata", "comment=" + FINISHED_TAG, work]
     r = run(cmd)
     out = probe(work) if r.returncode == 0 else None
     if not out or not out["audio"] or abs(out["duration"] - D) > 0.5:
