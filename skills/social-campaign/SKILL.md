@@ -233,7 +233,7 @@ Board requests are intent only until the local runner validates them; server val
 
 Use pipeline_board_request_land to persist a request with its stable request ID.
 
-A request from the session's own bound board is the person's approval already: apply it immediately with pipeline_board_request_apply or, for submit_decision, pipeline_decision_apply, confirmedBy set to the board request itself, and no chat confirmation prompt.
+A request from the session's own bound board (landed with `from` set to `board`) is the person's approval already: apply it immediately with pipeline_board_request_apply or, for submit_decision, pipeline_decision_apply, confirmedBy set to the board request itself, and no chat confirmation prompt.
 
 For a concept approval, pass maxCredits equal to the credits the board showed for that decision.
 
@@ -264,7 +264,7 @@ A gate is any job decision that can come back pending, from the concept pick to 
 
 Keep waiting rather than giving up on it.
 Apply whichever answer arrives first the moment it arrives, as Board and decisions describes above, then finish the turn: a board decision that has not arrived yet is not a stalled call to retry, it is the doorbell comment, or the next session's sweep of saved requests, still to come.
-A decision typed in chat is recorded the same way, with the same `pipeline_decision_apply` call a board click uses.
+A decision typed in chat is recorded the same way, with the same `pipeline_decision_apply` call a board click uses, except the price, the sample image and the posting plan: those are approved only by the person's tap on the board card, so when they type yes for one, tell them to tap Approve on the card and land nothing.
 
 Never ask the person to reply approve in chat.
 Never tell them to send me any short message so I pick it up, or so I can pick it up.

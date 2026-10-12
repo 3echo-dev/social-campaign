@@ -1491,7 +1491,11 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
 const REQUESTER_ID = /^[\x21-\x7e]{1,200}$/;
 const requesterIdOf = by => (typeof by === 'string' && REQUESTER_ID.test(by) ? by : null);
 
-export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null }) {
+// Who made the request: 'board' when the board page wrote it, 'chat' when the Director landed what the person typed.
+// Nothing else is stored, so a request from older code has no origin and is treated as the board's.
+const ORIGINS = ['board', 'chat'];
+
+export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin }) {
   root = rootOf(root);
   if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
@@ -1508,7 +1512,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
-  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',createdAt:new Date().toISOString(),...(requesterIdOf(by) ? {by:requesterIdOf(by)} : {})};
+  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',...(ORIGINS.includes(origin) ? {origin} : {}),createdAt:new Date().toISOString(),...(requesterIdOf(by) ? {by:requesterIdOf(by)} : {})};
   const file = requestFile(root,requestId);
   try { writeFileSync(file,JSON.stringify(record,null,2),{flag:'wx'}); }
   catch(error) {
@@ -2759,12 +2763,24 @@ export function applyBoardRequest(args) { return actOnce(args.root,args.requestI
 export function declineBoardRequest(args) { return actOnce(args.root,args.requestId,()=>declineBoardRequestNow(args)); }
 export function applyBoardDecision(args) { return actOnce(args.root,args.requestId,()=>applyBoardDecisionNow(args)); }
 
+// Money and posting steps are approved only by a tap on the board, never by a typed "yes". Keyed by gate name.
+const CLICK_ONLY_GATES = Object.freeze([PRICE_GATE, SAMPLE_GATE, 'publish']);
+const CLICK_ONLY_OPERATIONS = Object.freeze(['choose_publish_route', 'choose_post_time']);
+const CLICK_ONLY_REASON = 'Please tap Approve on the card in the board. Money and posting steps need your click.';
+
+function refuseChatClick(record) {
+  if(record.origin!=='chat') return;
+  const gated = record.operation==='submit_decision' ? record.args?.decision==='approve' && CLICK_ONLY_GATES.includes(record.args?.reviewId) : CLICK_ONLY_OPERATIONS.includes(record.operation);
+  if(gated) throw new UserFacingError(CLICK_ONLY_REASON,{code:'click_required',fix:'Tell the person to tap the button on the card in the board, then leave this request unapplied.'});
+}
+
 function applyBoardRequestNow({root,requestId,confirmedBy}) {
   root=rootOf(root);
   if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error('Confirm the requester before applying this artifact request.');
   const file=requestFile(root,requestId),record=read(file);
   if(record.status==='applied')return record;
   if(record.status!=='requested' || record.operation==='submit_decision')throw new Error('Use the decision handler for approvals.');
+  refuseChatClick(record);
   // Intake answers are checked against the live job before the claim, so a stale
   // or invalid answer leaves the request unclaimed and nothing written: decline it
   // with the reason and the board shows the current questions again.
@@ -2838,6 +2854,7 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   const file = requestFile(root,requestId), record = read(file);
   if(record.status==='applied') return record;
   if(record.status!=='requested' || record.operation!=='submit_decision') throw new Error('This request is not a pending decision.');
+  refuseChatClick(record);
   const args = record.args;
   const validated = validateDecision({...args,root});
   if(args.reviewId===PRICE_GATE) return applyPriceDecision({root,file,record,args,validated,confirmedBy});
