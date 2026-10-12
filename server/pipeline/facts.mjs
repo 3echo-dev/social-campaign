@@ -1334,11 +1334,13 @@ export function buildQuote(job, input, { drop = [] } = {}) {
   }
   for (const [key, item] of incoming) byKey.set(key, item);
   const items = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
-  const sampled = new Set();
+  // One sample panel per deliverable. A redo of the sample panel is a new version of that same panel and carries the mark too.
+  const sampled = new Map();
   for (const item of items) {
     if (item.sample !== true || isReferenceItem(item)) continue;
-    if (sampled.has(item.deliverable)) throw new InvalidInputError(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`, { fix: 'Mark one item per post as the sample: the hero picture when the clips start from the storyboard pictures, otherwise the hero clip.' });
-    sampled.add(item.deliverable);
+    const held = sampled.get(item.deliverable);
+    if (held && held !== item.panel) throw new InvalidInputError(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`, { fix: 'Mark one item per post as the sample: the hero picture when the clips start from the storyboard pictures, otherwise the hero clip.' });
+    sampled.set(item.deliverable, item.panel);
   }
   return { quote: { items, totals: quoteTotals(items) }, made: items.filter(item => made.has(item.key)).length, dropped: dropped.size };
 }
