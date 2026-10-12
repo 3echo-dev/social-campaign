@@ -228,9 +228,11 @@ if (supplied) {
 
 // Rule 6: video must be inspected
 const refs = Array.isArray(job.sourceRefs) ? job.sourceRefs : [];
+// A video the person pasted as a link, or saved on the job as a file or a downloaded link.
+const referenceVideo = refs.some(kinds.isVideoSource) || kinds.hasSavedReferenceVideo(path.dirname(jobPath));
 if (supplied) {
   say('Rule 6: supplied files are not inspected, repurposed or rendered, so video_intelligence is not added');
-} else if (job.kind === 'content_repurpose' || refs.some(kinds.isVideoSource) ||
+} else if (job.kind === 'content_repurpose' || referenceVideo ||
     dels.some(d => ['ugc', 'brand_video'].includes(d.creativeDiscipline))) {
   need('video_intelligence');
   say('Rule 6: video is inspected, repurposed or rendered, so video_intelligence is added');
@@ -469,8 +471,10 @@ if (wf && wf.status === 'active') {
   let gates = [...(wf.gates || [])];
   const needsMedia = dels.some(d => d.creativeDiscipline !== 'text_only');
   // The concept pick: always for UGC; for every paid campaign that makes media; and for an organic series, so a set of
-  // posts starts from one chosen idea (bob, 2026-10-12). A single organic post skips it to stay fast.
-  const conceptPick = R.requiredDisciplines.includes('ugc') || (job.kind === 'paid_campaign' && needsMedia) || job.kind === 'organic_series';
+  // posts starts from one chosen idea (bob, 2026-10-12). A single organic post skips it to stay fast, unless a reference
+  // video led it: the video sets the format, so the person picks an angle told in that format before the storyboard.
+  const conceptPick = R.requiredDisciplines.includes('ugc') || (job.kind === 'paid_campaign' && needsMedia) || job.kind === 'organic_series' ||
+    (referenceVideo && needsMedia && !supplied && producesContent);
   if (!conceptPick) gates = gates.filter(g => g !== 'concept');
   if (!needsMedia) gates = gates.filter(g => g !== 'storyboard');
   if (!R.requiredDisciplines.includes('ads')) gates = gates.filter(g => !g.startsWith('campaign_'));

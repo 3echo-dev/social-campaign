@@ -248,6 +248,9 @@
         }
       }
     },
+    "topic": {
+      "type": "string"
+    },
     "offer": {
       "type": [
         "string",

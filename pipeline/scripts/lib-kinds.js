@@ -62,6 +62,20 @@ function isVideoSource(ref) {
   return (ref.mediaType === 'url' || !ref.mediaType) && VIDEO_HOST.test(sourceLink(ref));
 }
 
+// A video saved on the job as a reference (a link downloaded, a file uploaded on the board) lives in
+// <job>/inputs/references/manifest.json, not in sourceRefs. It sets the format of the new content just
+// as a pasted link does, so the router and the planner both count it.
+function hasSavedReferenceVideo(jobDir) {
+  if (!jobDir) return false;
+  let entries = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(jobDir, 'inputs', 'references', 'manifest.json'), 'utf8'));
+    if (parsed && Array.isArray(parsed.entries)) entries = parsed.entries;
+  } catch { return false; }
+  return entries.some(entry => entry && typeof entry === 'object' && !/\.json$/i.test(String(entry.path || ''))
+    && (entry.type === 'video' || (entry.kind === 'video' && Boolean(entry.sourceUrl || entry.platform))));
+}
+
 // Facebook is the one platform that posts words alone, so a Facebook-only job with a caption needs no file.
 function wordsOnlyPost(job) {
   const record = job && typeof job === 'object' ? job : {};
@@ -84,16 +98,26 @@ function missingSources(kind, refs, job) {
   return [];
 }
 
+// What the content is about. A reference video or a brand profile only sets the format and the voice,
+// so the person names the topic. A job from before this field kept its message in `offer`, which also counts.
+const TOPIC_QUESTION = 'What should this post be about: a product, a service, an offer or a message?';
+const hasText = value => typeof value === 'string' && value.trim().length > 0;
+
 function missingFields(job) {
   const record = job && typeof job === 'object' ? job : {};
   const fields = requirementsOf(record.kind).requiredFields || [];
-  const absent = fields.filter(field => !(field in record) || record[field] === undefined);
+  const absent = fields
+    .filter(field => field === 'topic'
+      ? !hasText(record.topic) && !hasText(record.offer)
+      : !(field in record) || record[field] === undefined)
+    .map(field => (field === 'topic' ? TOPIC_QUESTION : field));
   return absent.concat(missingSources(record.kind, record.sourceRefs, record));
 }
 
 module.exports = {
   NO_BRAND,
   SOURCE_NEEDS,
+  TOPIC_QUESTION,
   registry,
   normalizedKind,
   kindOf,
@@ -106,6 +130,7 @@ module.exports = {
   suppliesMedia,
   sourceLink,
   isVideoSource,
+  hasSavedReferenceVideo,
   missingSources,
   missingFields,
 };

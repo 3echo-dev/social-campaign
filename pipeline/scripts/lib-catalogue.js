@@ -52,6 +52,7 @@ const INPUT_WORDS = Object.freeze({
   distribution: 'Whether it runs as organic posts, paid ads or both',
   platforms: 'Which platforms it is for',
   deliverables: 'Which posts you need: the platform, the post type and how many',
+  topic: 'What it is about: a product, a service, an offer or a message',
   sourceJobId: 'The earlier job whose results to read',
 });
 const SOURCE_WORDS = Object.freeze({

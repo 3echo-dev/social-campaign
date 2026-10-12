@@ -22,6 +22,7 @@ import { databasePath, globalConfigDir, integrationsPath } from '../server/lib/p
 import { readJsonFile } from '../server/lib/json.mjs';
 import { ytdlpInstallCommand, ytdlpSessionHint } from '../server/lib/install-hints.mjs';
 import { ytdlpCommand } from '../server/social/backends/ytdlp.mjs';
+import { referenceYtdlpBinary } from '../server/pipeline/url-reference.mjs';
 import { resolveActiveWorkspace } from '../server/workspace/index.mjs';
 import { boardSessionLines } from '../server/pipeline/board-freshness.mjs';
 
@@ -65,13 +66,15 @@ function hasCommand(command, args = ['-version']) {
 }
 
 /**
- * Is yt-dlp installed. It reads "-version" as a bundle of short options, so it is
- * asked with two dashes, and SOCIAL_CAMPAIGN_YTDLP is honoured like everywhere else.
+ * Is yt-dlp installed. It looks for the file the server would run, without starting it:
+ * yt-dlp can take several seconds to start cold, and a slow start is not a missing tool.
+ * Same order as the server: SOCIAL_CAMPAIGN_YTDLP, the research helper's own copy, then PATH.
  * @returns {boolean}
  */
 function hasYtDlp() {
-  const { command, prefix } = ytdlpCommand();
-  return hasCommand(command, [...prefix, '--version']);
+  const { command, prefix } = ytdlpCommand(referenceYtdlpBinary());
+  if (prefix.length) return existsSync(prefix[0]);
+  return locateOnPath(command) !== null;
 }
 
 function locateOnPath(command) {
@@ -223,7 +226,7 @@ try {
 
   const needsFfmpeg = !checkCached('ffmpeg', 'ffmpeg', () => hasCommand('ffmpeg'))
     || !checkCached('ffprobe', 'ffprobe', () => hasCommand('ffprobe'));
-  const needsYtDlp = !checkCached('ytdlp', process.env.SOCIAL_CAMPAIGN_YTDLP || 'yt-dlp', hasYtDlp);
+  const needsYtDlp = !hasYtDlp();
   if (needsFfmpeg && needsYtDlp) {
     say(`${ffmpegHint()}. For TikTok posts and video addresses also run: ${ytdlpInstallCommand()}`);
   } else if (needsFfmpeg) {

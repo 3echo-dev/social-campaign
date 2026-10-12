@@ -77,7 +77,7 @@ if (route.researchDepth === 'lite') tags.add('research_lite');
 // anything is written. The router already adds video_intelligence for it, but no row on the
 // organic route watched it, so the link the person gave was quietly ignored.
 const refs = Array.isArray(job.sourceRefs) ? job.sourceRefs : [];
-if (refs.some(kinds.isVideoSource)) tags.add('reference_video');
+if (refs.some(kinds.isVideoSource) || kinds.hasSavedReferenceVideo(path.dirname(path.resolve(jobPath)))) tags.add('reference_video');
 if (refs.some(kinds.sourceLink)) tags.add('sources');
 
 function holds(cond) {

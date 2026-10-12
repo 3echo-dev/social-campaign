@@ -169,12 +169,17 @@ Put everything extracted into the typed `job` object of the single pipeline_job_
 - `request`: the brief, in the person's words; the product or subject stays here.
 - `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis`, `video_breakdown` or `results_review`.
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms, with no tool, file or code names.
-- `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+- `sourceRefs`: for every kind except `publish_post`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+  A video link or file the person gives to make something like it is a reference video, and it goes here too.
 - `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
 - `platforms`: a list of `facebook`, `instagram` and `tiktok`.
-- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`) and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc`, `motion_graphic` or `text_only`; a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a `carousel` item (an Instagram carousel is `carousel`, a Facebook one is `post`, a TikTok one is `photo`) may add `slides`, from 3 to 10, only when the brief says how many, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
+- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`) and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc` or `text_only` (never offer `motion_graphic`, it cannot be made yet; an animated explainer is `brand_video`); a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a `carousel` item (an Instagram carousel is `carousel`, a Facebook one is `post`, a TikTok one is `photo`) may add `slides`, from 3 to 10, only when the brief says how many, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
+- `topic`: for `organic_post`, `organic_series`, `ugc_creative` and `paid_campaign`, one short sentence on what the content is about: the product, service, offer or message.
+  Extract it when the brief states it, and ask for it when it does not: "What should this post be about: a product, a service, an offer or a message?"
+  Never invent it from the brand profile, and never take it from a reference video.
+  A reference video sets the format only: the look, the structure and the pacing, never the topic.
 - `audience`: `{description}`, only when the brief itself narrows the audience; leave it out otherwise, and never copy the brand profile's audience in.
 - `budget` and `landingPageUrl`, only when the brief states them for paid work: `{currency, maxTotalAmount}` and an https URL.
 - `schedule`: `{publishAt, timezone}`, only when the brief states a time.

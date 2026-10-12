@@ -44,6 +44,13 @@ Which segment from `brand/audience.md`, what they already believe, and what this
 
 One sentence, plus up to three supporting points.
 
+# Keep from the reference, change for us
+
+Delete this section unless the job has a reference video. A reference video sets the format, never the topic.
+
+- Keep: the reference's look, structure and pacing.
+- Change: the subject (this job's topic), the hook line, the steps and the ending.
+
 # Proof points
 
 Each with provenance to a research file or brand file. A bullet with no source is not a proof point.
