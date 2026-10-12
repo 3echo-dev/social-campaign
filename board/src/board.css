@@ -1309,3 +1309,19 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .ab-attach{padding:10px 0 4px}
 .inbox-upload{margin-top:8px}
 .ab-chip.att{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line2);margin-top:6px}
+
+/* Home page job rows: one line per job, its steps from brief to posted, and its state. Gold rim when it waits on the person. */
+.job-rows{display:flex;flex-direction:column;gap:8px}
+.job-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.6fr) auto;align-items:center;gap:16px;width:100%;padding:12px 16px;text-align:left;color:var(--paper);font:inherit;border:1px solid transparent;border-radius:var(--r3);background:var(--surface);cursor:pointer}
+.job-row:hover{background:var(--surface-hi)}
+.job-row:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.job-row.is-waiting{border-color:var(--tape);background:linear-gradient(180deg,var(--panel2),var(--panel)) padding-box,linear-gradient(var(--tape),var(--tape)) border-box}
+.jr-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.jr-main b{font-weight:600;overflow-wrap:break-word}
+.jr-main small{font-size:var(--t1);color:var(--faint)}
+.jr-steps{min-width:0}
+.jr-steps .job-progress{gap:10px}
+.jr-state{justify-self:end}
+.jr-state .pill{white-space:normal;text-align:left;line-height:1.25}
+.doors-section{display:flex;flex-direction:column;gap:12px}
+@media (max-width:720px){.job-row{grid-template-columns:minmax(0,1fr);gap:8px}.jr-state{justify-self:start}}
