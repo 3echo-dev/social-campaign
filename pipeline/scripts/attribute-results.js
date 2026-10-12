@@ -10,7 +10,8 @@
 //       brand/learnings.json (the ids the next brief lists in learnings_used) and refreshes the scorecard.
 //
 // Each ad or post counts once (its latest settled window). Confidence comes from the count: low under 3, medium up
-// to 10, high above. Evidence from organic posts alone stays low (paid tests change one part; organic posts don't).
+// to 10, high above. Only ads count (bob, 2026-10-12: "ads only for now"): a paid test changes one part, while two
+// organic posts differ in many ways at once. Post results stay in the findings report but never reach the scorecard.
 // A brand rule the person has set always beats a score; the scorecard only informs the ranking.
 // Exit 0 ok · 1 refused · 2 usage
 const fs = require('fs');
@@ -39,7 +40,7 @@ function median(values) {
 function score(observations, partsFor) {
   const latest = new Map();
   for (const o of observations) {
-    if (o.settlement !== 'settled') continue;
+    if (o.settlement !== 'settled' || o.objectType === 'post') continue;
     const key = o.jobId + '/' + o.deliverableId;
     const prev = latest.get(key);
     if (!prev || String(o.windowEnd) > String(prev.windowEnd) || (o.windowEnd === prev.windowEnd && String(o.windowStart) < String(prev.windowStart))) latest.set(key, o);
