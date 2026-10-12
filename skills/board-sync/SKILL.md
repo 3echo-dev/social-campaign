@@ -196,7 +196,7 @@ Use these exact `job` field names and values:
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms; the board shows it under the job's title.
 - `pipelineUnsure`: `true` only when the words fit more than one pipeline; it holds the job unplanned until `pipeline_intake_update` sets the kind. Leave it out otherwise.
 - `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
-- `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+- `sourceRefs`: for every kind except `publish_post`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
   Never use it for the files of a `publish_post`: those go in `files`, as new-job describes.
 - `caption` and `aiMade`: for `publish_post` only, exactly as new-job's "The job for `publish_post`" describes; the caption word for word, `aiMade` a yes or a no.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.

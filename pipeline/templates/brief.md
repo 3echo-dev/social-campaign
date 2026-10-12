@@ -26,6 +26,8 @@ brand_files_reviewed: true    # false when onboarding was accepted as drafts
 
 ---
 
+Fill every section from the approved direction in `job.json` (`direction`) first. Research fills only what the direction leaves open and never overrides it. Never change the topic or the message.
+
 # Angle
 
 One sentence. "Our booking assistant recovers the bookings you lose to missed calls" is an angle. "Booking software" is a topic.
@@ -38,15 +40,28 @@ The one pain or desire this content rests on, quoted in the audience's own words
 
 # Audience
 
-Which segment from `brand/audience.md`, what they already believe, and what this content changes.
+Which segment from `brand/audience.md` (the direction's audience when it is narrower), what they already believe, and what this content changes.
+
+**Tension:** what they want against what stops them, in their words.
 
 # Core message
 
-One sentence, plus up to three supporting points.
+The one thing to say, from the direction's message. One sentence, plus up to three supporting points.
+
+# Tone for this job
+
+How this piece should sound, from the brand voice and the direction.
+
+# Keep from the reference, change for us
+
+Delete this section unless the job has a reference video. A reference video sets the format, never the topic.
+
+- Keep: the reference's look, structure and pacing.
+- Change: the subject (this job's topic), the hook line, the steps and the ending.
 
 # Proof points
 
-Each with provenance to a research file or brand file. A bullet with no source is not a proof point.
+These are the reasons to believe the message. Each with provenance to a research file or brand file. A bullet with no source is not a proof point.
 
 - {claim} - source: `research/{file}.md#{anchor}` - label: FACT | OBSERVATION | INFERENCE
 
@@ -58,9 +73,11 @@ Each with provenance to a research file or brand file. A bullet with no source i
 
 # CTA intent
 
-What the viewer should do, and the CTA style per platform.
+What the viewer should do (the direction's call to action), and the CTA style per platform.
 
 # Required and prohibited elements
+
+The mandatories: the direction's must say and must not say come first.
 
 - Required:
 - Prohibited (from `brand/positioning.md` claims we never make, plus this job):
@@ -72,7 +89,7 @@ What the viewer should do, and the CTA style per platform.
 
 # Success looks like
 
-Which metric, roughly what number, judged at which checkpoint (24h, 72h, 7d).
+The direction's success measure first. Which metric, roughly what number, judged at which checkpoint (24h, 72h, 7d).
 
 # Out of scope
 

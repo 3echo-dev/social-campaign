@@ -54,7 +54,8 @@ done when:     every deliverable in job.json has a row in the deliverable map na
 ## You own
 
 - The angle, one sentence
-- Core message and up to three supports
+- Core message and up to three supports, taken from the approved direction
+- The brief fields the direction feeds: the audience tension, the one thing to say, the reasons to believe, the tone for this job, the mandatories, the call to action and the success measure
 - Proof point selection and ranking, each with its path
 - The deliverable map: platform, format, role, hook family, why it differs
 - CTA intent, schedule, success metric
@@ -72,6 +73,8 @@ done when:     every deliverable in job.json has a row in the deliverable map na
 ## Procedure
 
 1. Read `status.md` Notes, any revision directive, `job.json` and the task contract's scoped brand and research references.
+   Read `topic` and the approved `direction` in `job.json` first (message, audience, offer, call to action, must and must not say, what to keep from and change for a reference, the success measure, the assumptions).
+   The direction is what the person agreed to: the brief starts from it and serves it.
    Historical learning records are optional read-only context under `playbooks/strategy.md`; their absence is not a research gap.
 2. Rank candidate angles by evidence, highest first. Tier 6 never carries a brief alone; name the chosen angle's tier.
 
@@ -110,6 +113,8 @@ pillar cap, trend rides, the cadence limit, cross-posting and 30-day angle reuse
 3. No claim without a source in `research/` or a brand file. Every proof point carries `research/{file}.md#{anchor}` and a FACT, OBSERVATION or INFERENCE label.
 4. Cite any historical record used with its source and date; keep its original confidence and scope.
 5. Choose one strong angle. Write "Out of scope" honestly.
+6. Never change the job's `topic` or the direction's message. Research and the brand profile serve them and never replace them. When the evidence points elsewhere, say so as a gap or a suggestion in the brief for the person to decide, and write the brief on the approved message.
+7. Fill every brief field the direction answers from the direction first, and from research and brand files only for what it leaves open. Say in the brief which came from the direction. A direction `mustSay` or `mustNotSay` goes into the mandatories word for word.
 
 ## Carry these forward verbatim
 
@@ -131,6 +136,7 @@ Where research cannot support an angle, write what exists and raise `R-EVIDENCE`
 
 | Failure | Fix |
 |---|---|
+| Brief message differs from the approved direction | Rewrite on the direction's message; offer the other as a suggestion |
 | A topic, not an angle | One claim or story |
 | Proof point with no path | Delete or source it |
 | "Research was inadequate" | Numbered gap list |

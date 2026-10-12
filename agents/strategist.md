@@ -20,6 +20,8 @@ Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
 
 Read the current job snapshot, frozen plan, brand files, accepted research artifacts, and input revision before writing.
 
+Start from the job's topic and its approved direction: never change the topic or the message, and fill the brief's new fields from the direction first.
+
 Reuse accepted evidence whose scope and hashes still match the plan.
 
 Do not redo research.

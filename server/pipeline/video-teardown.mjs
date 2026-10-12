@@ -92,6 +92,21 @@ export function pacingStats(shots) {
   };
 }
 
+/** The lower scene score used to count gentle visual changes in a video with few hard cuts. */
+export const CHANGE_THRESHOLD = 0.08;
+
+/** A plain-words warning that cut and shot numbers do not describe the pacing of a video with few cuts. Null otherwise. */
+export function pacingNote(averageShotS) {
+  if (!(averageShotS > SPARSE_SHOT_S)) return null;
+  return 'Few hard cuts: this looks like continuous animation or one long take, so shot length does not describe its pacing. Read the sample frames for how often the picture changes.';
+}
+
+/** How often the picture changes per minute, from a low-threshold scene pass over `analysedS` seconds. Null when unmeasurable. */
+export function visualChangesPerMinute(stderr, analysedS) {
+  if (!(analysedS > 0)) return null;
+  return round((parseSceneTimes(stderr, { minGapS: 1 }).length / analysedS) * 60, 1);
+}
+
 /** Hook frame times that fit inside the video. */
 export function hookTimes(durationS) {
   return HOOK_TIMES_S.filter(t => t < durationS - 0.05);
@@ -569,6 +584,10 @@ export async function videoTeardown(options) {
     const cuts = sceneRun.ok ? parseSceneTimes(sceneRun.stderr) : [];
     const shots = buildShots(cuts, analysedS);
     const pacing = pacingStats(shots);
+    // With few hard cuts, count the gentle changes too, so pacing is not read from a cut count of 1.
+    const changeJob = pacingNote(pacing.averageShotS)
+      ? run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${CHANGE_THRESHOLD})',showinfo`, '-f', 'null', '-'], { timeoutMs: 120_000 })
+      : null;
 
     // 4. frames: the hook, one per shot, and evenly spaced samples when the cuts are too few to cover the video
     const hook = hookTimes(durationS).map(t => ({ kind: 'hook', timeS: t, file: join(framesWork, `hook-${stamp(t)}s.jpg`) }));
@@ -580,6 +599,8 @@ export async function videoTeardown(options) {
     const wanted = [...taken, ...sampleFrames].sort((a, b) => a.timeS - b.timeS);
     const okFlags = await inPool(wanted, 4, f => grabFrame(ffmpeg, video, f.timeS, f.file, run));
     moveIntoPlace(framesWork, join(out, 'frames'));
+    const changeRun = changeJob ? await changeJob : null;
+    if (changeRun?.ok) pacing.visualChangesPerMinute = visualChangesPerMinute(changeRun.stderr, analysedS);
     const frames = wanted.filter((_, i) => okFlags[i]).map(f => ({ ...f, rel: `teardown/frames/${basename(f.file)}` }));
 
     // 5. transcript
@@ -696,6 +717,8 @@ export function packageResult(teardown) {
       aspect: teardown.video.aspect,
       cutCount: teardown.pacing.cutCount,
       averageShotS: teardown.pacing.averageShotS,
+      ...(pacingNote(teardown.pacing.averageShotS) ? { pacingNote: pacingNote(teardown.pacing.averageShotS) } : {}),
+      ...(teardown.pacing.visualChangesPerMinute != null ? { visualChangesPerMinute: teardown.pacing.visualChangesPerMinute } : {}),
       transcript: teardown.transcript.status,
       needsTranscription: teardown.transcript.needsTranscription,
       music: teardown.sound?.music ?? null,

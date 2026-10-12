@@ -24,6 +24,7 @@ metadata:
   - Find a product photo automatically when one is needed
   - A character job with no reference picture
   - Ask only what is still genuinely missing
+  - Agree the direction before anything runs
 - 4. Import selected local inputs
 - 5. Show the job
 - 6. Run only the routed work
@@ -169,12 +170,19 @@ Put everything extracted into the typed `job` object of the single pipeline_job_
 - `request`: the brief, in the person's words; the product or subject stays here.
 - `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis`, `video_breakdown` or `results_review`.
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms, with no tool, file or code names.
-- `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+- `sourceRefs`: for every kind except `publish_post`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+  A video link or file the person gives to make something like it is a reference video, and it goes here too.
 - `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
 - `platforms`: a list of `facebook`, `instagram` and `tiktok`.
-- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`) and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc`, `motion_graphic` or `text_only`; a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a `carousel` item (an Instagram carousel is `carousel`, a Facebook one is `post`, a TikTok one is `photo`) may add `slides`, from 3 to 10, only when the brief says how many, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
+- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`) and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc` or `text_only` (never offer `motion_graphic`, it cannot be made yet; an animated explainer is `brand_video`); a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a `carousel` item (an Instagram carousel is `carousel`, a Facebook one is `post`, a TikTok one is `photo`) may add `slides`, from 3 to 10, only when the brief says how many, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
+- `topic`: for `organic_post`, `organic_series`, `ugc_creative` and `paid_campaign`, one short sentence on what the content is about: the product, service, offer or message.
+  Extract it when the brief states it, and ask for it when it does not: "What should this post be about: a product, a service, an offer or a message?"
+  Never invent it from the brand profile, and never take it from a reference video.
+  A reference video sets the format only: the look, the structure and the pacing, never the topic.
+- `direction` and `directionApproved`: for the same four kinds, but not in this create call.
+  They are written at the Direction step below, once the person has approved the card.
 - `audience`: `{description}`, only when the brief itself narrows the audience; leave it out otherwise, and never copy the brand profile's audience in.
 - `budget` and `landingPageUrl`, only when the brief states them for paid work: `{currency, maxTotalAmount}` and an https URL.
 - `schedule`: `{publishAt, timezone}`, only when the brief states a time.
@@ -310,6 +318,59 @@ For an answer in chat, call pipeline_intake_update with that job ID, the display
 
 Reuse the snapshot returned by pipeline_intake_update and never call pipeline_job_create again to resolve the same draft.
 
+### Agree the direction before anything runs
+
+For `organic_post`, `organic_series`, `ugc_creative` and `paid_campaign`, the job is not ready to research or plan until the person has approved a direction.
+The route says so as one missing item, "Approve the direction for this job", after the create call or after any later answer.
+Treat that item as this step, not as a question for the intake form: do not show it as a field to fill in.
+The other kinds (`publish_post`, `content_repurpose`, `research`, `creative_analysis`, `video_breakdown`, `results_review`) never have a Direction step.
+
+Run it in this order, and run nothing else for the job until it is done:
+
+1. Fill first.
+   Build the direction from the person's own words, the links and files in the brief, the references already saved for the job, and the brand profile.
+   Do this without asking anything.
+   The fields are:
+   - `goal`: what should happen, in words.
+   - `audience`: only when narrower than the brand's own audience.
+   - `message`: the one thing to say.
+   - `offer`: the offer or deal with its terms, only when there is one.
+   - `cta`: what the viewer should do.
+   - `landingPageUrl`: an https link, only when there is one.
+   - `mustSay` and `mustNotSay`: short lists, only when the person or the brand profile gave them.
+   - `referenceKeep` and `referenceChange`: only when there is a reference.
+     Keep is what to keep from it (its look, structure and pacing), change is what to change for this brand.
+   - `successMeasure`: how we will know it worked.
+   - `assumptions`: the quiet defaults you are using, each one plain sentence, for example the market, the platforms, the same audience as the brand profile, organic only with no ad spend, and the AI-made label.
+   - `sources`: for every field you filled, where it came from: `said` (the person's words), `profile` (the brand profile), `proposed` (your suggestion), `asked` (the person's answer to a question), or `link` (a link or file they gave).
+2. Propose, do not ask open questions.
+   The message, the call to action and the success measure are always proposed by you from the topic, the brand and the objective, never asked as an empty question.
+   Ask only for what you could not fill or sensibly propose, and only one message with at most 3 questions in it, counting any other open brief question in the same message.
+   Each question is short and offers a likely answer the person can just accept.
+   The usual ones are what they like about a reference ("What do you like about this video: the look, the pace, the story?" and what to change), the offer and its terms when the words hint at a deal but give none, and who it is for when the words point to a narrower group.
+   Never ask what the brand profile or the person's words already answer.
+3. Show one direction card.
+   Put it in plain words, one line per field, each ending with where it came from in the person's terms: "you said", "from your brand profile", "my suggestion", "you told me" or "from your link".
+   Leave out any field that has nothing.
+   Finish the card with one line that starts "I am also assuming" and lists the assumptions.
+   Then ask for one thing: "Say go to start, or tell me what to change."
+4. Take the answer once.
+   "Go", "approve" and "just do it" approve the card exactly as shown.
+   Anything else is an edit: apply it to the card, then treat the job as approved without showing the card a second time.
+   A person who says not to ask them anything gets the card with zero questions and one "go".
+   An answer of "pick for me" on any single field means keep your suggestion for it.
+5. Record it.
+   Call `pipeline_intake_update` with the displayed revision and a patch of `direction` (the fields above, with `sources` and `assumptions`) and `directionApproved: true`.
+   Never set `directionApproved` before the person has answered the card, and never write a direction you have not shown.
+   Reuse the snapshot it returns: the job routes again, plans, and only then does the first stage run.
+6. Where it is asked.
+   On the board, put the questions (if any) and then the card on the job with `pipeline_board_ask`, with "Go" as the first option and a typed answer allowed, and say the same in chat, as board-sync's Questions on the board describes.
+   In a chat-only job, show the card in chat only and take the answer there.
+   A board answer and a chat answer are the same answer: take the first, never ask twice.
+
+The direction is the owner's agreement, so later steps serve it: research, strategy and the creative work never change the topic or the message.
+A later change of mind about the topic or the message is a new direction: show the changed card again and record it the same way.
+
 ## 4. Import selected local inputs
 
 If the user chose source files or a folder, call pipeline_inputs_import with the brand, job ID, and absolute source paths.
@@ -349,6 +410,7 @@ An approval state is tied to the displayed revision and artifact hashes.
 ## 6. Run only the routed work
 
 Once the route is ROUTED, the exact next step is producer dispatch for the routed plan: no separate go-ahead question sits between routing and the first dispatched stage, research included.
+For a job that makes content, routing waits for the approved direction, and the person's "go" on the direction card is that go-ahead.
 
 When the routed plan names a research stage, it runs only the questions the saved brand research (`brand/research.json`, reused through the evidence check) does not already answer; do not ask the user to confirm research should start.
 

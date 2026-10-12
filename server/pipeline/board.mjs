@@ -2126,7 +2126,7 @@ function sameRequesterData(operation, left, right) {
 // Identity, owners and local file references never come from a request: a
 // product photo is kept only as an http(s) link, and inputs are imported with
 // pipeline_inputs_import.
-const BOARD_JOB_FIELDS = ['request', 'kind', 'kindReason', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject', 'caption', 'aiMade', 'pipelineUnsure'];
+const BOARD_JOB_FIELDS = ['request', 'kind', 'kindReason', 'objective', 'distribution', 'platforms', 'deliverables', 'audience', 'evidence', 'offer', 'landingPageUrl', 'schedule', 'budget', 'account', 'requiredClaims', 'prohibitedClaims', 'specWork', 'productAsset', 'sourceRefs', 'subject', 'caption', 'aiMade', 'pipelineUnsure', 'topic', 'direction', 'directionApproved'];
 const webUrl = value => typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 const LINK_MEDIA_TYPES = new Set(['video', 'image', 'document', 'url']);
 

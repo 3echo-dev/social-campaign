@@ -30,6 +30,14 @@ Call pipeline_job_read only when the snapshot is absent or an external state cha
 
 Read the current brand profile, input revision, accepted research artifacts, and route plan.
 
+Start from the approved direction the person agreed to for this job, and the topic it belongs to.
+Never change the topic or the message: the research and the brand profile serve them and never replace them.
+When the evidence points to a different message, raise it as a named gap or a suggestion for the person to approve, and write the brief on the approved one.
+
+Write the brief for every job that makes content, filled from the direction first and from the research second.
+Besides the usual parts, fill the audience tension, the one thing to say, the reasons to believe, the tone for this job, the things that must and must not be said, the call to action and how success will be judged.
+Say in plain words which of these came from the person's direction and which came from research.
+
 Reuse current evidence whose scope and hashes still match.
 
 Do not redo research.

@@ -106,7 +106,21 @@ for (const e of validate(schema, job)) {
   if (e.keyword === 'required') missing(field);
   else missing(field + ' (' + e.message + ')');
 }
-for (const field of kinds.missingFields(job)) missing(field);
+// Rule 1f: the direction (goal, message, offer, call to action) is agreed with the person before any research,
+// so a content job without an approved one asks for it like any other missing field. A job that is already
+// past intake (planned or running, from before the direction step) is never sent back for it.
+const INTAKE_STATES = new Set(['INTAKE_PENDING', 'NEEDS_CLARIFICATION', 'UNSUPPORTED', 'ROUTED', 'BLOCKED']);
+function pastIntake() {
+  const jobDir = path.dirname(path.resolve(jobPath));
+  if (fs.existsSync(path.join(jobDir, 'plan.md'))) return true;
+  try {
+    const state = (fs.readFileSync(path.join(jobDir, 'status.md'), 'utf8').match(/\*\*Current state:\*\*\s*`?([A-Z_]+)`?/i) || [])[1];
+    return Boolean(state) && !INTAKE_STATES.has(state.toUpperCase());
+  } catch { return false; }
+}
+const isPastIntake = kinds.needsDirection(job.kind) && !kinds.directionApproved(job) && pastIntake();
+for (const field of kinds.missingFields(job, { pastIntake: isPastIntake })) missing(field);
+if (isPastIntake) say('Rule 1f: the job is already past intake, so it is not asked to approve a direction');
 if (producesContent) {
   for (const p of job.platforms || []) {
     if (!platformsV1.includes(p)) { R.unsupported.push('platform:' + p); say('Rule 1: platform ' + p + ' is not in platforms_v1 ' + JSON.stringify(platformsV1)); }
@@ -228,9 +242,11 @@ if (supplied) {
 
 // Rule 6: video must be inspected
 const refs = Array.isArray(job.sourceRefs) ? job.sourceRefs : [];
+// A video the person pasted as a link, or saved on the job as a file or a downloaded link.
+const referenceVideo = refs.some(kinds.isVideoSource) || kinds.hasSavedReferenceVideo(path.dirname(jobPath));
 if (supplied) {
   say('Rule 6: supplied files are not inspected, repurposed or rendered, so video_intelligence is not added');
-} else if (job.kind === 'content_repurpose' || refs.some(kinds.isVideoSource) ||
+} else if (job.kind === 'content_repurpose' || referenceVideo ||
     dels.some(d => ['ugc', 'brand_video'].includes(d.creativeDiscipline))) {
   need('video_intelligence');
   say('Rule 6: video is inspected, repurposed or rendered, so video_intelligence is added');
@@ -319,6 +335,7 @@ if (supplied) {
 } else if (producesContent && !blockedOnAsset) {
   const paid = R.requiredDisciplines.includes('ads');
   const makesVideo = dels.some(d => ['ugc', 'brand_video', 'video', 'motion_graphic'].includes(d.creativeDiscipline));
+  const aimed = kinds.needsDirection(job.kind) && kinds.directionApproved(job);
   let decision;
   try {
     decision = research.routeDecision(brandDir, { job, now: new Date() });
@@ -333,6 +350,13 @@ if (supplied) {
       stop: 'required_gap', policyVersion: research.POLICY_VERSION,
     };
   }
+  // With an approved direction, full research is only for paid work, a series or more than one platform
+  // (lib-brand-research.js routeDecision applies the same rule, so the two agree).
+  const finalDepth = decision.workRequired && aimed && !paid
+    ? (job.kind === 'organic_series' || (Array.isArray(job.platforms) && job.platforms.length > 1) ? 'full' : 'lite')
+    : decision.researchDepth;
+  let savedProfile = null;
+  try { savedProfile = brandProfile.read(brandDir); } catch { savedProfile = null; }
   const work = decision.questions && decision.questions.length
     ? decision.questions.filter(item => ['refresh', 'missing', 'excluded'].includes(item.decision)).map(item => ({
       id: item.id || item.questionId || null,
@@ -355,6 +379,9 @@ if (supplied) {
     needsResearch: Boolean(decision.workRequired),
     dispatch: Boolean(decision.workRequired),
     reuseOnly: !decision.workRequired,
+    researchDepth: finalDepth,
+    aim: decision.aim || research.jobAim(job),
+    workstreams: research.workstreamsFor(job, finalDepth, savedProfile),
     zeroCall: Boolean(decision.zeroCall),
     work,
     questionIds: decision.questionIds || [],
@@ -374,6 +401,14 @@ if (supplied) {
     if (paid) {
       if (decision.researchDepth === 'full') say('Rule 7: paid work gets full research, whatever the brand files hold');
       else say('Rule 7: paid work has uncovered evidence questions, so bounded research is dispatched');
+    } else if (aimed) {
+      // The message is already agreed, so research only fills what the direction leaves open.
+      if (finalDepth === 'full') {
+        say('Rule 7: the direction is approved; a series or more than one platform still gets full research');
+      } else {
+        R.researchDepth = 'lite';
+        say('Rule 7: the direction is approved, so one research workstream fills what it leaves open; a video alone does not need full research');
+      }
     } else if (makesVideo) {
       if (decision.researchDepth === 'full') {
         say('Rule 7: a video job gets full research, because what is working on the platform ' +
@@ -400,9 +435,10 @@ if (supplied) {
 
 // Rule 8: strategy for campaigns, series, multi-platform, multi-persona
 const personas = ((job.audience || {}).personas || []);
-if (!supplied && producesContent && (['paid_campaign', 'organic_series'].includes(job.kind) || (job.platforms || []).length > 1 || personas.length > 1)) {
+// Every job that makes content gets the strategist's brief (the direction is its start); a repurposed video keeps the lite brief.
+if (!supplied && producesContent && (kinds.needsDirection(job.kind) || ['paid_campaign', 'organic_series'].includes(job.kind) || (job.platforms || []).length > 1 || personas.length > 1)) {
   need('strategy');
-  say('Rule 8: campaign, series, more than one platform or persona, so strategy is added');
+  say('Rule 8: content that is made gets the strategist brief, so strategy is added');
 }
 
 // Rule 9: previously supplied historical material is scoped, read-only context. It does not
@@ -468,9 +504,13 @@ say('Rule 13: status ' + R.status);
 if (wf && wf.status === 'active') {
   let gates = [...(wf.gates || [])];
   const needsMedia = dels.some(d => d.creativeDiscipline !== 'text_only');
-  // The concept pick: always for UGC; for every paid campaign that makes media; and for an organic series, so a set of
-  // posts starts from one chosen idea (bob, 2026-10-12). A single organic post skips it to stay fast.
-  const conceptPick = R.requiredDisciplines.includes('ugc') || (job.kind === 'paid_campaign' && needsMedia) || job.kind === 'organic_series';
+  // The concept pick (the angles): always for UGC; for every paid campaign that makes media; for an organic series, so a
+  // set of posts starts from one chosen idea (bob, 2026-10-12); and, since 0.17, for every post that makes pictures or
+  // video, so the person picks the angle, hook and call to action before the storyboard. A reference video also sets
+  // the format of a repurposed job. Text-only posts have no angle pick.
+  const conceptPick = R.requiredDisciplines.includes('ugc') || (job.kind === 'paid_campaign' && needsMedia) || job.kind === 'organic_series' ||
+    (kinds.needsDirection(job.kind) && needsMedia && !supplied) ||
+    (referenceVideo && needsMedia && !supplied && producesContent);
   if (!conceptPick) gates = gates.filter(g => g !== 'concept');
   if (!needsMedia) gates = gates.filter(g => g !== 'storyboard');
   if (!R.requiredDisciplines.includes('ads')) gates = gates.filter(g => !g.startsWith('campaign_'));
