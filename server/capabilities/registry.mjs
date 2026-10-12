@@ -19,7 +19,7 @@
  * @property {string} name
  * @property {string} purpose
  * @property {string} provider the MVP implementation, in user facing words.
- * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'metricool'|'social'} resolver
+ * @property {'core'|'ffmpeg'|'ffprobe'|'ytdlp'|'claude'|'threeecho'|'elevenlabs'|'metricool'|'meta_ads'|'tiktok_ads'|'social'} resolver
  * @property {'none'|'low'|'medium'|'high'|'external'} risk
  */
 
@@ -66,6 +66,9 @@ export const CAPABILITIES = [
 
   { name: 'scheduling.metricool', purpose: 'Schedule posts to Facebook, Instagram and TikTok', provider: 'Metricool', resolver: 'metricool', risk: 'external' },
 
+  { name: 'ads.results.meta', purpose: 'Read ad accounts and ad results (read-only)', provider: 'Meta Ads (Facebook and Instagram)', resolver: 'meta_ads', risk: 'low' },
+  { name: 'ads.results.tiktok', purpose: 'Read ad accounts and ad results (read-only)', provider: 'TikTok for Business', resolver: 'tiktok_ads', risk: 'low' },
+
   { name: 'review.strategy', purpose: 'Human strategy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
   { name: 'review.concept', purpose: 'Human concept and copy approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
   { name: 'review.cost', purpose: 'Human spend approval', provider: 'Social Campaign board', resolver: 'core', risk: 'none' },
@@ -90,6 +93,8 @@ export const RESOLVER_PROVIDER_KEY = {
   threeecho: 'threeecho_studio',
   elevenlabs: 'elevenlabs',
   metricool: 'metricool',
+  meta_ads: 'meta_ads',
+  tiktok_ads: 'tiktok_ads',
   social: null,
 };
 
@@ -97,7 +102,7 @@ export const RESOLVER_PROVIDER_KEY = {
  * Providers that are only ever recorded by a real read-only probe (integration_probe), never by
  * integration_mark_connected, because their record also holds what the probe's session read.
  */
-export const PROBE_ONLY_PROVIDERS = Object.freeze(['metricool']);
+export const PROBE_ONLY_PROVIDERS = Object.freeze(['metricool', 'meta_ads', 'tiktok_ads']);
 
 /**
  * The connection rows the doctor shows, in user facing language.
@@ -121,6 +126,20 @@ export const CONNECTION_ROWS = [
     label: 'Publishing',
     provider: 'Metricool',
     capabilities: ['scheduling.metricool'],
+    optional: true,
+  },
+  {
+    key: 'meta_ads',
+    label: 'Meta ads',
+    provider: 'Meta Ads (Facebook and Instagram)',
+    capabilities: ['ads.results.meta'],
+    optional: true,
+  },
+  {
+    key: 'tiktok_ads',
+    label: 'TikTok ads',
+    provider: 'TikTok for Business',
+    capabilities: ['ads.results.tiktok'],
     optional: true,
   },
 ];

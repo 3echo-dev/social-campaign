@@ -27,6 +27,10 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-pre.mjs\"", "timeout": 30 }]
       },
       {
+        "matcher": "^mcp__.+__(?!.*__)(?:ads_(?=[a-z0-9_]*(?:create|update|activate|delete|pause|duplicate|archive))[a-z0-9_]+|(?!creative_create_asset_upload$)(?:smart_plus_ad_create|(?:campaign|adgroup|ad|smart_plus|creative|file|dmp|pixel|catalog|bc|identity|app|page|custom_conversion|spark)(?:_[a-z0-9]+)*_(?:create|update|delete|upload|status_update|bind|unbind|transfer)))$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/ads-readonly-pre.mjs\"", "timeout": 10 }]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"", "timeout": 20 }]
       },

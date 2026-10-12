@@ -771,9 +771,9 @@ export class Workspace {
       integrationsPath(root),
       (current) => {
         const providers = current.providers && typeof current.providers === 'object' ? { ...current.providers } : {};
-        // A connection note replaces the state, never the brands saved from Metricool.
+        // A connection note replaces the state, never the brands saved from Metricool or the accounts saved from Meta ads and TikTok ads.
         const previous = providers[provider] && typeof providers[provider] === 'object' ? providers[provider] : {};
-        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : {};
+        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : (provider === 'meta_ads' || provider === 'tiktok_ads') && Array.isArray(previous.accounts) ? { accounts: previous.accounts, ...(previous.accounts_updated_at ? { accounts_updated_at: previous.accounts_updated_at } : {}) } : {};
         providers[provider] = { state, detail: detail ?? null, updated_at: nowIso(), ...kept };
         return { ...current, providers };
       },
@@ -957,9 +957,9 @@ export class CapturedWorkspace {
       integrationsPath(root),
       (current) => {
         const providers = current.providers && typeof current.providers === 'object' ? { ...current.providers } : {};
-        // A connection note replaces the state, never the brands saved from Metricool.
+        // A connection note replaces the state, never the brands saved from Metricool or the accounts saved from Meta ads and TikTok ads.
         const previous = providers[provider] && typeof providers[provider] === 'object' ? providers[provider] : {};
-        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : {};
+        const kept = provider === 'metricool' && Array.isArray(previous.brands) ? { brands: previous.brands, ...(previous.brands_updated_at ? { brands_updated_at: previous.brands_updated_at } : {}) } : (provider === 'meta_ads' || provider === 'tiktok_ads') && Array.isArray(previous.accounts) ? { accounts: previous.accounts, ...(previous.accounts_updated_at ? { accounts_updated_at: previous.accounts_updated_at } : {}) } : {};
         providers[provider] = { state, detail: detail ?? null, updated_at: nowIso(), ...kept };
         return { ...current, providers };
       },

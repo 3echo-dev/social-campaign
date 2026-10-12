@@ -112,7 +112,7 @@ export function saveMetricoolBrands(root, input) {
 // The choice per plugin brand
 // ---------------------------------------------------------------------------
 
-function resolveBrand(root, brand) {
+export function resolveBrand(root, brand) {
   const value = String(brand || '').trim();
   if (!value) throw new Error('Say which brand this is for.');
   const entry = runtime.listBrands({ root }).find(item => item.slug === value || item.id === value || item.brandId === value);
@@ -208,7 +208,7 @@ function saveBrandPublishing(brandDir, { blogId, label, handles = {}, chosenAt =
 // ---------------------------------------------------------------------------
 
 /** A line the Inbox accepts (no ids, file names or code words), made from a label, never replaced by a number. */
-function plainLabel(value) {
+export function plainLabel(value) {
   let line = String(value ?? '').replace(/\s+/g, ' ').trim();
   const steps = [
     text => text.replace(/_+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[`{}<>()=&|\\/]/g, ' '),
