@@ -2715,22 +2715,25 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false, uplo
 // posting plan the approval covers: the route and the routes on offer, where posts go, and one row per post.
 // Ids never reach the page as words, only the text the projection carries.
 export const PUBLISH_APPROVE_LABELS = Object.freeze({
-  metricool_schedule: count => `Approve and schedule ${count} ${count === 1 ? 'post' : 'posts'}`,
-  metricool_draft: count => `Approve and save ${count} ${count === 1 ? 'draft' : 'drafts'}`,
-  metricool_now: () => 'Approve and post now',
-  self: () => 'Approve and get the posting kit',
+  metricool_now: () => 'Post Now',
+  metricool_schedule: () => 'Schedule Post',
+  metricool_draft: () => 'Save Draft',
+  self: () => 'Download Files',
 });
+// The self route's button while the posting kit is not ready yet.
+export const PUBLISH_PREPARING_LABEL = 'Preparing download…';
+// The board click is the person's approval for every route: nothing else is asked in chat.
 export const PUBLISH_SAFETY_LINES = Object.freeze({
-  metricool_schedule: 'Nothing goes out until you approve. You can cancel a scheduled post in Metricool until it goes out. Claude will ask you to confirm in the chat before it posts.',
-  metricool_draft: 'Nothing goes out until you approve. Drafts are saved in Metricool and stay there until you publish them. Claude will ask you to confirm in the chat before it posts.',
-  metricool_now: 'Nothing goes out until you approve. After that, each post goes out within a few minutes. Claude will ask you to confirm in the chat before it posts.',
-  self: 'Nothing is posted for you. After you approve, the posting kit has each file, caption and step.',
+  metricool_now: 'Clicking Post Now sends each post to Metricool right away, and it goes out within a few minutes.',
+  metricool_schedule: 'Nothing goes out until you click Schedule Post. You can cancel a scheduled post in Metricool until it goes out.',
+  metricool_draft: 'Drafts are saved in Metricool and stay there until you publish them.',
+  self: 'Nothing is posted for you. After you click, the posting kit has each file, caption and step.',
 });
 export const PUBLISH_ROUTE_WORDS = Object.freeze({
-  metricool_schedule: 'Schedule with Metricool',
-  metricool_draft: 'Save as a draft in Metricool',
-  metricool_now: 'Post now (goes out within a few minutes)',
-  self: "I'll post it myself",
+  metricool_now: 'Post Now',
+  metricool_schedule: 'Schedule a Post',
+  metricool_draft: 'Save as Draft',
+  self: "I'll Post It Myself",
 });
 export const PUBLISH_OUTDATED_LINE = 'Something changed since this plan was made, so it is being rebuilt.';
 export const PUBLISH_CHANGED_LINE = 'The plan changed after it was prepared; it is being rebuilt.';
@@ -2801,7 +2804,7 @@ export function postTimeProblem(value, { zone, zoneWords = '', now = Date.now() 
 
 export function publishApproveLabel(route, count) {
   const make = PUBLISH_APPROVE_LABELS[route] || PUBLISH_APPROVE_LABELS.self;
-  return make(count).replace(/ 0 (posts|drafts)$/, ' $1');
+  return make(count);
 }
 
 /** The route the person picked that the projection has not caught up with yet, or null. */
@@ -2886,7 +2889,7 @@ function publishDestination(publish, { metricool = null, locked = false } = {}) 
     seen.add(item.text);
     lines.push(item.ok === false
       ? `<li class="publish-destination-warn metricool-warning" role="alert">${esc(item.text)}</li>`
-      : `<li>${esc(item.text)}</li>`);
+      : `<li>${esc(item.text)}${item.warn && typeof item.warning === 'string' && item.warning ? `<span class="publish-destination-warning metricool-warning" role="note">${esc(item.warning)}</span>` : ''}</li>`);
   }
   if (!destinations.length && publish.metricool?.label) lines.push(`<li>Posts go to Metricool brand <strong>${esc(publish.metricool.label)}</strong></li>`);
   if (publish.studioWorkspace?.name) lines.push(`<li>Media is uploaded to your 3echo workspace <strong>${esc(publish.studioWorkspace.name)}</strong></li>`);
@@ -2909,21 +2912,24 @@ function metricoolChange(metricool, _refused, locked) {
 function publishChecks(post, key = '', openKeys = new Set()) {
   const checks = Array.isArray(post?.checks) ? post.checks.filter(item => item && typeof item.text === 'string') : [];
   const failing = checks.filter(item => item.ok === false);
-  const passed = checks.filter(item => item.ok !== false);
+  // A warning lets the post go but is always shown in full, in amber, never counted among the passed checks.
+  const warned = checks.filter(item => item.ok !== false && item.warn === true);
+  const passed = checks.filter(item => item.ok !== false && item.warn !== true);
+  const warnings = warned.length ? `<ul class="publish-warnings">${warned.map(item => `<li class="metricool-warning publish-check-warn" role="note"><span class="visually-hidden">Check this: </span>${esc(item.text)}</li>`).join('')}</ul>` : '';
   const passedList = passed.map(item => `<li>${esc(item.text)}</li>`).join('');
   const open = `data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}`;
   // A post still waiting for its post type is not ready, whatever else passed.
   const needsType = Array.isArray(post?.typeChoices) && post.typeChoices.length > 0;
-  if (!failing.length && needsType) return passed.length ? `<details class="publish-ready publish-passed" ${open}><summary>${passed.length === 1 ? '1 check passed' : `${passed.length} checks passed`}</summary><ul>${passedList}</ul></details>` : '';
+  if (!failing.length && needsType) return warnings + (passed.length ? `<details class="publish-ready publish-passed" ${open}><summary>${passed.length === 1 ? '1 check passed' : `${passed.length} checks passed`}</summary><ul>${passedList}</ul></details>` : '');
   if (!failing.length) {
     const tick = '<span class="publish-mark publish-mark-ok" aria-hidden="true"></span>';
-    return passed.length
+    return warnings + (passed.length
       ? `<details class="publish-ready" ${open}><summary>${tick}Ready</summary><ul>${passedList}</ul></details>`
-      : `<p class="publish-ready">${tick}Ready</p>`;
+      : `<p class="publish-ready">${tick}Ready</p>`);
   }
   const problems = `<ul class="publish-problems">${failing.map(item => `<li><span class="publish-mark publish-mark-bad" aria-hidden="true"></span><span><span class="visually-hidden">Needs attention: </span>${esc(item.text)}</span></li>`).join('')}</ul>`;
   const rest = passed.length ? `<details class="publish-ready publish-passed" ${open}><summary>${passed.length === 1 ? '1 other check passed' : `${passed.length} other checks passed`}</summary><ul>${passedList}</ul></details>` : '';
-  return problems + rest;
+  return problems + warnings + rest;
 }
 
 // The text that goes out, exactly as it will post: line breaks kept, collapsed or opened. Text that is short and on one
@@ -3080,16 +3086,26 @@ export function publishApproval(publish, routeState = {}, postStates = {}) {
   if (!publish || typeof publish !== 'object') return { disabled: true, label: 'Approve', line: 'Claude is still preparing the posting plan.' };
   const pending = publishPending(publish, routeState, postStates);
   const posts = Array.isArray(publish.posts) ? publish.posts : [];
-  const label = publishApproveLabel(publish.route, posts.length);
-  const safety = PUBLISH_SAFETY_LINES[publish.route] || PUBLISH_SAFETY_LINES.self;
+  const route = Object.hasOwn(PUBLISH_APPROVE_LABELS, publish.route) ? publish.route : 'self';
+  const label = publishApproveLabel(route, posts.length);
+  const safety = PUBLISH_SAFETY_LINES[route];
+  // The posting kit is not ready while the plan is being rebuilt or is not ready yet: the button says so and stays held.
+  const preparing = route === 'self' ? PUBLISH_PREPARING_LABEL : label;
   // While a choice is saving, the card says so at its top; the button is only held.
-  if (pending) return { disabled: true, label, line: '', safety };
-  if (publish.outdated) return { disabled: true, label, line: typeof publish.reason === 'string' && publish.reason.trim() ? publish.reason.trim() : PUBLISH_OUTDATED_LINE, safety };
-  if (publish.changed) return { disabled: true, label, line: PUBLISH_CHANGED_LINE, safety };
-  if (!posts.length) return { disabled: true, label, line: 'There are no posts to approve yet.', safety };
+  if (pending) return { disabled: true, label: preparing, line: '', safety };
+  // An arrow-key pick waiting to be saved: the button is held so a click cannot approve the route the card still shows.
+  if (routeState?.draft && routeState.draft !== publish.route) return { disabled: true, label: preparing, line: '', safety };
+  if (publish.outdated) return { disabled: true, label: preparing, line: typeof publish.reason === 'string' && publish.reason.trim() ? publish.reason.trim() : PUBLISH_OUTDATED_LINE, safety };
+  if (publish.changed) return { disabled: true, label: preparing, line: PUBLISH_CHANGED_LINE, safety };
+  if (!posts.length) return { disabled: true, label: preparing, line: 'There are no posts to approve yet.', safety };
   if (!publish.ready) {
     const failing = posts.filter(post => publishFailing(post).length || (Array.isArray(post?.typeChoices) && post.typeChoices.length)).length;
-    return { disabled: true, label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
+    return { disabled: true, label: route === 'self' ? preparing : label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
+  }
+  // Schedule Post stays held until every post has a valid time (its own, or the one for all).
+  if (route === 'metricool_schedule') {
+    const unset = posts.filter(post => { const input = whenInputOf(post); return Boolean(input) && !(typeof input.dateTime === 'string' && input.dateTime); }).length;
+    if (unset) return { disabled: true, label, line: POST_TIME_NEEDED_LINE, safety };
   }
   return { label, line: '', safety };
 }
@@ -3269,6 +3285,18 @@ function kitFiles(post) {
   return `<div class="kit-section"><h5>Files</h5><ul class="kit-files">${items}</ul></div>`;
 }
 
+// The self route's button once the plan is approved: "Preparing download…" (held) until every file of the kit has its download
+// link, then "Download Files", which opens each file's link (the same links the rows below carry). '' for a kit with no files.
+export function kitDownloadButton(kit) {
+  if (kit?.route !== 'self') return '';
+  const files = (Array.isArray(kit.posts) ? kit.posts : []).flatMap(post => (Array.isArray(post?.media) ? post.media.filter(item => item && typeof item === 'object') : []));
+  if (!files.length) return '';
+  const ready = files.every(item => safeHttpsLink(item.appUrl));
+  return ready
+    ? '<p class="kit-fetch-all"><button type="button" class="primary" data-kit-download-all>Download Files</button></p>'
+    : `<p class="kit-fetch-all"><button type="button" class="primary" disabled aria-busy="true">${esc(PUBLISH_PREPARING_LABEL)}</button></p>`;
+}
+
 function kitCopyBlock(post, field, label, state, { openKeys, jobId, hint }) {
   const value = field === 'caption' ? post.text : post.firstComment;
   if (typeof value !== 'string' || !value.trim()) return '';
@@ -3329,7 +3357,7 @@ export function postingKitPanel(kit, postStates = {}, { signal = {}, now = Date.
   const closing = done && kit.settled === true && kit.closed !== true;
   const count = finished ? 'All posted' : `${marked} of ${posts.length} posted`;
   const intro = finished ? 'Every post is marked as posted. This job is finished.' : closing ? 'Claude is closing this job.' : kit.route === 'partial' ? (done ? KIT_PARTIAL_DONE : KIT_PARTIAL_INTRO) : KIT_INTRO;
-  return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p><div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
+  return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p>${kitDownloadButton(kit)}<div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
 }
 
 function reviewFilesHtml(doc, paths) {
@@ -6817,6 +6845,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.postTimeOpen!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeOpen,true);return;}
     if(target.dataset.postTimeCancel!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeCancel,false);return;}
     if(target.dataset.postAnswer!==undefined){const shown=current();if(shown)void submitResolvePost(shown,target.dataset.postId,target.dataset.postAnswer);return;}
+    if(target.dataset.kitDownloadAll!==undefined){[...app.querySelectorAll('.posting-kit a.kit-download')].forEach((link,at)=>setTimeout(()=>link.click(),at*350));return;}
     if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
     if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
     if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
@@ -7302,7 +7331,7 @@ if (typeof document !== 'undefined') {
     state.draft = null;
     const plan = docFor(project)?.review?.publish;
     if (!transport || !plan || state.pending || cardBusy(project)) return;
-    if (route === plan.route || (plan.routes || []).some(item => item.id === route && item.available === false)) { render(); return; }
+    if ((route === plan.route && !plan.outdated) || (plan.routes || []).some(item => item.id === route && item.available === false)) { render(); return; }
     const requestId = randomId(globalThis);
     const args = publishRouteArgs({ project, route, requestId });
     Object.assign(state, { requestId, sentRequestId: requestId, pending: route, fromRoute: plan.route, busy: true, applied: false, error: '', notice: '', declined: false, shownRoute: undefined, operation: 'choose_publish_route', args });

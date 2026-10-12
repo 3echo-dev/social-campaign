@@ -25,12 +25,13 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const del = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-deliverable.js'));
 
-export const PUBLISH_ROUTES = Object.freeze(['metricool_schedule', 'metricool_draft', 'metricool_now', 'self']);
+// The order the posting card lists them in: Post Now first, and it is the default route when Metricool can be used.
+export const PUBLISH_ROUTES = Object.freeze(['metricool_now', 'metricool_schedule', 'metricool_draft', 'self']);
 export const ROUTE_LABELS = Object.freeze({
-  metricool_schedule: 'Schedule with Metricool',
-  metricool_draft: 'Save as a draft in Metricool',
-  metricool_now: 'Post now (goes out within a few minutes)',
-  self: "I'll post it myself",
+  metricool_now: 'Post Now',
+  metricool_schedule: 'Schedule a Post',
+  metricool_draft: 'Save as Draft',
+  self: "I'll Post It Myself",
 });
 /** What a job planned before Metricool publishing is told: it ends with the hand-off package, and that is all. */
 export const HANDOFF_ONLY_TEXT = 'This job was planned before posting through Metricool, so it ends with the hand-off package that you download and post yourself.';
@@ -38,7 +39,7 @@ export const HANDOFF_ONLY_TEXT = 'This job was planned before posting through Me
 export const isMetricoolRoute = route => typeof route === 'string' && route.startsWith('metricool_');
 
 /** The route a job takes when none was chosen: Metricool scheduling when it can be used, else the person posts it. */
-export const defaultRoute = context => (context?.connected && context?.found ? 'metricool_schedule' : 'self');
+export const defaultRoute = context => (context?.connected && context?.found ? 'metricool_now' : 'self');
 
 /** The soonest a scheduled post may be, in minutes from now. */
 export const MIN_LEAD_MINUTES = 5;
@@ -62,6 +63,8 @@ const platformName = platform => del.PLATFORM_NAMES[platform] || (typeof platfor
 const characters = text => Array.from(String(text ?? '')).length;
 const plain = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const check = (ok, text) => ({ ok: Boolean(ok), text });
+// A check that lets the post go but must be read first: the posting card shows it as a warning, never hidden among the passed checks.
+const warning = text => ({ ok: true, warn: true, text });
 const aOrAn = text => (/^[aeiou]/i.test(text) ? 'an' : 'a');
 const sentenceCase = text => text[0].toUpperCase() + text.slice(1);
 
@@ -160,10 +163,11 @@ function channelCheck(post, context) {
   const shared = Array.isArray(context.sharedWith) && context.sharedWith.length ? ' This Metricool brand is also linked to another brand.' : '';
   if (status === 'linked') return check(true, (via || own ? `${name} posts as ${via || own}, this brand's own account.` : `${name} is linked in Metricool.`) + shared);
   if (status === 'unverified' && post.platform === 'facebook') return check(true, `${name} is in Metricool. Check that it is the right account there.`);
-  if (status === 'unverified') return check(false, `The ${name} account Metricool posts as${via ? ` (${via})` : ''} could not be matched to this brand's own${own ? ` ${own}` : ''}, so nothing is posted. Choosing the Metricool brand again cannot fix this: check the ${name} link on this brand's profile (update the brand) so it names the same account.`);
-  if (status === 'different_handle') return check(false, `${name} would post as ${via || 'another account'}, but this brand's own account is ${own || 'a different one'}. Nothing is posted. ${PICK_AGAIN}`);
+  // The person decides (2026-10-12): an account that is not the brand's own is a clear warning naming where it would post, never a block.
+  if (status === 'unverified') return warning(`Check the account: ${name} will post as ${via || 'the account in Metricool'}, which could not be matched to this brand's own${own ? ` ${own}` : ''}. To change it, use Change on this card or update the brand's ${name} link.`);
+  if (status === 'different_handle') return warning(`Check the account: ${name} will post as ${via || 'another account'}, not this brand's own ${own || 'account'}. Use Change on this card to pick another Metricool brand.`);
   if (status === 'link_changed') return check(false, `The ${name} account in the chosen Metricool brand changed${via ? ` (it now posts as ${via})` : ''} since it was picked for this brand. ${PICK_AGAIN}`);
-  if (status === 'only_in_metricool') return check(false, `${name} is in Metricool${via ? ` as ${via}` : ''} but this brand's profile lists no ${name} account to match it against, so nothing is posted. Add the brand's ${name} link to its profile first.`);
+  if (status === 'only_in_metricool') return warning(`Check the account: ${name} will post as ${via || 'the account in Metricool'}, and this brand's profile lists no ${name} account to compare it with.`);
   if (status === 'not_linked') return check(false, `The Metricool brand chosen for this brand has no ${name} account${own ? ` for ${own}` : ''}. ${PICK_AGAIN}`);
   return check(false, `This brand's profile lists no ${name} account and Metricool has none for it, so there is nothing to post to.`);
 }
@@ -178,7 +182,10 @@ export function postDestination(post, context = {}) {
   const result = channelCheck(post, context);
   const brand = context.connected && context.found && typeof context.label === 'string' && context.label ? context.label : null;
   const handle = (plain(context.linkedAs) && context.linkedAs[post.platform]) || (plain(context.own) && context.own[post.platform]) || null;
-  if (result.ok && brand) return { ok: true, network, handle, brand, text: `${network}${handle ? ` ${handle}` : ''}, through Metricool brand ${brand}` };
+  if (result.ok && brand) {
+    const via = (plain(context.linkedAs) && context.linkedAs[post.platform]) || handle;
+    return { ok: true, warn: Boolean(result.warn), network, handle: via, brand, text: `${network}${via ? ` ${via}` : ''}, through Metricool brand ${brand}`, warning: result.warn ? result.text : null };
+  }
   const warning = String(result.text || '').replace(PICK_AGAIN, '').trim() || `${network} has no Metricool brand to go through.`;
   return { ok: false, network, handle, brand, text: warning };
 }
@@ -570,7 +577,7 @@ export function projectPublish(intent, context = {}) {
   const label = planLabel || nowLabel;
   // The plan no longer matches what is chosen now: another Metricool brand, another route, another 3echo workspace.
   // A job planned before Metricool publishing can only be posted by the person, whatever is saved or connected.
-  const wantedRoute = context.handoffOnly ? 'self' : context.jobRoute || defaultRoute(context);
+  const wantedRoute = context.handoffOnly ? 'self' : context.jobRoute || route;
   const wrongBrand = metricool && Boolean(context.found) && Boolean(context.blogId) && String(intent.blogId ?? '') !== String(context.blogId);
   const wrongRoute = wantedRoute !== route;
   const wrongWorkspace = context.workspaceId !== undefined && (context.workspaceId || null) !== (plain(intent.studioWorkspace) ? intent.studioWorkspace.id || null : null);

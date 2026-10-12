@@ -56,7 +56,7 @@ import { THREE_ECHO, jobFromDir, legalChain, mediaBlocker, readLanded, readRecor
 import { HOSTED_MEDIA_FILE, PUBLISH_INTENT_FILE, hasPublishApproval, hostedAssetFor } from './media-host.mjs';
 import { hasSendRecords } from './publish-attempts.mjs';
 import { brandPublishingInfo, metricoolConnected, otherBrandsLinkedTo, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
-import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
+import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
 import * as runtime from './runtime.mjs';
 import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-workspace.mjs';
 
@@ -134,6 +134,9 @@ export function publishContext({ root = null, sharedRoot = root, brandDir, jobDi
     sharedWith: sharedRoot && brandDir && info && !info.unreadable && info.blogId ? otherBrandsLinkedTo(sharedRoot, brandDir, info.blogId) : [],
     jobRoute: PUBLISH_ROUTES.includes(jobRoute) ? jobRoute : null,
   };
+  // No route saved on the job yet: the plan's route is the default, so the board does not call a fresh plan out of date.
+  // A plan already on disk keeps its route when none is saved: changing the default must not strand open plans.
+  if (!context.jobRoute) context.jobRoute = (jobDir && planRouteOnDisk(jobDir, context.connected && context.found)) || defaultPublishRoute(context);
   if (root && brandDir) {
     try { context.workspaceId = readStudioWorkspaceChoice({ brandDir, jobDir, root }).workspaceId ?? null; } catch { /* left out: not compared */ }
   }
@@ -151,7 +154,8 @@ function connectionOf(root, brandEntry) {
   });
 }
 
-export const defaultPublishRoute = defaultRoute;
+// Post Now is selected when Metricool can be used for the brand (choosing it never posts by itself; the person's click on the card does), else the person posts it themselves.
+export const defaultPublishRoute = context => (context?.connected && context?.found ? 'metricool_now' : 'self');
 
 /**
  * A job routed before 0.8 had its posting decision folded into the final approval when it had a schedule. It has no
@@ -162,6 +166,13 @@ export function plannedBeforeMetricool(snapshot) {
   if (!Array.isArray(gates) || gates.includes('publish') || states.isTerminal(snapshot.project?.state)) return false;
   const job = snapshot.job || {};
   return (Array.isArray(job.deliverables) ? job.deliverables : []).some(item => rules.publishable(job, item));
+}
+
+/** The route of the posting plan already written for the job, or null when there is none or it names no known route. */
+export function planRouteOnDisk(jobDir, usable = true) {
+  const route = readJsonFile(join(jobDir, ...PUBLISH_INTENT_FILE.split('/')), null)?.route;
+  // A Metricool route is not carried over while Metricool cannot be used: the default (posting it yourself) takes over then.
+  return PUBLISH_ROUTES.includes(route) && (usable || !isMetricoolRoute(route)) ? route : null;
 }
 
 export function storedPublishRoute(job) {
@@ -438,7 +449,7 @@ function compose({ root, brand, jobId, probe = probeMedia, useCache = true }) {
   const snapshot = runtime.readJobSnapshot({ root, brand: brandEntry.slug, jobId: jobRecord.jobId });
   const job = rules.withDerivedPlacements(snapshot.job || {});
   const connection = connectionOf(root, brandEntry);
-  const route = plannedBeforeMetricool(snapshot) ? 'self' : storedPublishRoute(job) || defaultPublishRoute(connection);
+  const route = plannedBeforeMetricool(snapshot) ? 'self' : storedPublishRoute(job) || planRouteOnDisk(jobDir, connection.connected && connection.found) || defaultPublishRoute(connection);
   const publishing = readBrandPublishing(brandEntry.path);
   const zones = zonesOf(job, brandEntry, connection);
   const flags = new Set([...(snapshot.route?.riskFlags || []), ...(snapshot.route?.modelAddedRiskFlags || [])]);

@@ -2676,7 +2676,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
       const mediaJob=facts.jobAt(root,brand,jobId);
       const open=mediaJob ? facts.mediaReviewOutstanding(mediaJob) : null;
       if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} have not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:open===FINISH_GATE ? `Run finish-video.py if the finished video is not made yet, present it with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.` : `Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
-      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask (Add captions, Add background music, Both, Skip use as is), record the answer with pipeline_finishing_choice, run finish-video.py, then carry on.'});
+      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob) && !facts.madeBeforeReviews(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask (Add captions, Add background music, Both, Skip use as is), record the answer with pipeline_finishing_choice, run finish-video.py, then carry on.'});
     }
     assertNoHelperRunning(root,brand,jobId);
     assertNoQuestionOpen(root,jobId);

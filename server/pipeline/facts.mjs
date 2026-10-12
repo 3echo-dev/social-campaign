@@ -1124,8 +1124,49 @@ export function mediaReviewRequired(job, gate) {
   return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
 }
 
+/**
+ * A job whose final post was approved before the media reviews existed: it has a content approval and not one media review
+ * file (pictures, clips, joined video, finishing, finished video). Those reviews were never part of its flow, so they never
+ * hold it back. Only the latest content decision counts, and only while no media landed or was joined after it. Any job made since writes the review files in order, so a redo there still voids its approval as usual.
+ */
+export function madeBeforeReviews(job) {
+  const approvals = join(job.dir, 'approvals');
+  const reviewFiles = [...Object.values(MEDIA_REVIEWS).map(spec => spec.file), 'approvals/finishing.json'];
+  if (reviewFiles.some(file => existsSync(join(job.dir, ...file.split('/'))))) return false;
+  // Only the latest content decision counts, and only while it is an approval.
+  let latest = null;
+  try {
+    for (const name of readdirSync(approvals)) {
+      const found = /^content-(\d+)\.json$/.exec(name);
+      if (!found) continue;
+      const file = join(approvals, name);
+      const record = readJson(file);
+      const round = Number.isFinite(Number(record?.round)) ? Number(record.round) : Number(found[1]);
+      if (!latest || round >= latest.round) latest = { round, record, file };
+    }
+  } catch { return false; }
+  if (!latest || !['approved', 'approve'].includes(latest.record?.decision)) return false;
+  // The approval time: what the record says, else when the file was written.
+  let approvedAt = NaN;
+  for (const field of ['decidedAt', 'approvedAt', 'at']) {
+    approvedAt = Date.parse(latest.record?.[field]);
+    if (Number.isFinite(approvedAt)) break;
+  }
+  if (!Number.isFinite(approvedAt)) { try { approvedAt = statSync(latest.file).mtimeMs; } catch { return false; } }
+  // Media made or changed after that approval was never covered by it, so the reviews apply again.
+  if (readLanded(job).some(entry => Date.parse(entry?.at) > approvedAt)) return false;
+  try {
+    for (const dir of readdirSync(join(job.dir, 'media'))) {
+      if (!/^D/.test(dir)) continue;
+      try { if (statSync(join(job.dir, 'media', dir, 'final-raw.mp4')).mtimeMs > approvedAt) return false; } catch { /* none */ }
+    }
+  } catch { /* no media folder */ }
+  return true;
+}
+
 /** The first of the reviews that is required and not approved, or null. */
 export function mediaReviewOutstanding(job) {
+  if (madeBeforeReviews(job)) return null;
   return ['pictures', 'clips', 'cut', 'finish'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
@@ -1137,7 +1178,7 @@ export function mediaReviewOutstanding(job) {
 export function mediaBlocker(job) {
   const open = mediaReviewOutstanding(job);
   if (open) return open;
-  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job)) return 'finishing';
+  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job) && !madeBeforeReviews(job)) return 'finishing';
   return null;
 }
 

@@ -685,6 +685,9 @@ p.publish-ready{display:flex;align-items:center;gap:8px}
 .publish-passed>summary{color:var(--faint);font-weight:700;font-size:12px}
 details.publish-ready>summary::after{content:"";width:6px;height:6px;margin-left:2px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px)}
 details.publish-ready[open]>summary::after{transform:rotate(225deg)}
+.publish-warnings{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);margin:0;padding:0;list-style:none}
+.publish-warnings li,.publish-destination .publish-destination-warning{color:var(--tape);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.publish-destination .publish-destination-warning{display:block}
 .publish-problems{display:flex;flex-direction:column;gap:calc(var(--gap) / 2);margin:0;padding:0;list-style:none}
 .publish-problems li{display:flex;align-items:flex-start;gap:8px;color:var(--paper);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 .publish-problems .publish-mark{margin-top:2px}
@@ -755,6 +758,7 @@ a.post-link:focus-visible{outline:2px solid var(--tape);outline-offset:2px;borde
 .post-check-wait{margin:0;color:var(--tape);font-size:12.5px}
 .post-check .notice{padding:8px 10px;font-size:12px}
 .posting-kit .kit-intro{margin:0 0 var(--gap);font-size:13px}
+.posting-kit .kit-fetch-all{margin:0 0 var(--gap)}
 .kit-post{gap:calc(var(--gap) * .85)}
 .kit-section{display:flex;flex-direction:column;gap:6px;min-width:0}
 .kit-section h5{margin:0;color:var(--faint);font-size:11px;font-weight:700}
@@ -1195,7 +1199,7 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
   <div id="app"><main class="empty"><h1>Social Campaign</h1><p>Opening your workspace...</p></main></div>
   <div id="notice" role="status" aria-live="polite"></div>
   <script id="board-logo" type="text/plain">data:image/webp;base64,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</script>
-  <script id="board-config" type="application/json">{"kinds":{"organic_post":{"name":"Organic post","label":"Post or campaign","jobWord":null,"group":"post","report":false},"organic_series":{"name":"Post series","label":"Post or campaign","jobWord":null,"group":"post","report":false},"ugc_creative":{"name":"Creator-style video","label":"Post or campaign","jobWord":null,"group":"post","report":false},"paid_campaign":{"name":"Paid ad campaign","label":"Post or campaign","jobWord":null,"group":"post","report":false},"content_repurpose":{"name":"Repurpose a video","label":"Post or campaign","jobWord":null,"group":"post","report":false},"publish_post":{"name":"Post something I already have","label":"Post from files","jobWord":"post from your files","group":"publish_post","report":false},"research":{"name":"Research","label":"Research","jobWord":"research job","group":"research","report":true},"creative_analysis":{"name":"Post or campaign analysis","label":"Analysis","jobWord":"analysis job","group":"creative_analysis","report":true},"video_breakdown":{"name":"Video breakdown","label":"Video breakdown","jobWord":"video breakdown job","group":"video_breakdown","report":true}}}</script>
+  <script id="board-config" type="application/json">{"kinds":{"organic_post":{"name":"Organic post","label":"Post or campaign","jobWord":null,"group":"post","report":false},"organic_series":{"name":"Post series","label":"Post or campaign","jobWord":null,"group":"post","report":false},"ugc_creative":{"name":"Creator-style video","label":"Post or campaign","jobWord":null,"group":"post","report":false},"paid_campaign":{"name":"Paid ad campaign","label":"Post or campaign","jobWord":null,"group":"post","report":false},"content_repurpose":{"name":"Repurpose a video","label":"Post or campaign","jobWord":null,"group":"post","report":false},"publish_post":{"name":"Post something I already have","label":"Post from files","jobWord":"post from your files","group":"publish_post","report":false},"research":{"name":"Research","label":"Research","jobWord":"research job","group":"research","report":true},"creative_analysis":{"name":"Post or campaign analysis","label":"Analysis","jobWord":"analysis job","group":"creative_analysis","report":true},"video_breakdown":{"name":"Video breakdown","label":"Video breakdown","jobWord":"video breakdown job","group":"video_breakdown","report":true},"results_review":{"name":"Results review","label":"Results review","jobWord":"results review job","group":"results_review","report":true}}}</script>
   <script type="module">
 export const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const esc=escapeHtml;
@@ -3377,22 +3381,23 @@ const notice=!state.error&&state.message?`<p class="muted">${esc(state.message)}
 return`<div class="price-workspace price-workspace-edit"><label for="studio-workspace-select">${esc(label)}</label><select id="studio-workspace-select" name="studio_workspace_select" ${locked?'disabled':''}>${options}</select>${brandOption}${error}${notice}<div class="review-buttons"><button type="button" class="primary" data-workspace-action="save" ${locked?'disabled':''}>${busy?'Saving...':submitted?'Waiting for Claude':'Set workspace'}</button>${cancel}</div></div>`;
 }
 export const PUBLISH_APPROVE_LABELS=Object.freeze({
-metricool_schedule:count=>`Approve and schedule ${count} ${count===1?'post':'posts'}`,
-metricool_draft:count=>`Approve and save ${count} ${count===1?'draft':'drafts'}`,
-metricool_now:()=>'Approve and post now',
-self:()=>'Approve and get the posting kit',
+metricool_now:()=>'Post Now',
+metricool_schedule:()=>'Schedule Post',
+metricool_draft:()=>'Save Draft',
+self:()=>'Download Files',
 });
+export const PUBLISH_PREPARING_LABEL='Preparing download…';
 export const PUBLISH_SAFETY_LINES=Object.freeze({
-metricool_schedule:'Nothing goes out until you approve. You can cancel a scheduled post in Metricool until it goes out. Claude will ask you to confirm in the chat before it posts.',
-metricool_draft:'Nothing goes out until you approve. Drafts are saved in Metricool and stay there until you publish them. Claude will ask you to confirm in the chat before it posts.',
-metricool_now:'Nothing goes out until you approve. After that, each post goes out within a few minutes. Claude will ask you to confirm in the chat before it posts.',
-self:'Nothing is posted for you. After you approve, the posting kit has each file, caption and step.',
+metricool_now:'Clicking Post Now sends each post to Metricool right away, and it goes out within a few minutes.',
+metricool_schedule:'Nothing goes out until you click Schedule Post. You can cancel a scheduled post in Metricool until it goes out.',
+metricool_draft:'Drafts are saved in Metricool and stay there until you publish them.',
+self:'Nothing is posted for you. After you click, the posting kit has each file, caption and step.',
 });
 export const PUBLISH_ROUTE_WORDS=Object.freeze({
-metricool_schedule:'Schedule with Metricool',
-metricool_draft:'Save as a draft in Metricool',
-metricool_now:'Post now (goes out within a few minutes)',
-self:"I'll post it myself",
+metricool_now:'Post Now',
+metricool_schedule:'Schedule a Post',
+metricool_draft:'Save as Draft',
+self:"I'll Post It Myself",
 });
 export const PUBLISH_OUTDATED_LINE='Something changed since this plan was made, so it is being rebuilt.';
 export const PUBLISH_CHANGED_LINE='The plan changed after it was prepared; it is being rebuilt.';
@@ -3439,7 +3444,7 @@ return'';
 }
 export function publishApproveLabel(route,count){
 const make=PUBLISH_APPROVE_LABELS[route]||PUBLISH_APPROVE_LABELS.self;
-return make(count).replace(/ 0 (posts|drafts)$/,' $1');
+return make(count);
 }
 export function publishRoutePending(publish,routeState={}){
 const wanted=routeState?.pending;
@@ -3496,7 +3501,7 @@ if(seen.has(item.text))continue;
 seen.add(item.text);
 lines.push(item.ok===false
 ?`<li class="publish-destination-warn metricool-warning" role="alert">${esc(item.text)}</li>`
-:`<li>${esc(item.text)}</li>`);
+:`<li>${esc(item.text)}${item.warn&&typeof item.warning==='string'&&item.warning?`<span class="publish-destination-warning metricool-warning" role="note">${esc(item.warning)}</span>`:''}</li>`);
 }
 if(!destinations.length&&publish.metricool?.label)lines.push(`<li>Posts go to Metricool brand <strong>${esc(publish.metricool.label)}</strong></li>`);
 if(publish.studioWorkspace?.name)lines.push(`<li>Media is uploaded to your 3echo workspace <strong>${esc(publish.studioWorkspace.name)}</strong></li>`);
@@ -3514,20 +3519,22 @@ return`<p class="publish-destination-change"><button type="button" class="quiet"
 function publishChecks(post,key='',openKeys=new Set()){
 const checks=Array.isArray(post?.checks)?post.checks.filter(item=>item&&typeof item.text==='string'):[];
 const failing=checks.filter(item=>item.ok===false);
-const passed=checks.filter(item=>item.ok!==false);
+const warned=checks.filter(item=>item.ok!==false&&item.warn===true);
+const passed=checks.filter(item=>item.ok!==false&&item.warn!==true);
+const warnings=warned.length?`<ul class="publish-warnings">${warned.map(item=>`<li class="metricool-warning publish-check-warn" role="note"><span class="visually-hidden">Check this: </span>${esc(item.text)}</li>`).join('')}</ul>`:'';
 const passedList=passed.map(item=>`<li>${esc(item.text)}</li>`).join('');
 const open=`data-open-key="${esc(key)}"${openKeys.has(key)?' open':''}`;
 const needsType=Array.isArray(post?.typeChoices)&&post.typeChoices.length>0;
-if(!failing.length&&needsType)return passed.length?`<details class="publish-ready publish-passed" ${open}><summary>${passed.length===1?'1 check passed':`${passed.length} checks passed`}</summary><ul>${passedList}</ul></details>`:'';
+if(!failing.length&&needsType)return warnings+(passed.length?`<details class="publish-ready publish-passed" ${open}><summary>${passed.length===1?'1 check passed':`${passed.length} checks passed`}</summary><ul>${passedList}</ul></details>`:'');
 if(!failing.length){
 const tick='<span class="publish-mark publish-mark-ok" aria-hidden="true"></span>';
-return passed.length
+return warnings+(passed.length
 ?`<details class="publish-ready" ${open}><summary>${tick}Ready</summary><ul>${passedList}</ul></details>`
-:`<p class="publish-ready">${tick}Ready</p>`;
+:`<p class="publish-ready">${tick}Ready</p>`);
 }
 const problems=`<ul class="publish-problems">${failing.map(item=>`<li><span class="publish-mark publish-mark-bad" aria-hidden="true"></span><span><span class="visually-hidden">Needs attention: </span>${esc(item.text)}</span></li>`).join('')}</ul>`;
 const rest=passed.length?`<details class="publish-ready publish-passed" ${open}><summary>${passed.length===1?'1 other check passed':`${passed.length} other checks passed`}</summary><ul>${passedList}</ul></details>`:'';
-return problems+rest;
+return problems+warnings+rest;
 }
 function publishText(value,key,what,openKeys){
 const text=typeof value==='string'?value.trim():'';
@@ -3639,15 +3646,22 @@ export function publishApproval(publish,routeState={},postStates={}){
 if(!publish||typeof publish!=='object')return{disabled:true,label:'Approve',line:'Claude is still preparing the posting plan.'};
 const pending=publishPending(publish,routeState,postStates);
 const posts=Array.isArray(publish.posts)?publish.posts:[];
-const label=publishApproveLabel(publish.route,posts.length);
-const safety=PUBLISH_SAFETY_LINES[publish.route]||PUBLISH_SAFETY_LINES.self;
-if(pending)return{disabled:true,label,line:'',safety};
-if(publish.outdated)return{disabled:true,label,line:typeof publish.reason==='string'&&publish.reason.trim()?publish.reason.trim():PUBLISH_OUTDATED_LINE,safety};
-if(publish.changed)return{disabled:true,label,line:PUBLISH_CHANGED_LINE,safety};
-if(!posts.length)return{disabled:true,label,line:'There are no posts to approve yet.',safety};
+const route=Object.hasOwn(PUBLISH_APPROVE_LABELS,publish.route)?publish.route:'self';
+const label=publishApproveLabel(route,posts.length);
+const safety=PUBLISH_SAFETY_LINES[route];
+const preparing=route==='self'?PUBLISH_PREPARING_LABEL:label;
+if(pending)return{disabled:true,label:preparing,line:'',safety};
+if(routeState?.draft&&routeState.draft!==publish.route)return{disabled:true,label:preparing,line:'',safety};
+if(publish.outdated)return{disabled:true,label:preparing,line:typeof publish.reason==='string'&&publish.reason.trim()?publish.reason.trim():PUBLISH_OUTDATED_LINE,safety};
+if(publish.changed)return{disabled:true,label:preparing,line:PUBLISH_CHANGED_LINE,safety};
+if(!posts.length)return{disabled:true,label:preparing,line:'There are no posts to approve yet.',safety};
 if(!publish.ready){
 const failing=posts.filter(post=>publishFailing(post).length||(Array.isArray(post?.typeChoices)&&post.typeChoices.length)).length;
-return{disabled:true,label,line:failing?`${failing===1?'1 post needs':`${failing} posts need`} attention before this can be approved.`:'This plan is not ready to approve yet.',safety};
+return{disabled:true,label:route==='self'?preparing:label,line:failing?`${failing===1?'1 post needs':`${failing} posts need`} attention before this can be approved.`:'This plan is not ready to approve yet.',safety};
+}
+if(route==='metricool_schedule'){
+const unset=posts.filter(post=>{const input=whenInputOf(post);return Boolean(input)&&!(typeof input.dateTime==='string'&&input.dateTime);}).length;
+if(unset)return{disabled:true,label,line:POST_TIME_NEEDED_LINE,safety};
 }
 return{label,line:'',safety};
 }
@@ -3784,6 +3798,15 @@ return`<li class="kit-file-row">${name}${href?externalLink(href,'Download','post
 }).join('');
 return`<div class="kit-section"><h5>Files</h5><ul class="kit-files">${items}</ul></div>`;
 }
+export function kitDownloadButton(kit){
+if(kit?.route!=='self')return'';
+const files=(Array.isArray(kit.posts)?kit.posts:[]).flatMap(post=>(Array.isArray(post?.media)?post.media.filter(item=>item&&typeof item==='object'):[]));
+if(!files.length)return'';
+const ready=files.every(item=>safeHttpsLink(item.appUrl));
+return ready
+?'<p class="kit-fetch-all"><button type="button" class="primary" data-kit-download-all>Download Files</button></p>'
+:`<p class="kit-fetch-all"><button type="button" class="primary" disabled aria-busy="true">${esc(PUBLISH_PREPARING_LABEL)}</button></p>`;
+}
 function kitCopyBlock(post,field,label,state,{openKeys,jobId,hint}){
 const value=field==='caption'?post.text:post.firstComment;
 if(typeof value!=='string'||!value.trim())return'';
@@ -3831,7 +3854,7 @@ const finished=done&&kit.settled!==false&&kit.closed===true;
 const closing=done&&kit.settled===true&&kit.closed!==true;
 const count=finished?'All posted':`${marked} of ${posts.length} posted`;
 const intro=finished?'Every post is marked as posted. This job is finished.':closing?'Claude is closing this job.':kit.route==='partial'?(done?KIT_PARTIAL_DONE:KIT_PARTIAL_INTRO):KIT_INTRO;
-return`<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p><div class="publish-posts" role="list">${posts.map(post=>kitPost(post,postStates?.[post.id]||{},ctx)).join('')}</div></section>`;
+return`<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p>${kitDownloadButton(kit)}<div class="publish-posts" role="list">${posts.map(post=>kitPost(post,postStates?.[post.id]||{},ctx)).join('')}</div></section>`;
 }
 function reviewFilesHtml(doc,paths){
 const files=new Map((doc?.files||[]).map(file=>[file.path,file]));
@@ -6905,6 +6928,7 @@ if(target.dataset.postTimeSave!==undefined){const shown=current();if(shown)void 
 if(target.dataset.postTimeOpen!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeOpen,true);return;}
 if(target.dataset.postTimeCancel!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeCancel,false);return;}
 if(target.dataset.postAnswer!==undefined){const shown=current();if(shown)void submitResolvePost(shown,target.dataset.postId,target.dataset.postAnswer);return;}
+if(target.dataset.kitDownloadAll!==undefined){[...app.querySelectorAll('.posting-kit a.kit-download')].forEach((link,at)=>setTimeout(()=>link.click(),at*350));return;}
 if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
 if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
 if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
@@ -7361,7 +7385,7 @@ clearTimeout(state.keyTimer);
 state.draft=null;
 const plan=docFor(project)?.review?.publish;
 if(!transport||!plan||state.pending||cardBusy(project))return;
-if(route===plan.route||(plan.routes||[]).some(item=>item.id===route&&item.available===false)){render();return;}
+if((route===plan.route&&!plan.outdated)||(plan.routes||[]).some(item=>item.id===route&&item.available===false)){render();return;}
 const requestId=randomId(globalThis);
 const args=publishRouteArgs({project,route,requestId});
 Object.assign(state,{requestId,sentRequestId:requestId,pending:route,fromRoute:plan.route,busy:true,applied:false,error:'',notice:'',declined:false,shownRoute:undefined,operation:'choose_publish_route',args});
