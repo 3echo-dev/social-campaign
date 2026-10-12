@@ -9,6 +9,7 @@ import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 import { handoffSent } from './handoff.mjs';
+import { BOARD_OWNER_TTL_MS, takeClaim } from './session-claims.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
 const SAFE_ARTIFACT_ID = '[A-Za-z0-9_-]{8,128}';
@@ -47,6 +48,7 @@ export const BOARD_TEXT = Object.freeze({
   behind: 'The board is behind the work; sync it before finishing.',
   unsaved: "Some made files aren't saved yet; check them with pipeline_generation_land.",
   copies: 'A review is waiting on the board but its images or video have no viewable copy there yet. For each job below, call pipeline_review_copies_prepare, upload what it returns with the Artifact tool, then write the board again.',
+  otherWindow: 'Another Claude window owns this board, so this one leaves its clicks alone. Tell the person once, in plain words, that another window is handling this board and to use that one for it (or close it to use this one).',
   rearm: "Re-arm the board's wake-up by reading and republishing it before replying.",
   agents: 'An agent finished since the board was written; call pipeline_board_job_documents for the jobs below and write them.',
   replies: 'The person left a message for the Director on the board. For each job below, answer it with pipeline_agent_reply, then write the documents it returns.',
@@ -222,10 +224,67 @@ export function landedRequestCount(root) {
   return count;
 }
 
+export const ownerPath = root => boardPath(root, 'owner.json');
+const toldPath = root => boardPath(root, 'owner-told.json');
+
+/**
+ * The board has one owner window: the one that claimed it first and keeps touching it. Only the owner arms the board's
+ * wake-up and acts on its clicks; any other window leaves them alone. {owner: true} when this window owns it (or takes it
+ * over because the old owner has been silent for BOARD_OWNER_TTL_MS), else {owner: false, by}. Without a session id nothing
+ * can be told apart, so the window is treated as the owner.
+ */
+export function claimBoardOwner(root, sessionId, { now = Date.now() } = {}) {
+  if (!sessionId) return { owner: true, by: null };
+  try {
+    mkdirSync(dirname(ownerPath(root)), { recursive: true });
+    const file = ownerPath(root);
+    const taken = takeClaim(file, sessionId, { ttlMs: BOARD_OWNER_TTL_MS, now });
+    if (!taken.claimed) return { owner: false, by: taken.owner?.sessionId ?? null };
+    // Still the owner: note that it is here, so a quiet owner is told apart from a gone one.
+    const current = readJson(file);
+    if (plainObject(current) && current.sessionId === String(sessionId) && now - Date.parse(current.claimedAt ?? '') > 60 * 1000) {
+      writeJsonAtomic(file, { ...current, claimedAt: new Date(now).toISOString() });
+    }
+    return { owner: true, by: String(sessionId) };
+  } catch {
+    return { owner: true, by: null };
+  }
+}
+
+/** The id of another live window that owns this board, else null (no owner, this window owns it, or the old owner went quiet). */
+export function otherBoardOwner(root, sessionId, now = Date.now()) {
+  if (!sessionId) return null;
+  const current = readJson(ownerPath(root));
+  if (!plainObject(current) || typeof current.sessionId !== 'string' || current.sessionId === String(sessionId)) return null;
+  const at = Date.parse(current.claimedAt ?? '');
+  return Number.isFinite(at) && now - at <= BOARD_OWNER_TTL_MS ? current.sessionId : null;
+}
+
+/** True the first time this window is told which window owns the board, false after, so it is said once. */
+export function noteOtherWindowOnce(root, sessionId, ownerId) {
+  const key = String(sessionId || 'unknown');
+  const current = readJson(toldPath(root));
+  const sessions = sessionMap(plainObject(current) ? current.sessions : null);
+  if (sessions[key]?.owner === String(ownerId)) return false;
+  sessions[key] = { owner: String(ownerId), at: new Date().toISOString() };
+  try {
+    writeJsonAtomic(toldPath(root), { sessions: pruned(sessions) });
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function boardSessionLines(root, sessionId) {
   try {
     const link = readBoardLink(root);
     if (!link) return [];
+    const ownership = claimBoardOwner(root, sessionId);
+    if (!ownership.owner) {
+      return noteOtherWindowOnce(root, sessionId, ownership.by)
+        ? [`Social Campaign board (for Claude): this workspace's board is bound to ${link.url}, but ${BOARD_TEXT.otherWindow}`]
+        : [];
+    }
     const waiting = landedRequestCount(root);
     const lines = [
       `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`,
@@ -235,9 +294,6 @@ export function boardSessionLines(root, sessionId) {
     ];
     if (waiting) {
       lines.push(`${waiting} board request${waiting === 1 ? ' is' : 's are'} already landed on this computer but not applied yet; handle ${waiting === 1 ? 'it' : 'them'} through board-sync too.`);
-    }
-    if (otherWindowArmedRecently(root, sessionId)) {
-      lines.push('Social Campaign may also be open in another Claude window. Tell the person once, in plain words, to use one window for board clicks.');
     }
     return lines;
   } catch {

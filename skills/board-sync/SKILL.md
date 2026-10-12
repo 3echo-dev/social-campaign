@@ -115,6 +115,12 @@ An `add_reference` request can also carry `to` (the agent chat the person sent i
 The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
 If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
 
+Only one window handles a board click.
+If Social Campaign is open in two Claude windows on this workspace, one of them owns the board; the other is told so once, in plain words, and then leaves the board and its clicks alone: it does not re-arm, list, land or apply anything for it.
+The owner's apply, decision and decline tools also claim each request for that window before acting.
+When one of them returns `handledElsewhere` (or a listed request carries it), another window already took that request: skip it silently, do no follow-up work for it, and do not post a reply about it.
+A claim from a window that went away is taken over after a few minutes, so nothing stays stuck.
+
 ## Reading a comment from the board
 
 Every comment the board sends to Claude is one plain sentence for a person to read, for example 'New job for SK-II: "facial cream fb story".' or 'Please check the board for my latest updates.': it never carries a request id, an operation name, or a workspace id.
