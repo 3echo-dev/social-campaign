@@ -733,6 +733,11 @@ export function parseStoryboard(text) {
   const format = carousel ? 'carousel' : deliverableFormat(platform, aspectRatio);
   const runtimeSeconds = metaNumber(meta.runtime_s);
   const shown = ordered.slice(0, MAX_PANELS);
+  // The voice-over answer ("yes" or "no", and which voice) is part of the storyboard record. Absent until it is asked.
+  const spoken = String(meta.voice_over ?? '').trim().toLowerCase();
+  const voiceOver = ['yes', 'true'].includes(spoken) || ['no', 'false'].includes(spoken)
+    ? { enabled: ['yes', 'true'].includes(spoken), voice: ['yes', 'true'].includes(spoken) && typeof meta.voice === 'string' && meta.voice.trim() ? clip(meta.voice.trim(), 200) : null }
+    : null;
   const totalSeconds = shown.length && shown.every(panel => panel.durationSeconds > 0)
     ? Math.round(shown.reduce((sum, panel) => sum + panel.durationSeconds, 0) * 10) / 10
     : null;
@@ -744,6 +749,7 @@ export function parseStoryboard(text) {
     aspectRatio,
     runtimeSeconds: runtimeSeconds ? runtimeSeconds : null, // 0 means no runtime (a still), never "0 s"
     totalSeconds,
+    ...(voiceOver ? { voiceOver } : {}),
     panels: shown.map((panel, index) => ({ ...panel, label: `${carousel ? 'Slide' : 'Panel'} ${index + 1}` })),
   };
 }
@@ -866,6 +872,9 @@ function quoteDetail(item, estimate) {
     const seconds = Number(inputs.duration);
     if (Number.isFinite(seconds) && seconds > 0) parts.push(`${seconds} seconds`);
     if (typeof inputs.resolution === 'string' && inputs.resolution.trim()) parts.push(clip(inputs.resolution, 20));
+    const both = item.resolutionPrices;
+    if (both && Number.isFinite(Number(both['720p'])) && Number.isFinite(Number(both['1080p']))) parts.push(`720p ${Number(both['720p'])} credits, 1080p ${Number(both['1080p'])} credits`);
+    if (item.lowResolutionAccepted === true) parts.push('lower quality, your choice');
     if (inputs.generateAudio === false) parts.push('no sound');
   }
   if (item.kind === 'voice' && Number(item.generationsCount) > 1) parts.push(`${Number(item.generationsCount)} versions`);
@@ -1542,6 +1551,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const hits = parsed.panels.map(panel => (deliverable ? frames.get(`${deliverable}|${canonicalItem(panel.ref)}`) : null) || keptHit(panel));
     return { parsed, deliverable, hits };
   };
+  const shownFrames = new Set();
   const needsThumb = hit => Boolean(hit) && !(hit.kind === 'image' && uploaded(hit.path));
   let framePlan = [];
   const planFrameThumbs = paths => {
@@ -1591,6 +1601,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     if (boards.length) {
       const readable = boards.filter(path => load(path).raw != null);
       planFrameThumbs(readable);
+      // A picture shown on its panel is not listed again as loose media.
+      for (const path of readable) for (const hit of boardFrames(path).hits) if (hit) shownFrames.add(hit.path);
       document.review.storyboards = readable
         .map(path => ({ sha256: registered.get(path), changed: changedSince(path), ...storyboardEntry(path) }));
     }
@@ -1668,7 +1680,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       if (variants.length) document.variants = variants;
     }
     // Media registered for the review that no post already shows.
-    document.review.media = gate === 'sample' || gate === 'pictures' || gate === 'clips' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path)).map(path => mediaRef(path));
+    document.review.media = gate === 'sample' || gate === 'pictures' || gate === 'clips' ? [] : paths.filter(path => mediaKind(path) && !shownMedia.has(path) && !shownFrames.has(path)).map(path => mediaRef(path));
     if (gate === 'content') {
       const labelCheck = labelCheckSection(root, project, dir, rel => thumbnail(rel, { budget: 'review', scaled: true }), job, review.artifacts);
       if (labelCheck) document.review.labelCheck = labelCheck;

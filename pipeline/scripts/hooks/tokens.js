@@ -14,7 +14,14 @@
 // the chat's job. Appends one tokens.observed line per model to that folder's events.jsonl:
 //   subject { type: "stage", id: <Current state from status.md, or BRAND_RESEARCH for a run> }
 //   attrs   { model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-//             agentType?, sessionId }
+//             agentType?, agentId, row?, rowLabel?, sessionId }
+// agentId is the helper's id, or "main" for the chat itself. A helper's tokens go to the job its agent
+// run was started on when the agent run record names one (lib-tool-metrics.usageTarget); a helper
+// that is not on record follows the chat's job, and its rows still carry the agent id. row is the
+// board row the stage sits under. With no job and no research run, usage from a brand still being set
+// up goes to that brand's onboarding/setup folder (stage BRAND_SETUP).
+// A message already counted is never counted again, in this transcript or a later one (a compaction
+// can rewrite the transcript or start a new one that carries the old messages): see MAX_SEEN.
 // and one tool.completed line per finished tool call to its .metrics/tool-calls.jsonl: the tool's
 // name, whether it failed, when it started and how long it took. Never its input or its result.
 //
@@ -39,6 +46,12 @@ const crypto = require('crypto');
 const MAX_PENDING = 200;
 const MAX_SHARED_RECORDS = 200;
 const PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Counted messages are remembered by a short hash of their id and usage, newest last. A context
+// compaction can rewrite the transcript or begin a new one holding the same messages, and the
+// 200 usage records above would not reach back far enough to recognise them.
+const MAX_SEEN = 2000;
+const SEEN_KEY = '__seen';
+const shortHash = value => crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 12);
 
 // One usage record per model, summed. Read as a stream from the offset we stopped at last
 // time, because a long session's transcript runs to tens of megabytes and reading it whole
@@ -46,11 +59,12 @@ const PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 //
 // Tool calls are paired on the way: a tool_use opens a call, its tool_result closes it. A result
 // whose call was never seen is skipped. Only the name and the two line timestamps are kept.
-function sumFrom(file, start, priorRecords = {}, priorPending = new Map()) {
+function sumFrom(file, start, priorRecords = {}, priorPending = new Map(), priorSeen = {}) {
   return new Promise(resolve => {
     const totals = new Map();
     const records = { ...priorRecords };
     const touched = new Set();
+    const seen = { ...priorSeen };
     const pending = new Map(priorPending);
     const calls = [];
     let end = start;                 // only ever advanced past a line that ended in a newline
@@ -84,8 +98,13 @@ function sumFrom(file, start, priorRecords = {}, priorPending = new Map()) {
       const identity = ev.usageIdentity(rec);
       const fingerprint = crypto.createHash('sha256').update(JSON.stringify({ model, usage: u })).digest('hex');
       let contribution = { ...normalized };
+      const seenKey = identity ? shortHash(identity) : null;
+      const seenMark = fingerprint.slice(0, 12);
       if (identity) {
         const previous = records[identity];
+        if (!previous && seen[seenKey] === seenMark) {
+          contribution = { ...normalized, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+        }
         if (previous) {
           const wasSeen = Array.isArray(previous.fingerprints) && previous.fingerprints.includes(fingerprint);
           const values = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens'];
@@ -107,6 +126,7 @@ function sumFrom(file, start, priorRecords = {}, priorPending = new Map()) {
           fingerprints: [...new Set(fingerprints.concat(fingerprint))].slice(-8),
         };
         touched.add(identity);
+        seen[seenKey] = seenMark;
       }
       const t = totals.get(model) || { provider: normalized.provider, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
       t.provider = normalized.provider || t.provider;
@@ -116,13 +136,13 @@ function sumFrom(file, start, priorRecords = {}, priorPending = new Map()) {
       t.cacheReadTokens += contribution.cacheReadTokens;
       totals.set(model, t);
     };
-    const done = () => resolve({ totals, records, touched, calls, pending, end });
+    const done = () => resolve({ totals, records, touched, calls, pending, seen, end });
     // Buffers rather than readline: the offset written to the cursor has to be an exact byte
     // count, and a reader that strips the line ending cannot give one on a CRLF file.
     const stream = fs.createReadStream(file, { start });
     // A read that fails counts nothing, because the offset does not move past it either.
     stream.on('error', () => resolve({ totals: new Map(), records: { ...priorRecords }, touched: new Set(),
-      calls: [], pending: new Map(priorPending), end: start }));
+      calls: [], pending: new Map(priorPending), seen: { ...priorSeen }, end: start }));
     stream.on('data', chunk => {
       let buf = rest.length ? Buffer.concat([rest, chunk]) : chunk;
       let at;
@@ -149,7 +169,13 @@ function readShared(file) {
     }
   }
   const records = value.records && typeof value.records === 'object' && !Array.isArray(value.records) ? value.records : {};
-  return { offset: Number(value.offset) || 0, pending, records };
+  const seen = value.seen && typeof value.seen === 'object' && !Array.isArray(value.seen) ? value.seen : {};
+  return { offset: Number(value.offset) || 0, pending, records, seen };
+}
+
+// The newest MAX_SEEN counted messages, from what was known before and what this pass added.
+function keptSeen(...lists) {
+  return Object.fromEntries(Object.entries(Object.assign({}, ...lists)).slice(-MAX_SEEN));
 }
 
 function sharedRecords(previous, records, touched) {
@@ -193,10 +219,10 @@ async function skipUntargeted(transcript, argv) {
     const size = fs.statSync(transcript).size;
     if (start > size) { start = 0; pending = new Map(); }
     if (start === size) return;
-    const { records, touched, pending: open, end } = await sumFrom(transcript, start, shared.records, pending);
+    const { records, touched, pending: open, seen, end } = await sumFrom(transcript, start, shared.records, pending, shared.seen);
     if (end > start) {
       durable.atomicWrite(sharedPath, JSON.stringify({
-        offset: end, pending: prunePending(open), records: sharedRecords(shared.records, records, touched),
+        offset: end, pending: prunePending(open), records: sharedRecords(shared.records, records, touched), seen: keptSeen(seen),
       }) + '\n');
     }
   } catch (e) {
@@ -218,7 +244,7 @@ async function run(hook, argv = []) {
   // An open brand research run takes everything; without one, the chat's job. With neither the
   // transcript is read past without counting, so whichever opens next starts from there.
   let target = null;
-  try { target = toolMetrics.usageTarget(argv, hook.session_id); } catch { return; }
+  try { target = toolMetrics.usageTarget(argv, hook.session_id, { agentId: hook.agent_id }); } catch { return; }
   if (!target) { await skipUntargeted(transcript, argv); return; }
   const flush = async () => {
     if (target.kind === 'job') await require('../lib-metrics-sync.js').flush(target.job, argv);
@@ -265,7 +291,9 @@ async function run(hook, argv = []) {
   }
   Object.assign(previousRecords, ownRecords);
   for (const [identity, entry] of Object.entries(shared.records)) if (!previousRecords[identity]) previousRecords[identity] = entry;
-  const { totals, records, touched, calls, pending: open, end } = await sumFrom(transcript, start, previousRecords, pending);
+  // What this job's cursor has counted, by any transcript of the chat, joins what the transcript's own read position knows.
+  const counted = cursor[SEEN_KEY] && typeof cursor[SEEN_KEY] === 'object' ? cursor[SEEN_KEY] : {};
+  const { totals, records, touched, calls, pending: open, seen, end } = await sumFrom(transcript, start, previousRecords, pending, keptSeen(counted, shared.seen));
   const kept = { ...ownRecords };
   for (const identity of touched) kept[identity] = records[identity];
   cursor[key] = { transcript, offset: end, records: kept };
@@ -278,12 +306,13 @@ async function run(hook, argv = []) {
   for (const [model, t] of totals) {
     if (!t.inputTokens && !t.outputTokens && !t.cacheCreationTokens && !t.cacheReadTokens) continue;
     const event = ev.makeEvent(target.eventJob, 'tokens.observed', occurredAt, { type: 'stage', id: target.stage },
-      { model, ...t, usageSemantics: 'delta', agentType: hook.agent_type, sessionId }, {
+      { model, ...t, usageSemantics: 'delta', agentType: hook.agent_type, agentId, sessionId,
+        ...(target.row ? { row: target.row.id, rowLabel: target.row.label } : {}) }, {
         dedupeKey: [model, sessionId, agentId, String(start), String(end)].join('|'),
         ...target.ids,
         source: 'stop_hook', host: 'claude_code', quality: 'measured',
       });
-    if (target.kind === 'run') delete event.jobId;                  // a run is not a job
+    if (target.kind !== 'job') delete event.jobId;                  // a run, or brand setup, is not a job
     event.eventId = crypto.createHash('sha256').update([path.resolve(transcript), model, sessionId, start, end].join('|')).digest('hex');
     lines.push(event);
   }
@@ -310,11 +339,12 @@ async function run(hook, argv = []) {
     }
     if (tools.length) toolMetrics.appendToolEvents(target.dir, tools);
     durable.atomicWrite(sharedPath, JSON.stringify({
-      offset: end, pending: prunePending(open), records: sharedRecords(shared.records, records, touched),
+      offset: end, pending: prunePending(open), records: sharedRecords(shared.records, records, touched), seen: keptSeen(seen),
     }) + '\n');
     durable.update(cursorPath, text => {
       let existing = {}; try { existing = JSON.parse(text); } catch {}
       existing[key] = cursor[key];
+      existing[SEEN_KEY] = keptSeen(existing[SEEN_KEY], seen);
       return JSON.stringify(existing, null, 2) + '\n';
     });
     release();

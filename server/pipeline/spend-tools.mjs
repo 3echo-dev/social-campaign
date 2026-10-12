@@ -9,6 +9,8 @@ import { basename, dirname, join, resolve } from 'node:path';
  */
 
 export const THREE_ECHO_SPENDERS = Object.freeze(['create_image_job', 'create_video_job']);
+/** Pictures go ahead with no price approval: the first picture of a panel and two redos. A fourth needs a normal price approval. */
+export const FREE_PICTURES_PER_PANEL = 3;
 export const VOICE_SPENDERS = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio', 'creative_design_voice']);
 /** The only guarded tools that take `estimate_only` and then spend nothing. */
 export const VOICE_ESTIMABLE = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio']);
@@ -66,8 +68,10 @@ export const SPEND_DENY = Object.freeze({
   mismatch: "This call doesn't match the approved item it names.",
   sampleLock: 'Show the sample and wait for approval before making the rest.',
   picturesLock: 'Show every storyboard picture and wait for approval before making any video. Present the pictures review (pipeline_review_present with gate pictures), then wait.',
-  videoTooEarly: 'Video waits until the storyboard is approved. Only reference pictures can be made until then.',
-  voiceTooEarly: 'Voice waits until the storyboard is approved. Only reference pictures can be made until then.',
+  pictureCap: `This panel has had its ${FREE_PICTURES_PER_PANEL} pictures (the first and two redos). Another one needs a price approved first. Show the price and wait for approval.`,
+  failedBefore: 'This picture did not come out the first time and cost nothing. Make it again under the next version of its key, not the same one.',
+  videoTooEarly: 'Video waits until the storyboard is approved. Only pictures can be made until then.',
+  voiceTooEarly: 'Voice waits until the storyboard is approved. Only pictures can be made until then.',
   jobFinished: 'This job is finished, so nothing more can be made for it.',
   videoNoEstimate: 'Get a price for this clip first.',
   voiceNoEstimate: 'Get a price for this voice line first.',

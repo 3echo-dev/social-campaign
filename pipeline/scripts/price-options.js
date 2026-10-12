@@ -23,6 +23,10 @@
 //     ]
 //   }
 //
+// A final clip is never offered below 720p. The lower-resolution lever may name 720p (against a 1080p
+// plan) or, only when the person asked for it, a clip carrying "lowResolutionAccepted": true. A sample
+// clip ("sample": true) may stay lower. Anything else is refused.
+//
 // Levers that keep the video: as-boarded (the whole plan), fewer-clips, shorter-clips,
 // no-audio, lower-resolution. stills-only drops it, so it is always last and always says out
 // loud that it changes what the job delivers.
@@ -45,7 +49,7 @@ const LABEL = {
   'fewer-clips': n => 'Make the video with fewer moments, ' + n + ' credits',
   'shorter-clips': n => 'Make the video with quicker moments, ' + n + ' credits',
   'no-audio': n => 'Make the video without generated sound, ' + n + ' credits',
-  'lower-resolution': n => 'Make the video at a softer picture quality, ' + n + ' credits',
+  'lower-resolution': n => 'Make the video at a lower picture quality, ' + n + ' credits',
   'stills-only': n => 'Drop the video and keep still pictures instead, ' + n + ' credits',
 };
 // Local so a stateful global regex somewhere else cannot make this answer differently twice.
@@ -114,6 +118,9 @@ const priced = plans.map((p, idx) => {
   let clipTotal = 0, seconds = 0;
   clips.forEach((c, i) => {
     clipTotal += quoted(c, where + ' clip ' + (i + 1));
+    // A softer picture is never slipped in: a final clip under 720p needs the person's own choice on the clip.
+    const soft = del.lowResolutionProblem(c);
+    if (soft) refuse(where + ' clip ' + (i + 1) + ' ' + soft);
     const d = Number(c.durationSeconds);
     if (!Number.isInteger(d) || d < del.CLIP_SECONDS.min || d > del.CLIP_SECONDS.max)
       refuse(where + ' clip ' + (i + 1) + ' is ' + c.durationSeconds + ' seconds; a clip is a whole ' +

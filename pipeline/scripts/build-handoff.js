@@ -20,6 +20,7 @@ const execution = require('./lib-execution-availability.js');
 const brandProfile = require('./lib-brand-profile.js');
 const noBrand = require('./lib-no-brand.js');
 const adVariants = require('./lib-ad-variants.js');
+const vendorNames = require('./lib-vendor-names.js');
 
 // A plain local time: a date, or a date with hh:mm and optional seconds, and no zone of its own.
 // Only this gets the job's or the brand's zone written beside it.
@@ -56,7 +57,22 @@ function postingZone(publishAt, jobSchedule, brandZone) {
   return { publishAt: at, zone, carries: false, known: Boolean(zone) };
 }
 
-module.exports = { postingZone };
+// The first text file in a built hand-off that names a vendor or an AI model, or null. The client
+// keeps this package, so it must not say which tool made the work.
+function textFilesWithVendorName(dir, allow) {
+  const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => {
+    const full = path.join(d, e.name);
+    return e.isDirectory() ? walk(full) : [full];
+  });
+  for (const file of walk(dir)) {
+    if (!/\.(txt|md|csv|json)$/i.test(file)) continue;
+    const name = vendorNames.findVendorName(fs.readFileSync(file, 'utf8'), allow);
+    if (name) return { file: path.relative(dir, file).split(path.sep).join('/'), name };
+  }
+  return null;
+}
+
+module.exports = { postingZone, textFilesWithVendorName };
 if (require.main !== module) return;
 
 const ROOT = path.join(__dirname, '..');
@@ -338,6 +354,22 @@ readme = readme.split('{per-post}').join(perPost.trim()).split('{checklists}').j
 const readmePath = path.join(out, 'README.md');
 fs.writeFileSync(readmePath, readme);
 files.push(readmePath);
+
+// 5b. The client keeps this package, so it must never name a vendor or an AI model.
+// The brand's own name is not a vendor name: a brand called "3echo" may say it.
+const ownNames = [brand, wsCfg && wsCfg.name, wsCfg && wsCfg.brandName, wsCfg && wsCfg.displayName,
+  profile && profile.name, profile && profile.brandName];
+try {
+  const accepted = readJson(path.join(ws.wsDir(brand), 'brand', 'accepted-words.json'));
+  ownNames.push(...(Array.isArray(accepted) ? accepted : Array.isArray(accepted && accepted.words) ? accepted.words : []));
+} catch {}
+const named = textFilesWithVendorName(out, ownNames.filter(n => typeof n === 'string'));
+if (named) {
+  fs.rmSync(out, { recursive: true, force: true });
+  console.error('REFUSED: the hand-off names "' + named.name + '" in ' + named.file + ', and a client hand-off must not name a vendor or an AI model.');
+  console.error('Remove the word from the draft or the platform rules, then build the hand-off again.');
+  process.exit(1);
+}
 
 // 6. manifest.json
 const manifest = { schemaVersion: '1.0', jobId: job, brand, builtAt: new Date().toISOString(), approvals,

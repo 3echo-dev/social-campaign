@@ -683,6 +683,11 @@ export function allowedText(ref) {
   push(names, [profile.name, profile.brandName, profile.products, profile.productNames, profile.terminology], 'brand profile');
   const kit = readJson(join(brandDir, 'brand', 'brand-kit.json')) || {};
   push(names, [kit.name, kit.brandName, kit.wordmark, kit.confirmed?.brandName, kit.confirmed?.wordmark], 'brand kit');
+  // Words the brand has accepted as harmless on screen. They count as the brand's own copy, so they
+  // never raise a flag. They are not added to the names list, so another company's name seen in the
+  // scene is still flagged. The file is brand/accepted-words.json: { "words": ["...", "..."] }.
+  const accepted = readJson(join(brandDir, 'brand', 'accepted-words.json'));
+  push(copy, Array.isArray(accepted) ? accepted : accepted?.words, 'accepted words');
   const job = readJson(join(ref.dir, 'job.json')) || {};
   const deliverables = Array.isArray(job.deliverables) ? job.deliverables : [];
   push(names, [

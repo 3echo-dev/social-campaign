@@ -6,6 +6,8 @@
 
 Reads `## Brand marks` from workspaces/<brand>/brand/brand-voice.md and every PNG, JPG or WebP
 under media/D*/ plus any sampled frames watch-video.py left under media/D*/frames/.
+A video that was assembled in the edit has a media/D<n>/final.mp4. That finished master is what ships,
+so frames are sampled from it and the raw clips and their frames are not checked: raw clips are not shipped.
 Writes validation/brand-marks.json and raises R-VISUAL.
 
 Pillow only, no OpenCV. That buys three real limits, and they are worth knowing before
@@ -20,7 +22,7 @@ anyone treats a finding as proof:
 
 Exit 0 nothing found - 1 findings - 2 called wrongly - 3 no media, or no brand marks.
 """
-import argparse, glob, json, math, os, sys
+import argparse, glob, json, math, os, subprocess, sys, tempfile
 
 try:
     from PIL import Image
@@ -41,6 +43,7 @@ DEFAULT_MIN_LOGO_H = 96  # 5% of 1920, used only when the brand left min_logo_he
 PALETTE = 16             # palette size for the quantise; smaller merges an accent into its neighbour
 COLOUR_SHARE = 0.01      # a quantised colour under 1% of the pixels is not a dominant colour
 IMAGES = (".png", ".jpg", ".jpeg", ".webp")
+MASTER_FRAMES = 6        # frames sampled evenly from a finished master
 
 
 # ---------------------------------------------------------------- workspace
@@ -86,6 +89,54 @@ def resolve(args):
         return None, None, None
     root = find_root(args.root)
     return args.brand, args.job, os.path.join(brands_dir(root), args.brand, "jobs", args.job)
+
+
+# ---------------------------------------------------------------- what to check
+def master_frames(master, work):
+    """Sample frames evenly from the finished master. Returns [(shown name, file)], or None when
+    ffmpeg is missing or cannot read the video."""
+    try:
+        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                "-of", "default=nw=1:nk=1", master],
+                               capture_output=True, text=True, timeout=60)
+        duration = float(probe.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    if duration <= 0:
+        return None
+    out = []
+    for i in range(MASTER_FRAMES):
+        at = duration * (i + 0.5) / MASTER_FRAMES
+        dst = os.path.join(work, "master_%02d.png" % i)
+        try:
+            r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "%.3f" % at,
+                                "-i", master, "-frames:v", "1", dst],
+                               capture_output=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if r.returncode == 0 and os.path.isfile(dst):
+            out.append(("%s@%.1fs" % (master, at), dst))
+    return out or None
+
+
+def files_to_check(job_dir, work):
+    """[(name shown in the report, file)] for every deliverable folder. A folder with a final.mp4 is
+    checked through that master only; any other folder through its images and sampled frames."""
+    files = []
+    for d in sorted(glob.glob(os.path.join(job_dir, "media", "D*"))):
+        master = os.path.join(d, "final.mp4")
+        if os.path.isfile(master):
+            sampled = master_frames(master, work)
+            if sampled:
+                files.extend(sampled)
+                continue
+            print("%s could not be read, so the raw frames of %s are checked instead."
+                  % (master.replace(os.sep, "/"), os.path.basename(d)), file=sys.stderr)
+        for pattern in (os.path.join(d, "*"), os.path.join(d, "frames", "*")):
+            for f in sorted(glob.glob(pattern)):
+                if os.path.splitext(f)[1].lower() in IMAGES and os.path.isfile(f):
+                    files.append((f, f))
+    return files
 
 
 # ---------------------------------------------------------------- brand marks
@@ -312,12 +363,17 @@ def main():
               % voice.replace(os.sep, "/"), file=sys.stderr)
         return 3
 
-    files = []
-    for d in sorted(glob.glob(os.path.join(job_dir, "media", "D*"))):
-        for pattern in (os.path.join(d, "*"), os.path.join(d, "frames", "*")):
-            for f in sorted(glob.glob(pattern)):
-                if os.path.splitext(f)[1].lower() in IMAGES and os.path.isfile(f):
-                    files.append(f)
+    work = tempfile.mkdtemp(prefix="brand-marks-")
+    try:
+        return run_check(args, job, job_dir, voice, marks, work)
+    finally:
+        for f in glob.glob(os.path.join(work, "*")):
+            os.remove(f)
+        os.rmdir(work)
+
+
+def run_check(args, job, job_dir, voice, marks, work):
+    files = files_to_check(job_dir, work)
     if not files:
         print("No media to check. Nothing under %s/media/D*/ is a PNG, JPG or WebP, so the frames "
               "were never generated or never landed." % job_dir.replace(os.sep, "/"),
@@ -341,8 +397,8 @@ def main():
     band = str(marks.get("subtitle_band", "none")).strip().lower()
 
     report = {"jobId": job, "tolerance": args.tolerance, "checked": [], "findings": []}
-    for f in files:
-        rel = os.path.relpath(f, job_dir).replace(os.sep, "/")
+    for shown, f in files:
+        rel = os.path.relpath(shown, job_dir).replace(os.sep, "/")
         try:
             im = Image.open(f)
             im.load()

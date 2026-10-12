@@ -73,6 +73,8 @@ After the finish, report what the video really has (captions, music or "no music
 
 When the strategist reports an unanswered fact the copy needs, put it to the person as a `pipeline_board_ask` question before the script stage; do not carry it to the final approval and never let an agent choose it.
 
+For a video, ask the voice-over question once with `pipeline_board_ask` before the Creative Director writes the script and storyboard: "Voice-over: yes or no, and which voice?" (options Yes and No, with a text box for the voice). Pass the answer to the Creative Director so the script and clip lengths fit it. Music and captions are not asked here; they are chosen at the combine step. The storyboard is refused for a video until it carries the answer.
+
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.
@@ -87,7 +89,8 @@ Do not send local state to a remote destination.
 
 Stop at every human gate.
 
-The media stage has two more stops, and only the Director presents them (never a helper), on the board and in chat: all the storyboard pictures together (`gate: "pictures"`) and all the video clips together (`gate: "clips"`).
+The storyboard is shown with a picture on every panel (the sample first, then the rest, made before the gate; pictures need no price click, 3 per panel at most), so the storyboard approval is also the approval of the pictures.
+The media stage has two more stops, and only the Director presents them (never a helper), on the board and in chat: the video clips together (`gate: "clips"`) and, only when a picture was redone after the storyboard was approved, the pictures together (`gate: "pictures"`).
 Do not make a video clip before the pictures are approved, and do not join the clips before the clips are approved. The spend guard and the stitch script refuse these, so stopping is not optional.
 After the join, the Director presents the joined video (`gate: "cut"`) and waits. The join is plain: no text is burned into it; the script's on-screen text is saved as `media/D{n}/onscreen.json` and drawn by `finish-video.py`. The cut card's approve buttons (Approve + add captions, Approve + add music, Approve + both, Approve as is) approve it and record the finishing choice in one step (`pipeline_decision_apply`); a change note that only asks for captions or music is read the same way. Only when it was approved some other way does the Director ask the one finishing question with `pipeline_board_ask` and record it with `pipeline_finishing_choice`. `finish-video.py` and the final post refuse before that. After finishing, the Director presents the finished video (`gate: "finish"`) and waits; the post text comes after its approval. Music needs a saved track (`pipeline_music_add`): with an empty shelf, ask the person for a track or a link, or offer captions only. Never make audio by hand.
 A change on a panel is a redo: add it as a new version to the price with `pipeline_quote_save`, show the price, and make it only after the person approves it.

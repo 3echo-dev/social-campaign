@@ -371,7 +371,24 @@ function withDerivedPlacements(jobSpec) {
   return changed ? { ...jobSpec, deliverables } : jobSpec;
 }
 
+// A final video clip is made at 720p or better; the lower setting is for a sample, or for a person who picked it on purpose.
+const FINAL_MIN_HEIGHT = 720;
+function resolutionHeight(value) {
+  const raw = typeof value === 'number' ? value + 'p' : String(value == null ? '' : value).trim().toLowerCase();
+  const size = raw.match(/^(\d{3,4})\s*x\s*(\d{3,4})$/);
+  if (size) return Math.min(Number(size[1]), Number(size[2]));
+  const rows = raw.match(/^(\d{3,4})\s*p?$/);
+  return rows ? Number(rows[1]) : null;
+}
+// The plain reason a clip is refused, or null. `clip` carries resolution, sample and lowResolutionAccepted.
+function lowResolutionProblem(clip) {
+  const height = resolutionHeight(clip && clip.resolution);
+  if (height === null || height >= FINAL_MIN_HEIGHT || clip.sample === true || clip.lowResolutionAccepted === true) return null;
+  return 'is set to ' + clip.resolution + ', which is too soft for a final video. Final clips are made at 720p or better unless the person chose the lower quality on purpose. Use 720p, or 1080p for a sharper picture.';
+}
+
 module.exports = {
+  FINAL_MIN_HEIGHT, resolutionHeight, lowResolutionProblem,
   KIND_OF_DISCIPLINE, WORDS, CLIP_SECONDS, words, disciplines,
   plannedKind, plannedMinSeconds, actualKind, changeRecord, check, stillsOffer, plansVideo,
   SLIDES, slideRange, PLACEMENTS, PLACEMENT_NOUNS, PLATFORM_NAMES, VIDEO_DISCIPLINES, STORY_DISCIPLINES, PHOTO_DISCIPLINES, PLACEMENT_ENTRY,

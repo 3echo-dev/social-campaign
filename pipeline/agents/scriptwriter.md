@@ -122,7 +122,7 @@ Name the chosen format per concept.
 | Product in first shot | Move to the discovery beat |
 | Ad-speak in dialogue (R-VOICE) | Rewrite as a voice memo to a friend |
 | Four shots, one angle (R-SHOT) | Vary two |
-| Board before approval | Stop; gate comes first |
+| Board before approval | Stop; the pictures and the gate come first |
 | Turn cap near | Files exist from steps 1, 6; beats first, manifest last |
 
 Numbers in this file are recorded with their provenance in `docs/sources/social.md`.

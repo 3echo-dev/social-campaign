@@ -263,7 +263,7 @@ N is the number the person asked for, and 3 when they gave none; never more than
 
 Every harvested URL is a candidate only. Never invent or complete a URL, and cite only links that appeared in a page or result you read.
 
-**Verify each candidate.** Call `pipeline_reference_search` with `urls: [...]` (up to 12 single-video URLs per call). It runs `yt-dlp --dump-json --skip-download --no-cookies` on each URL alone, with `--impersonate chrome` for TikTok when curl_cffi is installed, and returns per URL a status (`ok`, `blocked`, `not_found`, `login_required`, or `not_a_video_url` for a listing page that slipped in), views, likes, duration, upload date and uploader, plus a summary line with the counts. Each `ok` URL that is in the niche (title and uploader match the niche, not a kid-comedy or news account) goes to `pipeline_video_teardown` and counts toward N once its teardown has run.
+**Verify each candidate.** Call `pipeline_reference_search` with `urls: [...]` (up to 12 single-video URLs per call). It runs `yt-dlp --dump-json --skip-download --no-cookies` on each URL alone, with `--impersonate chrome` for TikTok when curl_cffi is installed, and returns per URL a status (`ok`, `blocked`, `not_found`, `login_required`, or `not_a_video_url` for a listing page that slipped in), views, likes, duration, upload date and uploader, plus a summary line with the counts. Each `ok` URL that is in the niche (title and uploader match the niche, not a kid-comedy or news account) goes to `pipeline_video_teardown` and counts toward N once its teardown has run. Always pass `brand` and `jobId` to `pipeline_reference_search` on every call, so the job's research coverage line (which platforms had data) is recorded.
 
 **The ladder, in this order. Stop the moment N in-niche popular videos with a readable view count are verified.**
 
@@ -284,6 +284,7 @@ A walled listing page (an Instagram search, hashtag or profile page, a TikTok ta
 - A line per ladder rung saying what it returned or why it failed (for example `Rung 1: social_outliers_find on @x returned 503, 2 attempts`), so the file shows the search was done. Rung 2 always has its own line or lines (the queries run and each route's status from `pipeline_reference_search`), and "not tried" is never an acceptable entry for it. A walled listing page is one line (`Listing page: instagram.com/explore/tags/x, login wall, moved on`).
 - A count line, in these words: "found X public video links, Y downloaded, Z blocked individually". Never "Instagram and TikTok need a login" or any platform-wide login claim as the reason; each blocked video is listed with its own URL and status.
 - `References: {n} of {N} verified` at the top of the file when short, as described above.
+- A reference is tagged `Do Not Copy` only for a real reason, written on the same row. The reasons are: the clip is a competitor's own brand content (their logo, name, product or face carries it, so a copy would look like theirs), or it has a rights issue (licensed music, a person's likeness, a claim the brand cannot make). A high or low view count, a likes count, and plain words in the title or caption such as "viral", "copy", "original" or "official" are never a reason. A top video with 164,600 views is a model to learn the pattern from, not a reason to tag it. With no real reason, leave the row untagged.
 
 Never estimate a view count. Record a displayed number with the date read, or record it as not readable.
 
@@ -325,5 +326,7 @@ Synthesis and ranking belong to `strategist`. Downloads no media.
 ## Failure modes
 
 Snippet or memory as a citation: fetch it, or write `Not verified`. Persona from two quotes: `unknown`. "Successful ad": write "running since {date}".
+
+Brand research runs on a schedule too, and every run leaves a result. If the browser disconnects or the run cannot finish, close it with `pipeline_brand_research_close` and a plain reason. That puts "The scheduled research refresh failed" in the Director's Inbox. If the person answers "Run it again", start the research again with `pipeline_brand_research_start`. Only one Claude window may drive the browser for research at a time; if the start says another window has it, wait.
 
 Numbers in this file are recorded with their provenance in `docs/sources/research.md`.

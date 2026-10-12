@@ -281,6 +281,11 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 @container (min-width:521px) and (max-width:960px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
 .kit-upload,.kit-logo-preview{height:112px;border-radius:var(--radius)}
 .kit-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--gap) / 4);padding:var(--gap);background:var(--ink);border:1px dashed var(--line2);color:var(--dim);text-align:center;cursor:pointer;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-photos-block{grid-column:1 / -1}
+.kit-photos{display:flex;flex-wrap:wrap;gap:var(--gap)}
+.kit-photo{position:relative;width:96px;height:96px;border-radius:var(--radius);overflow:hidden;background:var(--ink);border:1px solid var(--line2)}
+.kit-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.kit-photo .kit-icon-button{position:absolute;top:2px;right:2px;background:var(--ink)}
 .kit-upload-title{color:var(--paper);font-weight:700}
 .kit-upload-hint{color:var(--faint);font-size:12px}
 .kit-file:enabled+.kit-upload:hover{border-color:var(--dim);background:rgba(255,255,255,.04)}
@@ -1628,6 +1633,8 @@ return`<div class="context-field"><div class="context-field-head"><label for="co
 export const KIT_COLOR_ROLES=Object.freeze(['primary','secondary','accent','background','text','other']);
 export const KIT_FONT_USES=Object.freeze(['headings','body','captions','other']);
 export const KIT_LIMITS=Object.freeze({maxColors:8,maxFonts:4});
+export const KIT_PHOTOS_MAX=5;
+export const KIT_PHOTOS_NOTE='Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
 const KIT_SOCIAL_PLATFORMS=Object.freeze({instagram:'Instagram',tiktok:'TikTok',facebook:'Facebook'});
 export function normalizeHex(value){
 const match=/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(value??'').trim());
@@ -1687,14 +1694,16 @@ const fonts=(Array.isArray(kit.fonts)?kit.fonts:projected.fonts||[]).map(font=>(
 family:font?.family||'',
 use:font?.use||'other',
 }));
-return{logo,palette,fonts};
+const references=(Array.isArray(kit.references)?kit.references:[]).map(photoPayload).filter(Boolean);
+return{logo,palette,fonts,...(references.length?{references}:{})};
 }
 export function kitKickoffArgs(kit={}){
 const hasLogo=(kit.logo?.action==='upload'&&Boolean(kit.logo?.dataBase64))
 ||(kit.logo?.action==='asset'&&Boolean(kit.logo?.assetId));
 const hasPalette=Array.isArray(kit.palette)&&kit.palette.length>0;
 const hasFonts=Array.isArray(kit.fonts)&&kit.fonts.length>0;
-if(!hasLogo&&!hasPalette&&!hasFonts)return{};
+const hasPhotos=Array.isArray(kit.references)&&kit.references.some(photo=>photoPayload(photo));
+if(!hasLogo&&!hasPalette&&!hasFonts&&!hasPhotos)return{};
 return{kit:kitPayload(null,kit)};
 }
 async function blobToBase64(blob){
@@ -1872,6 +1881,7 @@ if(action==='add-font')return`[name="kit_font_family_${count-1}"]`;
 if(action==='remove-color')return count>0?`[name="kit_color_hex_${Math.min(index,count-1)}"]`:'[data-kit-action="add-color"]';
 if(action==='remove-font')return count>0?`[name="kit_font_family_${Math.min(index,count-1)}"]`:'[data-kit-action="add-font"]';
 if(action==='remove-logo'||action==='replace-logo')return'#kit-logo-file';
+if(action==='remove-ref'||action==='add-ref')return'#kit-ref-file';
 return null;
 }
 const KIT_ICONS=Object.freeze({
@@ -1932,12 +1942,25 @@ return`<div class="kit-row kit-font-row"><input type="text" name="kit_font_famil
 }).join('');
 const fontsBody=`<datalist id="kit-font-options">${fontOptions}</datalist>${fontRows||'<p class="muted">No fonts yet</p>'}<button type="button" class="kit-add" data-kit-action="add-font" ${loading||fonts.length>=KIT_LIMITS.maxFonts?'disabled':''}>${KIT_ICONS.plus}<span>Add font</span></button>`;
 const fontsBlock=kitBlock('fonts','Fonts',fontsBody,showTags&&provided.fonts?tag:'');
+const photos=Array.isArray(kit.references)?kit.references:[];
+const savedPhotos=Number(brand?.referencePhotos)||0;
+const photoThumbs=photos.map((photo,index)=>{
+const src=kitImageSrc(photo?.previewDataUrl||null);
+return`<div class="kit-photo">${src?`<img src="${esc(src)}" alt="Photo ${index+1}">`:'<span class="muted">No preview</span>'}<button type="button" class="quiet kit-icon-button" data-kit-action="remove-ref" data-index="${index}" aria-label="Remove photo ${index+1}" ${dis}>${KIT_ICONS.remove}</button></div>`;
+}).join('');
+const photoLeft=KIT_PHOTOS_MAX-savedPhotos-photos.length;
+const photoState=savedPhotos?`<p class="muted">${savedPhotos} saved ${savedPhotos===1?'photo':'photos'}.</p>`:'';
+const photoAdd=photoLeft>0
+?`<input type="file" id="kit-ref-file" class="kit-file visually-hidden" name="kit_ref_file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Add photos" ${dis}><label class="kit-file-button" for="kit-ref-file">${KIT_ICONS.upload}<span>Add photos</span></label>`
+:'';
+const photosBody=`<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photoState}${photoThumbs?`<div class="kit-photos">${photoThumbs}</div>`:''}${kit.referencesError?`<p class="field-error" role="alert">${esc(kit.referencesError)}</p>`:''}${photoAdd}`;
+const photosBlock=kitBlock('photos','Photos of your world',photosBody,'','kit-photos-block');
 const note=loading
 ?'Reading your logo, colours and fonts...'
 :phase==='new'
 ?'Have your logo, brand colours or fonts? Add them now and Claude will skip looking for them.'
 :'Check these and change anything that is not right.';
-return`<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading?' aria-busy="true"':''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}</div></fieldset>`;
+return`<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading?' aria-busy="true"':''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}${photosBlock}</div></fieldset>`;
 }
 export function brandReady(brand){
 if(typeof brand?.readyForJobs==='boolean')return brand.readyForJobs;
@@ -2222,6 +2245,8 @@ const brandStage=brand?.usage?.stages?.[0];
 if(brandStage){
 rows.push(usageFooterRow('Brand research',brandStage.tokens,liveMs(brandStage.elapsedMs,brandStage.openSince,now),{note:'Shared by every job for this brand; not part of the job total.'}));
 }
+const setupStage=brand?.usage?.stages?.find(stage=>stage.id==='brand-setup');
+if(setupStage)rows.push(usageFooterRow('Brand setup',setupStage.tokens,null,{note:'Shared by every job for this brand; not part of the job total.'}));
 const generation=usage.generation||{};
 const studio=creditFraction(generation.threeEchoCredits);
 const voice=creditFraction(generation.elevenLabsCredits);
@@ -2235,6 +2260,8 @@ for(const brand of brands||[]){
 const brandStage=brand?.usage?.stages?.[0];
 if(!brandStage)continue;
 rows.push(usageFooterRow(`Brand research (${brand.name})`,brandStage.tokens,liveMs(brandStage.elapsedMs,brandStage.openSince,now)));
+const setupStage=brand.usage.stages.find(stage=>stage.id==='brand-setup');
+if(setupStage)rows.push(usageFooterRow(`Brand setup (${brand.name})`,setupStage.tokens,null));
 }
 }
 if(!rows.length)return'';
@@ -3136,7 +3163,7 @@ const sources=frame?.kind==='image'
 :[frame?.thumb];
 const src=sources.map(safePreviewUrl).find(Boolean);
 if(src)return`<img src="${esc(src)}" alt="${esc(panelLabelOf(panel,index))}" loading="lazy">`;
-if(large)return`<span class="sb-empty">${FRAME_ICON}<span>${panel?.source==='kept'?'Existing image':frame?.thumbOmitted?'Frame is on your computer':'Not made yet. Pictures come after you approve the price and the first one.'}</span></span>`;
+if(large)return`<span class="sb-empty">${FRAME_ICON}<span>${panel?.source==='kept'?'Existing image':frame?.thumbOmitted?'Frame is on your computer':'Not made yet.'}</span></span>`;
 const shot=trimmed(panel?.shot);
 return`<span class="sb-sketch">${shot?inlineMarkdown(shot):'<span class="muted">No shot described</span>'}</span>`;
 }
@@ -3158,7 +3185,8 @@ return`<li class="${cls}"><button type="button" class="sb-cell-body" data-sb-pan
 export function storyboardStrip(board,{interactive=false,verdicts={},current=null,highlight=null}={}){
 const panels=board?.panels||[];
 const total=Number(board?.totalSeconds)>0?Number(board.totalSeconds):Number(board?.runtimeSeconds)>0?Number(board.runtimeSeconds):null;
-const meta=[board?.platform?platformName(board.platform):'',board?.aspectRatio||'',total?secondsWord(total):'',`${panels.length} ${board?.format==='carousel'?'slide':'panel'}${panels.length===1?'':'s'}`].filter(Boolean).join(' · ');
+const voiceOver=board?.voiceOver?(board.voiceOver.enabled?`Voice-over: yes${board.voiceOver.voice?`, ${board.voiceOver.voice}`:''}`:'Voice-over: no'):'';
+const meta=[board?.platform?platformName(board.platform):'',board?.aspectRatio||'',total?secondsWord(total):'',`${panels.length} ${board?.format==='carousel'?'slide':'panel'}${panels.length===1?'':'s'}`,voiceOver].filter(Boolean).join(' · ');
 const boardRef=boardRefOf(board);
 const cells=panels.map((panel,index)=>{
 const key=panelKey(board,panel,index);
@@ -4212,7 +4240,10 @@ if(phase==='complete'){
 const researched=brand.usage?.status==='complete';
 return[{...base,state:'review',needsYou:true,text:researched?`${name} research is done. Check the brand profile and click Save and continue.`:'Check the brand profile and click Save and continue.'}];
 }
-if(phase==='failed')return[{...base,state:'failed',needsYou:true,text:`${name} research could not finish. Fill in the brand profile by hand, then click Save and continue.`}];
+if(phase==='failed'){
+const why=trimmed(brand.usage?.result?.reason).replace(/[.!?]+$/,'');
+return[{...base,state:'failed',needsYou:true,text:`${name} research could not finish${why?`: ${why}`:''}. Fill in the brand profile by hand, then click Save and continue.`}];
+}
 return[];
 });
 }
@@ -4468,6 +4499,7 @@ handoff_return:[['handoff_return','Bring the final video back','primary']],
 });
 export const isHandoffItem=item=>item?.kind==='handoff_offer'||item?.kind==='handoff_return';
 export const handoffArgs=({project,requestId})=>({requestId,brand:project.brand,jobId:project.jobId});
+export const researchLine=project=>(typeof project?.research?.line==='string'?project.research.line.trim():'');
 export const handoffStatusLine=project=>(project?.handoff?.status==='sent'?trimmed(project.handoff.line):'');
 export function handoffButtons(item,state={}){
 const buttons=HANDOFF_BUTTONS[item?.kind];
@@ -5902,7 +5934,7 @@ function jobRow(project,waiting=false){
 const brand=project.brand===NO_BRAND?'':project.brandName||'';
 const sub=[kindLabelOf(project),brand].filter(Boolean).join(' · ');
 const progress=jobProgress(project)||'<div class="job-progress"><span class="job-progress-text">No steps yet</span></div>';
-return`<button class="job-row${waiting?' is-waiting':''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title||'Untitled job')}</b>${sub?`<small>${esc(sub)}</small>`:''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state,project.stateLabel)}</span></button>`;
+return`<button class="job-row${waiting?' is-waiting':''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title||'Untitled job')}</b>${sub?`<small>${esc(sub)}</small>`:''}${researchLine(project)?`<small class="jr-research">${esc(researchLine(project))}</small>`:''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state,project.stateLabel)}</span></button>`;
 }
 const projectById=jobId=>(data.projects||[]).find(project=>project.jobId===jobId)||null;
 function viewOf(jobId){
@@ -6205,7 +6237,7 @@ const brandLabel=project.brandName||'Unassigned brand';
 const nextLine=project.nextAction||humanize(project.state);
 const railParts=stepRailParts(project,doc);
 const subtitle=[brandLabel,railParts?.here||trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-const headOf=line=>`<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title||'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project,{sent:planNoteSent(project)})}${line?`<p>${esc(line)}</p>`:''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state,project.stateLabel)}${handoffStatusLine(project)?`<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>`:''}</div>${jobProgress(project)}</div>`;
+const headOf=line=>`<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title||'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project,{sent:planNoteSent(project)})}${line?`<p>${esc(line)}</p>`:''}${researchLine(project)?`<p class="muted job-research">${esc(researchLine(project))}</p>`:''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state,project.stateLabel)}${handoffStatusLine(project)?`<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>`:''}</div>${jobProgress(project)}</div>`;
 const head=headOf(nextLine);
 if(project.detailsLoaded===false)return`${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
 const intakePanel=project.intake!==undefined?intakeForm(project,ui.intake,signalInfo()):legacyBlockers(project);
@@ -6668,6 +6700,21 @@ captureInlineValues();
 inline.kitFocus=kitFocusSelector('replace-logo');
 render();
 }
+async function handleRefFiles(fileList){
+const kit=ensureInlineKit();
+const files=[...(fileList||[])];
+if(!files.length)return;
+captureInlineValues();
+const brandForKit=inline?.brand?(data.brands||[]).find(item=>item.slug===inline.brand):null;
+const room=Math.max(0,KIT_PHOTOS_MAX-(Number(brandForKit?.referencePhotos)||0)-(kit.references||[]).length);
+const prepared=[];
+for(const file of files.slice(0,room))prepared.push(await preparePhotoFile(file));
+kit.references=[...(kit.references||[]),...prepared.filter(photo=>!photo.error)];
+kit.referencesError=prepared.find(photo=>photo.error)?.error||(files.length>room?`Up to ${KIT_PHOTOS_MAX} photos. The rest were left out.`:'');
+captureInlineValues();
+inline.kitFocus=kitFocusSelector('add-ref');
+render();
+}
 async function exportPhoto(image,maxSize,quality){
 const canvas=drawScaled(image,maxSize);
 const blob=await canvasToBlob(canvas,'image/jpeg',quality);
@@ -6983,6 +7030,9 @@ inline.kitFocus=kitFocusSelector('remove-font',removedIndex,kit.fonts.length);
 }else if(action==='remove-logo'){
 kit.logo={action:'remove'};
 inline.kitFocus=kitFocusSelector('remove-logo');
+}else if(action==='remove-ref'){
+kit.references=(Array.isArray(kit.references)?kit.references:[]).filter((_,at)=>at!==Number(target.dataset.index));
+inline.kitFocus=kitFocusSelector('remove-ref');
 }
 render();
 return;
@@ -8103,6 +8153,7 @@ app.addEventListener('change',event=>{
 const field=event.target;
 const name=field.name||'';
 if(name==='kit_logo_file'){void handleLogoFile(field.files?.[0]||null);return;}
+if(name==='kit_ref_file'){void handleRefFiles(field.files);return;}
 const colorIndex=/^kit_color_(swatch|hex|role)_(\d+)$/.exec(name);
 if(colorIndex){
 captureInlineValues();
