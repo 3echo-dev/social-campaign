@@ -145,13 +145,17 @@ export function runYtDlp(args, options = {}) {
 
 /**
  * @typedef {object} YtDlpFailure
- * @property {'login_required'|'region_restricted'|'rate_limited'|'not_found'|'unsupported'|'blocked'|'backend_missing'|'timed_out'} code
+ * @property {'login_required'|'region_restricted'|'rate_limited'|'not_found'|'unsupported'|'blocked'|'backend_missing'|'timed_out'|'save_failed'|'impersonation_missing'|'ffmpeg_missing'|'download_failed'} code
  * @property {string} reason one plain sentence.
  * @property {boolean} trip whether this backend should be skipped for a while on this platform.
  */
 
 /** Error patterns, most specific first. Each was seen in a live run or in yt-dlp's own messages. */
 const ERROR_PATTERNS = [
+  // Local problems come first: they are about this computer, never about the platform, so they never trip the breaker.
+  [/unable to open for writing|No such file or directory|Errno (2|22|13)\b|Permission denied|path too long|filename too long|No space left/i, 'save_failed', false],
+  [/Impersonate target .* is not available|no impersonate target is available/i, 'impersonation_missing', false],
+  [/ffmpeg is not installed|ffmpeg not found|requested merging of multiple formats but ffmpeg/i, 'ffmpeg_missing', false],
   [/private (account|video)|(video|account) is private/i, 'login_required', false],
   [/login required|log in|sign in to|cookies-from-browser|--cookies|authentication/i, 'login_required', true],
   [/HTTP Error 429|too many requests|rate[- ]limit/i, 'rate_limited', true],
@@ -169,6 +173,9 @@ const REASONS = {
   not_found: (name) => `${name} says this does not exist, or it is no longer public.`,
   region_restricted: (name) => `${name} does not show this in this region.`,
   blocked: (name) => `${name} answered the reader with a bot check instead of the page; this usually lasts until yt-dlp is updated or a browser impersonation library is installed for it.`,
+  save_failed: () => 'The video downloaded but could not be saved on this computer.',
+  impersonation_missing: (name) => `${name} needs yt-dlp's browser mode, which is not installed.`,
+  ffmpeg_missing: () => 'ffmpeg is not installed, so the video and sound could not be joined.',
   backend_missing: () => 'yt-dlp is not installed on this computer.',
   timed_out: (name) => `${name} did not answer in time.`,
 };
@@ -194,7 +201,24 @@ export function mapYtDlpError(run, platform) {
       return { code: /** @type {any} */ (code), reason: REASONS[/** @type {string} */ (code)](name), trip: /** @type {boolean} */ (trip) };
     }
   }
-  return { code: 'blocked', reason: `yt-dlp could not read this ${name} address.`, trip: true };
+  // An unrecognised failure is not proof of a bot check: say what yt-dlp said, so the real cause is visible.
+  const last = errorLines.split('\n').filter(Boolean).at(-1)?.replace(/^ERROR:\s*/, '').trim().slice(0, 300);
+  return { code: 'download_failed', reason: last ? `yt-dlp could not read this ${name} address: ${last}` : `yt-dlp could not read this ${name} address.`, trip: true };
+}
+
+/** The codes the research router understands; the newer yt-dlp codes read as `blocked`, `unsupported` or `blocked` there. */
+const ROUTER_CODE = { save_failed: 'unsupported', ffmpeg_missing: 'unsupported', impersonation_missing: 'blocked', download_failed: 'blocked' };
+
+/**
+ * mapYtDlpError for the research router, whose degraded codes are a fixed list. The reason still carries the
+ * honest sentence, so only the code is folded.
+ * @param {RunResult} run
+ * @param {string} platform
+ * @returns {YtDlpFailure}
+ */
+export function mapYtDlpErrorForRouter(run, platform) {
+  const failure = mapYtDlpError(run, platform);
+  return ROUTER_CODE[failure.code] ? { ...failure, code: /** @type {any} */ (ROUTER_CODE[failure.code]) } : failure;
 }
 
 /**
@@ -279,7 +303,7 @@ export class YtDlpBackend {
   async run(args, platform) {
     const { retryDelayMs: _delay, ...runOptions } = this.options;
     const first = await runYtDlp([...BASE_ARGS, ...args], runOptions);
-    if (first.ok || platform !== 'tiktok' || mapYtDlpError(first, platform).code !== 'blocked') return first;
+    if (first.ok || platform !== 'tiktok' || mapYtDlpErrorForRouter(first, platform).code !== 'blocked') return first;
     await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
     return runYtDlp([...BASE_ARGS, ...args], runOptions);
   }
@@ -323,7 +347,7 @@ export class YtDlpBackend {
   async post(url, platform) {
     const run = await this.run(['-J', '--skip-download', '--no-playlist', url], platform);
     const info = run.ok ? parseInfo(run.stdout) : null;
-    if (!info) return { ok: false, failure: mapYtDlpError(run, platform) };
+    if (!info) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
     return { ok: true, record: postFromInfo(info, platform, new Date().toISOString(), `yt-dlp:${url}`), info };
   }
 
@@ -337,7 +361,7 @@ export class YtDlpBackend {
   async listing(url, platform, limit) {
     const run = await this.run(['--flat-playlist', '-J', '--playlist-end', String(limit), url], platform);
     const info = run.ok ? parseInfo(run.stdout) : null;
-    if (!info || !Array.isArray(info.entries)) return { ok: false, failure: mapYtDlpError(run, platform) };
+    if (!info || !Array.isArray(info.entries)) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
     const observedAt = new Date().toISOString();
     const posts = info.entries
       .filter((entry) => entry && typeof entry === 'object')
@@ -369,7 +393,7 @@ export class YtDlpBackend {
   async comments(url, platform, limit) {
     const run = await this.run(['-J', '--skip-download', '--no-playlist', '--write-comments', url], platform);
     const info = run.ok ? parseInfo(run.stdout) : null;
-    if (!info) return { ok: false, failure: mapYtDlpError(run, platform) };
+    if (!info) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
     if (!Array.isArray(info.comments)) {
       return { ok: false, failure: { code: 'unsupported', reason: 'yt-dlp read the post but cannot read its comments.', trip: false } };
     }

@@ -7,12 +7,16 @@
  *      other reference), so it lands in <job>/inputs/references/video/<id>/;
  *   2. ffprobe: duration, resolution, aspect ratio, audio track;
  *   3. ffmpeg scene detection (select='gt(scene,T)',showinfo) for the cuts, then one frame per shot and frames at
- *      0s, 0.5s, 1s, 2s and 3s (the hook);
+ *      0s, 0.5s, 1s, 2s and 3s (the hook); when the cuts are sparse (long shots) evenly spaced sample frames cover the
+ *      whole video, so slow or animated videos are not judged from a handful of frames;
  *   4. transcript: platform captions with yt-dlp (--write-subs --write-auto-subs) when the video came from an address;
  *      when there are none the audio is already saved as audio.wav and the result says transcription is needed;
  *   5. sound: the platform's music title where the metadata has it, the loudness, a tempo estimate from energy onsets,
  *      and how many cuts land on an onset (compared with how often an onset would be near by chance);
  *   6. <refdir>/teardown/teardown.json and <refdir>/teardown/frames/.
+ *
+ * ffmpeg, ffprobe and yt-dlp do not cope with Windows paths over 260 characters, and job folders get that deep, so
+ * they read and write in a short work folder under the OS temp folder and Node moves the results into the job.
  *
  * Every process is started with spawn (argument arrays, no shell, a time limit), so the server is never blocked.
  * The measurements are plain heuristics and say so in the output: they are evidence to look at, not verdicts.
@@ -20,19 +24,24 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, createReadStream, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 
-import { runYtDlp } from '../social/backends/ytdlp.mjs';
+import { moveIntoPlace, toolWorkDir } from '../lib/paths.mjs';
+import { runYtDlp, parseInfo } from '../social/backends/ytdlp.mjs';
+import { assertPublicHost, FetchFailure } from '../social/backends/web.mjs';
 import { parseCaptions } from '../video/watch-transcript.mjs';
-import { platformOf } from '../video/watch-source.mjs';
+import { isUrl, platformOf } from '../video/watch-source.mjs';
 import { referenceFromUrl, referenceYtdlpBinary } from './url-reference.mjs';
-import { readReferences, referencesDir } from './references.mjs';
+import { readReferences, referencesDir, updateReferenceManifest } from './references.mjs';
 
 export const SCENE_THRESHOLD = 0.3;
 export const HOOK_TIMES_S = [0, 0.5, 1, 2, 3];
 export const MAX_SHOT_FRAMES = 40;
 export const MAX_ANALYSED_S = 600;
+export const MAX_TOTAL_FRAMES = 48;
+export const SPARSE_SHOT_S = 6;
+export const LONG_PATH_CHARS = 200;
 const MIN_SHOT_S = 0.25;
 const FRAME_EDGE = 768;
 const PCM_RATE = 8000;
@@ -99,6 +108,24 @@ export function pickShotsForFrames(shots, max = MAX_SHOT_FRAMES) {
 /** The time inside a shot to grab: just after the cut, clear of the transition, never past the middle. */
 export function shotFrameTime(shot) {
   return round(shot.startS + Math.min(0.3, shot.durationS / 2), 3);
+}
+
+/**
+ * Evenly spaced sample frame times for a video with few cuts (average shot over SPARSE_SHOT_S): about one frame
+ * every max(3 s, duration / 30), centred in each interval, at most `room` of them, none within a second of a frame
+ * already taken. Empty when the cuts are dense enough to cover the video.
+ */
+export function sampleTimes(durationS, { averageShotS, taken = [], room = MAX_TOTAL_FRAMES } = {}) {
+  if (!(durationS > 0) || !(averageShotS > SPARSE_SHOT_S) || room <= 0) return [];
+  let interval = Math.max(3, durationS / 30);
+  let count = Math.ceil(durationS / interval);
+  if (count > room) { count = room; interval = durationS / count; }
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const t = round((i + 0.5) * interval, 2);
+    if (t < durationS - 0.05 && !taken.some(x => Math.abs(x - t) < 1)) out.push(t);
+  }
+  return out;
 }
 
 const aspectLabel = (w, h) => {
@@ -331,26 +358,95 @@ async function inPool(items, size, work) {
 
 const stamp = t => t.toFixed(2).padStart(5, '0');
 
-async function grabFrame(ffmpeg, video, t, file) {
-  const run = await runProcess(ffmpeg, ['-v', 'error', '-y', '-ss', String(t), '-i', video, '-frames:v', '1', '-vf', `scale='min(${FRAME_EDGE},iw)':-2`, '-q:v', '3', file], { timeoutMs: 30_000 });
-  return run.ok && existsSync(file);
+async function grabFrame(ffmpeg, video, t, file, run = runProcess) {
+  const result = await run(ffmpeg, ['-v', 'error', '-y', '-ss', String(t), '-i', video, '-frames:v', '1', '-vf', `scale='min(${FRAME_EDGE},iw)':-2`, '-q:v', '3', file], { timeoutMs: 30_000 });
+  return result.ok && existsSync(file);
 }
 
 /* ------------------------------------------------------------------ captions */
 
-async function fetchCaptions({ url, dir, binary, cookies }) {
+async function fetchCaptions({ url, dir, binary, cookies, withInfo = false, ytdlp = runYtDlp }) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const args = [
     '--ignore-config', '--no-update', '--no-progress', '--no-playlist', '--socket-timeout', '20',
     ...(cookies ? ['--cookies-from-browser', cookies] : ['--no-cookies', '--no-cookies-from-browser']),
-    '--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*,en,-live_chat', '--sub-format', 'vtt/srt/best',
+    '--skip-download', ...(withInfo ? ['--write-info-json'] : []), '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*,en,-live_chat', '--sub-format', 'vtt/srt/best',
     ...(platformOf(url) === 'tiktok' ? ['--impersonate', 'chrome'] : []),
     '-o', join(dir, 'captions.%(ext)s'), '--', url,
   ];
-  const run = await runYtDlp(args, { binary: referenceYtdlpBinary(binary), timeoutMs: 60_000 });
+  const run = await ytdlp(args, { binary: referenceYtdlpBinary(binary), timeoutMs: 60_000 });
   const files = existsSync(dir) ? readdirSync(dir).filter(f => /\.(vtt|srt)$/i.test(f)) : [];
-  return { run, files };
+  const infoFile = existsSync(dir) ? readdirSync(dir).find(f => /\.info\.json$/i.test(f)) : null;
+  return { run, files, infoFile: infoFile ? join(dir, infoFile) : null };
+}
+
+/** Platform details kept on the reference and the teardown, from a yt-dlp info dict. */
+export function detailsFromInfo(info) {
+  if (!info || typeof info !== 'object') return null;
+  const music = musicFromInfo(info);
+  const text = v => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const count = v => (v !== null && v !== undefined && Number.isFinite(Number(v)) ? Number(v) : null);
+  const title = text(info.title);
+  return {
+    title,
+    caption: text(info.description) ?? title,
+    author: text(info.uploader) ?? text(info.channel),
+    music: music.track || music.artist ? { track: music.track, artist: music.artist } : null,
+    viewCount: count(info.view_count),
+    likeCount: count(info.like_count),
+    commentCount: count(info.comment_count),
+  };
+}
+
+function sha256File(path) {
+  return new Promise((resolvePromise, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(path).on('data', c => hash.update(c)).on('end', () => resolvePromise(hash.digest('hex'))).on('error', reject);
+  });
+}
+
+/** Make the manifest list a local file teardown (so it shows in the references list and can be reused by id). */
+async function saveLocalEntry({ jobDir, id, dir, file, source, sourceUrl, details, durationS, note, now }) {
+  const existing = readReferences(jobDir).find(e => e.id === id && e.type === 'video');
+  const sha256 = existing?.sha256 ?? await sha256File(file);
+  const defined = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+  const files = readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile()).map(d => `video/${id}/${d.name}`).sort();
+  const entry = {
+    id,
+    type: 'video',
+    path: `video/${id}/${basename(file)}`,
+    files,
+    sourceUrl: null,
+    platform: null,
+    title: null,
+    caption: null,
+    note: note ? String(note) : null,
+    author: null,
+    originalName: basename(source),
+    sha256,
+    bytes: statSync(file).size,
+    durationS,
+    usage: 'reference_only',
+    downloadedAt: now().toISOString(),
+    ...existing,
+    ...defined({ sourceUrl, platform: sourceUrl ? platformOf(sourceUrl) : null, ...(details ?? {}) }),
+    files,
+  };
+  updateReferenceManifest(jobDir, latest => ({
+    ...latest,
+    schemaVersion: latest.schemaVersion || 1,
+    entries: [...latest.entries.filter(e => !(e.id === id && e.type === 'video')), entry],
+  }));
+  return entry;
+}
+
+/** The video for the outside programs: the file itself, or a link (copy as fallback) in the short work folder. */
+function toolInputFor(file, work, longPathChars) {
+  if (file.length < longPathChars) return file;
+  const short = join(work, `input${extname(file).toLowerCase()}`);
+  try { linkSync(file, short); } catch { copyFileSync(file, short); }
+  return short;
 }
 
 /* ------------------------------------------------------------------ the teardown */
@@ -373,15 +469,18 @@ function relativeTo(base, file) {
 }
 
 /**
- * @param {{jobDir: string, url?: string, referenceId?: string, path?: string, note?: string, cookiesFromBrowser?: string,
- *   force?: boolean, ffmpeg?: string, ffprobe?: string, ytdlpBinary?: string, assertHost?: Function, now?: () => Date,
- *   sceneThreshold?: number}} options
+ * @param {{jobDir: string, url?: string, referenceId?: string, path?: string, sourceUrl?: string, note?: string,
+ *   cookiesFromBrowser?: string, force?: boolean, ffmpeg?: string, ffprobe?: string, ytdlpBinary?: string,
+ *   assertHost?: Function, now?: () => Date, sceneThreshold?: number, longPathChars?: number,
+ *   run?: typeof runProcess, ytdlp?: typeof runYtDlp}} options
  */
 export async function videoTeardown(options) {
   const ffmpeg = options.ffmpeg ?? 'ffmpeg';
   const ffprobe = options.ffprobe ?? 'ffprobe';
   const threshold = options.sceneThreshold ?? SCENE_THRESHOLD;
   const now = options.now ?? (() => new Date());
+  const run = options.run ?? runProcess;
+  const ytdlp = options.ytdlp ?? runYtDlp;
 
   // 1. the file
   let id;
@@ -389,6 +488,7 @@ export async function videoTeardown(options) {
   let file;
   let entry = null;
   let sourceUrl = null;
+  let localSource = null;
   if (options.url) {
     const got = await referenceFromUrl({ jobDir: options.jobDir, url: options.url, note: options.note, cookiesFromBrowser: options.cookiesFromBrowser, binary: options.ytdlpBinary, assertHost: options.assertHost, now });
     if (!got.ok) return got;
@@ -408,10 +508,17 @@ export async function videoTeardown(options) {
     if (!existsSync(source) || !statSync(source).isFile() || !VIDEO_EXT.includes(extname(source).toLowerCase())) {
       return { ok: false, status: 'invalid_file', message: 'That path is not a video file (mp4, mkv, webm, mov or m4v) on this computer.', next: ['Ask the person for the saved file path, or an address.'] };
     }
+    if (options.sourceUrl) {
+      const bad = await checkSourceUrl(String(options.sourceUrl).trim(), options.assertHost);
+      if (bad) return bad;
+      sourceUrl = String(options.sourceUrl).trim();
+    }
     ({ id, dir } = localDirFor(options.jobDir, source));
     mkdirSync(dir, { recursive: true });
     file = join(dir, `video${extname(source).toLowerCase()}`);
     if (!existsSync(file)) copyFileSync(source, file);
+    localSource = source;
+    entry = readReferences(options.jobDir).find(e => e.id === id && e.type === 'video') ?? null;
   } else {
     return { ok: false, status: 'invalid_url', message: 'Pass url, referenceId or path.', next: [] };
   }
@@ -421,98 +528,155 @@ export async function videoTeardown(options) {
   if (!options.force && existsSync(jsonPath)) {
     try {
       const cached = JSON.parse(readFileSync(jsonPath, 'utf8'));
-      if (cached.video?.bytes === statSync(file).size) return { ok: true, status: 'already_done', ...packageResult(cached) };
+      if (cached.video?.bytes === statSync(file).size && (!sourceUrl || cached.sourceUrl === sourceUrl)) {
+        if (localSource) await saveLocalEntry({ jobDir: options.jobDir, id, dir, file, source: localSource, sourceUrl, details: null, durationS: cached.video.durationS ?? null, note: options.note, now });
+        return { ok: true, status: 'already_done', ...packageResult(cached) };
+      }
     } catch { /* redo it */ }
   }
 
-  // 2. facts
-  const probeRun = await runProcess(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file], { timeoutMs: 30_000 });
-  if (probeRun.missing) return { ok: false, status: 'ffmpeg_missing', message: 'ffmpeg and ffprobe are not installed on this computer, so a video cannot be taken apart.', next: ['Ask the person to install ffmpeg, or use the Chrome fallback to look at the video.'] };
-  let probe = null;
-  try { probe = summariseProbe(JSON.parse(probeRun.stdout.toString('utf8'))); } catch { probe = null; }
-  if (!probe?.durationS || !probe.width) return { ok: false, status: 'unreadable_video', message: 'The file could not be read as a video.', next: ['Ask the person to upload the file again.'] };
-  const durationS = probe.durationS;
-  const analysedS = Math.min(durationS, MAX_ANALYSED_S);
+  // The outside programs work in a short folder; Node moves the results into the job.
+  const work = toolWorkDir('teardown');
+  try {
+    const video = toolInputFor(file, work, options.longPathChars ?? LONG_PATH_CHARS);
 
-  rmSync(out, { recursive: true, force: true });
-  const framesDir = join(out, 'frames');
-  mkdirSync(framesDir, { recursive: true });
+    // 2. facts
+    const probeRun = await run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', video], { timeoutMs: 30_000 });
+    if (probeRun.missing) return { ok: false, status: 'ffmpeg_missing', message: 'ffmpeg and ffprobe are not installed on this computer, so a video cannot be taken apart.', next: ['Ask the person to install ffmpeg, or use the Chrome fallback to look at the video.'] };
+    let probe = null;
+    try { probe = summariseProbe(JSON.parse(probeRun.stdout.toString('utf8'))); } catch { probe = null; }
+    if (!probe?.durationS || !probe.width) return { ok: false, status: 'unreadable_video', message: 'The file could not be read as a video.', next: ['Ask the person to upload the file again.'] };
+    const durationS = probe.durationS;
+    const analysedS = Math.min(durationS, MAX_ANALYSED_S);
 
-  // 3. cuts, audio and captions run side by side
-  const sceneJob = runProcess(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', file, '-an', '-vf', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeoutMs: 120_000 });
-  const audioFile = join(out, 'audio.wav');
-  const audioJob = probe.hasAudio
-    ? runProcess(ffmpeg, ['-v', 'error', '-y', '-t', String(analysedS), '-i', file, '-vn', '-ac', '1', '-ar', '16000', audioFile, '-vn', '-ac', '1', '-ar', String(PCM_RATE), '-f', 's16le', 'pipe:1'], { timeoutMs: 120_000 })
-    : Promise.resolve(null);
-  const captionJob = sourceUrl
-    ? fetchCaptions({ url: sourceUrl, dir: join(out, 'captions'), binary: options.ytdlpBinary, cookies: options.cookiesFromBrowser ? String(options.cookiesFromBrowser).toLowerCase() : null })
-    : Promise.resolve(null);
-  const [sceneRun, audioRun, captionRes] = await Promise.all([sceneJob, audioJob, captionJob]);
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    const framesWork = join(work, 'frames');
+    mkdirSync(framesWork, { recursive: true });
 
-  const cuts = sceneRun.ok ? parseSceneTimes(sceneRun.stderr) : [];
-  const shots = buildShots(cuts, analysedS);
-  const pacing = pacingStats(shots);
+    // 3. cuts, audio and captions run side by side
+    const sceneJob = run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeoutMs: 120_000 });
+    const audioWork = join(work, 'audio.wav');
+    const audioJob = probe.hasAudio
+      ? run(ffmpeg, ['-v', 'error', '-y', '-t', String(analysedS), '-i', video, '-vn', '-ac', '1', '-ar', '16000', audioWork, '-vn', '-ac', '1', '-ar', String(PCM_RATE), '-f', 's16le', 'pipe:1'], { timeoutMs: 120_000 })
+      : Promise.resolve(null);
+    const captionsWork = join(work, 'captions');
+    const captionJob = sourceUrl
+      ? fetchCaptions({ url: sourceUrl, dir: captionsWork, binary: options.ytdlpBinary, cookies: options.cookiesFromBrowser ? String(options.cookiesFromBrowser).toLowerCase() : null, withInfo: Boolean(localSource), ytdlp })
+      : Promise.resolve(null);
+    const [sceneRun, audioRun, captionRes] = await Promise.all([sceneJob, audioJob, captionJob]);
 
-  // 4. frames
-  const hook = hookTimes(durationS).map(t => ({ kind: 'hook', timeS: t, file: join(framesDir, `hook-${stamp(t)}s.jpg`) }));
-  const chosen = pickShotsForFrames(shots);
-  const shotFrames = chosen.map(s => ({ kind: 'shot', shot: s.index, timeS: shotFrameTime(s), file: join(framesDir, `shot-${String(s.index).padStart(2, '0')}-${stamp(shotFrameTime(s))}s.jpg`) }));
-  const wanted = [...hook, ...shotFrames];
-  const okFlags = await inPool(wanted, 4, f => grabFrame(ffmpeg, file, f.timeS, f.file));
-  const frames = wanted.filter((_, i) => okFlags[i]).map(f => ({ ...f, rel: `teardown/frames/${basename(f.file)}` }));
+    const cuts = sceneRun.ok ? parseSceneTimes(sceneRun.stderr) : [];
+    const shots = buildShots(cuts, analysedS);
+    const pacing = pacingStats(shots);
 
-  // 5. transcript
-  const transcript = { status: 'none', source: null, segments: [], text: '', note: '' };
-  if (captionRes && captionRes.files.length) {
-    const pick = captionRes.files.find(f => /\.en[.-]/i.test(f) && !/auto/i.test(f)) ?? captionRes.files[0];
-    try {
-      const segments = parseCaptions(readFileSync(join(out, 'captions', pick), 'utf8'));
-      if (segments.length) Object.assign(transcript, { status: 'platform_captions', source: pick, segments, text: segments.map(s => s.text).join(' '), note: 'Platform captions; auto captions can misspell names and miss lyrics.' });
-    } catch { /* leave as none */ }
+    // 4. frames: the hook, one per shot, and evenly spaced samples when the cuts are too few to cover the video
+    const hook = hookTimes(durationS).map(t => ({ kind: 'hook', timeS: t, file: join(framesWork, `hook-${stamp(t)}s.jpg`) }));
+    const chosen = pickShotsForFrames(shots);
+    const shotFrames = chosen.map(s => ({ kind: 'shot', shot: s.index, timeS: shotFrameTime(s), file: join(framesWork, `shot-${String(s.index).padStart(2, '0')}-${stamp(shotFrameTime(s))}s.jpg`) }));
+    const taken = [...hook, ...shotFrames];
+    const sampleFrames = sampleTimes(durationS, { averageShotS: pacing.averageShotS, taken: taken.map(f => f.timeS), room: MAX_TOTAL_FRAMES - taken.length })
+      .map(t => ({ kind: 'sample', timeS: t, file: join(framesWork, `sample-${stamp(t)}s.jpg`) }));
+    const wanted = [...taken, ...sampleFrames].sort((a, b) => a.timeS - b.timeS);
+    const okFlags = await inPool(wanted, 4, f => grabFrame(ffmpeg, video, f.timeS, f.file, run));
+    moveIntoPlace(framesWork, join(out, 'frames'));
+    const frames = wanted.filter((_, i) => okFlags[i]).map(f => ({ ...f, rel: `teardown/frames/${basename(f.file)}` }));
+
+    // 5. transcript
+    const transcript = { status: 'none', source: null, segments: [], text: '', note: '' };
+    if (captionRes && captionRes.files.length) {
+      const pick = captionRes.files.find(f => /\.en[.-]/i.test(f) && !/auto/i.test(f)) ?? captionRes.files[0];
+      try {
+        const segments = parseCaptions(readFileSync(join(captionsWork, pick), 'utf8'));
+        if (segments.length) Object.assign(transcript, { status: 'platform_captions', source: pick, segments, text: segments.map(s => s.text).join(' '), note: 'Platform captions; auto captions can misspell names and miss lyrics.' });
+      } catch { /* leave as none */ }
+    }
+    if (transcript.status === 'none') {
+      transcript.note = !probe.hasAudio
+        ? 'The video has no audio track.'
+        : captionRes
+          ? 'The platform has no captions for this video. The audio is saved as audio.wav: run it through a connected speech to text tool (media_transcribe, or creative_transcribe_audio when ElevenLabs is connected) before quoting what is said. Until then the spoken words are "not observed".'
+          : 'No captions were fetched for a local file. The audio is saved as audio.wav: use a connected speech to text tool before quoting what is said. Until then the spoken words are "not observed".';
+    }
+    transcript.needsTranscription = transcript.status === 'none' && probe.hasAudio;
+
+    // 6. platform details and sound
+    let info = null;
+    let platformDetails = null;
+    if (localSource && sourceUrl) {
+      if (captionRes?.infoFile) info = parseInfo(readFileSync(captionRes.infoFile, 'utf8'));
+      if (info) {
+        moveIntoPlace(captionRes.infoFile, join(dir, 'info.json'));
+        const caption = detailsFromInfo(info)?.caption;
+        if (caption) writeFileSync(join(dir, 'caption.txt'), `${caption}\n`, 'utf8');
+        platformDetails = { status: 'fetched', note: null };
+      } else {
+        platformDetails = { status: 'not_fetched', note: 'The platform details (caption, title, author, music and counts) could not be fetched for that address, so this teardown carries on without them.' };
+      }
+    } else {
+      try { info = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8')); } catch { /* local file or no metadata */ }
+    }
+    if (existsSync(captionsWork)) moveIntoPlace(captionsWork, join(out, 'captions'));
+    const details = detailsFromInfo(info);
+
+    let sound = { hasAudio: probe.hasAudio, music: musicFromInfo(info) };
+    if (probe.hasAudio && existsSync(audioWork)) moveIntoPlace(audioWork, join(out, 'audio.wav'));
+    if (probe.hasAudio && audioRun?.ok && audioRun.stdout.length > PCM_RATE) {
+      const samples = pcmToSamples(audioRun.stdout);
+      const envelope = levelEnvelope(samples, PCM_RATE);
+      const onsets = detectOnsets(envelope);
+      sound = { ...sound, ...summariseSound({ envelope, onsets, segments: transcript.segments, cuts, durationS: Math.min(analysedS, samples.length / PCM_RATE) }), audioFile: 'teardown/audio.wav' };
+    } else if (probe.hasAudio) {
+      sound.note = 'Audio could not be analysed; sound is not observed.';
+    }
+
+    if (localSource) entry = await saveLocalEntry({ jobDir: options.jobDir, id, dir, file, source: localSource, sourceUrl, details, durationS, note: options.note, now });
+
+    const teardown = {
+      schemaVersion: 1,
+      id,
+      sourceUrl,
+      title: entry?.title ?? details?.title ?? null,
+      author: entry?.author ?? details?.author ?? null,
+      platformCaption: entry?.caption ?? details?.caption ?? null,
+      platformCounts: details ? { views: details.viewCount, likes: details.likeCount, comments: details.commentCount } : null,
+      platformDetails,
+      createdAt: now().toISOString(),
+      video: { file: relativeTo(dir, file), bytes: statSync(file).size, ...probe, analysedS: round(analysedS, 3) },
+      cuts: { method: `ffmpeg select='gt(scene,${threshold})' with showinfo`, threshold, times: cuts, note: 'Hard cuts and big visual jumps. Soft dissolves, zooms and on-screen animation can be missed or over-counted; check against the frames.' },
+      shots,
+      pacing,
+      frames: frames.map(f => ({ kind: f.kind, shot: f.shot ?? null, timeS: f.timeS, file: f.rel })),
+      framesNote: [
+        shots.length > MAX_SHOT_FRAMES ? `More than ${MAX_SHOT_FRAMES} shots; frames cover an even spread of them.` : null,
+        sampleFrames.length ? `Cuts are sparse (average shot ${pacing.averageShotS}s), so ${sampleFrames.length} evenly spaced sample frames cover the whole ${round(durationS, 1)}s. Slow or animated changes show in the samples, not as cuts.` : null,
+        durationS > MAX_ANALYSED_S ? `Cuts and sound were measured on the first ${MAX_ANALYSED_S}s only; sample frames cover the full length.` : null,
+      ].filter(Boolean).join(' ') || null,
+      transcript,
+      sound,
+      folder: dir,
+    };
+    writeFileSync(`${jsonPath}.tmp`, `${JSON.stringify(teardown, null, 2)}\n`, 'utf8');
+    renameSync(`${jsonPath}.tmp`, jsonPath);
+    return { ok: true, status: 'done', ...packageResult(teardown) };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
-  if (transcript.status === 'none') {
-    transcript.note = !probe.hasAudio
-      ? 'The video has no audio track.'
-      : captionRes
-        ? 'The platform has no captions for this video. The audio is saved as audio.wav: run it through a connected speech to text tool (media_transcribe, or creative_transcribe_audio when ElevenLabs is connected) before quoting what is said. Until then the spoken words are "not observed".'
-        : 'No captions were fetched for a local file. The audio is saved as audio.wav: use a connected speech to text tool before quoting what is said. Until then the spoken words are "not observed".';
-  }
-  transcript.needsTranscription = transcript.status === 'none' && probe.hasAudio;
+}
 
-  // 6. sound
-  let info = null;
-  try { info = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8')); } catch { /* local file or no metadata */ }
-  let sound = { hasAudio: probe.hasAudio, music: musicFromInfo(info) };
-  if (probe.hasAudio && audioRun?.ok && audioRun.stdout.length > PCM_RATE) {
-    const samples = pcmToSamples(audioRun.stdout);
-    const envelope = levelEnvelope(samples, PCM_RATE);
-    const onsets = detectOnsets(envelope);
-    sound = { ...sound, ...summariseSound({ envelope, onsets, segments: transcript.segments, cuts, durationS: Math.min(analysedS, samples.length / PCM_RATE) }), audioFile: 'teardown/audio.wav' };
-  } else if (probe.hasAudio) {
-    sound.note = 'Audio could not be analysed; sound is not observed.';
+/** A sourceUrl given with a local file gets the same address checks as a pasted address. Null when fine. */
+async function checkSourceUrl(url, assertHost) {
+  const bad = (status, message) => ({ ok: false, status, message, next: ['Ask for the full https:// address of the original post, or leave it out.'] });
+  if (!isUrl(url)) return bad('invalid_url', 'That is not a web address that can be read.');
+  const parsed = new URL(url);
+  if (parsed.username || parsed.password) return bad('invalid_url', 'That is not a web address that can be read.');
+  try {
+    await (assertHost ?? (u => assertPublicHost(u, false)))(parsed);
+  } catch (error) {
+    if (error instanceof FetchFailure && error.code === 'private_address') return bad('private_address', 'That address points at a private network, which is never read.');
+    return bad('invalid_url', 'That is not a web address that can be read.');
   }
-
-  const teardown = {
-    schemaVersion: 1,
-    id,
-    sourceUrl,
-    title: entry?.title ?? null,
-    author: entry?.author ?? null,
-    platformCaption: entry?.caption ?? null,
-    createdAt: now().toISOString(),
-    video: { file: relativeTo(dir, file), bytes: statSync(file).size, ...probe, analysedS: round(analysedS, 3) },
-    cuts: { method: `ffmpeg select='gt(scene,${threshold})' with showinfo`, threshold, times: cuts, note: 'Hard cuts and big visual jumps. Soft dissolves, zooms and on-screen animation can be missed or over-counted; check against the frames.' },
-    shots,
-    pacing,
-    frames: frames.map(f => ({ kind: f.kind, shot: f.shot ?? null, timeS: f.timeS, file: f.rel })),
-    framesNote: shots.length > MAX_SHOT_FRAMES ? `More than ${MAX_SHOT_FRAMES} shots; frames cover an even spread of them.` : null,
-    transcript,
-    sound,
-    folder: dir,
-  };
-  writeFileSync(`${jsonPath}.tmp`, `${JSON.stringify(teardown, null, 2)}\n`, 'utf8');
-  renameSync(`${jsonPath}.tmp`, jsonPath);
-  return { ok: true, status: 'done', ...packageResult(teardown) };
+  return null;
 }
 
 /** What the agent gets back: the teardown with absolute paths to Read, and how to use it. */
@@ -535,12 +699,15 @@ export function packageResult(teardown) {
       transcript: teardown.transcript.status,
       needsTranscription: teardown.transcript.needsTranscription,
       music: teardown.sound?.music ?? null,
+      sourceUrl: teardown.sourceUrl ?? null,
+      platformDetails: teardown.platformDetails ?? null,
+      platformCounts: teardown.platformCounts ?? null,
       cutsOnBeat: teardown.sound?.cutsOnBeat?.verdict ?? 'not_observed',
     },
     shots: teardown.shots,
     frames: teardown.frames.map(f => ({ ...f, path: abs(f.file) })),
     transcript: { status: teardown.transcript.status, note: teardown.transcript.note, segments: teardown.transcript.segments.slice(0, 60) },
     sound: teardown.sound,
-    hint: 'Read every hook frame and every shot frame with the Read tool, in order, before writing the breakdown. Frames name their time. Anything the frames, audio numbers or transcript do not show is "not observed".',
+    hint: 'Read every frame (hook, shot and sample frames) with the Read tool, in order, before writing the breakdown. Frames name their time. Anything the frames, audio numbers or transcript do not show is "not observed".',
   };
 }

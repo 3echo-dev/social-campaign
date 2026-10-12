@@ -6,8 +6,8 @@
  * through node:path and os.homedir and nothing is ever interpolated into a shell.
  */
 
-import { homedir } from 'node:os';
-import { realpathSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { cpSync, mkdtempSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { isAbsolute, join, resolve, normalize, parse, sep } from 'node:path';
 
 /** Name of the hidden folder Social Campaign keeps inside a workspace. */
@@ -187,4 +187,32 @@ export function isTooBroadSourceFolder(candidate, workspaceRoot) {
   if (isDriveOrFilesystemRoot(target)) return true;
   if (workspaceRoot && canonical(target) === canonical(workspaceRoot)) return true;
   return false;
+}
+
+/**
+ * A fresh, short working folder for an outside program (yt-dlp, ffmpeg) to write into.
+ * Node itself copes with Windows paths over 260 characters, but those programs often do
+ * not, and a job folder deep in a workspace easily passes that limit. So they write here
+ * and Node moves the results into the job with moveIntoPlace. The caller removes it.
+ * @param {string} label a few letters naming the use, for example 'ref' or 'teardown'
+ * @returns {string}
+ */
+export function toolWorkDir(label) {
+  return mkdtempSync(join(tmpdir(), `sc-${label}-`));
+}
+
+/**
+ * Move a file or folder into place, also across drives (a rename cannot cross them).
+ * The destination must not exist yet.
+ * @param {string} from
+ * @param {string} to
+ */
+export function moveIntoPlace(from, to) {
+  try {
+    renameSync(from, to);
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EXDEV') throw error;
+    cpSync(from, to, { recursive: true, errorOnExist: true, force: false });
+    rmSync(from, { recursive: true, force: true });
+  }
 }

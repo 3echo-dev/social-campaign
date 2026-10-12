@@ -131,6 +131,8 @@ for (const d of Array.isArray(seenJob.deliverables) ? seenJob.deliverables : [])
     if (deliverable.publishable(seenJob, d)) missing(deliverable.missingPlacementLabel(d, seenJob));
     continue;
   }
+  // A deliverable with no format yet is asked for its format below (rule 1, schema); its post type is not also judged by it.
+  if (!d.creativeDiscipline && deliverable.placementBelongs(d.platform, d.placement)) continue;
   for (const reason of deliverable.placementProblems(d, seenJob)) missing(deliverable.placementProblemLabel(d, reason, seenJob));
 }
 // Rule 1d: a carousel is a set of slides, one picture each. The count is optional on the job (the slide plan
@@ -414,6 +416,8 @@ const map = agentsReg.disciplineForCreativeDiscipline || {};
 // Every creative discipline must map to an active agent. A carousel is made by the copywriter (slide plan) and the
 // producer (make-image); a supplied set of pictures is not made by any discipline agent.
 for (const d of supplied ? [] : dels) {
+  // A deliverable with no discipline at all is a missing field (rule 1 already asks for it), not an unsupported one.
+  if (!d || !d.creativeDiscipline) continue;
   const disc = map[d.creativeDiscipline];
   const a = disc ? agentFor(disc) : null;
   if (!a || a.status !== 'active') {

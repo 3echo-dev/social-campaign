@@ -204,13 +204,17 @@ After a stable job ID exists, use pipeline_inputs_import for selected local file
 
 The import copies files into an immutable input revision and preserves the originals.
 
-### A pasted video link is a reference
+### A pasted link is a reference
 
-When the person pastes a link to a Reel, TikTok, YouTube or other video, and a job exists (create one first if none does), call `pipeline_reference_from_url` with that job and the link, with no extra question. Pass their words about it as `note`. It downloads the video, its caption and thumbnail into the job's `inputs/references/video/` and lists it in the references manifest. Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
+When the person pastes any link, a Reel, TikTok, YouTube or other video, a picture, or a web page, and a job exists (create one first if none does), call `pipeline_reference_from_url` with that job and the link, with no extra question.
+Pass their words about it as `note`.
+It saves the link into the job's references and lists it in the references manifest: a video with its caption, thumbnail, sound and view counts, a picture as a picture, and a web page as its text and main picture.
+Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
 
 - Reference use only: learn from it, describe it, borrow the idea. Never repost it or use the downloaded file in a finished post, and say so if the person asks to.
 - If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
 - For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
+- For `save_failed`, `download_failed`, `impersonation_missing` or `ffmpeg_missing`, say the real cause from the result in one sentence, with its fix when it gives one; these are problems on this computer, not the platform refusing.
 - A link the tool refuses as `private_address` or `invalid_url` is not retried.
 - When the content of the saved file matters, a fresh helper watches it (the researcher, or the videographer for a teardown) and hands back a few lines and the path of its notes; the Director never watches the video or reads its frames itself.
 
@@ -229,6 +233,10 @@ When no artifact is bound, it returns needs_publication.
 Each `jobs` entry has jobId, brand, brandSlug, title, state, revision and waitingOn; full detail comes from `pipeline_job_read`.
 
 Read pipeline_board_requests before handling a request submitted from a board artifact.
+
+When the person asks to work in chat without the board, set `chatOnly: true` on the job (in `job` when creating it, or in the intake patch later).
+Present each step and every approval in chat, with pictures and videos as files, and take the approvals from chat.
+Never open or publish the board for that job.
 
 Board requests are intent only until the local runner validates them; server validation still runs on every apply.
 

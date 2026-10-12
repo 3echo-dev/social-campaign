@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { captureBrandKit } from '../brand-kit/capture.mjs';
+import { InvalidInputError } from '../lib/errors.mjs';
 
 const require = createRequire(import.meta.url);
 const brandProfileRuntime = require(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-brand-profile.js'));
@@ -10,6 +11,27 @@ const libBrandKit = require(join(runtime.runtimeConstants.pipelineRoot, 'scripts
 
 const string = { type: 'string' };
 const object = { type: 'object' };
+
+const KIT_SCHEMA = {
+  type: 'object',
+  description: 'The brand kit. Every part is optional and a part left out (or logo null) stays as it is.',
+  properties: {
+    logo: {
+      type: ['object', 'null'],
+      description: 'What to do with the logo: {action: "keep"} (no change), {action: "remove"}, or {action: "upload", mimeType, dataBase64} (PNG, WebP, JPEG or SVG, at most 40 KiB).',
+    },
+    palette: {
+      type: 'array',
+      description: 'Up to 8 colours.',
+      items: { type: 'object', properties: { value: { type: 'string', description: 'Six-digit hex such as #1A2B3C.' }, role: { type: 'string', description: 'primary, secondary, accent, background, text or other.' }, name: string }, required: ['value', 'role'] },
+    },
+    fonts: {
+      type: 'array',
+      description: 'Up to 4 fonts.',
+      items: { type: 'object', properties: { family: string, use: { type: 'string', description: 'headings, body, captions or other.' } }, required: ['family', 'use'] },
+    },
+  },
+};
 
 function tool(name, description, properties, required, handler) {
   return defineTool({ name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false }, handler });
@@ -100,11 +122,18 @@ export const brandKitTools = [
   ),
   tool(
     'pipeline_brand_kit_save',
-    'Save a confirmed brand kit (logo, colours and fonts) for an onboarded brand from chat intake.',
-    { brand: string, requestId: string, kit: object, confirmedBy: string },
+    'Save a confirmed brand kit (logo, colours and fonts) for an onboarded brand from chat intake. Every part of the kit is optional; a part left out stays as it is.',
+    { brand: string, requestId: string, kit: KIT_SCHEMA, confirmedBy: string },
     ['brand', 'requestId', 'kit', 'confirmedBy'],
     (args, { workspace }) => {
       const root = local(workspace);
+      if (!args.kit || typeof args.kit !== 'object' || Array.isArray(args.kit)) {
+        throw new InvalidInputError('A brand kit is required.', { fix: 'Pass kit as an object with logo, palette and fonts.' });
+      }
+      const checked = libBrandKit.validateKitInput(args.kit);
+      if (!checked.ok) {
+        throw new InvalidInputError(`Fix the brand kit before submitting: ${checked.errors.join(' ')}`, { fix: 'Use logo {action: keep|remove|upload}, palette [{value: "#RRGGBB", role}] and fonts [{family, use}].' });
+      }
       return runtime.saveBrandKit({ root, brand: args.brand, requestId: args.requestId, kit: args.kit, confirmedBy: args.confirmedBy });
     },
   ),

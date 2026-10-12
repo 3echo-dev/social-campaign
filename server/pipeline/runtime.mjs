@@ -48,7 +48,7 @@ const INTAKE_PATCH_FIELDS = new Set([
   'deliverables', 'audience', 'evidence', 'requiredClaims', 'prohibitedClaims',
   'offer', 'landingPageUrl', 'schedule', 'budget', 'productAsset', 'account',
   'specWork', 'usesHistoricalData', 'metricsScope', 'links', 'subject', 'kindReason',
-  'caption', 'aiMade', 'sourceJobId',
+  'caption', 'aiMade', 'sourceJobId', 'chatOnly',
 ]);
 const LINK_LIMIT = 20;
 const LINK_MAX_LENGTH = 2000;
@@ -58,7 +58,7 @@ const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'kindReason', 
 const JOB_SUBJECTS = ['product', 'character', 'none'];
 const INTAKE_PATCH_ARRAYS = new Set(['platforms', 'deliverables', 'requiredClaims', 'prohibitedClaims']);
 const INTAKE_PATCH_OBJECTS = new Set(['audience', 'evidence', 'schedule', 'budget', 'productAsset', 'account', 'metricsScope']);
-const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade']);
+const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade', 'chatOnly']);
 const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const PHOTO_SOURCES = new Set(['uploaded', 'found-online', 'made']);
@@ -1204,13 +1204,26 @@ function defaultJobInput(options, jobId, brand) {
   if (typeof caption === 'string' && caption.trim()) job.caption = caption;
   const aiMade = supplied.aiMade ?? options.aiMade;
   if (typeof aiMade === 'boolean') job.aiMade = aiMade;
+  // A job run in chat without the board: the board hooks leave it alone.
+  if ((supplied.chatOnly ?? options.chatOnly) === true) job.chatOnly = true;
   // The words fit more than one pipeline: the job keeps the likeliest kind but waits, unplanned, for the person's answer.
   if ((supplied.pipelineUnsure ?? options.pipelineUnsure) === true && job.kind) job.pipelineUnsure = true;
   return job;
 }
 
+const JOB_SLUG_MAX = 40;
+
+/** Cut a slug to the limit at a word boundary (a dash), so a job folder name stays short and never ends in a dash. */
+function capSlug(slug, max = JOB_SLUG_MAX) {
+  if (slug.length <= max) return slug;
+  const cut = slug.slice(0, max);
+  const dash = cut.lastIndexOf('-');
+  const atWord = slug.charAt(max) === '-' || dash <= 0 ? cut : cut.slice(0, dash);
+  return atWord.replace(/-+$/, '');
+}
+
 function jobSlug(options) {
-  return assertSlug(options.jobSlug || slugify(options.title || options.brief || 'job', 'job'), 'Job slug');
+  return capSlug(assertSlug(options.jobSlug || slugify(options.title || options.brief || 'job', 'job'), 'Job slug'));
 }
 
 function makeJobId(options, slug) {
@@ -1830,6 +1843,17 @@ export function updateJobIntake(options = {}) {
       error.code = 'INTAKE_REVISION_MISMATCH';
       error.actualRevision = status.revision;
       throw error;
+    }
+    // Whether a job runs in chat without the board can change at any step, so it never waits for the intake states.
+    const patchKeys = Object.keys(options.patch || {});
+    if (patchKeys.length === 1 && patchKeys[0] === 'chatOnly') {
+      const jobPath = join(dir, 'job.json');
+      const before = readJson(jobPath, null);
+      if (!before || typeof before !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
+      const after = applyIntakePatch(before, options.patch);
+      const changed = JSON.stringify(after) !== JSON.stringify(before);
+      if (changed) writeJsonAtomic(jobPath, { ...after, updatedAt: now() });
+      return { jobId, brand: brand.slug, updated: changed, revision: status.revision, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
     }
     const routeFile = join(dir, 'route.json');
     const planFile = join(dir, 'plan.md');
@@ -2824,6 +2848,7 @@ export function readJobSnapshot(options = {}) {
       ownerUserId: job.ownerUserId || null,
       ownerEmail: job.ownerEmail || null,
       ownershipStatus: job.ownershipStatus || (job.ownerUserId ? 'bound' : 'unbound'),
+      ...(job.chatOnly === true ? { chatOnly: true } : {}),
       stages: snapshotStages(status.state, rows, route, { dir, decisions, reached: stagesRuntime.loggedStates(status.text), logged: loggedTimes(status.text) }),
       artifacts,
       decisions,

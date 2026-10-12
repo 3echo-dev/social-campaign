@@ -351,8 +351,17 @@ function derivePlacement(d) {
   // A set of pictures on Instagram is a carousel, though a post would pass the rules too.
   if (d.platform === 'instagram' && d.creativeDiscipline === 'carousel') return 'carousel';
   if (d.platform === 'instagram' && isVideoDiscipline(d.creativeDiscipline) && ratios.length > 0 && ratios.every(ratio => ratio === '9:16')) return 'reel';
+  // `postType` is another word for the same thing, taken when it is a post type this platform has.
+  if (d.placement === undefined || d.placement === null) {
+    if (placementBelongs(d.platform, d.postType)) return d.postType;
+  }
   const open = validPlacementsFor(d);
-  return open.length === 1 ? open[0] : null;
+  if (open.length === 1) return open[0];
+  // TikTok alone is a video unless the brief points at photos (slides). Only when the format is not stated: a stated format is judged by the rules above.
+  const noFormat = d.creativeDiscipline === undefined || d.creativeDiscipline === null || d.creativeDiscipline === '';
+  const hasSlides = d.slides !== undefined && d.slides !== null;
+  if (d.platform === 'tiktok' && noFormat && !hasSlides && !ratiosOf(d).some(ratio => ratio !== '9:16')) return 'video';
+  return null;
 }
 
 // A copy of the job with each unambiguous missing post type filled in, and the job itself when
