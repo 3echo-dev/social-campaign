@@ -112,6 +112,10 @@ When the person asked for a job and has not said what they want yet, point them 
 
 Preserve the user's wording in the brief.
 
+When the person asks to work in chat without the board, set `chatOnly: true` on the job (in `job` when creating it, or in the intake patch later).
+Present each step and every approval in chat, with pictures and videos as files, and take the approvals from chat.
+Never open or publish the board for that job.
+
 Ask for missing information through the board.
 
 Accept a text-only brief.

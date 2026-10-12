@@ -208,6 +208,12 @@ export function runYtdlp(args) {
  */
 const YTDLP_ERRORS = [
   {
+    code: 'save_failed',
+    pattern: /unable to open for writing|no such file or directory|errno (?:2|22|13)\b|permission denied|path too long|filename too long|no space left/i,
+    message: 'The video downloaded but could not be saved on this computer.',
+    fix: 'Free some disk space or use a shorter folder path, then try again.',
+  },
+  {
     code: 'unsupported',
     pattern: /unsupported url|no suitable extractor|is not a valid url/i,
     message: 'That address is not a video page Social Campaign can open.',

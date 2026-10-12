@@ -220,6 +220,8 @@ function rasterInfo(buffer) {
 }
 
 function validateLogo(logo, record, errors) {
+  // No logo given (or null) means no change to the logo.
+  if (logo === undefined || logo === null) return { action: 'keep' };
   if (!logo || typeof logo !== 'object' || Array.isArray(logo)) {
     errors.push('Logo needs an action.');
     return undefined;

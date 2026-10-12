@@ -160,7 +160,7 @@ export function classifyVideoUrl(raw) {
 function statusOf(code) {
   if (code === 'login_required') return 'login_required';
   if (code === 'not_found') return 'not_found';
-  if (code === 'backend_missing') return 'backend_missing';
+  if (code === 'backend_missing' || code === 'impersonation_missing' || code === 'ffmpeg_missing') return 'backend_missing';
   return 'blocked';
 }
 

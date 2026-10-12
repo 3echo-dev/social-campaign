@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { asObject, resolveWorkspaceRoot } from '../../server/pipeline/facts.mjs';
 import {
-  BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed,
+  BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed, sessionChatOnly,
 } from '../../server/pipeline/board-freshness.mjs';
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
@@ -130,6 +130,8 @@ async function main() {
   if (!root) return;
   if (event.hook_event_name === 'UserPromptSubmit') {
     if (!event.session_id || !readBoardLink(root)) return;
+    // A job the person asked to run in chat without the board gets no board instructions.
+    if (sessionChatOnly(root, event.session_id)) return;
     const ownership = claimBoardOwner(root, event.session_id);
     if (!ownership.owner) {
       if (noteOtherWindowOnce(root, event.session_id, ownership.by)) tell(BOARD_TEXT.otherWindow);

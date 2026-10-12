@@ -428,6 +428,23 @@ export async function reviewsWithoutCopies(root, jobs = listJobs(root)) {
  * went quiet long ago all stay in. With no chat id, or no way to read the picks, every job stays in.
  */
 export function jobsForSession(root, sessionId, jobs = listJobs(root), now = Date.now()) {
+  // A job run in chat without the board is left out. A chat that picked such a job has nothing for the board to track.
+  if (sessionChatOnly(root, sessionId, jobs)) return [];
+  return jobsOtherChatsLeave(root, sessionId, jobs.filter(job => !isChatOnlyJob(job)), now);
+}
+
+/** A job the person asked to run in chat without the board (chatOnly in its job record). */
+export function isChatOnlyJob(job) {
+  return Boolean(job?.dir) && readJson(join(job.dir, 'job.json'))?.chatOnly === true;
+}
+
+/** True when the job this chat picked runs in chat without the board. */
+export function sessionChatOnly(root, sessionId, jobs = listJobs(root)) {
+  const bound = sessionId ? readSessionBinding(root, sessionId) : null;
+  return Boolean(bound) && jobs.some(job => job.brand === bound.brand && job.jobId === bound.jobId && isChatOnlyJob(job));
+}
+
+function jobsOtherChatsLeave(root, sessionId, jobs, now) {
   if (!sessionId) return jobs;
   const sessions = requireScript('lib-session.js');
   if (!sessions) return jobs;
@@ -642,7 +659,8 @@ function chatQuestion(root, jobs, questions, sessionId, message, waiting = new S
  * What the stop hook looks at for these jobs. Each finding is worked out per job, so it can be
  * matched to the job that owns it; `waiting` holds the refs of jobs a person is needed on.
  */
-export async function stopFindings(root, allJobs = listJobs(root), { loadBoard: load = loadBoard, sessionId = null, lastMessage = null, backgroundTasks = null } = {}) {
+export async function stopFindings(root, jobsIn = listJobs(root), { loadBoard: load = loadBoard, sessionId = null, lastMessage = null, backgroundTasks = null } = {}) {
+  const allJobs = jobsIn.filter(job => !isChatOnlyJob(job));
   // A finished job never waits on anyone, so it is left out of everything except the board check:
   // a board that still shows a cancelled or completed job as open is behind, whoever it was for.
   const jobs = allJobs.filter(job => !isFinishedState(job.state));
