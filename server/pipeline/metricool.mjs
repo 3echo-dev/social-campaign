@@ -140,7 +140,36 @@ export function readBrandPublishing(brandDir) {
   if (!plain(publishing) || publishing.provider !== METRICOOL) return null;
   const blogId = text(publishing.blogId, 40);
   if (!blogId) return null;
-  return { provider: METRICOOL, blogId, label: text(publishing.label, LABEL_LIMIT) || `Brand ${blogId}`, chosenAt: text(publishing.chosenAt, 40) };
+  const handles = {};
+  if (plain(publishing.handles)) {
+    for (const network of METRICOOL_NETWORKS) {
+      const value = text(publishing.handles[network], NETWORK_VALUE_LIMIT);
+      if (value) handles[network] = value;
+    }
+  }
+  return { provider: METRICOOL, blogId, label: text(publishing.label, LABEL_LIMIT) || `Brand ${blogId}`, chosenAt: text(publishing.chosenAt, 40), handles };
+}
+
+/** The accounts a Metricool brand posts as, the way they are stored on a plugin brand's link: only the networks it has. */
+function handlesOf(metricoolBrand) {
+  const handles = {};
+  for (const network of METRICOOL_NETWORKS) {
+    const value = text(metricoolBrand?.networks?.[network], NETWORK_VALUE_LIMIT);
+    if (value) handles[network] = value;
+  }
+  return handles;
+}
+
+/** The other plugin brands whose own link is this same Metricool brand (their slugs). A Metricool brand belongs to one plugin brand. */
+export function otherBrandsLinkedTo(root, brandDir, blogId) {
+  const out = [];
+  try {
+    for (const entry of runtime.listBrands({ root })) {
+      if (!entry.path || entry.path === brandDir) continue;
+      if (readBrandPublishing(entry.path)?.blogId === String(blogId)) out.push(entry.slug);
+    }
+  } catch { /* unreadable brands are not counted */ }
+  return out;
 }
 
 /**
@@ -149,16 +178,16 @@ export function readBrandPublishing(brandDir) {
  * unconfirm the content pillars. Needs a complete profile to write into, and keeps the
  * profile inside the same size limit every other profile write is held to.
  */
-function saveBrandPublishing(brandDir, { blogId, label }) {
+function saveBrandPublishing(brandDir, { blogId, label, handles = {} }) {
   const file = profileFile(brandDir);
   let record = null;
   durable.update(file, (raw) => {
     let current = null;
     try { current = JSON.parse(raw); } catch { current = null; }
     if (!brandProfile.validRecord(current)) throw new Error(NOT_READY);
-    const same = plain(current.publishing) && current.publishing.provider === METRICOOL && current.publishing.blogId === blogId && current.publishing.label === label;
+    const same = plain(current.publishing) && current.publishing.provider === METRICOOL && current.publishing.blogId === blogId && current.publishing.label === label && JSON.stringify(current.publishing.handles || {}) === JSON.stringify(handles);
     if (same) { record = current.publishing; return raw; }
-    record = { provider: METRICOOL, blogId, label, chosenAt: new Date().toISOString() };
+    record = { provider: METRICOOL, blogId, label, handles, chosenAt: new Date().toISOString() };
     const next = `${JSON.stringify({ ...current, publishing: record }, null, 2)}\n`;
     if (Buffer.byteLength(next, 'utf8') > brandProfile.MAX_PROFILE_BYTES) throw new Error('Keep the brand profile under 40 KB.');
     return next;
@@ -198,21 +227,17 @@ function handleHint(brand) {
 }
 
 /**
- * The saved brands as Inbox answers, `[{text, blogId}]`: the real Metricool label, shown plain, and a
- * linked handle added to any label that more than one brand shares. The question stores this list, and
+ * The saved brands as Inbox answers, `[{text, blogId}]`: the real Metricool label, shown plain, and the
+ * account it posts as ("Instagram @acme"), so the person sees which account each one means. The question stores this list, and
  * the answer is read back against it, so the order of the brands never matters.
  */
 export function metricoolQuestionOptions(brands) {
-  const base = brands.map(brand => plainLabel(brand.label).slice(0, OPTION_TEXT_LIMIT - 30));
-  const counts = new Map();
-  for (const line of base) counts.set(line.toLowerCase(), (counts.get(line.toLowerCase()) || 0) + 1);
+  const base = brands.map(brand => plainLabel(brand.label).slice(0, OPTION_TEXT_LIMIT - 60));
   const used = new Set();
   return brands.map((brand, index) => {
     let line = base[index];
-    if (counts.get(line.toLowerCase()) > 1) {
-      const hint = handleHint(brand);
-      if (hint) line = `${line} (${hint})`.slice(0, OPTION_TEXT_LIMIT);
-    }
+    const hint = handleHint(brand);
+    if (hint) line = `${line} (${hint})`.slice(0, OPTION_TEXT_LIMIT);
     let candidate = line;
     for (let n = 2; used.has(candidate.toLowerCase()); n += 1) candidate = `${line.slice(0, OPTION_TEXT_LIMIT - 5)} (${n})`;
     used.add(candidate.toLowerCase());
@@ -277,7 +302,7 @@ export function chooseMetricoolBrand({ root, brand, blogId }) {
   const id = String(blogId ?? '').trim();
   const match = readMetricoolBrands(root).find(item => item.id === id);
   if (!match) throw new Error('This is not one of the saved Metricool brands.');
-  const publishing = saveBrandPublishing(entry.path, { blogId: match.id, label: match.label });
+  const publishing = saveBrandPublishing(entry.path, { blogId: match.id, label: match.label, handles: handlesOf(match) });
   withdrawOpenQuestions(root, entry.slug);
   markAnswersConsumed(root, entry.slug);
   return { brand: entry.slug, brandName: entry.name || entry.slug, blogId: publishing.blogId, label: publishing.label };
@@ -300,17 +325,8 @@ function answeredBrand(root, brandSlug, brands, current) {
 }
 
 /**
- * Whether the lone Metricool brand can be taken for a plugin brand without asking: at least one of its accounts
- * is the one on the brand card, and none is a different account or one the brand card does not list.
- */
-function fitsBrandCard(channels, metricoolBrand) {
-  const values = Object.values(metricoolCoverage(channels, metricoolBrand.networks));
-  return values.some(value => value === 'linked' || value === 'unverified') && !values.some(value => value === 'different_handle' || value === 'only_in_metricool');
-}
-
-/**
  * Give every plugin brand that has a finished profile and no working choice yet a Metricool brand.
- * A brand that never chose, with one brand in Metricool whose accounts match the brand card, gets it at once. A saved choice that Metricool no
+ * There is no automatic pick, not even when Metricool has one brand: a plugin brand's link is the person's own answer. A saved choice that Metricool no
  * longer lists is never replaced silently, even with one brand left: it is reported as needsChoice and the
  * Inbox question is asked, so the person says which brand to use now. Otherwise a saved answer to the
  * question is applied, else the question is asked once, with its options saved on it. More than the Inbox can offer as buttons: left to the brand card's own choice.
@@ -327,14 +343,19 @@ export function reconcileMetricoolChoices({ root }) {
     const profile = brandProfile.read(entry.path);
     if (!profile) continue;
     const current = readBrandPublishing(entry.path);
-    if (current && brands.some(item => item.id === current.blogId)) continue;
-    let pick = brands.length === 1 && !current && fitsBrandCard(profile.channels, brands[0]) ? { brand: brands[0], how: 'auto' } : null;
-    if (!pick) {
-      const answer = answeredBrand(root, entry.slug, brands, current);
-      if (answer) pick = { brand: answer, how: 'answer' };
+    const linked = Boolean(current) && brands.some(item => item.id === current.blogId);
+    // Never a default, first or only Metricool brand: a link comes from the person's own pick for this brand.
+    let pick = null;
+    const answer = answeredBrand(root, entry.slug, brands, current);
+    if (answer) pick = { brand: answer, how: 'answer' };
+    // A working link stays as it is, unless the person was asked again (the posting check refused it) and has answered.
+    if (linked && !pick) {
+      const asking = open.find(question => question.brand === entry.slug && sameOptions(question, options));
+      if (asking) keep.add(asking.questionId);
+      continue;
     }
     if (pick) {
-      saveBrandPublishing(entry.path, { blogId: pick.brand.id, label: pick.brand.label });
+      saveBrandPublishing(entry.path, { blogId: pick.brand.id, label: pick.brand.label, handles: handlesOf(pick.brand) });
       if (pick.how === 'answer') markAnswersConsumed(root, entry.slug);
       result.chosen.push({ brand: entry.slug, blogId: pick.brand.id, label: pick.brand.label, how: pick.how });
       continue;
@@ -356,6 +377,25 @@ export function reconcileMetricoolChoices({ root }) {
     if (!keep.has(question.questionId)) withdrawQuestion({ root, questionId: question.questionId });
   }
   return result;
+}
+
+/**
+ * Ask the person, in one Inbox question, which Metricool brand posts as this plugin brand. Used when the brand has no
+ * link of its own or the posting check refused the one it has. A saved link stays until the person answers.
+ */
+export function askMetricoolChoice({ root, brand }) {
+  const entry = resolveBrand(root, brand);
+  if (!brandProfile.read(entry.path)) throw new Error(NOT_READY);
+  const brands = readMetricoolBrands(root);
+  if (!brands.length) throw new Error('No Metricool brands are saved yet. Read them with getBrandSettings and save them first.');
+  if (brands.length > QUESTION_OPTION_LIMIT) throw new Error('Metricool has more brands than one question can list. Choose the brand with pipeline_metricool_brand_choose.');
+  const options = metricoolQuestionOptions(brands);
+  const existing = metricoolQuestions(root, 'open').find(question => question.brand === entry.slug && sameOptions(question, options));
+  if (existing) return { brand: entry.slug, questionId: existing.questionId, alreadyAsked: true };
+  withdrawOpenQuestions(root, entry.slug);
+  const question = askQuestion({ root, brand: entry.slug, text: questionText(entry.name || entry.slug), options: options.map(option => option.text), allowText: false });
+  saveQuestionMeta(root, question.questionId, { options });
+  return { brand: entry.slug, questionId: question.questionId, alreadyAsked: false };
 }
 
 /** The same, for a moment when a failure must not undo what just happened (a brand finishing onboarding). */
@@ -433,7 +473,7 @@ function sameAccount(network, cardUrl, metricoolValue) {
  * against a numeric page id, or a link that cannot be read: check it in Metricool). A platform neither
  * lists is left out. Never throws.
  */
-export function metricoolCoverage(channels, networks) {
+export function metricoolCoverage(channels, networks, stored = null) {
   const coverage = {};
   for (const network of METRICOOL_NETWORKS) {
     try {
@@ -447,11 +487,30 @@ export function metricoolCoverage(channels, networks) {
         const same = sameAccount(network, url, theirs);
         coverage[network] = same === null ? 'unverified' : same ? 'linked' : 'different_handle';
       }
+      // The account Metricool posts as is no longer the one the person picked this brand for.
+      const was = plain(stored) ? text(stored[network], NETWORK_VALUE_LIMIT) : null;
+      if (theirs && was && handleOf(was) !== handleOf(theirs) && coverage[network] === 'linked') coverage[network] = 'link_changed';
     } catch {
       coverage[network] = 'unverified';
     }
   }
   return coverage;
+}
+
+/** The handle a brand's own profile lists for a network ("@acme"), or null when the profile lists none or it cannot be read. */
+export function ownHandle(channels, network) {
+  try {
+    const channel = plain(channels) ? channels[network] : null;
+    if (!plain(channel) || channel.status !== 'provided' || typeof channel.url !== 'string') return null;
+    const { name, id } = accountOf(network, channel.url);
+    return name ? `@${name}` : id || null;
+  } catch { return null; }
+}
+
+/** The handle Metricool posts as for a network, shown the same way. */
+export function linkedHandle(network, value) {
+  const { name, id } = accountOf(network, value);
+  return name ? `@${name}` : id || null;
 }
 
 /**
@@ -472,7 +531,9 @@ export function brandPublishingInfo({ brandDir, channels, brands, connected = tr
       found: Boolean(match),
       connected,
       timezone: match ? match.timezone : null,
-      coverage: match && connected ? metricoolCoverage(channels, match.networks) : {},
+      coverage: match && connected ? metricoolCoverage(channels, match.networks, publishing.handles) : {},
+      own: Object.fromEntries(METRICOOL_NETWORKS.map(network => [network, ownHandle(channels, network)]).filter(pair => pair[1])),
+      linkedAs: match ? Object.fromEntries(METRICOOL_NETWORKS.map(network => [network, match.networks?.[network] ? linkedHandle(network, match.networks[network]) : null]).filter(pair => pair[1])) : {},
     };
   } catch {
     return { provider: METRICOOL, unreadable: true };

@@ -1162,6 +1162,7 @@ const COVERAGE_WORDS = Object.freeze({
   not_linked: ['needed', name => `${name} not linked`, name => `${name} is on this brand card but is not linked in Metricool.`],
   different_handle: ['needed', name => `${name} different handle`, name => `${name} in Metricool is a different account from the one on this brand card.`],
   unverified: ['needed', name => `${name}: check`, name => `Cannot tell whether ${name} in Metricool is the same account as on this brand card: check it in Metricool.`],
+  link_changed: ['needed', name => `${name} changed`, name => `${name} in Metricool is not the account this brand was linked to: pick the Metricool brand again.`],
   only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is linked in Metricool but is not on this brand card.`],
 });
 

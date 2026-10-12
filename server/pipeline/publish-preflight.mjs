@@ -56,7 +56,6 @@ export const INSTAGRAM_FEED_RATIO = Object.freeze({ min: 4 / 5, max: 1.91 });
 const PHONE_RATIO = 9 / 16;
 const PHONE_TOLERANCE = 0.02;
 const METRICOOL_NETWORKS = Object.freeze(['facebook', 'instagram', 'tiktok']);
-const LINKED = new Set(['linked', 'unverified']);
 
 const count = value => Number(value).toLocaleString('en-US');
 const platformName = platform => del.PLATFORM_NAMES[platform] || (typeof platform === 'string' && platform ? platform[0].toUpperCase() + platform.slice(1) : 'This platform');
@@ -142,18 +141,30 @@ export function whenText(publicationDate) {
 // The checks
 // ---------------------------------------------------------------------------
 
+const PICK_AGAIN = 'Ask the person which Metricool brand posts as this brand, and save it to this brand.';
+
+/**
+ * The Metricool side of a post. Every plugin brand posts only through its own Metricool link: there is no default, first
+ * or only Metricool brand to fall back on, and another plugin brand's link is never borrowed. The account the link posts
+ * as must be this brand's own handle on that platform, or the post is refused.
+ */
 function channelCheck(post, context) {
   const name = platformName(post.platform);
   if (!context.connected) return check(false, 'Metricool is not connected, so this post cannot go through it.');
-  if (!context.found) return check(false, 'Choose which Metricool brand this brand posts through.');
+  if (!context.found) return check(false, `This brand has no Metricool link of its own yet, so nothing is posted. ${PICK_AGAIN}`);
   if (!METRICOOL_NETWORKS.includes(post.platform)) return check(false, `Metricool cannot post to ${name} from here.`);
+  if (Array.isArray(context.sharedWith) && context.sharedWith.length) return check(false, `The Metricool brand linked here is also linked to another brand, and each brand needs its own. ${PICK_AGAIN}`);
   const status = plain(context.coverage) ? context.coverage[post.platform] : undefined;
-  if (status === 'unverified') return check(true, `${name} is in Metricool. Check that it is the right account there.`);
-  if (LINKED.has(status)) return check(true, `${name} is linked in Metricool.`);
-  if (status === 'only_in_metricool') return check(false, `${name} is in Metricool but not on the brand card, so check it is this brand's account and add it to the brand card first.`);
-  if (status === 'not_linked') return check(false, `${name} is not linked in Metricool for this brand.`);
-  if (status === 'different_handle') return check(false, `${name} in Metricool is a different account from the one on the brand card.`);
-  return check(false, `Metricool has no ${name} account for this brand.`);
+  const own = plain(context.own) ? context.own[post.platform] : null;
+  const via = plain(context.linkedAs) ? context.linkedAs[post.platform] : null;
+  if (status === 'linked') return check(true, via || own ? `${name} posts as ${via || own}, this brand's own account.` : `${name} is linked in Metricool.`);
+  if (status === 'unverified' && post.platform === 'facebook') return check(true, `${name} is in Metricool. Check that it is the right account there.`);
+  if (status === 'unverified') return check(false, `The ${name} account Metricool posts as${via ? ` (${via})` : ''} could not be matched to this brand's own${own ? ` ${own}` : ''}, so nothing is posted. ${PICK_AGAIN}`);
+  if (status === 'different_handle') return check(false, `${name} would post as ${via || 'another account'}, but this brand's own account is ${own || 'a different one'}. Nothing is posted. ${PICK_AGAIN}`);
+  if (status === 'link_changed') return check(false, `The ${name} account in the chosen Metricool brand changed${via ? ` (it now posts as ${via})` : ''} since it was picked for this brand. ${PICK_AGAIN}`);
+  if (status === 'only_in_metricool') return check(false, `${name} is in Metricool${via ? ` as ${via}` : ''} but this brand's profile lists no ${name} account to match it against, so nothing is posted. Add the brand's ${name} link to its profile first.`);
+  if (status === 'not_linked') return check(false, `The Metricool brand chosen for this brand has no ${name} account${own ? ` for ${own}` : ''}. ${PICK_AGAIN}`);
+  return check(false, `This brand's profile lists no ${name} account and Metricool has none for it, so there is nothing to post to.`);
 }
 
 const NEEDS = Object.freeze({

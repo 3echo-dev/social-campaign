@@ -204,6 +204,7 @@ function connectionOf(job) {
   const brandDir = join(job.root, 'workspaces', job.brand);
   const profile = readJsonFile(join(brandDir, 'brand', 'profile.json'), null);
   return publishContext({
+    sharedRoot: job.root,
     brandDir,
     channels: plain(profile) ? profile.channels : null,
     brands: readMetricoolBrands(job.root),
