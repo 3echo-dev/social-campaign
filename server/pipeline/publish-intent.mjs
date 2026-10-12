@@ -56,7 +56,7 @@ import { THREE_ECHO, jobFromDir, legalChain, mediaBlocker, readLanded, readRecor
 import { HOSTED_MEDIA_FILE, PUBLISH_INTENT_FILE, hasPublishApproval, hostedAssetFor } from './media-host.mjs';
 import { hasSendRecords } from './publish-attempts.mjs';
 import { brandPublishingInfo, metricoolConnected, otherBrandsLinkedTo, readBrandPublishing, readMetricoolBrands } from './metricool.mjs';
-import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, defaultRoute, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
+import { HANDOFF_ONLY_TEXT, MIN_LEAD_MINUTES, PUBLISH_ROUTES, ROUTE_LABELS, TIKTOK_TITLE_LIMIT, isMetricoolRoute, localDateTime, placementMissing, postLabel, preflightIntent, validZone, whenText, zoneWords, zonedInstant } from './publish-preflight.mjs';
 import * as runtime from './runtime.mjs';
 import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-workspace.mjs';
 
@@ -134,6 +134,8 @@ export function publishContext({ root = null, sharedRoot = root, brandDir, jobDi
     sharedWith: sharedRoot && brandDir && info && !info.unreadable && info.blogId ? otherBrandsLinkedTo(sharedRoot, brandDir, info.blogId) : [],
     jobRoute: PUBLISH_ROUTES.includes(jobRoute) ? jobRoute : null,
   };
+  // No route saved on the job yet: the plan's route is the default, so the board does not call a fresh plan out of date.
+  if (!context.jobRoute) context.jobRoute = defaultPublishRoute(context);
   if (root && brandDir) {
     try { context.workspaceId = readStudioWorkspaceChoice({ brandDir, jobDir, root }).workspaceId ?? null; } catch { /* left out: not compared */ }
   }
@@ -151,7 +153,8 @@ function connectionOf(root, brandEntry) {
   });
 }
 
-export const defaultPublishRoute = defaultRoute;
+// Post Now is selected when Metricool can be used for the brand (choosing it never posts by itself; the person's click on the card does), else the person posts it themselves.
+export const defaultPublishRoute = context => (context?.connected && context?.found ? 'metricool_now' : 'self');
 
 /**
  * A job routed before 0.8 had its posting decision folded into the final approval when it had a schedule. It has no

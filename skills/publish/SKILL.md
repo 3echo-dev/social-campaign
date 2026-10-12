@@ -56,7 +56,7 @@ Follow the hand-off in `board-sync` under Decisions on the board and in chat: on
 When a failing check keeps Approve off on the posting card, name that check in the chat summary in plain words and say what is needed first; never tell the person to press Approve then.
 Follow social-campaign's Never stop waiting on an open gate rule: keep the decision open until an answer arrives, and never fall back to asking the person to reply in chat.
 
-With no Metricool connected or chosen, the only route is "I'll post it myself": the person approves the plan, the board shows the posting kit, and the person posts each one and marks it as posted.
+With no Metricool connected or chosen, the only route is "I'll Post It Myself": the person approves the plan, the board shows the posting kit, and the person posts each one and marks it as posted.
 
 Reuse the existing board URL after the handoff is recorded and refresh the job snapshot after the mutation.
 
@@ -79,22 +79,22 @@ There is no hashing, copying or editing of the person's files here, and the labe
 A carousel (an Instagram carousel, a Facebook post with several pictures, a TikTok photo post) is one post with all its slides, in slide order, and the plan sends it as one Metricool post with one caption.
 Upload every slide as the steps in "Local media to 3echo" say, and send them in the order the plan lists them.
 The plan checks the slide count, that every slide is the same shape, and the post type, so fix a failing check at its own step and never reorder or drop a slide by hand.
-With "I'll post it myself", the posting kit offers every slide for download.
+With "I'll Post It Myself", the posting kit offers every slide for download.
 
 ## Where and when the posts go
 
-Every job that publishes has its own posting decision, with no exception: it is never folded into the final approval, whatever the schedule says and including "I'll post it myself".
+Every job that publishes has its own posting decision, with no exception: it is never folded into the final approval, whatever the schedule says and including "I'll Post It Myself".
 
-Each job has one route for its posts: schedule with Metricool, save as drafts in Metricool, post now, or the person posts it themselves.
-Scheduling with Metricool is the route when the brand's Metricool brand is chosen and Metricool is connected, and the person posting it themselves is the route otherwise.
-The person picks the route on the board at the posting decision.
+Each job has one route for its posts, and the card lists them in this order: "Post Now" (`metricool_now`), "Schedule a Post" (`metricool_schedule`), "Save as Draft" (`metricool_draft`) and "I'll Post It Myself" (`self`).
+"Post Now" is selected when the brand's Metricool brand is chosen and Metricool is connected, and "I'll Post It Myself" otherwise; being selected never posts anything.
+The person picks the route on the board at the posting decision, and the one button beside "Ask for changes" follows it: "Post Now", "Schedule Post" (held until every post has a time), "Save Draft", or, for "I'll Post It Myself", "Preparing download…" and then "Download Files". Pressing it is the approval.
 
 Each brand posts only through its own Metricool link: the Metricool brand (blogId) the person picked for that brand, saved with the Instagram and TikTok accounts it posts as.
 Never fall back to the first, the only or a default Metricool brand, never borrow another brand's link, and never choose one for the person, even when Metricool lists a single brand (it may be their personal profile).
 The posting checks refuse in plain words when the brand has no link of its own, when the account the link posts as is not the brand's own handle in its profile, or when it could not be matched to that handle (then picking again does not help: ask the person to correct the channel link on the brand profile). A link shared with another brand blocks only the brand whose handle does not match.
 When a check says that, do not retry the send. Call `pipeline_metricool_brands_save` if the Metricool brands are not saved, then `pipeline_metricool_brand_ask` with the brand: it posts one question card, "Which Metricool brand should <brand> post through?", whose options name each Metricool brand and the account it posts as. Say in one plain line that the posts wait for their answer, publish the workspace projection, and apply the answer with `pipeline_metricool_brand_choose`. The posting plan is rebuilt and needs approving again.
 A choice made in chat is saved with `pipeline_publish_route_choose` (`brand`, `jobId`, `route`), which takes `metricool_schedule`, `metricool_draft`, `metricool_now` or `self`, then write every entry of the `documents` it returns.
-Post now means a few minutes after the person approves, never the moment of the request.
+Post Now means a few minutes after the person approves, never the moment of the request.
 
 A job planned before 0.8 whose posting decision was folded into the final approval has no posting decision to make: it ends with the hand-off package, and the board says so.
 Tell the person that plainly if they ask, and never try to schedule it through Metricool.
@@ -107,7 +107,7 @@ The route can only change before the posting plan is approved and before anythin
 The approval itself is refused until every check on the card passes and the plan is still the one shown.
 
 If the plan changes after the person approved it, that approval no longer applies.
-While nothing has been sent, the person can still change an approved plan, and a "Post now" approval that has expired is handled the same way: call `pipeline_publish_reopen` (`brand`, `jobId`), which takes the job back to the posting decision and presents it again with a fresh plan.
+While nothing has been sent, the person can still change an approved plan, and a "Post Now" approval that has expired is handled the same way: call `pipeline_publish_reopen` (`brand`, `jobId`), which takes the job back to the posting decision and presents it again with a fresh plan.
 Then say in one plain line that the plan changed, and wait for a new answer before uploading or sending anything.
 Once anything has gone to Metricool the plan is frozen: the tool refuses with "Some posts already went to Metricool, so this plan can't change. A post Claude cannot send is handed over to you in the posting kit on the board, and the ones that went out are changed in Metricool.", a post you cannot send is handed over to the person (see "The posting kit"), and the person changes the sent ones in Metricool.
 When a check on the plan fails, tell the person in their own terms and fix the cause at the right step, such as the post type, the media or the schedule.
@@ -120,7 +120,7 @@ The plan is rebuilt and the decision presented again, so say that the plan chang
 A post with no posting time says "Choose when this post goes out.", and on the Schedule route the card shows a date and time input in the plan's zone, which the person fills in there, or says it in chat and you save it with `pipeline_post_time_choose` (`brand`, `jobId`, `deliverable`, `dateTime` as `YYYY-MM-DDTHH:MM` local to the plan's zone), which refuses a time that is not real or less than 5 minutes ahead, and once the plan is approved or sent.
 With two or more posts the card also has one "same time for every post" field, and in chat you set every post at once by leaving `deliverable` out of `pipeline_post_time_choose`; a time chosen for one post afterwards overrides just that post.
 On Draft the same field is a date in the Metricool planner and a draft is not published.
-The time chosen this way is the one the plan sends: it is read before the post's own publish plan and before the job schedule, and it works for every route except Post now.
+The time chosen this way is the one the plan sends: it is read before the post's own publish plan and before the job schedule, and it works for every route except Post Now.
 The plan is rebuilt and the decision presented again, so say that the plan changed and wait for the new answer.
 Never get around a check by editing the plan or by choosing another route for the person.
 
@@ -160,10 +160,8 @@ Publishing runs in this session, never in a subagent, because only this session 
 Find the Metricool tools by base name under any prefix: `createScheduledPost` and `getScheduledPosts`.
 Never use Metricool's reviewer tools (`createScheduledPostForReview`, `sendScheduledPostForReview`) or `updateScheduledPost`: the person approves on the board, a scheduled post is changed or cancelled by the person in Metricool, and the plugin refuses all three.
 
-Claude confirms the send in chat before it posts, schedules or saves a draft, and the board has to say so first.
-Call `pipeline_board_ask` for the job with `inChat` true and the same plain words you will say in chat (for example "Post these 2 posts now? Yes or No"), write the returned `documents` to the board, then ask in chat.
-After the answer, record it with `pipeline_board_answer` before sending, and write the documents again, so the board stops asking.
-On a no, nothing is sent.
+The person's click on the board is the confirmation: "Post Now", "Schedule Post" or "Save Draft" on the posting card is the approval of the plan they see.
+Do not ask again in chat and do not post a confirmation question on the board; when the approval is applied, send the posts right away as below.
 
 Send the plan's posts one at a time, each exactly as the plan has it:
 
@@ -178,7 +176,7 @@ Send the plan's posts one at a time, each exactly as the plan has it:
    - `firstCommentText`, `draft` and `autoPublish`: as in the plan, always present
    - `mediaAltText`: leave it out
    - the one network's settings: for Instagram `instagramData` with `type` as in the plan's `type`, `showReelOnFeed` true for a reel and left out otherwise, and `isAiGenerated` as in `aiGenerated`; for Facebook `facebookData` with `type`; for TikTok `tiktokData` with `privacyOption`, `title`, `isAigc` and `commercialContentOwnBrand` as in the plan
-3. For "Post now" the plan has a zone and no time: set `publicationDate` and `date` to five minutes from now in the plan's own time zone (the `timezone` the plan gives for the post), and send straight away.
+3. For "Post Now" the plan has a zone and no time: set `publicationDate` and `date` to five minutes from now in the plan's own time zone (the `timezone` the plan gives for the post), and send straight away.
    The plugin accepts a time between 3 and 30 minutes from now, and only within a day of the person's approval; after that, while nothing is sent, call `pipeline_publish_reopen` and present the posting decision again so the person approves it again, and if anything was already sent, the unsent posts go to the posting kit instead.
 4. Never add anything else: no boost, no picture descriptions, no TikTok music or interaction switches, no extra settings of any kind (even empty or false ones), no reworded text, no second network in one call.
    The plugin checks the call against the approved plan before it goes out and says in plain words what differs.
@@ -216,7 +214,7 @@ Then tell the person in one plain line how many posts are scheduled (or saved as
 
 When a post cannot be sent and is handed over, the person posts it themselves from the posting kit and the job closes once each post is sent or marked.
 A post that reached Metricool and then failed there is never handed over: the board tells the person to fix it in Metricool, and it does not hold the job open.
-For "I'll post it myself" there is nothing to send: the posting kit is the delivery, the person marks each post, and the last mark closes the job.
+For "I'll Post It Myself" there is nothing to send: the posting kit is the delivery, the person marks each post, and the last mark closes the job.
 
 ## Changing or cancelling a post after it was scheduled
 
@@ -226,9 +224,9 @@ Never try to remove or replace a post any other way, and never send it again as 
 
 ## The posting kit
 
-For "I'll post it myself" the board shows the posting kit as soon as the person approves the plan: per post its time and account, the caption and first comment, a short checklist, the AI label line, and a download link for each file.
+For "I'll Post It Myself" the board shows the posting kit as soon as the person approves the plan: per post its time and account, the caption and first comment, a short checklist, the AI label line, and a download link for each file.
 On a Metricool plan the kit lists only the posts you hand over with `pipeline_publish_hand_over` (`brand`, `jobId`, `postId`), which writes it to the send log and from then on the plugin never sends that post.
-Hand a post over only when you cannot send it: a refusal you cannot fix, a "Post now" approval that expired, or the person asking you to, and tell the person in one plain line when you do.
+Hand a post over only when you cannot send it: a refusal you cannot fix, a "Post Now" approval that expired, or the person asking you to, and tell the person in one plain line when you do.
 Never hand over a post because a send failed or has no known result, and never one that may already be in Metricool: the tool refuses while the send is open, unknown, ambiguous or sent.
 A post the person marks as posted is final: the plugin refuses to send it, so never try to send it.
 The download link is the file's page in the plan's 3echo workspace, so host every file the kit names with the steps in "Local media to 3echo" (the plan's `workspaceId`, `pipeline_media_hosted`, and `pipeline_media_link` last), then write the documents.
