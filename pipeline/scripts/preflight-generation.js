@@ -143,6 +143,8 @@ for (const D of dels) {
       const d = it.durationSeconds;
       if (!Number.isInteger(d) || d < VIDEO_MIN_S || d > VIDEO_MAX_S)
         fail(where + ': durationSeconds must be a whole number from ' + VIDEO_MIN_S + ' to ' + VIDEO_MAX_S + '; this says ' + d);
+      const soft = del.lowResolutionProblem(it);
+      if (soft) fail(where + ' ' + soft);
       const firstClip = String(((man.stitch || {}).order || [])[0] || '');
       const thisClip = it.file ? path.basename(String(it.file)).replace(/\.[^.]+$/, '') : '';
       for (const p of headroomProblems(it, thisClip !== '' && thisClip === firstClip)) fail(where + ': ' + p);

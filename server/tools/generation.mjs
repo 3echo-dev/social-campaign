@@ -25,6 +25,7 @@ import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { currentArtifact } from '../artifacts/refs.mjs';
 import { registerFile } from '../media/ingest.mjs';
 import { buildEstimate } from '../generation/estimate.mjs';
+import { FINAL_MIN_HEIGHT, resolutionHeight } from '../pipeline/facts.mjs';
 import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import {
   attachDerivedAsset,
@@ -367,7 +368,7 @@ export const generationTools = [
         media_plan: {
           type: 'object',
           description:
-            '{ items: [{id, kind, count, duration_s?, resolution?, ratio?, prompt?, text?, provider_quote?}], ' +
+            '{ items: [{id, kind, count, duration_s?, resolution?, ratio?, prompt?, text?, provider_quote?, sample?, low_resolution_accepted?}], ' +
             'regeneration_headroom?: {images, videos, video_credits_each} }',
         },
       },
@@ -378,6 +379,13 @@ export const generationTools = [
       const db = workspace.requireDb();
       const campaignId = String(args.campaign_id);
       const mediaPlan = /** @type {any} */ (args.media_plan) ?? {};
+      // A final clip below 720p is refused unless the person chose the lower quality. A sample clip may stay lower.
+      for (const entry of Array.isArray(mediaPlan.items) ? mediaPlan.items : []) {
+        const height = entry?.kind === 'video' ? resolutionHeight(entry.resolution) : null;
+        if (height !== null && height < FINAL_MIN_HEIGHT && entry.sample !== true && entry.low_resolution_accepted !== true) {
+          throw new InvalidInputError(`Video clip ${entry.id ?? ''} is planned at ${entry.resolution}, which is too soft for a final video. Final clips are made at 720p or better, unless the person chose the lower quality on purpose. A sample clip may stay lower.`);
+        }
+      }
       // Price it once now so a malformed plan is refused here rather than at the gate.
       buildEstimate({ media_plan: mediaPlan });
       const { manifest, version } = createManifest(db, campaignId, mediaPlan);

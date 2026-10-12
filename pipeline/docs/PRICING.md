@@ -12,6 +12,7 @@ This file records the tool contract, the working from the run that got it wrong,
 
 A still frame is 1 credit.
 A clip is priced per call, and the price moves with the duration, the resolution and whether sound is generated.
+A final clip is 720p or better, and its price is shown at 720p and 1080p side by side (1080p costs about three times as much). Only a sample clip may be lower, or a final clip the person set lower on purpose (`lowResolutionAccepted: true` on its quote item).
 Nothing in the plugin models that curve.
 Every clip in a plan is estimated on its own, and the plan's price is the sum of what came back.
 

@@ -124,6 +124,14 @@
           "resolution": {
             "type": "string"
           },
+          "sample": {
+            "type": "boolean",
+            "description": "The hero clip made first for approval. Only a sample clip may be below 720p."
+          },
+          "lowResolutionAccepted": {
+            "type": "boolean",
+            "description": "True only when the person chose a final resolution below 720p on purpose."
+          },
           "durationSeconds": {
             "type": "integer",
             "minimum": 4,
