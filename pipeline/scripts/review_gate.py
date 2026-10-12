@@ -112,7 +112,8 @@ def stitch_problem(jobdir):
 # Mirrors server/pipeline/facts.mjs (cutSet, mediaSetApproved for gate "cut") and server/pipeline/finishing.mjs. The board writes
 # approvals/cut.json when the person approves the joined video (media/D<n>/final-raw.mp4); the Director records the answer to
 # "what should be added" in approvals/finishing.json. finish-video.py refuses (exit 6) until both match the files as they are now.
-FINISHING_CHOICES = {"captions": (True, False), "music": (False, True), "both": (True, True), "skip": (False, False)}
+# "combine" is the board's combine card (music, voice-over and captions rows): its flags are read from the record itself.
+FINISHING_CHOICES = {"captions": (True, False), "music": (False, True), "both": (True, True), "skip": (False, False), "combine": None}
 
 
 def cut_files(jobdir):
@@ -142,13 +143,38 @@ def cut_approved(jobdir):
     return bool(d and d.get("decision") == "approve" and _covers(d.get("files"), cut_files(jobdir)))
 
 
-def finishing(jobdir):
-    """(captions, music, choice) recorded for the joined video as approved now, else None."""
+def finishing_record(jobdir):
+    """The whole record of what to add, as approved now, else None."""
     d = _json(os.path.join(jobdir, "approvals", "finishing.json"))
     if not d or d.get("choice") not in FINISHING_CHOICES or not cut_approved(jobdir) or not _covers(d.get("files"), cut_files(jobdir)):
         return None
+    return d
+
+
+def finishing(jobdir):
+    """(captions, music, choice) recorded for the joined video as approved now, else None."""
+    d = finishing_record(jobdir)
+    if d is None:
+        return None
+    if d["choice"] == "combine":
+        return bool(d.get("captions")), bool(d.get("music")), "combine"
     captions, music = FINISHING_CHOICES[d["choice"]]
     return captions, music, d["choice"]
+
+
+def combine_picks(jobdir):
+    """(want_voice, captions_source, uses_combine): the voice-over row and where the captions' words come from.
+
+    Only a record made on the combine card has a voice-over row; an older four-way choice has none and keeps the voice-over
+    placed by the manifest. captions_source is "voice" (the voice-over words, or what is heard), "script" or "none".
+    """
+    d = finishing_record(jobdir)
+    if d is None or d.get("choice") != "combine":
+        return False, "voice", False
+    picks = d.get("combine") if isinstance(d.get("combine"), dict) else {}
+    voice = (picks.get("voice") or {}).get("source", "none")
+    captions = (picks.get("captions") or {}).get("source", "voice")
+    return bool(d.get("voice")) and voice != "none", captions if captions in ("voice", "script", "none") else "voice", True
 
 
 def finishing_problem(jobdir):
@@ -159,6 +185,6 @@ def finishing_problem(jobdir):
         return ("The person has not approved the joined video yet. Present it (pipeline_review_present with gate cut), wait for the "
                 "approval, then ask what to add. Nothing is added before that.")
     if finishing(jobdir) is None:
-        return ("The person has not said what to add yet. Ask once with pipeline_board_ask (Add captions, Add background music, Both, "
-                "Skip use as is) and record the answer with pipeline_finishing_choice.")
+        return ("The person has not said what to add yet. It is the combine card on the board (music, voice-over and captions) and is "
+                "recorded with the approval; otherwise ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice.")
     return None

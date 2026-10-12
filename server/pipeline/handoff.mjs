@@ -42,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 
 import { UserFacingError } from '../lib/errors.mjs';
 import { appendRecord, jobAt, moveJobTo, readJobState } from './facts.mjs';
+import { readAll as readLibrary } from './library.mjs';
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -192,6 +193,14 @@ function postMusic(dir) {
   const shelf = join(dirname(dirname(dir)), 'music');
   const index = readJsonFile(join(shelf, 'index.json'), []);
   const tracks = (Array.isArray(index) ? index : []).map(entry => (text(entry?.file) ? join(shelf, basename(entry.file)) : null)).filter(file => file && fileSize(file));
+  // The workspace library's music tagged with this brand (the library replaced the per-brand shelf for new tracks).
+  try {
+    const brandDir = dirname(dirname(dir));
+    const slug = basename(brandDir);
+    for (const item of readLibrary(dirname(dirname(brandDir)))) {
+      if (item.kind === 'music' && !item.legacy && item.brands.includes(slug)) { const file = join(item.dir, item.file); if (fileSize(file)) tracks.push(file); }
+    }
+  } catch { /* the old shelf alone */ }
   const chosen = readJsonFile(join(dir, 'media', 'music', 'choice.json'), null);
   const mine = text(chosen?.file) ? join(dir, ...chosen.file.split('/')) : null;
   const list = mine && fileSize(mine) ? [mine] : [];

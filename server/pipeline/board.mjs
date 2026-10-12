@@ -30,6 +30,7 @@ import { REFERENCE_TYPES } from './references.mjs';
 import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId } from './session-claims.mjs';
 import { readyChecks } from './ready-checks.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
+import { normaliseCombine, recordCombine } from './combine.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
@@ -1013,11 +1014,18 @@ function openQuestionsByJob(root, { readOnly = false } = {}) {
 
 const NEEDS_ANSWER_IN_CHAT = 'Answer Claude in the chat';
 
-function questionItem(question, place) {
+// The takes of a pick question, each with the address the board plays it from (null until its review copy is uploaded).
+function takesOf(question, at) {
+  if (!Array.isArray(question.takes) || !question.takes.length || !at?.root || !at.brand || !at.jobId) return [];
+  return question.takes.map(take => ({ label: take.label, url: reviewUrlFor(at.root, { brand: at.brand, jobId: at.jobId, file: take.file }) }));
+}
+
+function questionItem(question, place, at = null) {
   if (question.inChat) return { kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: false, inChat: true, need: NEEDS_ANSWER_IN_CHAT, questionId: question.questionId, options: [], allowText: false, at: inboxAt(question.askedAt) };
   return {
     kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: true,
     ...(question.wantsUpload ? { wantsUpload: { type: question.wantsUpload.type } } : {}),
+    ...(Array.isArray(question.takes) && question.takes.length ? { takes: takesOf(question, at) } : {}),
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,
     at: inboxAt(question.askedAt),
   };
@@ -1078,7 +1086,7 @@ function decisionItem({ root, snapshot, gate, review, place, dir }) {
     item.summary = words ? `Approving lets Claude make the other ${words}.` : 'Approving lets Claude make the rest.';
   } else if (MEDIA_GATES.includes(gate)) {
     const count = review.artifacts.length;
-    item.summary = gate === CUT_GATE ? 'The joined video to check. Approve it and pick what to add: captions, music, both or nothing.'
+    item.summary = gate === CUT_GATE ? 'The joined video to check. Approve it and pick what to add: music, voice-over and captions.'
       : gate === FINISH_GATE ? 'The finished video to check. Approving lets Claude write the post text.'
       : `${plural(count, gate === PICTURES_GATE ? 'picture' : 'video clip')} to check. ${gate === PICTURES_GATE ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.'}`;
   } else {
@@ -1153,7 +1161,7 @@ function jobInbox({ root, snapshot, gate, review, intake, questions, dir }) {
   const posting = postingState(dir, snapshot.project.state, snapshot.project.jobId, place, at);
   const handoff = handoffOf(dir, snapshot.project);
   const items = [
-    ...(questions || []).map(question => questionItem(question, place)),
+    ...(questions || []).map(question => questionItem(question, place, { root, brand: snapshot.project.brand, jobId: snapshot.project.jobId })),
     ...(gate ? [decisionItem({ root, snapshot, gate, review, place, dir })] : []),
     ...briefItems({ intake, place, revision: snapshot.project.revision, at }),
     ...posting.items,
@@ -2549,7 +2557,7 @@ function validateMediaPanels(registered, panels, decision, note) {
   if(decision==='request_changes' && !changes.length && !(typeof note==='string' && note.trim())) throw new Error(`Say what should change in the ${word}.`);
 }
 
-export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,decision,chosen,credits,totals,note,recipe,panels,acceptedFlagIds,finishing}) {
+export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,decision,chosen,credits,totals,note,recipe,panels,acceptedFlagIds,finishing,combine}) {
   const snapshot = runtime.readJobSnapshot({root,brand,jobId});
   if(snapshot.project.revision!==revision) throw new Error('This job revision has changed. Refresh and review it again.');
   const pending = pendingReview(root,brand,jobId,snapshot);
@@ -2577,6 +2585,13 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
   if(finishing!==undefined) {
     if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the joined video.');
     if(typeof finishing!=='string' || !Object.hasOwn(FINISHING_CHOICES,finishing)) throw new Error('Pick captions, music, both or as is.');
+  }
+  if(combine!==undefined) {
+    if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the joined video.');
+    if(finishing!==undefined) throw new Error('Send the combine picks or the older choice, not both.');
+    const job=facts.jobAt(root,snapshot.brand?.slug || brand,jobId);
+    if(!job) throw new Error('Job not found in this workspace.');
+    normaliseCombine({root,job,combine});
   }
   if(reviewId===SAMPLE_GATE && decision==='request_changes' && !(typeof note==='string' && note.trim())) throw new Error('Say what should change in the sample.');
   if(!Array.isArray(artifacts) || !artifacts.length) throw new Error('No review files are registered. Ask Claude to prepare the review.');
@@ -2774,7 +2789,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
       const mediaJob=facts.jobAt(root,brand,jobId);
       const open=mediaJob ? facts.mediaReviewOutstanding(mediaJob) : null;
       if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} have not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:open===FINISH_GATE ? `Run finish-video.py if the finished video is not made yet, present it with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.` : `Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
-      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob) && !facts.madeBeforeReviews(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask (Add captions, Add background music, Both, Skip use as is), record the answer with pipeline_finishing_choice, run finish-video.py, then carry on.'});
+      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob) && !facts.madeBeforeReviews(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice (the combine card on the board normally does both), run finish-video.py, then carry on.'});
     }
     assertNoHelperRunning(root,brand,jobId);
     assertNoQuestionOpen(root,jobId);
@@ -3041,7 +3056,8 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const askedNote = typeof args.note==='string' ? args.note.trim().slice(0,4000) : '';
   const noPanelChange = !(Array.isArray(args.panels) && args.panels.some(entry=>entry?.verdict==='changes'));
   const fromNote = gate===CUT_GATE && args.decision==='request_changes' && noPanelChange ? finishingFromNote(askedNote) : null;
-  const finishingChoiceId = gate===CUT_GATE ? (args.decision==='approve' && typeof args.finishing==='string' ? args.finishing : fromNote?.choice) || null : null;
+  const combinePicks = gate===CUT_GATE && args.decision==='approve' && args.combine && typeof args.combine==='object' ? args.combine : null;
+  const finishingChoiceId = gate===CUT_GATE ? (combinePicks ? 'combine' : args.decision==='approve' && typeof args.finishing==='string' ? args.finishing : fromNote?.choice) || null : null;
   const approve = args.decision==='approve' || Boolean(fromNote);
   const note = askedNote;
   const claimed = claimBoardRequest(file);
@@ -3065,12 +3081,12 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   let finishingResult = null;
   if(finishingChoiceId) {
     const job = facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
-    finishingResult = recordFinishingChoice({job,choice:finishingChoiceId,by:fromNote ? `the person, board note "${note.slice(0,120)}" (request ${record.requestId})` : `the person, board button (request ${record.requestId})`});
+    finishingResult = (combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, board button (request ${record.requestId})`}) : recordFinishingChoice({job,choice:finishingChoiceId,by:fromNote ? `the person, board note "${note.slice(0,120)}" (request ${record.requestId})` : `the person, board button (request ${record.requestId})`}));
   }
-  const finishingWords = finishingChoiceId ? ` and ${finishingChoiceId==='skip' ? 'used as it is' : `finishing set to ${finishingChoiceId}`}${fromNote ? ' (read from the note, the cut is not redone)' : ''}` : '';
+  const finishingWords = finishingChoiceId ? ` and ${finishingResult?.choice==='skip' ? 'used as it is' : combinePicks ? `finishing set (music ${combinePicks.music?.source ?? 'default'}, voice-over ${combinePicks.voice?.source ?? 'default'}, captions ${combinePicks.captions?.source ?? 'default'})` : `finishing set to ${finishingChoiceId}`}${fromNote ? ' (read from the note, the cut is not redone)' : ''}` : '';
   const summary = approve ? `All ${word} approved${finishingWords}` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}`;
-  const decision = {decision:approve?'approve':args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,[gate]:saved,...(finishingResult ? {finishing:{choice:finishingResult.choice,captions:finishingResult.captions,music:finishingResult.music,musicTrack:finishingResult.musicTrack,message:finishingResult.message,...(fromNote ? {fromNote:true} : {})}} : {})};
-  const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:gate},{gate,decision:approve?'approve':args.decision,note:summary,...(finishingChoiceId ? {finishing:finishingChoiceId} : {})},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
+  const decision = {decision:approve?'approve':args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,[gate]:saved,...(finishingResult ? {finishing:{choice:finishingResult.choice,captions:finishingResult.captions,music:finishingResult.music,musicTrack:finishingResult.musicTrack,...(finishingResult.combine ? {voice:finishingResult.voice,combine:finishingResult.combine,waiting:finishingResult.waiting} : {}),message:finishingResult.message,...(fromNote ? {fromNote:true} : {})}} : {})};
+  const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:gate},{gate,decision:approve?'approve':args.decision,note:summary,...(finishingChoiceId ? {finishing:finishingResult?.choice || finishingChoiceId} : {})},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
   appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
   const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
   writeJsonAtomic(file,next);

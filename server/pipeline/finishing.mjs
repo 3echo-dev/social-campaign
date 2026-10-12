@@ -1,8 +1,9 @@
-// What to add to the joined video, asked after the person approved it (gate "cut", see board.mjs and facts.MEDIA_REVIEWS).
+// What to add to the joined video (gate "cut", see board.mjs and facts.MEDIA_REVIEWS).
 //
-// The Director asks once with pipeline_board_ask (Add captions, Add background music, Both, Skip use as is) and records the
-// answer with pipeline_finishing_choice, which writes approvals/finishing.json for the cut as approved. finish-video.py
-// reads the same file and refuses to run without it (pipeline/scripts/review_gate.py).
+// The board's combine card (combine.mjs) has three rows, music, voice-over and captions, and the approval carries the picks; they
+// are written to approvals/finishing.json as `combine`. The older four-way answer (captions, music, both, skip) still works through
+// pipeline_finishing_choice and a change note. finish-video.py reads the same file and refuses to run without it
+// (pipeline/scripts/review_gate.py).
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -62,24 +63,37 @@ export function transcriptSaved(job) {
   return panels.every(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)) || existsSync(join(job.dir, 'media', panel.deliverable, 'transcript.json')));
 }
 
-export function recordFinishingChoice({ job, choice, by }) {
-  const parts = FINISHING_CHOICES[choice];
-  if (!parts) throw new Error('Choose captions, music, both or skip.');
+/** The cut as approved now, or a plain refusal: nothing about what to add is recorded before the person approved the joined video. */
+export function approvedCut(job) {
   const set = facts.reviewSet(job, 'cut');
   if (!set.panels.length) throw new Error('The clips are not joined yet. Join them with stitch-clips.py, show the joined video (pipeline_review_present with gate cut) and wait for the approval first.');
   if (!facts.mediaSetApproved(job, 'cut')) throw new Error('The person has not approved the joined video yet, so what to add cannot be recorded. Show it (pipeline_review_present with gate cut) and wait for the approval first.');
+  return set;
+}
+
+/** Write approvals/finishing.json for the cut as approved. `extra` carries the combine card's picks (combine.mjs). */
+export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
+  const set = approvedCut(job);
   mkdirSync(join(job.dir, 'approvals'), { recursive: true });
-  const saved = { choice, ...parts, decidedAt: new Date().toISOString(), by: by || 'director', files: set.panels.map(panel => ({ file: panel.file, sha256: panel.sha256 })) };
+  const saved = { choice, ...parts, ...extra, decidedAt: new Date().toISOString(), by: by || 'director', files: set.panels.map(panel => ({ file: panel.file, sha256: panel.sha256 })) };
   const file = join(job.dir, ...FINISHING_FILE.split('/'));
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, JSON.stringify(saved, null, 2));
   renameSync(temp, file);
+  return saved;
+}
+
+export function recordFinishingChoice({ job, choice, by }) {
+  const parts = FINISHING_CHOICES[choice];
+  if (!parts) throw new Error('Choose captions, music, both or skip.');
+  approvedCut(job);
+  writeFinishingRecord({ job, choice, parts, by });
   const noTrack = parts.music && !musicTrack(job.dir);
   const transcript = parts.captions ? transcriptSaved(job) : null;
   return {
     recorded: true, choice, captions: parts.captions, music: parts.music, musicTrack: parts.music ? !noTrack : null, transcript,
     message: noTrack
-      ? 'Saved. No music track is saved for this job, so finishing will not add music yet. Say so plainly: the plugin has no music maker. Check the shelf with pipeline_music_list; if it is empty, ask the person for a track (a file) or a link to one, add it with pipeline_music_add, then run finish-video.py. Or offer captions only. Never say the video has music until one is added, and never make audio by hand.'
+      ? 'Saved. No music track is saved for this job, so finishing will not add music yet. Say so plainly: check the library with pipeline_library_list; if it is empty, offer to make music with ElevenLabs (priced, the person clicks the price) or ask for a track (a file), add it with pipeline_music_add, then run finish-video.py. Or offer captions only. Never say the video has music until one is added, and never make audio by hand.'
       : choice === 'skip' && !facts.onscreenPlanned(job) ? 'Saved. The joined video is used as it is: do not run finish-video.py.'
         : choice === 'skip' ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the finished video (pipeline_review_present with gate finish).'
         : 'Saved. Run finish-video.py now; it adds only what was chosen and draws the post\'s on-screen text. Captions are built from a transcript of the approved cut when one is saved (media_transcribe on media/D1/final-raw.mp4; transcript_save when the words come from elsewhere), else from the script wording, which you must say is not checked against the speech. Then present the finished video (pipeline_review_present with gate finish).',

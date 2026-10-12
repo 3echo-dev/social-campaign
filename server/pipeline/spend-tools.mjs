@@ -14,6 +14,15 @@ export const FREE_PICTURES_PER_PANEL = 3;
 export const VOICE_SPENDERS = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio', 'creative_design_voice']);
 /** The only guarded tools that take `estimate_only` and then spend nothing. */
 export const VOICE_ESTIMABLE = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio']);
+/**
+ * Music is the one ElevenLabs thing made through a flow: creative_generate_in_flow with node_type "music" (an eleven_music model).
+ * It is priced and approved like voice (a "music" price item, estimate_only first). Every other use of that tool, and every other
+ * flow tool, stays refused: pictures, video and sound effects are not made with ElevenLabs.
+ */
+export const MUSIC_TOOL = 'creative_generate_in_flow';
+export const MUSIC_NODE = 'music';
+export const MUSIC_MODEL = /^eleven_music/;
+export const isMusicCall = (base, input) => base === MUSIC_TOOL && String(asObject(input).node_type ?? '').trim().toLowerCase() === MUSIC_NODE;
 export const ELEVEN_LABS_MEDIA = Object.freeze([
   'creative_generate_image', 'creative_generate_video', 'creative_edit_image', 'creative_generate_in_flow', 'creative_run_flow_nodes',
 ]);
@@ -73,6 +82,9 @@ export const SPEND_DENY = Object.freeze({
   videoTooEarly: 'Video waits until the storyboard is approved. Only pictures can be made until then.',
   voiceTooEarly: 'Voice waits until the storyboard is approved. Only pictures can be made until then.',
   jobFinished: 'This job is finished, so nothing more can be made for it.',
+  onlyMusic: 'Only music (node_type music, an eleven_music model) is made with creative_generate_in_flow, and only after its price is approved. Images and video are made with 3Echo Studio, and sound effects are not made.',
+  musicModel: 'Music is made with an eleven_music model only.',
+  musicNoEstimate: 'Get a price for this music first (creative_generate_in_flow with node_type music and estimate_only).',
   videoNoEstimate: 'Get a price for this clip first.',
   voiceNoEstimate: 'Get a price for this voice line first.',
   oneAtATime: 'Make one version at a time unless more were approved.',
@@ -80,7 +92,7 @@ export const SPEND_DENY = Object.freeze({
   overBudget: 'This would go over the approved price for this job. Show the new price and get it approved first.',
   alreadyMade: 'This item has already been made. To make it again, ask for a redo on the board.',
   stillMaking: "This item is still being made. Check on it with wait_for_job instead of making it again.",
-  unsupported: "This 3Echo or ElevenLabs tool isn't covered by an approved price, so it isn't used for campaign jobs. Pictures and clips are made with create_image_job and create_video_job, and voice with creative_generate_speech.",
+  unsupported: "This 3Echo or ElevenLabs tool isn't covered by an approved price, so it isn't used for campaign jobs. Pictures and clips are made with create_image_job and create_video_job, voice with creative_generate_speech, and music with creative_generate_in_flow (node_type music).",
   unchecked: "The price check couldn't finish, so nothing was made. Try again in a moment.",
 });
 
@@ -138,7 +150,7 @@ export function spendClass(name) {
 }
 
 /** True when the call is a plain estimate that the tool itself answers without spending. */
-export const honoursEstimateOnly = (base, input) => asObject(input).estimate_only === true && VOICE_ESTIMABLE.includes(base);
+export const honoursEstimateOnly = (base, input) => asObject(input).estimate_only === true && (VOICE_ESTIMABLE.includes(base) || isMusicCall(base, input));
 
 // messages/ holds what the person wrote to each agent on the board and the Director's replies; the model never writes it by hand.
 const FACT_DIRS = new Set(['generation', 'pricing', 'approvals', 'messages']);

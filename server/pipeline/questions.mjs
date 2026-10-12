@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { extname, join, relative } from 'node:path';
 import * as runtime from './runtime.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
 
@@ -131,10 +131,30 @@ function uploadWish(wantsUpload, jobId) {
   return { type };
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null }) {
+// Takes to pick between (voice-over or music versions made for the combine step): each is a short label and a job-relative audio
+// file. The board plays them side by side on the question card, and each label is also an answer button.
+const TAKE_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']);
+function questionTakes(root, takes, jobId, brand) {
+  if (takes === undefined || takes === null) return [];
+  if (!jobId) throw new TypeError('A question with takes to pick from must be about one job (pass jobId).');
+  if (!Array.isArray(takes) || takes.length < 2 || takes.length > QUESTION_OPTION_LIMIT) throw new TypeError(`Give two to ${QUESTION_OPTION_LIMIT} takes.`);
+  const jobDir = join(root, 'workspaces', brand, 'jobs', jobId);
+  return takes.map(take => {
+    if (!take || typeof take !== 'object') throw new TypeError('Each take needs a label and a file.');
+    const label = plainLine(take.label, { label: 'Each take label', limit: OPTION_TEXT_LIMIT });
+    const file = typeof take.file === 'string' ? take.file.trim().replace(/\\/g, '/') : '';
+    if (!file || file.startsWith('/') || file.split('/').includes('..') || !TAKE_EXTENSIONS.has(extname(file).toLowerCase()) || !existsSync(join(jobDir, ...file.split('/')))) throw new TypeError(`The file for ${label} must be an audio file inside the job.`);
+    return { label, file };
+  });
+}
+
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined }) {
   const place = questionPlace(root, { brand, jobId });
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
-  const choices = questionOptions(options);
+  const picks = inChat ? [] : questionTakes(root, takes, place.jobId, place.brand);
+  if (picks.length && options !== undefined && options !== null && !(Array.isArray(options) && !options.length)) throw new TypeError('A question with takes uses the takes as its options.');
+  if (new Set(picks.map(take => take.label.toLowerCase())).size !== picks.length) throw new TypeError('Each take label must be different.');
+  const choices = picks.length ? picks.map(take => take.label) : questionOptions(options);
   if (allowText !== undefined && allowText !== null && typeof allowText !== 'boolean') throw new TypeError('allowText must be true or false.');
   if (inChat !== undefined && inChat !== null && typeof inChat !== 'boolean') throw new TypeError('inChat must be true or false.');
   const wish = inChat ? null : uploadWish(wantsUpload, place.jobId);
@@ -149,6 +169,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     allowText: typed,
     ...(inChat ? { inChat: true } : {}),
     ...(wish ? { wantsUpload: wish } : {}),
+    ...(picks.length ? { takes: picks } : {}),
     askedAt: new Date().toISOString(),
     status: 'open',
     answer: null,

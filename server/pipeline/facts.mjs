@@ -7,13 +7,13 @@ import { IMAGE_CREDITS_EACH } from '../generation/estimate.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { defaultWorkspaceRoot, expandUserPath, globalConfigDir, globalConfigPath, workspaceConfigPath } from '../lib/paths.mjs';
 import {
-  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, MUSIC_MODEL, MUSIC_TOOL, isMusicCall, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
   asObject, isFactFile, toolBase,
 } from './spend-tools.mjs';
 
 export { IMAGE_CREDITS_EACH };
 export {
-  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, MUSIC_MODEL, MUSIC_TOOL, isMusicCall, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
   asObject, isFactFile, toolBase,
 };
 
@@ -963,7 +963,7 @@ export function voiceRunCredits(data, outputs = voiceOutputs(data)) {
 }
 
 function voiceGenerations(base, input) {
-  if (base !== 'creative_generate_speech') return null;
+  if (base !== 'creative_generate_speech' && !isMusicCall(base, input)) return null;
   const n = finite(input.generations_count);
   return n === null ? VOICE_DEFAULT_GENERATIONS : n;
 }
@@ -1091,7 +1091,7 @@ export function finishingNeeded(job) {
   return Boolean(record) && (record.choice !== 'skip' || onscreenPlanned(job));
 }
 
-const FINISHING_CHOICE_IDS = Object.freeze(['captions', 'music', 'both', 'skip']);
+const FINISHING_CHOICE_IDS = Object.freeze(['captions', 'music', 'both', 'skip', 'combine']);
 
 /** The finishing choice recorded for the joined video(s) as approved now (approvals/finishing.json), else null. */
 export function finishingRecord(job) {
@@ -1299,10 +1299,12 @@ export function spendDecision(job, toolName, toolInput) {
   const base = toolBase(toolName);
   const input = asObject(toolInput);
   const deny = reason => ({ allow: false, reason });
-  if (ELEVEN_LABS_MEDIA.includes(base)) return deny(SPEND_DENY.elevenLabsMedia);
+  const music = isMusicCall(base, input);
+  if (ELEVEN_LABS_MEDIA.includes(base) && !music) return deny(base === MUSIC_TOOL ? SPEND_DENY.onlyMusic : SPEND_DENY.elevenLabsMedia);
+  if (music && !MUSIC_MODEL.test(String(input.model_id ?? ''))) return deny(SPEND_DENY.musicModel);
   const provider = providerOf(base);
   // Only the named spenders can be checked against a price, so nothing else is ever let through here.
-  if (!THREE_ECHO_SPENDERS.includes(base) && !VOICE_SPENDERS.includes(base)) return deny(SPEND_DENY.unsupported);
+  if (!music && !THREE_ECHO_SPENDERS.includes(base) && !VOICE_SPENDERS.includes(base)) return deny(SPEND_DENY.unsupported);
   const transcription = base === 'creative_transcribe_audio';
   if (transcription && isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
   const price = transcription ? currentTranscriptionApproval(job) : currentPriceApproval(job);
@@ -1316,6 +1318,8 @@ export function spendDecision(job, toolName, toolInput) {
   const item = quoteItem(price.quote, key);
   if (!item) return deny(SPEND_DENY.notInQuote);
   if (transcription !== isTranscriptionItem(item)) return deny(SPEND_DENY.mismatch);
+  // A music call needs a music price item, and a voice call a voice one: one kind of price never pays for another.
+  if (provider === ELEVEN_LABS && !transcription && item.kind && item.kind !== (music ? 'music' : 'voice')) return deny(SPEND_DENY.mismatch);
   if (!transcription && referenceArtOnly(job)) {
     if (provider === ELEVEN_LABS) return deny(SPEND_DENY.voiceTooEarly);
     if (base !== 'create_image_job' || item.kind !== 'image') return deny(SPEND_DENY.videoTooEarly);
@@ -1347,6 +1351,7 @@ export function spendDecision(job, toolName, toolInput) {
     if (generations !== null && generations !== allowed) return deny(SPEND_DENY.oneAtATime);
     const estimate = latestEstimate(job, priceKey(base, input));
     if (estimate) cost = finite(estimate.credits);
+    else if (music) return deny(SPEND_DENY.musicNoEstimate);
     else if (VOICE_ESTIMABLE.includes(base)) return deny(SPEND_DENY.voiceNoEstimate);
     else cost = finite(item.credits);
     if (cost === null) return deny(SPEND_DENY.voiceNoEstimate);
@@ -1359,7 +1364,7 @@ export function spendDecision(job, toolName, toolInput) {
   return { allow: true, cost, key, provider };
 }
 
-export const QUOTE_KINDS = Object.freeze({ [THREE_ECHO]: Object.freeze(['image', 'video']), [ELEVEN_LABS]: Object.freeze(['voice', 'transcription']) });
+export const QUOTE_KINDS = Object.freeze({ [THREE_ECHO]: Object.freeze(['image', 'video']), [ELEVEN_LABS]: Object.freeze(['voice', 'music', 'transcription']) });
 export const LINKS_RECORD = 'links';
 const roundCredits = value => Math.round(value * 1e6) / 1e6;
 const APPROVAL_NAME = /^approval-(\d+)\.json$/;
@@ -1443,7 +1448,7 @@ function quoteItemFrom(job, raw, index, estimates) {
   if (raw.panel !== undefined && canonicalItem(raw.panel) !== parsed.item) throw new Error(`${label}: the panel does not match its key.`);
   if (!PROVIDERS.includes(raw.provider)) throw new Error(`${label}: the provider must be threeEcho or elevenLabs.`);
   if (!QUOTE_KINDS[raw.provider].includes(raw.kind)) {
-    throw new Error(`${label}: ${raw.provider === THREE_ECHO ? '3Echo Studio makes the images and video clips' : 'ElevenLabs is used for voice and transcription only'}.`);
+    throw new Error(`${label}: ${raw.provider === THREE_ECHO ? '3Echo Studio makes the images and video clips' : 'ElevenLabs is used for voice, music and transcription only'}.`);
   }
   if ((raw.kind === 'transcription') !== isTranscriptionItem(parsed.key)) throw new Error(`${label}: a transcription is keyed TR, such as ${job.jobId}-D1-TR1-v1, and only a transcription is.`);
   if (isReferenceItem(parsed.key) && raw.kind !== 'image') throw new Error(`${label}: the prefix R is for reference pictures only, so a ${raw.kind === 'video' ? 'video clip' : 'voice line'} needs another key, such as S1.`);
@@ -1456,8 +1461,8 @@ function quoteItemFrom(job, raw, index, estimates) {
     if (Math.abs(credits - IMAGE_CREDITS_EACH) > EPSILON) throw new Error(`${label}: a 3Echo image costs ${IMAGE_CREDITS_EACH} credit.`);
     return item;
   }
-  const what = raw.kind === 'video' ? 'video clip' : raw.kind === 'transcription' ? 'transcription' : 'voice line';
-  const how = raw.kind === 'video' ? 'Price it with estimate_video_job' : raw.kind === 'transcription' ? 'Price it with creative_transcribe_audio and estimate_only' : 'Price it with the voice tool and estimate_only';
+  const what = raw.kind === 'video' ? 'video clip' : raw.kind === 'transcription' ? 'transcription' : raw.kind === 'music' ? 'music track' : 'voice line';
+  const how = raw.kind === 'video' ? 'Price it with estimate_video_job' : raw.kind === 'transcription' ? 'Price it with creative_transcribe_audio and estimate_only' : raw.kind === 'music' ? 'Price it with creative_generate_in_flow (node_type music) and estimate_only' : 'Price it with the voice tool and estimate_only';
   const estimateId = text(raw.estimateId);
   if (!estimateId) throw new Error(`${label}: this ${what} needs its captured estimate. ${how}, then pass the estimateId.${estimateChoices(estimates, raw.provider, parsed.key)}`);
   const estimate = estimates.find(entry => entry.estimateId === estimateId);
@@ -1477,7 +1482,7 @@ function quoteItemFrom(job, raw, index, estimates) {
     const both = resolutionPrices(estimates, estimate, height === resolutionHeight('720p') ? '720p' : height === resolutionHeight('1080p') ? '1080p' : null);
     if (both) item.resolutionPrices = both;
   }
-  if (raw.kind === 'voice') {
+  if (raw.kind === 'voice' || raw.kind === 'music') {
     const recorded = finite(estimate.details?.generationsCount);
     const given = raw.generationsCount === undefined || raw.generationsCount === null ? null : finite(raw.generationsCount);
     if (given !== null && (!Number.isInteger(given) || given < 1)) throw new Error(`${label}: the number of versions must be a whole number of one or more.`);

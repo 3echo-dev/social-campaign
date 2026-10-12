@@ -25,6 +25,8 @@ export const MIN_VIDEO_BITRATE_KBPS = 150;
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.m4v']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif', '.tiff', '.tif']);
 
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']);
+
 const VIDEO_SCALE_FILTER = `scale='min(${VIDEO_MAX_EDGE},iw)':'min(${VIDEO_MAX_EDGE},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`;
 const IMAGE_SCALE_FILTER = `scale='min(${IMAGE_MAX_EDGE},iw)':'min(${IMAGE_MAX_EDGE},ih)':force_original_aspect_ratio=decrease`;
 
@@ -214,6 +216,22 @@ async function makeImageReviewCopy({ root, sourcePath, sha, ext }) {
   return record;
 }
 
+// A take to listen to on the board. The board's file store takes pictures and video, so the sound travels as a small mp4 with a
+// 64 px black picture, which the page plays as audio.
+async function makeAudioReviewCopy({ root, sourcePath, sha }) {
+  const dir = reviewCopiesDir(root);
+  mkdirSync(dir, { recursive: true });
+  const finalPath = join(dir, `${sha}.mp4`);
+  const temp = tempPath(dir, 'mp4');
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=1', '-i', sourcePath, '-map', '0:v', '-map', '1:a:0', '-shortest',
+    '-c:v', 'libx264', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', `${AUDIO_BITRATE_BPS}`, '-ar', '44100', '-movflags', '+faststart', temp]);
+  renameSync(temp, finalPath);
+  const outputProbe = await probeFile(finalPath);
+  const record = { sha, path: finalPath, contentType: 'video/mp4', bytes: statSync(finalPath).size, width: outputProbe.width, height: outputProbe.height, durationMs: outputProbe.duration ? Math.round(outputProbe.duration * 1000) : null, audioOnly: true };
+  recordCopy(root, record);
+  return record;
+}
+
 export async function makeReviewCopy({ root, sourcePath }) {
   if (!existsSync(sourcePath)) {
     throw new UserFacingError('The source file could not be found.', { code: 'source_missing' });
@@ -223,6 +241,7 @@ export async function makeReviewCopy({ root, sourcePath }) {
   if (cached) return cached;
 
   const ext = extname(sourcePath).toLowerCase();
+  if (AUDIO_EXTENSIONS.has(ext)) return makeAudioReviewCopy({ root, sourcePath, sha });
   let kind = VIDEO_EXTENSIONS.has(ext) ? 'video' : IMAGE_EXTENSIONS.has(ext) ? 'image' : null;
   let probe = null;
 
@@ -393,6 +412,12 @@ async function reviewSources(job, { all = false } = {}) {
     for (const item of post?.media || []) add(item.path);
   }
   for (const path of await registeredMedia(job, all)) add(join(job.dir, ...path.split('/')));
+  // The takes of a voice-over or music track the person is picking between on the combine card.
+  for (const kind of ['voice', 'music']) {
+    try {
+      for (const take of readJsonFile(join(job.dir, 'media', kind, 'takes', 'takes.json'), []) || []) if (take && typeof take.file === 'string') add(join(job.dir, ...take.file.split('/')));
+    } catch { /* no takes */ }
+  }
   return [...found.values()];
 }
 
