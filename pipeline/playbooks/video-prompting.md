@@ -24,7 +24,7 @@ Read by the scriptwriter when writing `generation-manifest.json`, and by the pro
 | Resolution | `480p`, `720p` or `1080p`; `720p` unless the brief says otherwise; `480p` only for a cost-capped preview |
 | Audio | `generateAudio: true` by default; the persona's voice and room ambience come from the prompt. A talking character's lines are generated in the clip, and audio on or off changes the price |
 | References | up to 9 images per clip; the approved panel image seeds every clip, the product asset rides along |
-| Assembly | the producer stitches clips with ffmpeg in `stitch.order`, burns on-screen text from the script, outputs `media/D{n}/final.mp4` |
+| Assembly | the producer joins clips with ffmpeg in `stitch.order` into a plain cut (`media/D{n}/final.mp4`, no text); `finish-video.py` draws the on-screen text and captions once, later |
 | Quote | `estimate_video_job` before any clip; one hero clip, inspect, then the batch |
 
 ## The rule that saves the most money
@@ -71,8 +71,8 @@ Name exactly one move per clip. Silence lets the model choose, and it chooses to
 2. Repeat identity verbatim in every clip: the same 3 to 6 attributes, the same outfit, the same room. "The same woman" and pronouns do not carry across clips.
 3. Dialogue as `{Persona} says: "line"`. On fast cuts each line is 6 words or fewer. One speaker per clip.
 4. Voice described once (the manifest's `characters[].voice`, from the script's Voice notes: accent, tempo, manner, pacing cue) and pasted verbatim into every clip where that character speaks. Rewording it changes the voice.
-5. Say what must not appear: added text, subtitles, logos other than the brand, other products, extra people, extra hands. Negative constraints matter more than adjectives.
-6. No added text in generation. Captions and on-screen text are burned at stitch from the script, where they are sharp and correct. The product's own label is not added text: it comes from the product photo and stays as photographed. Asking for it "angled away" or "not legible" returns a blank white sticker and a brand nobody can name.
+5. End every clip prompt with the line "No on-screen text, no captions, no subtitles, no watermark." Text the model draws is burned into the picture and cannot be removed, so the finished video would show it twice. Also say what must not appear: added text, subtitles, logos other than the brand, other products, extra people, extra hands. Negative constraints matter more than adjectives.
+6. No added text in generation. Captions and on-screen text are drawn once by `finish-video.py` from the script and the transcript, where they are sharp and correct. The product's own label is not added text: it comes from the product photo and stays as photographed. Asking for it "angled away" or "not legible" returns a blank white sticker and a brand nobody can name.
 7. Replace emotional adjectives with their visible cause: not "excited" but "eyebrows up, leans toward the lens, half laugh".
 8. Never cinematic, professional, stunning, 8k, studio, perfect. Ask for phone quality, window light, visible skin texture, grain.
 9. Keep physics simple: pick up, hold, turn, set down. Anchor hands to an object.

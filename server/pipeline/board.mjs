@@ -2782,6 +2782,12 @@ export function applyBoardDecision({root,requestId,confirmedBy,maxCredits}) {
   if(args.reviewId==='concept' && args.decision==='approve' && (!Number.isInteger(maxCredits) || maxCredits<0)) throw new Error('Concept approval needs the spending limit the user selected.');
   // A board approval is at the amount the board showed, never another figure.
   if(args.reviewId==='concept' && args.decision==='approve' && Number.isInteger(args.credits) && maxCredits!==args.credits) throw new Error(`Approve this concept at the ${args.credits} credits the board showed.`);
+  // The post text and the posting plan are approved only while every picture, clip, the joined video and the finished video stand approved as they are now.
+  if((args.reviewId==='content' || args.reviewId==='publish') && args.decision==='approve' && !kinds.suppliesMedia(validated.snapshot.job?.kind)) {
+    const mediaJob=facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
+    const blocker=mediaJob ? facts.mediaBlocker(mediaJob) : null;
+    if(blocker) throw new UserFacingError(blocker==='finishing' ? 'What to add to the joined video has not been chosen yet, so this cannot be approved.' : `The ${MEDIA_GATE_WORDS[blocker]} have not been approved as they are now, so this cannot be approved.`,{code:'media_review_open',fix:'Check the video on the board first.'});
+  }
   // The label and brand-mark check is skipped for a post made from the person's own finished files: they approve those as they are.
   const labelCheck = args.reviewId==='content' && args.decision==='approve' && !kinds.suppliesMedia(validated.snapshot.job?.kind)
     ? assertContentQc({root,job:{brand:validated.snapshot.brand?.slug || args.brand,jobId:args.jobId},files:args.artifacts,acceptedFlagIds:Array.isArray(args.acceptedFlagIds) ? args.acceptedFlagIds : []})

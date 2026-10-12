@@ -1129,6 +1129,18 @@ export function mediaReviewOutstanding(job) {
   return ['pictures', 'clips', 'cut', 'finish'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
+/**
+ * What still stands between a made video and the post text / posting plan: the first media review not approved as the files are now
+ * (pictures, clips, joined video, finished video), else 'finishing' when the joined video is there but what to add was never recorded
+ * for it. null when nothing is in the way. A redo of finishing (a new final.mp4, a new hash) or of the cut voids its approval, so it shows here again.
+ */
+export function mediaBlocker(job) {
+  const open = mediaReviewOutstanding(job);
+  if (open) return open;
+  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job)) return 'finishing';
+  return null;
+}
+
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key
 // that was made, or is being made, could be billed again. A create that ended released with no outputs
 // (failed or cancelled) made nothing, so its key can be tried again; a redo is a new version with its own price.
