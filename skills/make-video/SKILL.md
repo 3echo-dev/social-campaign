@@ -16,10 +16,10 @@ The Director never writes a prompt; it prices, makes the sample, makes the rest,
 
 Run only after the active plan and current spending decision authorize the request.
 `pipeline_quote_save` adds to the existing price rather than replacing it; an optional `drop` removes an item not yet made when the person asks for changes.
-The hero clip's item carries `sample: true`, unless the clips start from the storyboard pictures: then the hero picture is the sample, as make-image says, and no clip is, because the clips need their pictures first.
+The hero clip's item carries `sample: true`, unless the clips start from the storyboard pictures: then the hero picture was the sample, made and approved before the storyboard (as make-image says), and no clip is, because the clips need their pictures first.
 Only one item per post is ever the sample.
 Its landed sample is presented for approval on the board and in chat, the same as every other decision, and the rest is held until the person answers.
-When the clips start from the storyboard pictures, every picture is shown together once they are all made (`gate: "pictures"`) and no clip is made until the person approves them all; every clip is shown together once they are all made (`gate: "clips"`) before anything is joined. See Pictures and clips in the board-sync skill. A change on a panel is a redo: price it as a new version and get the extra cost approved before making it.
+When the clips start from the storyboard pictures, the approved panel pictures are the start pictures: the person saw every one in the storyboard review, and approving the storyboard approved them, so there is no second pictures review. A picture redone after that opens the pictures review again (`gate: "pictures"`) and no clip is made until it is approved; every clip is shown together once they are all made (`gate: "clips"`) before anything is joined. See Pictures and clips in the board-sync skill. A change on a clip is a redo: price it as a new version and get the extra cost approved before making it. Video, voice and music always need a price approval.
 Reuse an observed provider result when its request ID, hash, and revision still match.
 Leave unknown provider outcomes unresolved and do not retry blindly.
 

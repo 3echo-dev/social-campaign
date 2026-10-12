@@ -3,10 +3,13 @@
 // Its sibling preflight-media.js proves the PIPE (that a generated file can reach disk).
 // Run both before the first create_image_job or create_video_job.
 //
-//   node preflight-generation.js <brand> <job-id> [deliverable] [--json]
+//   node preflight-generation.js <brand> <job-id> [deliverable] [--json] [--pictures]
+//
+// --pictures is the check before the storyboard pictures, which are made before the storyboard is approved: it does not ask
+// for the storyboard approval (check 1), and it needs the style preamble in the manifest.
 //
 // Checks, in order:
-//   1. the storyboard gate is approved and still covers this deliverable's board
+//   1. the storyboard gate is approved and still covers this deliverable's board (not with --pictures)
 //   2. brief.md front matter is valid (the prompts must trace to it)
 //   3. generation-manifest.json is valid against schemas/ugc-package.schema.json
 //   4. every panel on the board's Sequence has an item, and no item names a panel not on it
@@ -15,6 +18,8 @@
 //   7. the quote against the figure they last agreed to, said, never refused
 //   8. the prompts stand on their own: none points at another, none carries a note about a
 //      file, none asks for the product's own label to be hidden
+//   9. one picture style: every image prompt carries the manifest's style preamble word for word,
+//      and the continuity block when there is one
 //
 // Exit 0 safe to generate · 1 problems found · 3 no storyboard approval · 2 usage
 const fs = require('fs');
@@ -41,9 +46,10 @@ const VIDEO_MAX_IMAGE_REFS = 9;  // create_video_job image references
 const ROOT = path.join(__dirname, '..');
 const argv = process.argv.slice(2);
 const json = argv.includes('--json');
+const picturesOnly = argv.includes('--pictures');
 const { brand, jobId: job, dir, rest: [only] } = ws.resolveJobArgs(argv, argv);
 if (!brand || !job) {
-  console.error('usage: preflight-generation.js <brand> <job-id> [deliverable] [--json]');
+  console.error('usage: preflight-generation.js <brand> <job-id> [deliverable] [--json] [--pictures]');
   process.exit(2);
 }
 const jobDir = dir;
@@ -74,13 +80,13 @@ try {
     .sort((a, b) => a.round - b.round);
   boardApproval = recs.filter(r => r.decision === 'approved').pop() || null;
 } catch {}
-if (!boardApproval) {
+if (!boardApproval && !picturesOnly) {
   const out = { safe: false, reason: 'no approved storyboard record; nothing may be generated yet' };
   if (json) console.log(JSON.stringify(out, null, 2));
   else console.error('BLOCKED: no approved storyboard for ' + job + '. The board gate exists so a credit is never spent on a panel that is about to be cut.');
   process.exit(3);
 }
-for (const a of boardApproval.artifacts) {
+for (const a of boardApproval ? boardApproval.artifacts : []) {
   const p = path.join(jobDir, a.path);
   if (!fs.existsSync(p)) { fail('approved board artifact is gone: ' + a.path); continue; }
   if (hashFile(p).sha256 !== a.sha256) fail('board changed since approval: ' + a.path + '. Re-send it and ask for a new verdict before generating.');
@@ -184,6 +190,28 @@ for (const D of dels) {
     if (HIDES_THE_LABEL.test(t)) fail(D + ' ' + where + ' asks for the product\'s own label to be hidden ("' + t.match(HIDES_THE_LABEL)[0].trim() + '"). The label from the photo is the brand; ban added text only.');
   }
 
+  // 9. One picture style per job. The style preamble is written once, in the manifest, and every image prompt carries it word
+  // for word (after the reference legend, when there is one), then the continuity block. A manifest from before this check has
+  // no preamble: that is said, not refused, except for the storyboard pictures, which need it.
+  const preamble = String(man.style || '').trim();
+  const continuity = String(man.continuity || '').trim();
+  const squash = text => String(text || '').replace(/\s+/g, ' ').trim();
+  if (!preamble) {
+    if (picturesOnly) fail(D + ': the manifest has no style preamble. Write one image style for the whole job (taken from the chosen concept) once, and repeat it word for word at the start of every image prompt.');
+    else if (imageCount) note(D + ': the manifest has no style preamble, so the images may not look like one set');
+  } else {
+    for (const it of man.items || []) {
+      if (it.kind !== 'image') continue;
+      const where = D + ' ' + (it.panel || '?') + ' (image)';
+      const prompt = squash(it.prompt);
+      if (!prompt) continue;
+      const at = prompt.indexOf(squash(preamble));
+      if (at < 0) fail(where + ': the prompt does not carry the style preamble word for word. Paste it at the start so every image has the same look.');
+      else if (at > 0 && !/^(\[Image \d+\][^\[]*)+$/.test(prompt.slice(0, at).trim())) fail(where + ': the style preamble must open the prompt, after the reference legend only.');
+      if (continuity && !prompt.includes(squash(continuity))) fail(where + ': the prompt does not carry the continuity block word for word. Paste it so the people, place and product stay the same.');
+    }
+  }
+
   const spec = (Array.isArray(jobSpec.deliverables) ? jobSpec.deliverables : []).find(x => x && x.id === D);
   if (spec && spec.talkingCharacter === true && ['ugc', 'brand_video'].includes(spec.creativeDiscipline)) {
     const chars = Array.isArray(man.characters) ? man.characters : [];
@@ -285,7 +313,7 @@ const result = {
   deliverables: perDeliverable,
   quotedCredits: totalCredits,
   ceilings: Object.fromEntries(ceilings),
-  storyboardApproval: boardApproval.approvalId,
+  storyboardApproval: boardApproval ? boardApproval.approvalId : null,
   problems, notes,
 };
 if (json) { console.log(JSON.stringify(result, null, 2)); process.exit(result.safe ? 0 : 1); }
@@ -299,4 +327,4 @@ if (problems.length) {
   console.error('BLOCKED: do not generate. Fix the manifest or the board, then re-run.');
   process.exit(1);
 }
-console.log('ok: the plan is safe to generate against board approval ' + boardApproval.approvalId + '. Run preflight-media.js next to prove the download path.');
+console.log('ok: the plan is safe to generate' + (boardApproval ? ' against board approval ' + boardApproval.approvalId : ' (pictures, before the storyboard is approved)') + '. Run preflight-media.js next to prove the download path.');

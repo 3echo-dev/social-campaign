@@ -7,13 +7,13 @@ import { IMAGE_CREDITS_EACH } from '../generation/estimate.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { defaultWorkspaceRoot, expandUserPath, globalConfigDir, globalConfigPath, workspaceConfigPath } from '../lib/paths.mjs';
 import {
-  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
   asObject, isFactFile, toolBase,
 } from './spend-tools.mjs';
 
 export { IMAGE_CREDITS_EACH };
 export {
-  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  ELEVEN_LABS_MEDIA, FACT_FILE_DENY, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
   asObject, isFactFile, toolBase,
 };
 
@@ -558,17 +558,22 @@ export function approvedTotal(price, provider) {
 const RELEASED_BILLING = new Set(['released', 'refunded', 'voided', 'cancelled', 'canceled']);
 const RELEASED_STATUS = new Set(['failed', 'cancelled', 'canceled']);
 
-export function creditsCommitted(job, scope = null) {
+// skip: a test on a call ({ key, image }) left out of the sum, such as the pictures that went ahead with no price approval.
+export function creditsCommitted(job, scope = null, skip = null) {
   const calls = new Map();
   const entry = id => {
-    if (!calls.has(id)) calls.set(id, { provider: null, reserved: null, final: null, released: false, spoken: false });
+    if (!calls.has(id)) calls.set(id, { provider: null, reserved: null, final: null, released: false, spoken: false, key: null, image: false });
     return calls.get(id);
   };
   for (const record of readRecords(job)) {
     if (!record.providerJobId || !PROVIDERS.includes(record.provider)) continue;
     const call = entry(record.providerJobId);
     call.provider = record.provider;
-    if (record.type === 'create') call.spoken = isTranscriptionItem(record.key);
+    if (record.type === 'create') {
+      call.spoken = isTranscriptionItem(record.key);
+      call.key = canonicalJobKey(record.key);
+      call.image = isImageCreate(record);
+    }
     if (record.type === 'create' && finite(record.reservedCredits) !== null) call.reserved = finite(record.reservedCredits);
     if (record.type === 'result') {
       if (finite(record.finalCredits) !== null) call.final = finite(record.finalCredits);
@@ -585,6 +590,7 @@ export function creditsCommitted(job, scope = null) {
     if (!call.provider) continue;
     if (scope === TRANSCRIPTION_SCOPE && !call.spoken) continue;
     if (scope === 'media' && call.spoken) continue;
+    if (skip && skip(call)) continue;
     totals[call.provider] += call.final !== null ? call.final : call.released ? 0 : call.reserved || 0;
   }
   return totals;
@@ -988,6 +994,10 @@ export function sampleKeyFor(job, quote) {
     const parsed = parseJobKey(entry.key);
     if (parsed && parsed.deliverable === baseParsed.deliverable && parsed.item === baseParsed.item && parsed.version > newest.version) newest = parsed;
   }
+  // A redo made without a price line (a free second or third picture) takes over the same way.
+  for (const picture of madePictures(job)) {
+    if (picture.deliverable === baseParsed.deliverable && picture.item === baseParsed.item && picture.version > newest.version) newest = picture;
+  }
   return newest.key;
 }
 
@@ -1026,14 +1036,18 @@ export const sameKey = (a, b) => (canonicalJobKey(a) || a) === (canonicalJobKey(
 export function mediaSet(job, kind) {
   const quote = readQuote(job)?.quote;
   const newest = new Map();
-  for (const item of Array.isArray(quote?.items) ? quote.items : []) {
-    if (!item || item.provider !== THREE_ECHO || item.kind !== kind || isReferenceItem(item) || isTranscriptionItem(item)) continue;
-    const parsed = parseJobKey(item.key);
-    if (!parsed) continue;
+  const offer = parsed => {
     const slot = slotOfKey(parsed.key);
     const held = newest.get(slot);
     if (!held || parsed.version > held.version) newest.set(slot, { slot, key: parsed.key, deliverable: parsed.deliverable, panel: parsed.item, version: parsed.version });
+  };
+  for (const item of Array.isArray(quote?.items) ? quote.items : []) {
+    if (!item || item.provider !== THREE_ECHO || item.kind !== kind || isReferenceItem(item) || isTranscriptionItem(item)) continue;
+    const parsed = parseJobKey(item.key);
+    if (parsed) offer(parsed);
   }
+  // Storyboard pictures made with no price approval are in the set too, so the pictures the person sees are all of them.
+  if (kind === 'image') for (const picture of madePictures(job)) if (!isReferenceItem(picture.key)) offer(picture);
   const landed = readLanded(job).filter(entry => entry.type === 'landed' && typeof entry.file === 'string' && entry.file && typeof entry.sha256 === 'string');
   const panels = [...newest.values()].map(slot => {
     const entry = [...landed].reverse().find(item => canonicalJobKey(item.key) === slot.key && existsSync(join(job.dir, ...item.file.split('/'))));
@@ -1101,6 +1115,22 @@ export function cutSet(job) {
   return { kind: 'video', panels, complete: panels.length > 0 };
 }
 
+/** Whether the latest storyboard approval lists every storyboard picture, with the same content hash, as they are now. */
+export function storyboardApprovalCoversPictures(job) {
+  const set = mediaSet(job, 'image');
+  if (!set.complete) return false;
+  let latest = null;
+  try {
+    for (const name of readdirSync(join(job.dir, 'approvals'))) {
+      const found = /^storyboard-(\d+)\.json$/.exec(name);
+      if (found && (!latest || Number(found[1]) > latest.round)) latest = { round: Number(found[1]), name };
+    }
+  } catch { return false; }
+  const record = latest ? readJson(join(job.dir, 'approvals', latest.name)) : null;
+  if (!record || record.decision !== 'approved' || !Array.isArray(record.artifacts)) return false;
+  return set.panels.every(panel => record.artifacts.some(item => item?.path === panel.file && item.sha256 === panel.sha256));
+}
+
 /** Whether the person approved the current pictures or clips, exactly as they are now. */
 export function mediaSetApproved(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
@@ -1108,6 +1138,9 @@ export function mediaSetApproved(job, gate) {
   // A finished video is approved only for the cut and the choice it was made from: a new cut, or a changed choice, voids it.
   if (gate === 'finish' && !finishingRecord(job)) return false;
   const decision = readJson(join(job.dir, ...spec.file.split('/')));
+  // The storyboard review already showed every picture. Its approval covers them as they were shown, so the pictures are not
+  // reviewed a second time; a redo (a new file) or a decision saved on the pictures themselves is judged on its own.
+  if (!decision && gate === 'pictures') return storyboardApprovalCoversPictures(job);
   if (!decision || typeof decision !== 'object' || decision.decision !== 'approve' || !Array.isArray(decision.files)) return false;
   const set = reviewSet(job, gate);
   if (!set.complete || decision.files.length !== set.panels.length) return false;
@@ -1203,6 +1236,65 @@ export function earlierCreateState(job, key) {
   return state;
 }
 
+// Pictures cost 1 credit each and go ahead with no price approval, so a person is not asked to click for every storyboard
+// picture. Each one is still recorded (the hook writes its create record with the credits reserved) and counted in the job's
+// credit total. The free pass ends at FREE_PICTURES_PER_PANEL pictures for one panel (the first picture and two redos): the next
+// needs a normal price approval, and video, voice and music always do. This is the only place that decides it.
+export function isImageCreate(record) {
+  return Boolean(record) && record.type === 'create' && record.provider === THREE_ECHO && (record.kind === 'image' || record.tool === 'create_image_job');
+}
+
+/** The pictures made or being made (a create that failed or was cancelled made nothing), the oldest first, each as its parsed job key. */
+export function madePictures(job) {
+  const found = new Map();
+  for (const record of readRecords(job)) {
+    if (!isImageCreate(record)) continue;
+    const key = canonicalJobKey(record.key);
+    if (!key || found.has(key) || !earlierCreateState(job, key)) continue;
+    found.set(key, parseJobKey(key));
+  }
+  return [...found.values()];
+}
+
+/** How many pictures a job has made without a price approval covering them, and what they cost. They are in the job's credit total all the same. */
+export function pictureSpend(job) {
+  const quoted = new Set((readQuote(job)?.quote?.items || []).map(item => canonicalJobKey(item?.key)).filter(Boolean));
+  const free = madePictures(job).filter(picture => !quoted.has(picture.key));
+  const credits = creditsCommitted(job, 'media', call => !(call.image && call.key && free.some(picture => picture.key === call.key)));
+  return { count: free.length, credits: roundCredits(credits[THREE_ECHO] || 0), perPanel: FREE_PICTURES_PER_PANEL };
+}
+
+// The sample is the first storyboard picture made. Its redos are always allowed (they are the same panel). Until the person has
+// approved that sample, no other panel is started; once another panel has been started the lock has done its job.
+function pictureSampleLocked(job, key, made) {
+  if (isReferenceItem(key)) return false;
+  const panels = made.filter(picture => !isReferenceItem(picture.key));
+  const sample = panels[0] ? slotOfKey(panels[0].key) : null;
+  if (!sample || slotOfKey(key) === sample) return false;
+  if (panels.some(picture => slotOfKey(picture.key) !== sample)) return false;
+  const approval = readJson(join(job.dir, 'approvals', 'sample.json'));
+  const approvedKey = approval && typeof approval === 'object' ? canonicalJobKey(approval.key) : null;
+  return !(approvedKey && slotOfKey(approvedKey) === sample && sampleApproved(job, approvedKey));
+}
+
+// A picture the approved price does not list goes ahead on its own, with the checks above. null: this item is in the approved
+// price, so the normal price checks judge it.
+function freePictureDecision(job, price) {
+  const deny = reason => ({ allow: false, reason });
+  const key = itemKeyFor(job);
+  if (!key) return deny(SPEND_DENY.noItem);
+  if (price && quoteItem(price.quote, key)) return null;
+  if (isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
+  const earlier = earlierCreateState(job, key);
+  if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider: THREE_ECHO, repeat: true };
+  // A key whose create failed made nothing, but 3Echo hands back the same failed job for it, so the next try is the next version.
+  if (readRecords(job).some(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key)) return { allow: false, reason: SPEND_DENY.failedBefore, key, provider: THREE_ECHO, repeat: true };
+  const made = madePictures(job);
+  if (made.filter(picture => slotOfKey(picture.key) === slotOfKey(key)).length >= FREE_PICTURES_PER_PANEL) return deny(SPEND_DENY.pictureCap);
+  if (pictureSampleLocked(job, key, made)) return deny(SPEND_DENY.sampleLock);
+  return { allow: true, cost: IMAGE_CREDITS_EACH, key, provider: THREE_ECHO, free: true };
+}
+
 export function spendDecision(job, toolName, toolInput) {
   const base = toolBase(toolName);
   const input = asObject(toolInput);
@@ -1214,6 +1306,10 @@ export function spendDecision(job, toolName, toolInput) {
   const transcription = base === 'creative_transcribe_audio';
   if (transcription && isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
   const price = transcription ? currentTranscriptionApproval(job) : currentPriceApproval(job);
+  if (base === 'create_image_job') {
+    const free = freePictureDecision(job, price);
+    if (free) return free;
+  }
   if (!price) return deny(SPEND_DENY.noApproval);
   const key = itemKeyFor(job);
   if (!key) return deny(SPEND_DENY.noItem);
@@ -1222,7 +1318,7 @@ export function spendDecision(job, toolName, toolInput) {
   if (transcription !== isTranscriptionItem(item)) return deny(SPEND_DENY.mismatch);
   if (!transcription && referenceArtOnly(job)) {
     if (provider === ELEVEN_LABS) return deny(SPEND_DENY.voiceTooEarly);
-    if (base !== 'create_image_job' || item.kind !== 'image' || !isReferenceItem(item)) return deny(SPEND_DENY.videoTooEarly);
+    if (base !== 'create_image_job' || item.kind !== 'image') return deny(SPEND_DENY.videoTooEarly);
   }
   if (THREE_ECHO_SPENDERS.includes(base) && !isReferenceItem(item)) {
     const slots = new Set((price.quote.items || []).filter(entry => entry && entry.provider === THREE_ECHO && !isReferenceItem(entry)).map(entry => `${entry.deliverable}/${entry.panel}`));
@@ -1257,7 +1353,8 @@ export function spendDecision(job, toolName, toolInput) {
   }
   const itemCredits = finite(item.credits);
   if (itemCredits !== null && cost > itemCredits + EPSILON) return deny(SPEND_DENY.itemOver);
-  const committed = creditsCommitted(job, transcription ? TRANSCRIPTION_SCOPE : 'media')[provider] || 0;
+  // Pictures made with no price approval are not part of the approved total: they have their own free pass and cap.
+  const committed = creditsCommitted(job, transcription ? TRANSCRIPTION_SCOPE : 'media', call => call.image && call.key && !quoteItem(price.quote, call.key))[provider] || 0;
   if (committed + cost > approvedTotal(price, provider) + EPSILON) return deny(SPEND_DENY.overBudget);
   return { allow: true, cost, key, provider };
 }
@@ -1468,6 +1565,7 @@ export function generationCredits(job) {
   return {
     threeEchoCredits: { spent: roundCredits(spent[THREE_ECHO]), approved: approved(THREE_ECHO) },
     elevenLabsCredits: { spent: roundCredits(spent[ELEVEN_LABS]), approved: approved(ELEVEN_LABS) },
+    pictures: pictureSpend(job),
   };
 }
 

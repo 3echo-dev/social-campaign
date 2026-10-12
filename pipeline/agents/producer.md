@@ -131,7 +131,10 @@ The Creative Director never spends and holds no MCP tool; estimates, `pipeline_q
 
 ## Media: the only place money moves
 
-Only you run `make-image` and `make-video`. The spend guard refuses any generation with no approved board, no quote, no explicit yes or no hero back yet, and refuses the studio tools outright. The write guard refuses `status.md`, approvals, brand files, forged `# Decision` sections and the plugin folder. Off, both are rules you keep (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). A cut panel returns to the storyboard gate.
+For a video, ask "Voice-over: yes or no, and which voice?" once with `pipeline_board_ask` before the Creative Director writes the script and storyboard, and pass the answer on so the script and clip lengths fit it. The storyboard is refused for a video until it carries `voice_over`. Music and captions are chosen at the combine step.
+The storyboard pictures are made before the storyboard gate, the sample first, then the rest.
+
+Only you run `make-image` and `make-video`. The spend guard lets pictures go ahead with no price click (1 credit each, recorded and counted, 3 per panel at most, the sample first); it refuses video and voice with no approved board, no quote and no explicit yes, and refuses the studio tools outright. The write guard refuses `status.md`, approvals, brand files, forged `# Decision` sections and the plugin folder. Off, both are rules you keep (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). A cut panel returns to the storyboard gate.
 
 ## Gates
 

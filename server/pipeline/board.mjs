@@ -556,10 +556,10 @@ export function validateIntakeUpdate({ root, brand, jobId, expectedRevision, pat
 export const PRICE_GATE = 'price';
 const PRICE_STATES = new Set(['STORYBOARD_APPROVED', 'MEDIA_GENERATING', 'MEDIA_READY', 'CHANGES_REQUESTED']);
 const REFERENCE_ART_STATES = new Set(facts.REFERENCE_ART_STATES);
-const PRICE_TOO_EARLY = 'The price comes after the storyboard is approved and before or during media production. Before that, only pictures for reference art can be priced.';
-const REFERENCE_ART_ONLY = 'Before the storyboard is approved, only pictures for reference art can be priced. Price the video after the storyboard is approved.';
+const PRICE_TOO_EARLY = 'The price comes after the storyboard is approved and before or during media production. Before that, only pictures can be priced.';
+const REFERENCE_ART_ONLY = 'Before the storyboard is approved, only pictures can be priced. Price the video after the storyboard is approved.';
 const notTranscription = items => items.filter(item => !facts.isTranscriptionItem(item));
-const referenceImagesOnly = items => items.length > 0 && items.every(item => item?.kind === 'image' && facts.isReferenceItem(item));
+const picturesOnly = items => items.length > 0 && items.every(item => item?.kind === 'image');
 const transcriptionOnly = items => items.length > 0 && items.every(facts.isTranscriptionItem);
 
 const referenceArtSeat = state => REFERENCE_ART_STATES.has(state) || state === 'CHANGES_REQUESTED';
@@ -569,7 +569,7 @@ function priceRefusal(job, items) {
   if (transcriptionOnly(items)) return facts.isFinishedState(state) ? PRICE_TOO_EARLY : null;
   if (facts.referenceArtOnly(job)) {
     if (!referenceArtSeat(state)) return PRICE_TOO_EARLY;
-    return referenceImagesOnly(notTranscription(items)) ? null : REFERENCE_ART_ONLY;
+    return picturesOnly(notTranscription(items)) ? null : REFERENCE_ART_ONLY;
   }
   return PRICE_STATES.has(state) ? null : PRICE_TOO_EARLY;
 }
@@ -579,7 +579,7 @@ function priceOpen(root, brand, jobId) {
   if (!job) return false;
   const items = facts.readQuote(job)?.quote?.items || [];
   if (transcriptionOnly(items)) return !facts.isFinishedState(job.state);
-  if (facts.referenceArtOnly(job)) return referenceArtSeat(job.state) && referenceImagesOnly(notTranscription(items));
+  if (facts.referenceArtOnly(job)) return referenceArtSeat(job.state) && picturesOnly(notTranscription(items));
   return PRICE_STATES.has(job.state);
 }
 export const FINDINGS_GATE = 'findings';
@@ -599,18 +599,40 @@ function slotOf(key) {
   return parsed ? `${parsed.deliverable}|${parsed.item}` : null;
 }
 
+// A storyboard panel gets a generated picture unless it reuses a supplied image or is real footage to be filmed.
+const panelNeedsPicture = panel => panel?.source !== 'kept' && !/^Filmed footage/i.test(String(panel?.shot || ''));
+
+// Before the storyboard is approved there is no price: the sample is the first storyboard picture made, and what is left to
+// make is every other panel the storyboard text lists that needs a picture and has none yet.
+function panelsStillToMake(job, sampleSlot) {
+  const made = new Set(facts.madePictures(job).map(picture => slotOf(picture.key)));
+  const rest = [];
+  let names = [];
+  try { names = readdirSync(join(job.dir, 'drafts'), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name)).map(entry => entry.name); } catch { return rest; }
+  for (const deliverable of names) {
+    let board;
+    try { board = parseStoryboard(readFileSync(join(job.dir, 'drafts', deliverable, 'storyboard.md'), 'utf8')); } catch { continue; }
+    for (const panel of board.panels) {
+      const slot = `${deliverable}|${facts.canonicalItem(panel.ref)}`;
+      if (panelNeedsPicture(panel) && slot !== sampleSlot && !made.has(slot)) rest.push({ kind: 'image', slot });
+    }
+  }
+  return rest;
+}
+
 export function sampleReview(root, brand, jobId, snapshot) {
-  if (!priceOpen(root, brand, jobId)) return null;
   const job = facts.jobAt(root, brand, jobId);
   if (!job) return null;
-  const items = (facts.readQuote(job)?.quote?.items || []).filter(item => item && slotOf(item.key) && !facts.isReferenceItem(item) && !facts.isTranscriptionItem(item));
-  if (!items.length) return null;
+  const early = facts.referenceArtOnly(job) && !states.gateOf(job.state);
+  if (!early && !priceOpen(root, brand, jobId)) return null;
+  const items = early ? [] : (facts.readQuote(job)?.quote?.items || []).filter(item => item && slotOf(item.key) && !facts.isReferenceItem(item) && !facts.isTranscriptionItem(item));
+  if (!early && !items.length) return null;
   const records = facts.readRecords(job);
   const studioCreates = records.filter(record => record.type === 'create' && record.provider === facts.THREE_ECHO && slotOf(record.key) && !facts.isReferenceItem(record.key));
-  const sample = facts.parseJobKey(facts.sampleKeyFor(job, { items: facts.readQuote(job)?.quote?.items || [] }));
+  const sample = facts.parseJobKey(facts.sampleKeyFor(job, { items: early ? [] : facts.readQuote(job)?.quote?.items || [] }));
   if (!sample) return null;
   const slot = slotOf(sample.key);
-  const rest = items.filter(item => item.provider === facts.THREE_ECHO && SAMPLE_KINDS.has(item.kind) && slotOf(item.key) !== slot);
+  const rest = early ? panelsStillToMake(job, slot) : items.filter(item => item.provider === facts.THREE_ECHO && SAMPLE_KINDS.has(item.kind) && slotOf(item.key) !== slot);
   if (!rest.length || studioCreates.some(record => slotOf(record.key) !== slot)) return null;
   let landed = null;
   for (const entry of facts.readLanded(job)) {
@@ -653,6 +675,8 @@ export function mediaReview(root, brand, jobId, snapshot, gate) {
   if (gate === CUT_GATE && facts.mediaReviewRequired(job, CLIPS_GATE) && !facts.mediaSetApproved(job, CLIPS_GATE)) return null;
   // The finished video is checked after the joined video is approved and finishing was chosen and has run.
   if (gate === FINISH_GATE && !facts.mediaSetApproved(job, CUT_GATE)) return null;
+  // The storyboard review already showed every picture, and its approval covers them.
+  if (gate === PICTURES_GATE && facts.mediaSetApproved(job, gate)) return null;
   const set = facts.reviewSet(job, gate);
   return set.complete ? panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile: spec.file, kind: spec.kind, panels: set.panels }) : null;
 }
@@ -688,11 +712,12 @@ export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFil
 function pendingReview(root, brand, jobId, snapshot) {
   const gate = states.gateOf(snapshot.project.state);
   if (gate) return { gate, review: readReviewRecord(root, brand, jobId, gate) };
-  if (!priceOpen(root, brand, jobId)) return { gate: null, review: null };
-  const record = readReviewRecord(root, brand, jobId, PRICE_GATE);
+  const open = priceOpen(root, brand, jobId);
+  const record = open ? readReviewRecord(root, brand, jobId, PRICE_GATE) : null;
   if (record && record.revision === snapshot.project.revision && !record.decision) return { gate: PRICE_GATE, review: record };
   const sample = sampleReview(root, brand, jobId, snapshot);
   if (sample) return { gate: SAMPLE_GATE, review: sample };
+  if (!open) return { gate: null, review: null };
   for (const media of MEDIA_GATES) {
     const review = mediaReview(root, brand, jobId, snapshot, media);
     if (review) return { gate: media, review };
@@ -700,12 +725,12 @@ function pendingReview(root, brand, jobId, snapshot) {
   return { gate: null, review: null };
 }
 
-const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'finish', 'content', 'publish']);
+const COPY_GATES = new Set(['storyboard', 'sample', 'pictures', 'clips', 'cut', 'finish', 'content', 'publish']);
 
 export function reviewCopyGaps({ root, brand, jobId } = {}) {
   root = rootOf(root);
   const job = facts.jobAt(root, brand, jobId);
-  const waiting = job && (COPY_GATES.has(states.gateOf(job.state)) || PRICE_STATES.has(job.state));
+  const waiting = job && (COPY_GATES.has(states.gateOf(job.state)) || PRICE_STATES.has(job.state) || facts.referenceArtOnly(job));
   if (!waiting) return { gate: null, missing: [] };
   const light = { project: { state: job.state, revision: job.revision } };
   const { gate, review } = pendingReview(root, brand, jobId, light);
@@ -1030,6 +1055,9 @@ function decisionItem({ root, snapshot, gate, review, place, dir }) {
     if (!saved) return { ...item, inline: false, summary: REVIEW_NOT_READY };
     const totals = facts.quoteTotals(saved.quote.items);
     item.summary = `In total: ${facts.priceWords(totals)}.`;
+    // Pictures go ahead with no click, but they cost credits all the same, so the price line says what they have used.
+    const pictures = facts.pictureSpend(job);
+    if (pictures.count) item.summary += ` Pictures made without a price check so far: ${pictures.count} (${pictures.credits} Studio credit${pictures.credits === 1 ? '' : 's'}), counted in the job total.`;
     item.credits = totals;
   } else if (gate === SAMPLE_GATE) {
     const words = sampleRestWords(review.sample?.rest);
@@ -2638,6 +2666,48 @@ function assertNoQuestionOpen(root,jobId) {
   });
 }
 
+/**
+ * The storyboard is shown with its pictures. Before it can be presented: the person has answered the voice-over question (it is in
+ * the storyboard's front matter, so the script and clip lengths fit it), and every panel that needs a picture has one. The latest
+ * picture of each panel is added to the review, so the person judges the storyboard by what it will look like, and approving the
+ * storyboard approves those pictures as the start pictures for the clips. A panel that reuses a supplied image or is filmed
+ * footage needs none.
+ */
+function withStoryboardPictures({root,brand,jobId,paths}) {
+  const boards = paths.filter(path=>/(^|\/)storyboard\.md$/i.test(String(path)));
+  const job = facts.jobAt(root,brand,jobId);
+  if(!boards.length || !job) return paths;
+  const dir = jobDirectory(root,brand,jobId);
+  const pictures = new Map(facts.mediaSet(job,'image').panels.map(panel=>[`${panel.deliverable}|${panel.panel}`,panel]));
+  const lacking = [];
+  const unanswered = [];
+  const files = [];
+  for(const path of boards) {
+    let board;
+    try { board = parseStoryboard(readFileSync(artifactFile(dir,path),'utf8')); } catch { continue; }
+    const deliverable = facts.canonicalDeliverable(board.ref) || facts.canonicalDeliverable(/(?:^|\/)(D\d+)\//i.exec(path)?.[1]) || null;
+    const name = deliverable ? `${deliverable} ` : '';
+    // A video has time to fit a voice to; a picture post or a carousel has none.
+    if(board.format!=='carousel' && board.panels.some(panel=>panel.durationSeconds>0) && !board.voiceOver) unanswered.push(name.trim() || 'the storyboard');
+    for(const panel of board.panels) {
+      if(!panelNeedsPicture(panel)) continue;
+      const made = deliverable ? pictures.get(`${deliverable}|${facts.canonicalItem(panel.ref)}`) : null;
+      if(made?.file) files.push(made.file); else lacking.push(`${name}${panel.ref}`);
+    }
+  }
+  if(unanswered.length) throw new UserFacingError(`The voice-over question has not been answered for ${unanswered.join(', ')}, so the storyboard is not ready to show.`,{
+    code:'storyboard_voiceover_missing',
+    fix:'Ask the person once, with pipeline_board_ask: "Voice-over: yes or no, and which voice?" (options Yes and No, and a text box for the voice). Then have the Creative Director fit the script and clip lengths to it and write it in the storyboard front matter as voice_over: yes or no and voice: the voice. Then present again.',
+    details:{boards:unanswered},
+  });
+  if(lacking.length) throw new UserFacingError(`${lacking.join(', ')} ${lacking.length===1 ? 'has' : 'have'} no picture yet, so the storyboard is not ready to show.`,{
+    code:'storyboard_pictures_missing',
+    fix:'Make one sample picture first and show it (it shows on its own once saved). After the person approves it, make a picture for every other panel, then present the storyboard again. Pictures need no price approval, up to 3 per panel.',
+    details:{panels:lacking},
+  });
+  return [...paths,...new Set(files)].filter((path,index,all)=>all.indexOf(path)===index);
+}
+
 export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   root=rootOf(root);
   let snapshot=runtime.readJobSnapshot({root,brand,jobId});
@@ -2695,6 +2765,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
     // built before the job moves, so a plan that cannot be built leaves the job where it was.
     if(aimed==='publish') paths=withPublishIntent({root,brand,jobId,paths});
+    if(aimed==='storyboard') paths=withStoryboardPictures({root,brand,jobId,paths});
     // The final approval of a post made from supplied files covers every file the person gave, whatever the caller listed, so the posting plan can always be built from it.
     if(aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=[...paths,...(Array.isArray(snapshot.job?.suppliedMedia) ? snapshot.job.suppliedMedia : []).map(item=>item?.path).filter(path=>typeof path==='string' && !paths.includes(path))];
     ({gate,snapshot,moved}=moveToReview(root,brand,jobId,snapshot,requested ?? null,paths));

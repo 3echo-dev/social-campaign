@@ -12,13 +12,13 @@ Read pipeline/LOCAL-ADAPTER.md and pipeline/skills/make-image/SKILL.md.
 
 
 The Creative Director writes the picture prompts and the manifest items that hold them, and rewrites the one prompt of a picture the person sends back.
-The Director never writes a prompt; it prices, makes the sample, makes the rest, lands and checks.
+The Director never writes a prompt; it makes the sample, then the rest, lands and checks.
 
-Run only after the active plan and current spending decision authorize the request.
-`pipeline_quote_save` adds to the existing price rather than replacing it; an optional `drop` removes an item not yet made when the person asks for changes.
-The hero panel's item carries `sample: true`.
-Its landed sample is presented for approval on the board and in chat, the same as every other decision, and the rest is held until the person answers.
-Once every picture of the batch is made, present them all together (`pipeline_review_present` with `gate: "pictures"`) and wait: the person approves all of them or asks for changes on single ones, and no video clip is made until they approve. A change on a picture is a redo, priced again as a new version before it is made.
+Pictures are made before the storyboard is approved, once its text is written, and need no price click: 1 credit each, recorded and counted in the job total, 3 per panel at most (the first picture and two redos). A fourth picture of a panel needs a price saved with `pipeline_quote_save` and approved on the board. Video, voice and music always need a price approval.
+The first picture made is the sample: pick the one panel that best tests the style. It is presented for the style check on the board and in chat, the same as every other decision, and the rest is held until the person approves it.
+Run `preflight-generation.js {brand} {job-id} {D} --pictures` first: it refuses an image prompt that does not carry the job's style preamble word for word.
+One style per job and one set of references: every picture opens with the same style preamble, repeats the continuity block for each recurring person, place and product, and attaches the same references (the brand's real photos under `brand/assets/references/`, the product photo, approved faces).
+Once every panel has its picture, present the storyboard (`pipeline_review_present` with `gate: "storyboard"`): it shows every panel with its picture, and approving it approves the pictures. A change on a picture is a redo, made as a new version of that panel.
 Reuse an observed provider result when its request ID, hash, and revision still match.
 Leave unknown provider outcomes unresolved and do not retry blindly.
 
