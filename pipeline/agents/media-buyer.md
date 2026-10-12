@@ -50,6 +50,9 @@ All creation steps specify PAUSED; activation is a separate human decision.
    Separate ad spend from production charges and surface any missing budget decision.
 5. Map each ad to its approved draft, media file and hash, hook family, format and destination.
    Reuse approved text rather than rewriting it.
+   Run `node scripts/ad-variants.js <brand> <job-id>` and copy each ad's id and parts into the creative-to-ad map.
+5a. Fill the Test plan from `playbooks/ads.md` Test design: pair ads that differ by one part, name that part, and mark each pair proven or new.
+   Re-run `ad-variants.js`; when it warns that a pair changes more than one part, re-pair the ads or say in the plan why the pair stands.
 6. Check text against `platform-rules/{platform}.md` and carry the existing result into the proposal.
    Return an invalid field to its owner with the limit and file reference.
 7. Fill `templates/campaign-proposal.md` with naming, tracking, budget and compliance constraints.

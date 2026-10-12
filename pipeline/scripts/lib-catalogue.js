@@ -42,6 +42,7 @@ const TAG_WORDS = Object.freeze({
   social_post: { if: 'when Claude writes the caption', unless: 'when you give the caption' },
   carousel: { if: 'when the post is a carousel', unless: 'when the post is not a carousel' },
   series: { if: 'when it is a series of posts', unless: 'when it is a single post' },
+  paid: { if: 'when the earlier job was paid ads', unless: 'when the earlier job was organic posts' },
 });
 
 // What each field a kind requires means to a person.
@@ -51,6 +52,7 @@ const INPUT_WORDS = Object.freeze({
   distribution: 'Whether it runs as organic posts, paid ads or both',
   platforms: 'Which platforms it is for',
   deliverables: 'Which posts you need: the platform, the post type and how many',
+  sourceJobId: 'The earlier job whose results to read',
 });
 const SOURCE_WORDS = Object.freeze({
   link_or_file: 'At least one link or file to look at',

@@ -71,6 +71,7 @@
         "publish_post",
         "research",
         "video_breakdown",
+        "results_review",
         "performance_review"
       ]
     },
@@ -258,6 +259,10 @@
         "string",
         "null"
       ]
+    },
+    "sourceJobId": {
+      "type": "string",
+      "minLength": 1
     },
     "sourceRefs": {
       "type": "array",

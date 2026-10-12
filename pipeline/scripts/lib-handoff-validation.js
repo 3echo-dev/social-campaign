@@ -13,6 +13,7 @@ const events = require('./lib-events.js');
 const { hashFile } = require('./hash-artifact.js');
 const availability = require('./lib-execution-availability.js');
 const states = require('./lib-states.js');
+const adVariants = require('./lib-ad-variants.js');
 
 const MANIFEST_REL = 'handoff/manifest.json';
 const DELIVERY_REL = 'handoff/delivery.json';
@@ -125,6 +126,22 @@ function readManifest(jobDir, manifestRel = MANIFEST_REL) {
   return manifest ? { manifest, file, errors: [] } : { manifest: null, file, errors: ['handoff manifest is missing or invalid JSON'] };
 }
 
+// Paid ads carry stable ids so results can be matched back to them. Each id must be the one this job and
+// deliverable always get, and no two ads may share one.
+function variantErrors(file, jobId) {
+  const doc = readJson(file);
+  if (!doc || !Array.isArray(doc.variants)) return ['campaign/variants.json is not a list of ads'];
+  const errors = [];
+  const ids = new Set();
+  for (const v of doc.variants) {
+    const id = String(v && v.variantId || '');
+    if (!adVariants.ID_PATTERN.test(id) || id !== adVariants.variantId(jobId, v.deliverable)) errors.push('campaign/variants.json has an ad id that does not belong to ' + (v && v.deliverable || 'an unnamed ad') + ' in this job');
+    if (ids.has(id)) errors.push('campaign/variants.json repeats the ad id ' + id);
+    ids.add(id);
+  }
+  return errors;
+}
+
 function validateManifest(jobDir, brand, jobId, manifestRel = MANIFEST_REL) {
   const read = readManifest(jobDir, manifestRel);
   const errors = read.errors.slice();
@@ -152,6 +169,7 @@ function validateManifest(jobDir, brand, jobId, manifestRel = MANIFEST_REL) {
     const actual = fileHash(file);
     if (!actual || actual.sha256 !== item.sha256 || Number(actual.bytes) !== Number(item.bytes)) errors.push('handoff file changed: ' + ref);
   }
+  if (seen.has('campaign/variants.json')) errors.push(...variantErrors(path.join(handoffRoot, 'campaign', 'variants.json'), jobId));
   return {
     ok: errors.length === 0,
     errors,

@@ -100,6 +100,16 @@
       "workflowId": "video-breakdown",
       "owner": "videographer"
     },
+    "results_review": {
+      "status": "active",
+      "makesContent": false,
+      "brandRequired": true,
+      "productPhoto": "never",
+      "requiredFields": ["sourceJobId"],
+      "requiredSources": "none",
+      "workflowId": "results-review",
+      "owner": "researcher"
+    },
     "performance_review": {
       "status": "retired",
       "makesContent": false,

@@ -27,12 +27,24 @@ Everything here is created PAUSED first. Activation is a separate approval.
 
 ## Creative-to-ad map
 
-| Ad | Ad set | Creative (approved file, hash prefix) | Primary text (from drafts) | Headline | Destination URL | Recipe (hook family, angle, format) |
-|---|---|---|---|---|---|---|
+| Ad | Ad id | Ad set | Creative (approved file, hash prefix) | Primary text (from drafts) | Headline | Destination URL | Parts (stage, angle, format, hook, mechanic) |
+|---|---|---|---|---|---|---|---|
+
+Ad ids come from `scripts/ad-variants.js`; never invent one.
+
+## Test plan
+
+Each pair changes one part (`playbooks/ads.md`, Test design). Ads are named by deliverable (D1, D2).
+
+| Pair | Ad A | Ad B | Differs by (one part) | Proven or new | Main metric (from the stage) |
+|---|---|---|---|---|---|
+
+Budget split: proven {n}% / new {n}%. Pause rule: at 72h, pause an ad under half its ad set's median on the main metric, and keep it in the record.
 
 ## Naming
 
 `{Platform}_{Objective}_{Audience}_{Offer}_{YYYYMM}` for the campaign; ad sets and ads follow the same pattern with a suffix.
+Every ad name ends with its ad id, for example `Meta_Leads_Owners_Trial_202610_Hook-B_V-3f9a2c-D2`, so its results can be matched later.
 
 ## Tracking
 

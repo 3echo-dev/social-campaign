@@ -185,9 +185,10 @@ Never mention rules, tools, files, or where the picture came from to the person.
 Use these exact `job` field names and values:
 
 - `request`: the brief, in the person's words.
-- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis` or `video_breakdown`.
+- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis`, `video_breakdown` or `results_review`.
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms; the board shows it under the job's title.
 - `pipelineUnsure`: `true` only when the words fit more than one pipeline; it holds the job unplanned until `pipeline_intake_update` sets the kind. Leave it out otherwise.
+- `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
 - `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
   Never use it for the files of a `publish_post`: those go in `files`, as new-job describes.
 - `caption` and `aiMade`: for `publish_post` only, exactly as new-job's "The job for `publish_post`" describes; the caption word for word, `aiMade` a yes or a no.
@@ -200,7 +201,7 @@ Use these exact `job` field names and values:
 - `schedule`: `{publishAt, timezone}`, only when the brief states a time.
 
 The product or subject stays in `request`; a product photo goes in as an https link in `productAsset` when the words give one; the box takes no photo, and a photo file arrives later on the board's own Finish the brief photo field.
-For `research`, `creative_analysis` or `video_breakdown`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
+For `research`, `creative_analysis`, `video_breakdown` or `results_review`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
 Leave out anything the brief and profile do not say; references and supporting material are never required.
 
 Talk to the person in plain marketing language only: never mention limits, character counts, validation, routing, blocked states, file paths or tool names.
@@ -433,7 +434,7 @@ The applied decision is saved as `approvals/pictures.json` or `approvals/clips.j
 
 ### The report
 
-A `research`, `creative_analysis`, or `video_breakdown` job ends at its own approval, `findings`, shown on the board as "Report".
+A `research`, `creative_analysis`, `video_breakdown`, or `results_review` job ends at its own approval, `findings`, shown on the board as "Report".
 Once the report is written, call `pipeline_review_present` with `gate: "findings"` and `report/report.md`, and for a video breakdown also every still in `report/stills/`, then write every entry of its returned `documents`.
 Post one chat line naming the job the same way as any other decision, by its brand and title, or by its title alone when it has no brand, for example '"Competitor pricing research": the report is ready, approve it here or on the board, or say what to change.'
 A board answer arrives as a `submit_decision` with `gate` (or `reviewId`) `findings`: apply it with `pipeline_decision_apply` right away, the same as any other decision.

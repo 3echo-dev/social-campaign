@@ -71,6 +71,7 @@ const GATHERING_SUBSTEP = {
   research_report: 'Researching',
   creative_analysis: 'Reading the posts',
   video_breakdown: 'Watching the video',
+  results_review: 'Reading the results',
 };
 
 const REPORT_WORKFLOW_IDS = new Set(Object.keys(GATHERING_SUBSTEP));

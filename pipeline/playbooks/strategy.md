@@ -74,6 +74,7 @@ Use an existing approved historical record only when the task contract supplies 
 Preserve its confidence and limitations; it is not a declared brand fact.
 
 Keep `learnings_used: []` when no applicable historical record is supplied.
+Accepted lessons are in `brand/learnings.json`, and `brand/scorecard.json` shows how each idea part has done in settled ad results (organic posts are not counted). A brand rule the person set always beats a lesson or a score.
 Missing historical files never block production or trigger a new analysis task.
 Brand onboarding and accepted research remain the sources for current brand context.
 

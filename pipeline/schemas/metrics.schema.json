@@ -19,7 +19,7 @@
     "settlement": { "enum": ["provisional", "settled"] },
     "settlesAt": { "type": "string" },
     "attributionWindow": { "type": "string" },
-    "source": { "enum": ["human_paste", "csv_export", "json_export", "api"] },
+    "source": { "enum": ["human_paste", "csv_export", "json_export", "api", "connector", "metricool"] },
     "metrics": { "type": "object" },
     "raw": { "type": "object" }
   }

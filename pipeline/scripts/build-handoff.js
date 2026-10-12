@@ -6,7 +6,8 @@
 //
 // Writes handoff/<platform>/<D>.txt (caption + hashtags), copies listed media beside it,
 // handoff/schedule.csv (with the posting time zone when the time has none), handoff/README.md (per-platform posting checklist from platform-rules),
-// handoff/campaign/ for paid jobs, and handoff/manifest.json with a hash of every file.
+// handoff/campaign/ for paid jobs (with variants.json: each ad's stable id, its idea parts and its test pair),
+// and handoff/manifest.json with a hash of every file.
 // Exit 0 ok · 1 an approval is missing or stale · 2 usage
 const fs = require('fs');
 const path = require('path');
@@ -18,6 +19,7 @@ const del = require('./lib-deliverable.js');
 const execution = require('./lib-execution-availability.js');
 const brandProfile = require('./lib-brand-profile.js');
 const noBrand = require('./lib-no-brand.js');
+const adVariants = require('./lib-ad-variants.js');
 
 // A plain local time: a date, or a date with hh:mm and optional seconds, and no zone of its own.
 // Only this gets the job's or the brand's zone written beside it.
@@ -263,7 +265,7 @@ for (const D of dels) {
   const dest = cells[3] || jobSpec.landingPageUrl || '';
   const when = postingZone(publishAt, jobSpec.schedule, brandZone);
   schedule.push([D, platform, account, publishAt, when.zone, dest, platform + '/' + D + '.txt']);
-  posts.push({ D, platform, when, txt: platform + '/' + D + '.txt', media: copied, disclosure, accessibility: data.accessibility_text || '', hookFamily: data.hook_family || '' });
+  posts.push({ D, platform, when, txt: platform + '/' + D + '.txt', media: copied, disclosure, accessibility: data.accessibility_text || '', hookFamily: data.hook_family || '', parts: adVariants.partsOf(data), data });
 }
 
 // 3. Paid artifacts.
@@ -276,6 +278,24 @@ if (required.includes('campaign_proposal') && fs.existsSync(campaignDir)) {
     fs.copyFileSync(path.join(campaignDir, f), dst);
     files.push(dst);
   }
+}
+
+// Each ad's stable id and parts, so results read back later can be matched to the ad and its idea parts.
+const variantById = new Map();
+if (required.includes('campaign_proposal')) {
+  let proposalText = '';
+  try { proposalText = fs.readFileSync(proposalPath, 'utf8'); } catch {}
+  const built = adVariants.buildVariants({
+    jobId: job,
+    posts: posts.map(p => ({ deliverable: p.D, platform: p.platform, data: p.data })),
+    proposalText,
+  });
+  for (const v of built.variants) variantById.set(v.deliverable, v);
+  fs.mkdirSync(path.join(out, 'campaign'), { recursive: true });
+  const variantsFile = path.join(out, 'campaign', 'variants.json');
+  fs.writeFileSync(variantsFile, JSON.stringify({ schemaVersion: '1.0', jobId: job, ...built }, null, 2) + '\n');
+  files.push(variantsFile);
+  for (const w of built.warnings) console.log('WARN: ' + w);
 }
 
 // 4. schedule.csv
@@ -297,6 +317,13 @@ for (const p of posts) {
   if (p.accessibility) perPost += '- Alt text / on-screen summary: ' + p.accessibility + '\n';
   perPost += '- Disclosure: ' + (p.disclosure || 'None') + '\n';
   if (p.hookFamily) perPost += '- Hook family: ' + p.hookFamily + '\n';
+  const partsLine = adVariants.partsLine(p.parts);
+  if (partsLine) perPost += '- Idea parts: ' + partsLine + '\n';
+  const variant = variantById.get(p.D);
+  if (variant) {
+    perPost += '- Ad id: `' + variant.variantId + '`. End the ad\'s name in Ads Manager with it, so its results can be matched later.\n';
+    if (variant.testPairs.length) perPost += '- Test pair: ' + variant.testPairs.join(', ') + '\n';
+  }
 }
 let checklists = '';
 for (const platform of platforms) {

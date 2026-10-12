@@ -3,7 +3,9 @@
 //   fit     - does each concept's visual format suit its awareness stage, does its angle suit the stage,
 //             and does it name every idea part (playbooks/visual-formats.md, angles.md)
 //   novelty - how often this brand has already shipped the same combination of parts (its earlier post.md files)
-// Evidence from results comes later (the scorecard); until then the line says "no results yet".
+//   evidence - how the concept's parts have done in this brand's settled results (brand/scorecard.json, written by
+//             attribute-results.js); "no results yet" until there is one
+// A brand rule the person has set always beats evidence; evidence only informs the pick.
 // It writes one `- Ranking:` bullet per concept, which the board's concept card shows like any other field.
 // The numbers come from this script, never from the agent. Missing parts are warnings, not failures.
 //
@@ -89,6 +91,36 @@ function history() {
   return combos;
 }
 
+// The brand's scorecard sits in <brand>/brand/, two folders above the job.
+function readScorecard() {
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(path.dirname(path.dirname(dir)), 'brand', 'scorecard.json'), 'utf8'));
+    return s && Array.isArray(s.rows) ? s : null;
+  } catch { return null; }
+}
+const scorecard = readScorecard();
+const CONFIDENCE = { high: 3, medium: 2, low: 1 };
+
+// The parts with a scorecard row and one count-weighted lift for the concept.
+function evidenceOf(p) {
+  if (!scorecard || !scorecard.rows.length) return { text: 'no results yet', score: null };
+  const keys = [['awareness_stage', p.stage, 'stage'], ['angle_id', p.angle, 'angle'], ['format_id', p.format, 'format'], ['hook_family', p.hook, 'hook'], ['mechanic_id', p.mechanic, 'mechanic']];
+  const found = [];
+  for (const [field, value, word] of keys) {
+    if (!value) continue;
+    const row = scorecard.rows.find(r => r.key === field + '.' + value);
+    if (row) found.push({ ...row, word });
+  }
+  if (!found.length) return { text: 'no results for these parts yet', score: null };
+  // Most confident first, then the parts that moved results most, so a part that made no difference is shown last.
+  found.sort((a, b) => (CONFIDENCE[b.confidence] || 0) - (CONFIDENCE[a.confidence] || 0) || Math.abs(b.lift) - Math.abs(a.lift) || b.count - a.count);
+  const pct = lift => (lift >= 0 ? '+' : '-') + Math.abs(Math.round(lift * 100)) + '%';
+  const text = found.slice(0, 3).map(r => r.word + ' ' + r.value + ' ' + pct(r.lift) + ' (' + r.confidence + ', ' + r.count + ')').join(', ');
+  const weight = found.reduce((sum, r) => sum + r.count, 0);
+  const score = weight ? Math.round((found.reduce((sum, r) => sum + r.lift * r.count, 0) / weight) * 1000) / 1000 : null;
+  return { text, score };
+}
+
 const text = fs.readFileSync(file, 'utf8');
 const concepts = readConcepts(text);
 if (!concepts.length) { console.error('concepts.md has no "## Concept X" sections'); process.exit(3); }
@@ -100,9 +132,10 @@ const results = concepts.map(c => {
   const complete = p.stage && p.angle && p.format && p.hook && p.mechanic;
   const runs = complete ? past.filter(k => k === key).length : null;
   const novelty = runs === null ? 'unknown (parts missing)' : runs === 0 ? 'new combination' : 'run ' + runs + ' time' + (runs === 1 ? '' : 's') + ' before';
-  const line = 'Fit ' + fit.score.toFixed(1) + (fit.notes.length ? ' (' + fit.notes.join('; ') + ')' : '') + ' · Novelty: ' + novelty + ' · Evidence: no results yet';
+  const evidence = evidenceOf(p);
+  const line = 'Fit ' + fit.score.toFixed(1) + (fit.notes.length ? ' (' + fit.notes.join('; ') + ')' : '') + ' · Novelty: ' + novelty + ' · Evidence: ' + evidence.text;
   const warnings = parts.checkParts({ anchor: p.anchor, awareness_stage: p.stage, angle_id: p.angle, format_id: p.format, mechanic_id: p.mechanic });
-  return { id: c.id, parts: p, fit: fit.score, novelty: runs, line, warnings };
+  return { id: c.id, parts: p, fit: fit.score, novelty: runs, evidence: evidence.score, line, warnings };
 });
 
 if (argv.includes('--write')) {

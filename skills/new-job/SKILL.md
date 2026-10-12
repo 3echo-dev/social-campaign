@@ -163,9 +163,10 @@ Fix quietly whatever can be fixed without changing what they meant; otherwise as
 Put everything extracted into the typed `job` object of the single pipeline_job_create call, with these exact field names and values:
 
 - `request`: the brief, in the person's words; the product or subject stays here.
-- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis` or `video_breakdown`.
+- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis`, `video_breakdown` or `results_review`.
 - `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms, with no tool, file or code names.
 - `sourceRefs`: for `research`, `creative_analysis` or `video_breakdown`, one object per link or file already in the brief, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
+- `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
 - `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
 - `distribution`: `organic`, `paid` or `both`.
 - `platforms`: a list of `facebook`, `instagram` and `tiktok`.
@@ -176,7 +177,7 @@ Put everything extracted into the typed `job` object of the single pipeline_job_
 - `subject`: `product`, `character` or `none`, from the answer to what the job is about; leave it out when the job is plainly about a product.
 - `productAsset`: an https link to a product photo, or to a picture of the character on a `character` job, only when the brief gives one.
 
-For `research`, `creative_analysis` or `video_breakdown`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
+For `research`, `creative_analysis`, `video_breakdown` or `results_review`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
 
 A person can also attach a product photo file directly, once the job exists and the router blocks on one, on the board's own Finish the brief photo field.
 It arrives as a local file path already saved to disk (never bytes typed or pasted here): call `pipeline_product_photo_attach` for the existing job, or pass the path as `photo` on `pipeline_job_create` when the picture came in chat.
