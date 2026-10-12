@@ -753,6 +753,9 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
     spoke = any(lines)
     # One text layer: a spoken line that is the same words as the post's on-screen text drawn over the same clip is not captioned too.
     onscreen_items = read_onscreen(a.onscreen or os.path.join(os.path.dirname(raw), "onscreen.json"))[0]
+    if a.variant and a.hook and a.hook.strip():
+        # A variant's hook replaces the on-screen text of its first seconds, so only what is still drawn counts.
+        onscreen_items = [dict(item, start=max(item["start"], HOOK_SECONDS)) for item in onscreen_items if item["end"] > HOOK_SECONDS]
     for n, (s0, e0) in enumerate(spans):
         if lines[n] and any(same_words(lines[n], it["text"]) and it["start"] < e0 and it["end"] > s0 for it in onscreen_items):
             lines[n] = ""

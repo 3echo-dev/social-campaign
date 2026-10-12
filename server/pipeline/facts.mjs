@@ -1350,9 +1350,10 @@ export function buildQuote(job, input, { drop = [] } = {}) {
   const sampled = new Map();
   for (const item of items) {
     if (item.sample !== true || isReferenceItem(item)) continue;
+    const slot = parseJobKey(item.key)?.item || item.panel;
     const held = sampled.get(item.deliverable);
-    if (held && held !== item.panel) throw new InvalidInputError(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`, { fix: 'Mark one item per post as the sample: the hero picture when the clips start from the storyboard pictures, otherwise the hero clip.' });
-    sampled.set(item.deliverable, item.panel);
+    if (held && held !== slot) throw new InvalidInputError(`${itemLabel(item.key)}: ${item.deliverable} already has a sample item. Only one item per deliverable can be the sample.`, { fix: 'Mark one item per post as the sample: the hero picture when the clips start from the storyboard pictures, otherwise the hero clip.' });
+    sampled.set(item.deliverable, slot);
   }
   return { quote: { items, totals: quoteTotals(items) }, made: items.filter(item => made.has(item.key)).length, dropped: dropped.size };
 }
