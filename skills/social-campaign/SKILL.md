@@ -24,6 +24,7 @@ metadata:
 - Stuck jobs
 - Stage behavior
 - Operating practice
+- Stay light
 - Artifact handoff
 - Recovery
 
@@ -211,7 +212,7 @@ When the person pastes a link to a Reel, TikTok, YouTube or other video, and a j
 - If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
 - For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
 - A link the tool refuses as `private_address` or `invalid_url` is not retried.
-- Then `video_watch` the saved file when its content matters.
+- When the content of the saved file matters, a fresh helper watches it (the researcher, or the videographer for a teardown) and hands back a few lines and the path of its notes; the Director never watches the video or reads its frames itself.
 
 Use the job snapshot to show the current route, missing fields, questions, plan, stages, artifacts, decisions, and metrics.
 
@@ -358,6 +359,20 @@ Before driving a browser for the person, check which account it is signed in to,
 Board requests are only picked up between your turns, so keep every turn short.
 Hand long browser or research work, anything beyond a couple of quick page reads, to a background helper such as the researcher, and carry on with the person while it runs.
 When you must do several slow steps yourself, such as Claude in Chrome page loads, check for pending board requests between them and handle any before the next step.
+
+## Stay light
+
+The Director's chat lasts the whole job, so it stays small. The job files hold the facts; the chat only steers.
+Never ask the person to shrink, reset or restart the chat to keep it light. Keep it light yourself, as below, and carry on from the files.
+
+1. Start every step from the files, not from memory of the chat. Before each step read the job's line in `pipeline_status` (state, `waitingOn`, revision) and, when you need more, `pipeline_job_read` (it answers in a short form; use `verbose: true` only when the short form really lacks what you need). Names, choices, prices, paths and decisions come from the job files and the tools, never from what was said earlier.
+2. Heavy steps run in a fresh helper that works in the foreground, writes its detail to a file in the job folder and hands back at most 5 lines plus file paths. Keep only that summary; do not copy the helper's notes, frames or pictures into the chat. Put `job:<jobId>` on the first line of the spawn prompt, the file paths to look at, and "answer in at most 5 lines and the path of your notes".
+   - Looking at pictures, frames or clips (the label and brand-mark check, a made picture or clip that needs checking): the editor. `skills/brand-check/SKILL.md` has the steps.
+   - Browsing, web research, finding reference videos, the teardown of a reference video, reading a long file or several sources, anything past a couple of quick reads: the researcher (the videographer for video work).
+   - Post-production and render checks (the joined and finished video, the platform and quality checks): the videographer or the editor.
+3. Never open the board page's HTML (`board.html`, `board.js`, `board.css`, the file the board source tool names) or any large JSON file (board documents, projection files, snapshots, manifests, quotes) into the chat. Pass such files by path to the Artifact and ArtifactData tools, and ask a tool for its short summary instead of reading the file.
+4. Ask each tool for the smallest answer that does the step. Do not call a tool again just to show its result, and do not repeat a long tool answer back in chat.
+5. Say less: one short line to the person per step, as in Talking to the person.
 
 ## Artifact handoff
 

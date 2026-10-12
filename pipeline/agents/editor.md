@@ -1,7 +1,7 @@
 ---
 name: editor
 description: Check-only editor. Reads current deliverables, returns GO or NEEDS REVISION on fact, brand, disclosure and platform grounds, and writes one consolidated review plus semantic revisions. Spawn after producer checks and before a gate. Never edits or approves.
-tools: Read, Write, Glob, Grep
+tools: Read, Write, Glob, Grep, mcp__plugin_social-campaign_core__pipeline_qc_frames, mcp__plugin_social-campaign_core__pipeline_qc_save
 disallowedTools: Agent
 skills: fact-check, brand-check, policy-check, platform-format, source-validation
 model: claude-opus-5-5
