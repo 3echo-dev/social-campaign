@@ -709,6 +709,11 @@ button.sb-cell-body:active{transform:none}
 .publish-destination{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;color:var(--dim);font-size:13px}
 .publish-destination li{overflow-wrap:anywhere}
 .publish-destination strong{color:var(--paper)}
+.publish-destination .publish-destination-warn{color:var(--tape)}
+.publish-destination-change{margin:6px 0 0;font-size:13px}
+.publish-destination-change .muted{font-size:12px}
+.metricool-onboard select{max-width:100%}
+.metricool-onboard .muted{display:block;font-size:12px;margin-top:4px}
 .publish-posts{display:flex;flex-direction:column;gap:calc(var(--gap) / 1.5)}
 .publish-post{display:grid;grid-template-columns:minmax(0,1fr);gap:calc(var(--gap) * .75) var(--gap);min-width:0;padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
 .publish-post.has-preview{grid-template-columns:auto minmax(0,1fr);align-items:start}

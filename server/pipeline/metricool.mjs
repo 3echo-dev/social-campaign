@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
@@ -150,6 +150,14 @@ export function readBrandPublishing(brandDir) {
   return { provider: METRICOOL, blogId, label: text(publishing.label, LABEL_LIMIT) || `Brand ${blogId}`, chosenAt: text(publishing.chosenAt, 40), handles };
 }
 
+const NOT_THROUGH_METRICOOL = 'self';
+
+/** Whether the person said this brand does not post through Metricool (its `publishing` says so). Such a brand is never asked again. */
+export function readBrandOptedOut(brandDir) {
+  const profile = readJsonFile(profileFile(brandDir), null);
+  return plain(profile) && plain(profile.publishing) && profile.publishing.provider === NOT_THROUGH_METRICOOL;
+}
+
 /** The accounts a Metricool brand posts as, the way they are stored on a plugin brand's link: only the networks it has. */
 function handlesOf(metricoolBrand) {
   const handles = {};
@@ -165,7 +173,7 @@ export function otherBrandsLinkedTo(root, brandDir, blogId) {
   const out = [];
   try {
     for (const entry of runtime.listBrands({ root })) {
-      if (!entry.path || entry.path === brandDir) continue;
+      if (!entry.path || (entry.slug && entry.slug === basename(String(brandDir || ''))) || basename(entry.path) === basename(String(brandDir || ''))) continue;
       if (readBrandPublishing(entry.path)?.blogId === String(blogId)) out.push(entry.slug);
     }
   } catch { /* unreadable brands are not counted */ }
@@ -178,7 +186,7 @@ export function otherBrandsLinkedTo(root, brandDir, blogId) {
  * unconfirm the content pillars. Needs a complete profile to write into, and keeps the
  * profile inside the same size limit every other profile write is held to.
  */
-function saveBrandPublishing(brandDir, { blogId, label, handles = {} }) {
+function saveBrandPublishing(brandDir, { blogId, label, handles = {}, chosenAt = null }) {
   const file = profileFile(brandDir);
   let record = null;
   durable.update(file, (raw) => {
@@ -187,7 +195,7 @@ function saveBrandPublishing(brandDir, { blogId, label, handles = {} }) {
     if (!brandProfile.validRecord(current)) throw new Error(NOT_READY);
     const same = plain(current.publishing) && current.publishing.provider === METRICOOL && current.publishing.blogId === blogId && current.publishing.label === label && JSON.stringify(current.publishing.handles || {}) === JSON.stringify(handles);
     if (same) { record = current.publishing; return raw; }
-    record = { provider: METRICOOL, blogId, label, handles, chosenAt: new Date().toISOString() };
+    record = { provider: METRICOOL, blogId, label, handles, chosenAt: chosenAt || new Date().toISOString() };
     const next = `${JSON.stringify({ ...current, publishing: record }, null, 2)}\n`;
     if (Buffer.byteLength(next, 'utf8') > brandProfile.MAX_PROFILE_BYTES) throw new Error('Keep the brand profile under 40 KB.');
     return next;
@@ -260,6 +268,13 @@ function storedOptions(question) {
   return list.filter(item => plain(item) && typeof item.text === 'string' && typeof item.blogId === 'string');
 }
 
+/** The last answer on every Metricool question: this brand does not post through Metricool. */
+export const NOT_THROUGH_METRICOOL_TEXT = 'Not through Metricool';
+const NONE_ID = 'none';
+/** At most this many Metricool brands fit one question beside "Not through Metricool". */
+export const ASK_BRAND_LIMIT = QUESTION_OPTION_LIMIT - 1;
+const withNone = options => [...options, { text: NOT_THROUGH_METRICOOL_TEXT, blogId: NONE_ID }];
+
 function sameOptions(question, options) {
   return JSON.stringify(storedOptions(question)) === JSON.stringify(options);
 }
@@ -308,6 +323,40 @@ export function chooseMetricoolBrand({ root, brand, blogId }) {
   return { brand: entry.slug, brandName: entry.name || entry.slug, blogId: publishing.blogId, label: publishing.label };
 }
 
+/** A linked brand's account in Metricool changed but is still the brand's own handle: keep the link and save the new handles, so nothing is refused for it. */
+function refreshSavedHandles(brandDir, saved, match) {
+  try {
+    if (!saved || !match) return;
+    const now = handlesOf(match);
+    if (JSON.stringify(now) === JSON.stringify(saved.handles || {}) && match.label === saved.label) return;
+    const profile = readJsonFile(profileFile(brandDir), null);
+    if (!plain(profile)) return;
+    const coverage = metricoolCoverage(profile.channels, match.networks, null);
+    // Only an account that still matches the brand card is refreshed; one that does not stays refused.
+    if (Object.values(coverage).some(value => value === 'different_handle')) return;
+    saveBrandPublishing(brandDir, { blogId: saved.blogId, label: match.label, handles: now, chosenAt: saved.chosenAt });
+  } catch { /* A failed refresh leaves the saved link as it was. */ }
+}
+
+/**
+ * Say this plugin brand does not post through Metricool: its link is replaced by a plain "not through Metricool" record
+ * (kept in `publishing`, beside nothing else), its open question is taken back and it is not asked again until the person
+ * chooses a Metricool brand. Its posts then go out the "I'll post it myself" way.
+ */
+export function unlinkMetricoolBrand({ root, brand }) {
+  const entry = resolveBrand(root, brand);
+  const file = profileFile(entry.path);
+  durable.update(file, (raw) => {
+    let current = null;
+    try { current = JSON.parse(raw); } catch { current = null; }
+    if (!brandProfile.validRecord(current)) throw new Error(NOT_READY);
+    return `${JSON.stringify({ ...current, publishing: { provider: NOT_THROUGH_METRICOOL, chosenAt: new Date().toISOString() } }, null, 2)}\n`;
+  });
+  withdrawOpenQuestions(root, entry.slug);
+  markAnswersConsumed(root, entry.slug);
+  return { brand: entry.slug, brandName: entry.name || entry.slug, blogId: null, label: null, unlinked: true };
+}
+
 /**
  * The brand an answered question named, read against the options it was asked with. An answer that was
  * already used, or is older than the brand's current saved choice (the person chose again since), is ignored.
@@ -318,6 +367,7 @@ function answeredBrand(root, brandSlug, brands, current) {
     if (current?.chosenAt && String(question.answeredAt || '') < current.chosenAt) continue;
     const given = String(question.answer?.choice ?? question.answer?.text ?? '').trim().toLowerCase();
     const picked = given ? storedOptions(question).find(option => option.text.toLowerCase() === given) : null;
+    if (picked?.blogId === NONE_ID) return { none: true };
     const match = picked ? brands.find(item => item.id === picked.blogId) : null;
     if (match) return match;
   }
@@ -338,18 +388,30 @@ export function reconcileMetricoolChoices({ root }) {
   const result = { chosen: [], asked: [], waiting: [], needsChoice: [] };
   const open = metricoolQuestions(root, 'open');
   const keep = new Set();
-  const options = metricoolQuestionOptions(brands);
+  const options = withNone(metricoolQuestionOptions(brands));
+  result.unlinked = [];
   for (const entry of brands.length ? runtime.listBrands({ root }) : []) {
     const profile = brandProfile.read(entry.path);
     if (!profile) continue;
     const current = readBrandPublishing(entry.path);
+    if (!current && readBrandOptedOut(entry.path)) {
+      // Said "not through Metricool": never asked again, unless a later answer picks a Metricool brand.
+      const later = answeredBrand(root, entry.slug, brands, { chosenAt: readJsonFile(profileFile(entry.path), {})?.publishing?.chosenAt });
+      if (!later || later.none) continue;
+    }
     const linked = Boolean(current) && brands.some(item => item.id === current.blogId);
     // Never a default, first or only Metricool brand: a link comes from the person's own pick for this brand.
     let pick = null;
     const answer = answeredBrand(root, entry.slug, brands, current);
+    if (answer?.none) {
+      unlinkMetricoolBrand({ root, brand: entry.slug });
+      result.unlinked.push(entry.slug);
+      continue;
+    }
     if (answer) pick = { brand: answer, how: 'answer' };
     // A working link stays as it is, unless the person was asked again (the posting check refused it) and has answered.
     if (linked && !pick) {
+      refreshSavedHandles(entry.path, current, brands.find(item => item.id === current.blogId));
       const asking = open.find(question => question.brand === entry.slug && sameOptions(question, options));
       if (asking) keep.add(asking.questionId);
       continue;
@@ -361,7 +423,7 @@ export function reconcileMetricoolChoices({ root }) {
       continue;
     }
     result.waiting.push(entry.slug);
-    if (brands.length > QUESTION_OPTION_LIMIT) {
+    if (brands.length > ASK_BRAND_LIMIT) {
       if (current) result.needsChoice.push({ brand: entry.slug, was: current.label });
       continue;
     }
@@ -388,8 +450,8 @@ export function askMetricoolChoice({ root, brand }) {
   if (!brandProfile.read(entry.path)) throw new Error(NOT_READY);
   const brands = readMetricoolBrands(root);
   if (!brands.length) throw new Error('No Metricool brands are saved yet. Read them with getBrandSettings and save them first.');
-  if (brands.length > QUESTION_OPTION_LIMIT) throw new Error('Metricool has more brands than one question can list. Choose the brand with pipeline_metricool_brand_choose.');
-  const options = metricoolQuestionOptions(brands);
+  if (brands.length > ASK_BRAND_LIMIT) throw new Error('Metricool has more brands than one question can list. Choose the brand with pipeline_metricool_brand_choose.');
+  const options = withNone(metricoolQuestionOptions(brands));
   const existing = metricoolQuestions(root, 'open').find(question => question.brand === entry.slug && sameOptions(question, options));
   if (existing) return { brand: entry.slug, questionId: existing.questionId, alreadyAsked: true };
   withdrawOpenQuestions(root, entry.slug);
@@ -487,9 +549,8 @@ export function metricoolCoverage(channels, networks, stored = null) {
         const same = sameAccount(network, url, theirs);
         coverage[network] = same === null ? 'unverified' : same ? 'linked' : 'different_handle';
       }
-      // The account Metricool posts as is no longer the one the person picked this brand for.
-      const was = plain(stored) ? text(stored[network], NETWORK_VALUE_LIMIT) : null;
-      if (theirs && was && handleOf(was) !== handleOf(theirs) && coverage[network] === 'linked') coverage[network] = 'link_changed';
+      // An account that changed in Metricool but still is this brand's own handle keeps working: the saved handles are refreshed
+      // (refreshSavedHandles), and one that is no longer the brand's own handle is `different_handle` above.
     } catch {
       coverage[network] = 'unverified';
     }
@@ -522,6 +583,7 @@ export function linkedHandle(network, value) {
 export function brandPublishingInfo({ brandDir, channels, brands, connected = true }) {
   try {
     const publishing = readBrandPublishing(brandDir);
+    if (!publishing && readBrandOptedOut(brandDir)) return { provider: METRICOOL, optedOut: true, blogId: null, label: null, found: false, connected, timezone: null, coverage: {}, own: {}, linkedAs: {} };
     if (!publishing) return null;
     const match = brands.find(item => item.id === publishing.blogId) || null;
     return {

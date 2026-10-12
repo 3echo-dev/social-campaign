@@ -17,7 +17,7 @@ import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copi
 import { assertContentQc } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, checkRecipePicks, chooseRecipe, readJobRecipes } from './recipe.mjs';
 import { chooseStudioWorkspace, readStudioWorkspaceChoice, readStudioWorkspaceList, studioWorkspaceReach, studioWorkspaceInfo } from './studio-workspace.mjs';
-import { brandPublishingInfo, chooseMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
+import { brandPublishingInfo, chooseMetricoolBrand, readBrandOptedOut, unlinkMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, metricoolQuestionOptions, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
 import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
@@ -1338,6 +1338,7 @@ export function boardSnapshot({ root } = {}) {
   const studioWorkspaces = readStudioWorkspaceList(root);
   const metricoolBrands = readMetricoolBrands(root);
   const metricoolOn = metricoolConnected(root);
+  const metricoolOptions = metricoolQuestionOptions(metricoolBrands);
   const rawBrandEntries = runtime.listBrands({ root });
   const brands = rawBrandEntries.map(brand => {
     let raw = null;
@@ -1426,7 +1427,7 @@ export function boardSnapshot({ root } = {}) {
     : brands.some(brand => brand.readyForJobs)
       ? 'ready'
       : 'brand_onboarding';
-  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolBrands:metricoolBrands.map(({id,label,timezone})=>({id,label,timezone})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
+  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   return applyProjectionBudget(projection);
 }
 
@@ -1492,6 +1493,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
+  if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
   if (operation === 'choose_post_type') validatePostType(root, args);
   if (operation === 'choose_post_time') validatePostTime(root, args);
@@ -1554,7 +1556,7 @@ function validateMetricoolChoice(root, args) {
   if (!plainObject(args) || typeof args.brand !== 'string' || !args.brand.trim()) throw new Error('Say which brand this is for.');
   if (!runtime.listBrands({ root }).some(item => item.slug === args.brand.trim())) throw new Error('This brand could not be found.');
   if (!metricoolBrandReady(root, args.brand)) throw new Error('Finish this brand\'s profile before choosing where its posts go.');
-  if (typeof args.blogId !== 'string' || !readMetricoolBrands(root).some(item => item.id === args.blogId.trim())) throw new Error('Choose one of the Metricool brands shown.');
+  if (typeof args.blogId !== 'string' || (args.blogId.trim() !== 'none' && !readMetricoolBrands(root).some(item => item.id === args.blogId.trim()))) throw new Error('Choose one of the Metricool brands shown.');
 }
 
 // The board adds the workspace it belongs to to every request; that and the route choice are all a request may carry.
@@ -1948,6 +1950,15 @@ export function choosePostTime({ root, brand, jobId, deliverable, dateTime }) {
  * throws: the plan is rebuilt when it is next presented.
  */
 function refreshPlan(root, job) {
+  // A brand that is not through Metricool posts the "I'll post it myself" way: a Metricool route saved on an unapproved job is put back.
+  try {
+    const dir = runtime.listBrands({ root }).find(item => item.slug === job.brand)?.path;
+    if (dir && readBrandOptedOut(dir) && !hasPublishApproval(job.path)) {
+      const file = join(job.path, 'job.json');
+      const stored = read(file);
+      if (stored && /^metricool_/.test(String(stored.publishRoute || ''))) updateJsonFile(file, current => ({ ...current, publishRoute: 'self' }), {});
+    }
+  } catch { /* The route is checked again when the plan is next built. */ }
   if (!existsSync(join(job.path, ...PUBLISH_INTENT_FILE.split('/'))) || hasPublishApproval(job.path)) return;
   try {
     buildPublishIntent({ root, brand: job.brand, jobId: job.jobId });
@@ -1979,7 +1990,7 @@ export function chooseStudioWorkspaceForJobs({ root, brand, jobId = null, worksp
  */
 export function chooseMetricoolBrandForJobs({ root, brand, blogId }) {
   root = rootOf(root);
-  const result = chooseMetricoolBrand({ root, brand, blogId });
+  const result = String(blogId ?? '').trim() === 'none' ? unlinkMetricoolBrand({ root, brand }) : chooseMetricoolBrand({ root, brand, blogId });
   refreshPlansForBrand(root, result.brand);
   return result;
 }
@@ -2186,6 +2197,10 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
       kit: args.kit,
     });
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
+    // The Metricool brand picked on the onboarding form is this brand's link. Without one, the Inbox asks below.
+    if (result.brand?.slug && typeof args.metricoolBlogId === 'string' && args.metricoolBlogId.trim()) {
+      try { chooseMetricoolBrandForJobs({root,brand:result.brand.slug,blogId:args.metricoolBlogId.trim()}); } catch { /* The question below asks instead. */ }
+    }
     reconcileMetricoolChoicesQuietly({root});
     return result;
   }
@@ -2273,7 +2288,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
   if(operation==='choose_metricool_brand') {
     validateMetricoolChoice(root,args);
     const result = chooseMetricoolBrandForJobs({root,brand:args.brand.trim(),blogId:args.blogId.trim()});
-    return {...result,message:`Posts for ${result.brandName} now go out through Metricool, brand ${result.label}.`};
+    return {...result,message:result.unlinked ? `Posts for ${result.brandName} are not sent through Metricool.` : `Posts for ${result.brandName} now go out through Metricool, brand ${result.label}.`};
   }
   if(operation==='choose_publish_route') {
     validatePublishRoute(root,args);
@@ -2352,7 +2367,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'connectors_continue') return result.state === 'continued' ? { state: result.state, skipped: result.skipped } : null;
   if (operation === 'choose_recipe') return result.deliverable ? { deliverable: result.deliverable } : null;
   if (operation === 'choose_studio_workspace') return result.workspaceId ? { workspaceId: result.workspaceId, scope: result.scope } : null;
-  if (operation === 'choose_metricool_brand') return result.blogId ? { brand: result.brand, blogId: result.blogId } : null;
+  if (operation === 'choose_metricool_brand') return result.blogId ? { brand: result.brand, blogId: result.blogId } : result.unlinked ? { brand: result.brand, blogId: 'none' } : null;
   if (operation === 'choose_publish_route') return result.route ? { jobId: result.jobId, route: result.route } : null;
   if (operation === 'choose_post_type') return result.deliverable ? { jobId: result.jobId, deliverable: result.deliverable, placement: result.placement } : null;
   if (operation === 'choose_post_time') return result.dateTime ? { jobId: result.jobId, ...(result.deliverable ? { deliverable: result.deliverable } : {}), dateTime: result.dateTime } : null;
