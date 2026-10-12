@@ -135,7 +135,8 @@ export function publishContext({ root = null, sharedRoot = root, brandDir, jobDi
     jobRoute: PUBLISH_ROUTES.includes(jobRoute) ? jobRoute : null,
   };
   // No route saved on the job yet: the plan's route is the default, so the board does not call a fresh plan out of date.
-  if (!context.jobRoute) context.jobRoute = defaultPublishRoute(context);
+  // A plan already on disk keeps its route when none is saved: changing the default must not strand open plans.
+  if (!context.jobRoute) context.jobRoute = (jobDir && planRouteOnDisk(jobDir)) || defaultPublishRoute(context);
   if (root && brandDir) {
     try { context.workspaceId = readStudioWorkspaceChoice({ brandDir, jobDir, root }).workspaceId ?? null; } catch { /* left out: not compared */ }
   }
@@ -165,6 +166,12 @@ export function plannedBeforeMetricool(snapshot) {
   if (!Array.isArray(gates) || gates.includes('publish') || states.isTerminal(snapshot.project?.state)) return false;
   const job = snapshot.job || {};
   return (Array.isArray(job.deliverables) ? job.deliverables : []).some(item => rules.publishable(job, item));
+}
+
+/** The route of the posting plan already written for the job, or null when there is none or it names no known route. */
+export function planRouteOnDisk(jobDir) {
+  const route = readJsonFile(join(jobDir, ...PUBLISH_INTENT_FILE.split('/')), null)?.route;
+  return PUBLISH_ROUTES.includes(route) ? route : null;
 }
 
 export function storedPublishRoute(job) {
@@ -441,7 +448,7 @@ function compose({ root, brand, jobId, probe = probeMedia, useCache = true }) {
   const snapshot = runtime.readJobSnapshot({ root, brand: brandEntry.slug, jobId: jobRecord.jobId });
   const job = rules.withDerivedPlacements(snapshot.job || {});
   const connection = connectionOf(root, brandEntry);
-  const route = plannedBeforeMetricool(snapshot) ? 'self' : storedPublishRoute(job) || defaultPublishRoute(connection);
+  const route = plannedBeforeMetricool(snapshot) ? 'self' : storedPublishRoute(job) || planRouteOnDisk(jobDir) || defaultPublishRoute(connection);
   const publishing = readBrandPublishing(brandEntry.path);
   const zones = zonesOf(job, brandEntry, connection);
   const flags = new Set([...(snapshot.route?.riskFlags || []), ...(snapshot.route?.modelAddedRiskFlags || [])]);

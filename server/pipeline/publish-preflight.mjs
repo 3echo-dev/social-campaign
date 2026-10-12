@@ -577,7 +577,7 @@ export function projectPublish(intent, context = {}) {
   const label = planLabel || nowLabel;
   // The plan no longer matches what is chosen now: another Metricool brand, another route, another 3echo workspace.
   // A job planned before Metricool publishing can only be posted by the person, whatever is saved or connected.
-  const wantedRoute = context.handoffOnly ? 'self' : context.jobRoute || defaultRoute(context);
+  const wantedRoute = context.handoffOnly ? 'self' : context.jobRoute || route;
   const wrongBrand = metricool && Boolean(context.found) && Boolean(context.blogId) && String(intent.blogId ?? '') !== String(context.blogId);
   const wrongRoute = wantedRoute !== route;
   const wrongWorkspace = context.workspaceId !== undefined && (context.workspaceId || null) !== (plain(intent.studioWorkspace) ? intent.studioWorkspace.id || null : null);

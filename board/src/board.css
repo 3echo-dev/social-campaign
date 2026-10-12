@@ -832,6 +832,7 @@ a.post-link:focus-visible{outline:2px solid var(--tape);outline-offset:2px;borde
 .post-check-wait{margin:0;color:var(--tape);font-size:12.5px}
 .post-check .notice{padding:8px 10px;font-size:12px}
 .posting-kit .kit-intro{margin:0 0 var(--gap);font-size:13px}
+.posting-kit .kit-fetch-all{margin:0 0 var(--gap)}
 .kit-post{gap:calc(var(--gap) * .85)}
 .kit-section{display:flex;flex-direction:column;gap:6px;min-width:0}
 .kit-section h5{margin:0;color:var(--faint);font-size:11px;font-weight:700}

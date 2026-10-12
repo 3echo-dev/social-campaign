@@ -3093,12 +3093,14 @@ export function publishApproval(publish, routeState = {}, postStates = {}) {
   const preparing = route === 'self' ? PUBLISH_PREPARING_LABEL : label;
   // While a choice is saving, the card says so at its top; the button is only held.
   if (pending) return { disabled: true, label: preparing, line: '', safety };
+  // An arrow-key pick waiting to be saved: the button is held so a click cannot approve the route the card still shows.
+  if (routeState?.draft && routeState.draft !== publish.route) return { disabled: true, label: preparing, line: '', safety };
   if (publish.outdated) return { disabled: true, label: preparing, line: typeof publish.reason === 'string' && publish.reason.trim() ? publish.reason.trim() : PUBLISH_OUTDATED_LINE, safety };
   if (publish.changed) return { disabled: true, label: preparing, line: PUBLISH_CHANGED_LINE, safety };
   if (!posts.length) return { disabled: true, label: preparing, line: 'There are no posts to approve yet.', safety };
   if (!publish.ready) {
     const failing = posts.filter(post => publishFailing(post).length || (Array.isArray(post?.typeChoices) && post.typeChoices.length)).length;
-    return { disabled: true, label: failing || route !== 'self' ? label : preparing, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
+    return { disabled: true, label: route === 'self' ? preparing : label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
   }
   // Schedule Post stays held until every post has a valid time (its own, or the one for all).
   if (route === 'metricool_schedule') {
@@ -3283,6 +3285,18 @@ function kitFiles(post) {
   return `<div class="kit-section"><h5>Files</h5><ul class="kit-files">${items}</ul></div>`;
 }
 
+// The self route's button once the plan is approved: "Preparing download…" (held) until every file of the kit has its download
+// link, then "Download Files", which opens each file's link (the same links the rows below carry). '' for a kit with no files.
+export function kitDownloadButton(kit) {
+  if (kit?.route !== 'self') return '';
+  const files = (Array.isArray(kit.posts) ? kit.posts : []).flatMap(post => (Array.isArray(post?.media) ? post.media.filter(item => item && typeof item === 'object') : []));
+  if (!files.length) return '';
+  const ready = files.every(item => safeHttpsLink(item.appUrl));
+  return ready
+    ? '<p class="kit-fetch-all"><button type="button" class="primary" data-kit-download-all>Download Files</button></p>'
+    : `<p class="kit-fetch-all"><button type="button" class="primary" disabled aria-busy="true">${esc(PUBLISH_PREPARING_LABEL)}</button></p>`;
+}
+
 function kitCopyBlock(post, field, label, state, { openKeys, jobId, hint }) {
   const value = field === 'caption' ? post.text : post.firstComment;
   if (typeof value !== 'string' || !value.trim()) return '';
@@ -3343,7 +3357,7 @@ export function postingKitPanel(kit, postStates = {}, { signal = {}, now = Date.
   const closing = done && kit.settled === true && kit.closed !== true;
   const count = finished ? 'All posted' : `${marked} of ${posts.length} posted`;
   const intro = finished ? 'Every post is marked as posted. This job is finished.' : closing ? 'Claude is closing this job.' : kit.route === 'partial' ? (done ? KIT_PARTIAL_DONE : KIT_PARTIAL_INTRO) : KIT_INTRO;
-  return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p><div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
+  return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p>${kitDownloadButton(kit)}<div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
 }
 
 function reviewFilesHtml(doc, paths) {
@@ -6831,6 +6845,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.postTimeOpen!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeOpen,true);return;}
     if(target.dataset.postTimeCancel!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeCancel,false);return;}
     if(target.dataset.postAnswer!==undefined){const shown=current();if(shown)void submitResolvePost(shown,target.dataset.postId,target.dataset.postAnswer);return;}
+    if(target.dataset.kitDownloadAll!==undefined){[...app.querySelectorAll('.posting-kit a.kit-download')].forEach((link,at)=>setTimeout(()=>link.click(),at*350));return;}
     if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
     if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
     if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
@@ -7316,7 +7331,7 @@ if (typeof document !== 'undefined') {
     state.draft = null;
     const plan = docFor(project)?.review?.publish;
     if (!transport || !plan || state.pending || cardBusy(project)) return;
-    if (route === plan.route || (plan.routes || []).some(item => item.id === route && item.available === false)) { render(); return; }
+    if ((route === plan.route && !plan.outdated) || (plan.routes || []).some(item => item.id === route && item.available === false)) { render(); return; }
     const requestId = randomId(globalThis);
     const args = publishRouteArgs({ project, route, requestId });
     Object.assign(state, { requestId, sentRequestId: requestId, pending: route, fromRoute: plan.route, busy: true, applied: false, error: '', notice: '', declined: false, shownRoute: undefined, operation: 'choose_publish_route', args });
