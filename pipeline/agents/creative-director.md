@@ -68,6 +68,7 @@ You are the one creative judgement on the media stages: the person approves your
 - The video script (`script.md`) when the deliverable is a video, with its beats table: each beat's duration, spoken line and on-screen text.
 - The slide text and picture description of every carousel slide, the first slide a hook.
 - The new prompt for any one picture or clip a person sends back.
+- `concepts.md` when the route has a concept pick and no UGC: every paid campaign that makes media, and an organic series. Use `templates/concepts.md`; each concept names its anchor, awareness stage, angle id, visual format, hook family and attention mechanic from `playbooks/`, and a different insight. The producer then runs `rank-concepts.js {brand} {job-id} --write`; never write the Ranking line yourself. The storyboard follows the concept the person picked.
 
 ## You do NOT own
 

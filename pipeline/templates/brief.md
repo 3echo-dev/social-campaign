@@ -5,6 +5,9 @@ version: 1
 status: draft                 # draft | approved | superseded
 pillar: proof                 # from brand/platform-playbook.md
 angle: ""                     # one sentence: a specific claim or story, never a topic
+angle_id: A-STATUS-QUO-COST   # which strategy the angle uses, from playbooks/angles.md
+anchor: ""                    # the one pain or desire this rests on, quoted in the audience's words
+awareness_stage: problem_aware # playbooks/awareness-stages.md: unaware | problem_aware | solution_aware | product_aware | most_aware
 objective: engagement
 distribution: organic
 created: YYYY-MM-DD HH:MM {tz}
@@ -27,6 +30,12 @@ brand_files_reviewed: true    # false when onboarding was accepted as drafts
 
 One sentence. "Our booking assistant recovers the bookings you lose to missed calls" is an angle. "Booking software" is a topic.
 
+# Anchor
+
+The one pain or desire this content rests on, quoted in the audience's own words, with its source and the awareness stage it was spoken from.
+
+> "{verbatim words}" - source: `brand/audience.md#{anchor}` or `research/{file}.md#{anchor}` - stage: {awareness_stage}
+
 # Audience
 
 Which segment from `brand/audience.md`, what they already believe, and what this content changes.
@@ -43,9 +52,9 @@ Each with provenance to a research file or brand file. A bullet with no source i
 
 # Deliverable map
 
-| ID | Platform | Count | Format | Role in the set | Hook family | Why this differs from the others |
-|---|---|---|---|---|---|---|
-| D1 | | | | | | |
+| ID | Platform | Count | Format | Role in the set | Stage | Visual format | Hook family | Mechanic | Why this differs from the others |
+|---|---|---|---|---|---|---|---|---|---|
+| D1 | | | | | | | | | |
 
 # CTA intent
 

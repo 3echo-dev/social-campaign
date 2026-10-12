@@ -56,6 +56,9 @@ A brief the writer executes without asking a question:
 9. **Intended outcome**: the business objective, with any user-supplied target labelled as a target rather than a forecast.
 10. **Out of scope**: what this brief deliberately does not cover.
 
+
+It names its idea parts: one anchor quoted in the audience's words, one awareness stage, one angle id, and per deliverable a visual format and attention mechanic from `playbooks/`. These are what later results are compared on, so a brief without them teaches nothing. A missing part is a warning, not a stop.
+
 ## What the strategist refuses to do
 
 - Write a brief with no proof points. Raise `R-EVIDENCE` with a **specific gap list**, for example "no published pricing for competitor X", "no customer language for the 'too expensive' objection", never "research was inadequate".

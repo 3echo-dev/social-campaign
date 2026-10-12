@@ -26,6 +26,11 @@
     "hook_family": { "type": "string", "pattern": "^H-[A-Z]+$" },
     "hook_mechanism": { "type": "string", "minLength": 1 },
     "hook_alternates": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } },
+    "anchor": { "type": "string", "minLength": 1 },
+    "awareness_stage": { "type": "string", "minLength": 1 },
+    "angle_id": { "type": "string", "minLength": 1 },
+    "format_id": { "type": "string", "minLength": 1 },
+    "mechanic_id": { "type": "string", "minLength": 1 },
     "char_count": { "type": "integer", "minimum": 0 },
     "visible_cutoff_ok": { "type": "boolean" },
     "hashtags": { "type": "array", "items": { "type": "string" } },
@@ -45,5 +50,6 @@
       "_notes": "proof_style and duration_bucket are format-dependent, so they are not required here. duration_bucket carries a value only for ugc and brand_video (0-15s, 15-30s, 30-60s); write-script and the editor enforce that, since this validator has no conditional rules."
     },
     "created": { "type": "string", "minLength": 1 }
-  }
+  },
+  "_notes": "anchor, awareness_stage, angle_id, format_id and mechanic_id are the idea parts (playbooks/awareness-stages.md, angles.md, visual-formats.md, attention-mechanics.md). They sit beside hook_family so results can later be joined to each part. They are plain strings and not required: platform-check.js warns when one is missing or is not an id from its playbook."
 }

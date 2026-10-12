@@ -85,8 +85,9 @@ done when:     every deliverable in job.json has a row in the deliverable map na
    | 6 | A hunch with no external signal |
 
 3. Angle: one specific claim or story, not a topic. Segment from `brand/audience.md`, what it believes, what this changes, with the source insight quoted verbatim and its path.
+   Then the idea parts in the front matter and the `# Anchor` section: `anchor` is the one pain or desire, quoted in the audience's words with its path; `awareness_stage` is the stage it was spoken from (`playbooks/awareness-stages.md`); `angle_id` names the strategy the angle sentence uses (`playbooks/angles.md`). One of each. If no angle fits, `A-OTHER` with a one-line reason.
 4. Core message, supports, and pillar from `brand/platform-playbook.md`. Mark each deliverable searchable or shareable; for `content_repurpose` follow `playbooks/strategy.md`.
-5. Deliverable map from `job.json`: hook family from `playbooks/hooks.md`, why each differs, and the lever.
+5. Deliverable map from `job.json`: stage, visual format (`playbooks/visual-formats.md`, matched to the stage by its pairing table), hook family from `playbooks/hooks.md`, attention mechanic (`playbooks/attention-mechanics.md`), why each differs (name the part that differs), and the lever.
 
    | Goal | Lever |
    |---|---|

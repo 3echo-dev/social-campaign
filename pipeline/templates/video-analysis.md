@@ -39,6 +39,11 @@ analysed_at: YYYY-MM-DD HH:MM {tz}
 | Proof pattern | | |
 | CTA | | |
 | Funnel stage | | |
+| Awareness stage (playbooks/awareness-stages.md) | | |
+| Angle id (playbooks/angles.md) | | |
+| Visual format (playbooks/visual-formats.md) | | |
+| Hook family and mechanism (playbooks/hooks.md) | | |
+| Attention mechanic (playbooks/attention-mechanics.md) | | |
 
 ## Claims detected
 

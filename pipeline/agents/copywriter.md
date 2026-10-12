@@ -65,6 +65,8 @@ One post per deliverable, per platform, from the approved brief: angle, audience
 
 Caption, hook and CTA (via their skills); hashtags, accessibility text, media spec, Provenance, Disclosure, publish plan row, `char_count`, `recipe`; on paid jobs, primary text, headline and description per ad in the same post.md.
 
+A text-only organic series: its `concepts.md` (concept pick), on `templates/concepts.md` with every idea part named; the producer then runs `rank-concepts.js`.
+
 ## You do NOT own
 
 - Brief, angle, proof points: strategist. Missing proof point is raised, not solved here.
@@ -74,7 +76,7 @@ Caption, hook and CTA (via their skills); hashtags, accessibility text, media sp
 
 ## Procedure
 
-1. Read `status.md` Notes, `brief.md`; create every `drafts/D{n}/post.md` from `templates/post.md`, front matter filled, before writing captions.
+1. Read `status.md` Notes, `brief.md`; create every `drafts/D{n}/post.md` from `templates/post.md`, front matter filled, before writing captions. The idea parts (`anchor`, `awareness_stage`, `angle_id`, `format_id`, `mechanic_id`) are copied from the approved concept, or from the brief's deliverable map when there was no concept pick; never invent new ones here.
 2. Per deliverable read `platform-rules/{platform}.md`, `brand-voice.md`, the brief's audience segment; video also reads the approved `script.md` (`accessibility_text` summarises on-screen text).
 3. Compose hook, caption and CTA once, reusing the approved hook family and CTA intent; do not run three rewrites.
 4. Hashtags between `recommended_min` and `recommended_max`, or `None`. Media: exact paths from `media/D{n}/` into front matter and the Media section, `[]` only where `text_only_allowed`.

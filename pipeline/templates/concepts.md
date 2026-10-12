@@ -22,19 +22,27 @@ created: YYYY-MM-DD HH:MM {tz}
 # Concepts for {job-id}
 
 Each concept comes from a different insight. Ranked, with a recommendation. No script and no media exist yet.
+Every concept names one value for each idea part (anchor, stage, angle, format, hook family, mechanic). Concepts in one set differ in at least one part, and the "Why this differs" line in the brief's deliverable map says which.
 
 ## Concept A: {title}  (recommended)
 
 - Insight it rests on: `research/{file}.md#{anchor}`
-- Creator persona: who is speaking, why they are credible, their setting
-- Hook (spoken / on-screen text / opening visual, three different things):
+- Anchor: "{the pain or desire, in the audience's own words}"
+- Awareness stage: {unaware | problem_aware | solution_aware | product_aware | most_aware} (playbooks/awareness-stages.md)
+- Angle: {A-* id} - {the angle in one sentence} (playbooks/angles.md)
+- Visual format: {F-* id} (playbooks/visual-formats.md)
+- Attention mechanic: {M-* id} (playbooks/attention-mechanics.md)
+- Micropersona (optional): the narrower group inside the segment, by life context, with the words they use
+- Creator persona (UGC only): who is speaking, why they are credible, their setting
+- Hook, family {H-* family} (spoken / on-screen text / opening visual, three different things):
 - Narrative pattern: setup, demonstration, proof, verdict
 - Proof pattern: what makes the claim believable on screen
 - Product moment: when the product first appears and how (never in the first shot)
 - CTA:
-- Disclosure: AI-generated creator, paid partnership, or gifted, and where it sits
+- Disclosure (UGC only): AI-generated creator, paid partnership, or gifted, and where it sits
 - Target duration:
 - Why this wins:
+- Ranking: written by `rank-concepts.js`, never by hand
 
 ## Concept B: {title}
 

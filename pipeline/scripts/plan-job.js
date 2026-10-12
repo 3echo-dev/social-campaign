@@ -59,6 +59,8 @@ if (media && tags.has('video_intelligence')) tags.add('video_qa');
 if (dels.some(d => d.creativeDiscipline === 'carousel') && !dels.some(d => ['ugc', 'brand_video', 'motion_graphic'].includes(d.creativeDiscipline))) tags.add('carousel');
 if (!(route.gates || []).includes('publish')) tags.add('merged_publish');
 if (tags.has('ads')) tags.add('paid');
+// A multi-post organic series picks one concept before the media spec (rows 5a and 5b of organic-post.md).
+if (job.kind === 'organic_series') tags.add('series');
 // One tag per gate the route kept, so a row that only makes sense next to a gate
 // (the export after the concept gate, say) can be tied to it with if:gate_concept.
 for (const g of route.gates || []) tags.add('gate_' + g);
