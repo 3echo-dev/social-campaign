@@ -97,6 +97,7 @@ done when:     every deliverable in job.json has a row in the deliverable map na
 
 6. CTA intent per platform, required and prohibited elements (`brand/positioning.md` claims we never make, plus this job), the schedule inside the brand cadence, success, out of scope.
 7. Run `brand-check` and list supplied historical learning IDs used in `learnings_used`, otherwise `[]`.
+   Accepted lessons live in `brand/learnings.json` (saved when the person approves a results review); list the ids of the ones this brief follows.
 
 ## Rules
 

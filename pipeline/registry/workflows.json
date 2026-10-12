@@ -21,6 +21,9 @@
       "gates": ["findings"] },
     { "workflowId": "video-breakdown", "version": "1.0.0", "status": "active", "kinds": ["video_breakdown"], "file": "workflows/video-breakdown.md",
       "conditionalTags": [],
+      "gates": ["findings"] },
+    { "workflowId": "results-review", "version": "1.0.0", "status": "active", "kinds": ["results_review"], "file": "workflows/results-review.md",
+      "conditionalTags": ["if:paid", "unless:paid"],
       "gates": ["findings"] }
   ]
 }

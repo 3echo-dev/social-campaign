@@ -24,7 +24,7 @@ Progress updates are one short line in plain words, for example "Writing up what
 
 ## When this runs
 
-Use this skill only for the Write the report task on a `research`, `creative_analysis`, or `video_breakdown` job, once its research or video analysis is complete.
+Use this skill only for the Write the report task on a `research`, `creative_analysis`, `video_breakdown`, or `results_review` job, once its research, video analysis or results import is complete.
 
 Read the job's own research files before writing: `research/sources.md` and `research/*.md` for a research job, `research/posts.md` and `research/video-analysis.md` for an analysis, or `research/video-analysis.md` for a breakdown.
 
@@ -47,6 +47,17 @@ Carry every source and date straight from the research files.
 Never invent a source or a date, and never soften a date into "recently."
 
 State plainly, in one short line, whatever the research could not check or confirm.
+
+## A results review reports findings from the numbers
+
+For a `results_review` job, read `results/summary.json` and `results/matching.md` instead of research files.
+Every number in the report comes from `results/summary.json`; never add up, divide or average anything by hand.
+Say what ran, how each ad or post did on the main metric of its awareness stage, and name the idea parts (stage, angle, visual format, hook, attention mechanic) that the winners share and the losers share.
+Give each test pair's verdict as `results/summary.json` states it, including "too early to call".
+Say plainly which results are provisional (the 7-day attribution wait after the dates has not passed, or a post is under a week old) and which are settled, and list what could not be matched to an ad or post.
+End with a `## Lessons` section: at most three bullets, each one sentence that names one part and the settled result behind it, for example "- H-PROOF hooks beat H-STORY on link clicks for product-aware owners (P1, settled, +50%)." Write "- None yet" when nothing is settled.
+Approving the report saves these lessons for the brand; to drop one, the person asks for a change.
+Nothing in the report changes an ad account; recommendations are suggestions for the next job.
 
 ## A video breakdown adds a shot list
 

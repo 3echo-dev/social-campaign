@@ -159,6 +159,16 @@ if (supplied) {
   if (!brandAudience) missing('audience');
   else say('Rule 1b: the job has no audience of its own, so it uses the brand profile\'s audience');
 }
+// Rule 1e: a results review reads an earlier job of the same brand. The id must be a plain job folder name
+// that sits next to this job under <brand>/jobs/, so it can never reach another brand or another folder.
+if (job.kind === 'results_review' && typeof job.sourceJobId === 'string' && job.sourceJobId.trim()) {
+  const sourceId = job.sourceJobId.trim();
+  const sourceJson = path.resolve(path.dirname(jobPath), '..', sourceId, 'job.json');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sourceId) || sourceId === path.basename(path.dirname(path.resolve(jobPath))) || !fs.existsSync(sourceJson)) {
+    missing('sourceJobId (no earlier job of this brand has that id)');
+    say('Rule 1e: sourceJobId ' + sourceId + ' names no other job of this brand');
+  }
+}
 if (R.missingFields.length) say('Rule 1: missing or invalid fields: ' + R.missingFields.join(', '));
 
 // Rule 2: does this kind produce content

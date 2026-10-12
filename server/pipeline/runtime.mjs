@@ -47,13 +47,13 @@ const INTAKE_PATCH_FIELDS = new Set([
   'deliverables', 'audience', 'evidence', 'requiredClaims', 'prohibitedClaims',
   'offer', 'landingPageUrl', 'schedule', 'budget', 'productAsset', 'account',
   'specWork', 'usesHistoricalData', 'metricsScope', 'links', 'subject', 'kindReason',
-  'caption', 'aiMade',
+  'caption', 'aiMade', 'sourceJobId',
 ]);
 const LINK_LIMIT = 20;
 const LINK_MAX_LENGTH = 2000;
 const VIDEO_FILE_LINK = /\.(mp4|mov|m4v|webm)$/i;
 const STILLS_KINDS = new Set(['video_breakdown']);
-const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'kindReason', 'objective', 'distribution', 'offer', 'landingPageUrl', 'subject', 'caption']);
+const INTAKE_PATCH_SCALARS = new Set(['request', 'title', 'kind', 'kindReason', 'objective', 'distribution', 'offer', 'landingPageUrl', 'subject', 'caption', 'sourceJobId']);
 const JOB_SUBJECTS = ['product', 'character', 'none'];
 const INTAKE_PATCH_ARRAYS = new Set(['platforms', 'deliverables', 'requiredClaims', 'prohibitedClaims']);
 const INTAKE_PATCH_OBJECTS = new Set(['audience', 'evidence', 'schedule', 'budget', 'productAsset', 'account', 'metricsScope']);
@@ -1116,7 +1116,7 @@ function defaultJobInput(options, jobId, brand) {
     inputRevision: null,
     inputRevisions: [],
   };
-  const scalarFields = ['kind', 'objective', 'distribution', 'subject'];
+  const scalarFields = ['kind', 'objective', 'distribution', 'subject', 'sourceJobId'];
   for (const field of scalarFields) {
     const value = supplied[field] ?? options[field];
     if (value !== undefined && value !== null && String(value).trim()) job[field] = value;

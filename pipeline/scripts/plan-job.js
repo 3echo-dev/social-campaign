@@ -59,6 +59,13 @@ if (media && tags.has('video_intelligence')) tags.add('video_qa');
 if (dels.some(d => d.creativeDiscipline === 'carousel') && !dels.some(d => ['ugc', 'brand_video', 'motion_graphic'].includes(d.creativeDiscipline))) tags.add('carousel');
 if (!(route.gates || []).includes('publish')) tags.add('merged_publish');
 if (tags.has('ads')) tags.add('paid');
+// A results review of a paid campaign reads ad results from the ad accounts; any other review reads post results from Metricool.
+if (job.kind === 'results_review' && typeof job.sourceJobId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(job.sourceJobId)) {
+  try {
+    const source = JSON.parse(fs.readFileSync(path.join(path.dirname(path.resolve(jobPath)), '..', job.sourceJobId, 'job.json'), 'utf8'));
+    if (source && source.kind === 'paid_campaign') tags.add('paid');
+  } catch { /* no readable source job; the router already asked for a valid one */ }
+}
 // A multi-post organic series picks one concept before the media spec (rows 5a and 5b of organic-post.md).
 if (job.kind === 'organic_series') tags.add('series');
 // One tag per gate the route kept, so a row that only makes sense next to a gate

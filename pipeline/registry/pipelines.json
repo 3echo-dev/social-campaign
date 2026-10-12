@@ -55,6 +55,17 @@
       "links": "The video to break down (a link, or a file on this computer)",
       "placeholders": ["For example: launch video breakdown", "What do you want to learn from this video?"],
       "filesHint": "For a video file on your computer, give it to Claude in chat."
+    },
+    "results": {
+      "value": "results_review",
+      "kindLabel": "Results review",
+      "jobWord": "results review job",
+      "label": "Review how a job did",
+      "order": 6,
+      "form": "report",
+      "links": null,
+      "placeholders": ["For example: summer ads results", "Which earlier job should Claude look at, and for which dates?"],
+      "filesHint": "For a results export from Ads Manager, give it to Claude in chat."
     }
   },
   "pipelines": {
@@ -190,6 +201,16 @@
       "outputs": "A report with a still for each scene, which you can read on the board and download.",
       "cost": "No credits",
       "starter": { "group": "breakdown" }
+    },
+    "results_review": {
+      "name": "Results review",
+      "purpose": "A written report on how the ads or posts of an earlier job did, read from your ad accounts, a results export or Metricool, with what the winners and the losers have in common.",
+      "examples": ["How did last month's paid campaign do?", "Which of our posts from the spring launch worked best?"],
+      "notFor": ["Making new posts or ads", "Changing anything in an ad account (this only reads the results)"],
+      "inputs": [],
+      "outputs": "A report you can read on the board and download.",
+      "cost": "No credits",
+      "starter": { "group": "results" }
     }
   }
 }

@@ -191,6 +191,7 @@ const GATHERING = Object.freeze({
   research_report: `Claude is researching. ${CALM}`,
   creative_analysis: `Claude is reading the posts. ${CALM}`,
   video_breakdown: `Claude is watching the video. ${CALM}`,
+  results_review: `Claude is reading the results. ${CALM}`,
 });
 const REPORT_ANNOUNCEMENTS = Object.freeze({
   RESEARCH_COMPLETE: 'Claude is writing the report.',

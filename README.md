@@ -197,6 +197,7 @@ This table is generated from the plugin's own registries, so it always matches w
 | Research | A written report about a product, a brand or its competitors, with a source for every claim. | Nothing required | Review the report | Researcher | A report you can read on the board and download. | No credits | No |
 | Post or campaign analysis | A written report on why a post or campaign works or does not, from the links or files you give. | At least one link or file to look at | Review the report | Researcher, Videographer | A report you can read on the board and download. | No credits | No |
 | Video breakdown | One video taken apart scene by scene: the shots, the spoken words, the on-screen text and how it is built from hook to call to action. | A video to break down, as a link or a file | Review the report | Videographer | A report with a still for each scene, which you can read on the board and download. | No credits | No |
+| Results review | A written report on how the ads or posts of an earlier job did, read from your ad accounts, a results export or Metricool, with what the winners and the losers have in common. | The brand it is for; The earlier job whose results to read | Review the report | Researcher | A report you can read on the board and download. | No credits | No |
 
 Some approvals appear only when they apply, for example the price check only when pictures or video are made.
 

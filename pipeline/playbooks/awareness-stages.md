@@ -12,6 +12,20 @@ How much the viewer already knows decides what the piece must do. Every brief, c
 | product_aware | They know this brand or product; they are not sure yet | Answer the objection that stops them | Results, reviews, a receipt, a guarantee | link clicks, profile visits |
 | most_aware | They want it; they need a reason to act now | Give the offer and the next step plainly | The offer itself, a deadline that is real | conversions, bookings |
 
+## How results read the main metric
+
+`scripts/import-metrics.js` judges each ad or post on its stage's main metric, as a rate the numbers can give. Higher is better for every one.
+
+| Stage | Ads (connector or CSV) | Posts (Metricool) |
+|---|---|---|
+| unaware | holdRate: 3-second plays per impression | viewRate: video views per reach |
+| problem_aware | completionRate: ThruPlays per impression | commentRate: comments per reach |
+| solution_aware | ctr: clicks per impression (ad results have no saves) | saveShareRate: saves and shares per reach |
+| product_aware | linkCtr: link clicks per impression | clickRate: clicks per reach |
+| most_aware | resultRate: results per impression (cost per result is shown beside it) | clickRate: clicks per reach |
+
+A pair with fewer than 1,000 impressions (or reach) on either side is too early to call.
+
 ## Rules
 
 1. One stage per piece. A piece that tries to move two stages at once does neither.
