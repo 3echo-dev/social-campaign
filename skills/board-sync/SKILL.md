@@ -98,6 +98,12 @@ This is the owner's standing instruction: the asset store is only a transit path
 If the host asks the person to confirm either delete, that is expected; do not skip the delete to avoid the prompt.
 From here on the logo lives only in the local workspace, under `workspaces/<brand>/brand/assets/`, recorded in that brand's `brand-kit.json` and `profile.json` and nowhere else.
 
+Photos of the brand's world travel the same way, in `args.kit.references` (a list, optional, up to 5).
+For each item whose `action` is `asset`, call the Artifact tool's `read` action with `path` set to its `assetId`, and pass that item to `pipeline_board_request_land` as `{path: <saved path>, fileName}`.
+An item whose `action` is `upload` already carries its bytes and goes through unchanged.
+After the apply has succeeded, delete each transit copy the same way as the logo's.
+A photo that cannot be saved never stops onboarding: the result says how many were saved, and the rest can be added later.
+
 A product photo, on `create_job` (`args.photo`) or `attach_product_photo` (`args.photo`), travels the same way: if `action` is `asset`, call the Artifact tool's `read` action with `path` set to `args.photo.assetId` to save it to a local file, then pass that saved path as `photo.path` (dropping `assetId`) to `pipeline_job_create` or `pipeline_product_photo_attach`.
 If `action` is `upload` instead (the pre-assets fallback, `dataBase64`), decode those bytes to a local file yourself before calling either tool with that path; never type or re-key them.
 Once the tool call succeeds, delete the transit copy from the artifact's asset store the same way as the logo's, with `path` set to `assetId`, when one was used.

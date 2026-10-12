@@ -522,6 +522,9 @@ export function contextField(field, values = {}, prefilled = {}, unlocked = {}, 
 export const KIT_COLOR_ROLES = Object.freeze(['primary', 'secondary', 'accent', 'background', 'text', 'other']);
 export const KIT_FONT_USES = Object.freeze(['headings', 'body', 'captions', 'other']);
 export const KIT_LIMITS = Object.freeze({ maxColors: 8, maxFonts: 4 });
+// Optional real photos of the brand's world (the place, the people, the product in use), added at setup.
+export const KIT_PHOTOS_MAX = 5;
+export const KIT_PHOTOS_NOTE = 'Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
 const KIT_SOCIAL_PLATFORMS = Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
 
 // A hex colour, with or without '#', 3 or 6 digits, normalized to
@@ -600,7 +603,8 @@ export function kitPayload(brand, kit = {}) {
     family: font?.family || '',
     use: font?.use || 'other',
   }));
-  return { logo, palette, fonts };
+  const references = (Array.isArray(kit.references) ? kit.references : []).map(photoPayload).filter(Boolean);
+  return { logo, palette, fonts, ...(references.length ? { references } : {}) };
 }
 
 // The kickoff ("Start onboarding") onboard_brand call happens before any
@@ -614,7 +618,8 @@ export function kitKickoffArgs(kit = {}) {
     || (kit.logo?.action === 'asset' && Boolean(kit.logo?.assetId));
   const hasPalette = Array.isArray(kit.palette) && kit.palette.length > 0;
   const hasFonts = Array.isArray(kit.fonts) && kit.fonts.length > 0;
-  if (!hasLogo && !hasPalette && !hasFonts) return {};
+  const hasPhotos = Array.isArray(kit.references) && kit.references.some(photo => photoPayload(photo));
+  if (!hasLogo && !hasPalette && !hasFonts && !hasPhotos) return {};
   return { kit: kitPayload(null, kit) };
 }
 
@@ -852,6 +857,7 @@ export function kitFocusSelector(action, index, count) {
   if (action === 'remove-color') return count > 0 ? `[name="kit_color_hex_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-color"]';
   if (action === 'remove-font') return count > 0 ? `[name="kit_font_family_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-font"]';
   if (action === 'remove-logo' || action === 'replace-logo') return '#kit-logo-file';
+  if (action === 'remove-ref' || action === 'add-ref') return '#kit-ref-file';
   return null;
 }
 
@@ -932,12 +938,26 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${fontRows || '<p class="muted">No fonts yet</p>'}<button type="button" class="kit-add" data-kit-action="add-font" ${loading || fonts.length >= KIT_LIMITS.maxFonts ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add font</span></button>`;
   const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : '');
 
+  const photos = Array.isArray(kit.references) ? kit.references : [];
+  const savedPhotos = Number(brand?.referencePhotos) || 0;
+  const photoThumbs = photos.map((photo, index) => {
+    const src = kitImageSrc(photo?.previewDataUrl || null);
+    return `<div class="kit-photo">${src ? `<img src="${esc(src)}" alt="Photo ${index + 1}">` : '<span class="muted">No preview</span>'}<button type="button" class="quiet kit-icon-button" data-kit-action="remove-ref" data-index="${index}" aria-label="Remove photo ${index + 1}" ${dis}>${KIT_ICONS.remove}</button></div>`;
+  }).join('');
+  const photoLeft = KIT_PHOTOS_MAX - savedPhotos - photos.length;
+  const photoState = savedPhotos ? `<p class="muted">${savedPhotos} saved ${savedPhotos === 1 ? 'photo' : 'photos'}.</p>` : '';
+  const photoAdd = photoLeft > 0
+    ? `<input type="file" id="kit-ref-file" class="kit-file visually-hidden" name="kit_ref_file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Add photos" ${dis}><label class="kit-file-button" for="kit-ref-file">${KIT_ICONS.upload}<span>Add photos</span></label>`
+    : '';
+  const photosBody = `<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photoState}${photoThumbs ? `<div class="kit-photos">${photoThumbs}</div>` : ''}${kit.referencesError ? `<p class="field-error" role="alert">${esc(kit.referencesError)}</p>` : ''}${photoAdd}`;
+  const photosBlock = kitBlock('photos', 'Photos of your world', photosBody, '', 'kit-photos-block');
+
   const note = loading
     ? 'Reading your logo, colours and fonts...'
     : phase === 'new'
       ? 'Have your logo, brand colours or fonts? Add them now and Claude will skip looking for them.'
       : 'Check these and change anything that is not right.';
-  return `<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading ? ' aria-busy="true"' : ''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}</div></fieldset>`;
+  return `<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading ? ' aria-busy="true"' : ''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}${photosBlock}</div></fieldset>`;
 }
 
 // brandReady (section 3/8): readyForJobs when the projection reports it,
@@ -4070,6 +4090,8 @@ const HANDOFF_BUTTONS = Object.freeze({
 });
 export const isHandoffItem = item => item?.kind === 'handoff_offer' || item?.kind === 'handoff_return';
 export const handoffArgs = ({ project, requestId }) => ({ requestId, brand: project.brand, jobId: project.jobId });
+// The one small line on a job saying which platforms research could read, or ''. The server words it.
+export const researchLine = project => (typeof project?.research?.line === 'string' ? project.research.line.trim() : '');
 export const handoffStatusLine = project => (project?.handoff?.status === 'sent' ? trimmed(project.handoff.line) : '');
 export function handoffButtons(item, state = {}) {
   const buttons = HANDOFF_BUTTONS[item?.kind];
@@ -5728,7 +5750,7 @@ if (typeof document !== 'undefined') {
     const brand = project.brand === NO_BRAND ? '' : project.brandName || '';
     const sub = [kindLabelOf(project), brand].filter(Boolean).join(' · ');
     const progress = jobProgress(project) || '<div class="job-progress"><span class="job-progress-text">No steps yet</span></div>';
-    return `<button class="job-row${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state, project.stateLabel)}</span></button>`;
+    return `<button class="job-row${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${researchLine(project) ? `<small class="jr-research">${esc(researchLine(project))}</small>` : ''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state, project.stateLabel)}</span></button>`;
   }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
@@ -6053,7 +6075,7 @@ if (typeof document !== 'undefined') {
     const nextLine = project.nextAction || humanize(project.state);
     const railParts = stepRailParts(project, doc);
     const subtitle = [brandLabel, railParts?.here || trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
+    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}${researchLine(project) ? `<p class="muted job-research">${esc(researchLine(project))}</p>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
@@ -6555,6 +6577,24 @@ if (typeof document !== 'undefined') {
     inline.kitFocus = kitFocusSelector('replace-logo');
     render();
   }
+  // Optional photos of the brand's world, added at setup. Each one goes through the same
+  // downscale and asset-store upload as a product photo (preparePhotoFile below), and rides
+  // on the same Start onboarding or Save and continue click as `kit.references`.
+  async function handleRefFiles(fileList) {
+    const kit = ensureInlineKit();
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    captureInlineValues();
+    const brandForKit = inline?.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
+    const room = Math.max(0, KIT_PHOTOS_MAX - (Number(brandForKit?.referencePhotos) || 0) - (kit.references || []).length);
+    const prepared = [];
+    for (const file of files.slice(0, room)) prepared.push(await preparePhotoFile(file));
+    kit.references = [...(kit.references || []), ...prepared.filter(photo => !photo.error)];
+    kit.referencesError = prepared.find(photo => photo.error)?.error || (files.length > room ? `Up to ${KIT_PHOTOS_MAX} photos. The rest were left out.` : '');
+    captureInlineValues();
+    inline.kitFocus = kitFocusSelector('add-ref');
+    render();
+  }
   // Export a product photo at maxSize (or smaller, preserving aspect ratio) as
   // JPEG at quality. Used at 2048/0.9 for the asset-store path (no byte
   // ceiling to hit there), and through exportPhotoUnderLimit below for the
@@ -6888,6 +6928,9 @@ if (typeof document !== 'undefined') {
       } else if (action === 'remove-logo') {
         kit.logo = { action: 'remove' };
         inline.kitFocus = kitFocusSelector('remove-logo');
+      } else if (action === 'remove-ref') {
+        kit.references = (Array.isArray(kit.references) ? kit.references : []).filter((_, at) => at !== Number(target.dataset.index));
+        inline.kitFocus = kitFocusSelector('remove-ref');
       }
       render();
       return;
@@ -8075,6 +8118,7 @@ if (typeof document !== 'undefined') {
     const field = event.target;
     const name = field.name || '';
     if (name === 'kit_logo_file') { void handleLogoFile(field.files?.[0] || null); return; }
+    if (name === 'kit_ref_file') { void handleRefFiles(field.files); return; }
     const colorIndex = /^kit_color_(swatch|hex|role)_(\d+)$/.exec(name);
     if (colorIndex) {
       captureInlineValues();

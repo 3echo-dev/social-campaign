@@ -65,7 +65,8 @@ function cleanWorkspaceEntry(entry) {
   const id = typeof entry.id === 'string' ? entry.id.trim() : '';
   if (!id) return null;
   const name = typeof entry.name === 'string' && entry.name.trim().length > 0 ? entry.name.trim() : id;
-  const creditAvailable = Number.isFinite(Number(entry.creditAvailable)) ? Number(entry.creditAvailable) : null;
+  const reported = entry.creditAvailable !== null && entry.creditAvailable !== undefined && entry.creditAvailable !== '';
+  const creditAvailable = reported && Number.isFinite(Number(entry.creditAvailable)) ? Number(entry.creditAvailable) : null;
   return { id, name, creditAvailable };
 }
 

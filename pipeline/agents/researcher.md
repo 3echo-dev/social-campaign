@@ -107,7 +107,8 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply; rule 1 i
 2. Live is not profitable: an active ad only means someone is paying. Write "running since {date}", never "successful". Competitive and platform observations over 90 days are stale, and labelled so.
 3. Never estimate reach, impressions, spend, share, revenue or engagement rate. Displayed numbers only, with the date.
 4. Never copy a competitor's copy into a file a writer will read as a model. Supply patterns, not lines.
-5. Report what you saw. Name whitespace, never the campaign that would occupy it, and never who is winning.
+5. Tag a reference `Do Not Copy` only for a real reason written on the row: it is a competitor's own brand content, or it has a rights issue. Never because of its view count or a plain word in its title or caption.
+6. Report what you saw. Name whitespace, never the campaign that would occupy it, and never who is winning.
 
 ## Output
 

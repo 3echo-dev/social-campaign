@@ -11,6 +11,8 @@ import { UserFacingError } from '../lib/errors.mjs';
 import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { addReference, checkReference, referenceSummaries } from './references.mjs';
+import { researchCoverage } from './research-coverage.mjs';
+import { referenceAssets } from './brand-references.mjs';
 import { answerQuestion, closeUploadQuestion, listQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
@@ -1359,7 +1361,8 @@ export function boardSnapshot({ root } = {}) {
     const adAccounts = brandAdAccountsInfo({ brandDir: brand.path, root });
     // The agents behind onboarding (the Director and the Researcher), shown on the Brand onboarding page until the brand is ready.
     const agents = !readyForJobs || usage.status === 'running' ? onboardingAgents({ brandDir: brand.path, brandName: brand.name, usage, onboardingStatus: brand.onboardingStatus, readyForJobs }) : null;
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
+    const referencePhotos = referenceAssets(raw?.assets).length;
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -1382,6 +1385,7 @@ export function boardSnapshot({ root } = {}) {
       return from ? { ...item, from, fromName: agentName(from) } : item;
     });
     const handoffState = handoffOf(job.path, snapshot.project);
+    const research = researchCoverage(job.path);
     const project = {
       jobId:snapshot.project.jobId,
       brand:snapshot.project.brand,
@@ -1400,6 +1404,7 @@ export function boardSnapshot({ root } = {}) {
       ...(agentLine ? { agentLine } : {}),
       ...(stuck ? { stuck } : {}),
       ...(handoffState ? { handoff: handoffState } : {}),
+      ...(research ? { research } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
       references:referenceSummaries(job.path),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,

@@ -41,6 +41,12 @@ function text(value, limit) {
   return trimmed ? trimmed.slice(0, limit) : null;
 }
 
+/** 'business', 'creator' or 'personal' from whatever Metricool called the Instagram account type, else null. */
+function accountTypeOf(value) {
+  const word = typeof value === 'string' ? value.toLowerCase() : '';
+  return ['business', 'creator', 'personal'].find(type => word.includes(type)) || null;
+}
+
 /** One brand as getBrandSettings returned it (networksData) or as already normalised (networks). */
 function cleanBrand(entry) {
   if (!plain(entry)) return null;
@@ -52,7 +58,8 @@ function cleanBrand(entry) {
   for (const network of METRICOOL_NETWORKS) {
     networks[network] = text(given[network] ?? data[`${network}Data`], NETWORK_VALUE_LIMIT);
   }
-  return { id, label: text(entry.label ?? entry.name, LABEL_LIMIT) || `Brand ${id}`, timezone: text(entry.timezone, 60), networks };
+  const instagramAccountType = accountTypeOf(entry.instagramAccountType ?? (plain(data.instagramData) ? data.instagramData.accountType ?? data.instagramData.type : null));
+  return { id, label: text(entry.label ?? entry.name, LABEL_LIMIT) || `Brand ${id}`, timezone: text(entry.timezone, 60), networks, ...(instagramAccountType ? { instagramAccountType } : {}) };
 }
 
 /**

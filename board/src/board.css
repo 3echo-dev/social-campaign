@@ -319,6 +319,11 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
    one height so the block keeps its size between the two states. */
 .kit-upload,.kit-logo-preview{height:112px;border-radius:var(--radius)}
 .kit-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--gap) / 4);padding:var(--gap);background:var(--ink);border:1px dashed var(--line2);color:var(--dim);text-align:center;cursor:pointer;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-photos-block{grid-column:1 / -1}
+.kit-photos{display:flex;flex-wrap:wrap;gap:var(--gap)}
+.kit-photo{position:relative;width:96px;height:96px;border-radius:var(--radius);overflow:hidden;background:var(--ink);border:1px solid var(--line2)}
+.kit-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.kit-photo .kit-icon-button{position:absolute;top:2px;right:2px;background:var(--ink)}
 .kit-upload-title{color:var(--paper);font-weight:700}
 .kit-upload-hint{color:var(--faint);font-size:12px}
 .kit-file:enabled+.kit-upload:hover{border-color:var(--dim);background:rgba(255,255,255,.04)}
