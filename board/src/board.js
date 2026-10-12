@@ -1327,6 +1327,8 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
     if (brandStage) {
       rows.push(usageFooterRow('Brand research', brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now), { note: 'Shared by every job for this brand; not part of the job total.' }));
     }
+    const setupStage = brand?.usage?.stages?.find(stage => stage.id === 'brand-setup');
+    if (setupStage) rows.push(usageFooterRow('Brand setup', setupStage.tokens, null, { note: 'Shared by every job for this brand; not part of the job total.' }));
     const generation = usage.generation || {};
     const studio = creditFraction(generation.threeEchoCredits);
     const voice = creditFraction(generation.elevenLabsCredits);
@@ -1340,6 +1342,8 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
       const brandStage = brand?.usage?.stages?.[0];
       if (!brandStage) continue;
       rows.push(usageFooterRow(`Brand research (${brand.name})`, brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now)));
+      const setupStage = brand.usage.stages.find(stage => stage.id === 'brand-setup');
+      if (setupStage) rows.push(usageFooterRow(`Brand setup (${brand.name})`, setupStage.tokens, null));
     }
   }
   if (!rows.length) return '';
@@ -3778,7 +3782,10 @@ export function onboardingInboxItems(brands = [], drafts = []) {
       const researched = brand.usage?.status === 'complete';
       return [{ ...base, state: 'review', needsYou: true, text: researched ? `${name} research is done. Check the brand profile and click Save and continue.` : 'Check the brand profile and click Save and continue.' }];
     }
-    if (phase === 'failed') return [{ ...base, state: 'failed', needsYou: true, text: `${name} research could not finish. Fill in the brand profile by hand, then click Save and continue.` }];
+    if (phase === 'failed') {
+      const why = trimmed(brand.usage?.result?.reason).replace(/[.!?]+$/, '');
+      return [{ ...base, state: 'failed', needsYou: true, text: `${name} research could not finish${why ? `: ${why}` : ''}. Fill in the brand profile by hand, then click Save and continue.` }];
+    }
     return [];
   });
 }

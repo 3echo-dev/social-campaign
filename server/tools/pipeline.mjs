@@ -6,7 +6,7 @@ import { bindArtifactBoard, openArtifactBoard, sourceArtifactBoard, writeBoardDo
 import { recordFinishingChoice } from '../pipeline/finishing.mjs';
 import * as facts from '../pipeline/facts.mjs';
 import { retryFailedItem } from '../pipeline/generation-retry.mjs';
-import { startBrandResearch, saveBrandResearch, closeBrandResearch } from '../pipeline/brand-research.mjs';
+import { startBrandResearch, saveBrandResearch, closeBrandResearch, settleStaleResearch } from '../pipeline/brand-research.mjs';
 import { boardSourceOutdated, readBoardLink } from '../pipeline/board-freshness.mjs';
 import { reconcileMetricoolChoicesQuietly } from '../pipeline/metricool.mjs';
 import { referenceFromUrl } from '../pipeline/url-reference.mjs';
@@ -42,6 +42,7 @@ function local(workspace) {
 export const pipelineTools = [
   tool('pipeline_status','Write the board files for this workspace and return them as documents: each entry is the collection, doc_id and file_path of one artifact database document to set, the job documents first and the workspace last, at most 50, so all of them fit one ArtifactData batch. Also returns the brands (slug, name, onboardingStatus, readyForJobs) and one short entry per job: jobId, brand (its display name), brandSlug, title, kind, kindLabel (what the job is, in plain words), state, revision and waitingOn (the plain name of the decision it waits on, or null), the inbox (what waits on the person across all jobs, newest first, at most 20 items, with the full count), boardSourceOutdated, true when the published board page is an older version that needs a refresh, pluginVersion, this running server\'s own version, and updateWaiting: true when this server is a superseded install waiting for the session to restart onto the newer one, in which case, or when pluginVersion is missing entirely, do not refresh or republish the board with it. It never returns the board documents themselves; use pipeline_job_read for one job\'s full detail. Studio database sync is parked.',{},[],(_,{workspace})=>{
     const root = local(workspace);
+    settleStaleResearch({root});
     const snapshot = boardSnapshot({root});
     return {...boardStatus(snapshot,writeBoardDocuments({root,snapshot})),boardSourceOutdated:boardSourceOutdated(readBoardLink(root),root),pluginVersion:PLUGIN_VERSION,updateWaiting:updateWaiting()};
   }),
