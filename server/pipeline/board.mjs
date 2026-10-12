@@ -2774,7 +2774,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
     // built before the job moves, so a plan that cannot be built leaves the job where it was.
     if(aimed==='publish') paths=withPublishIntent({root,brand,jobId,paths});
-    if(aimed==='storyboard') paths=withStoryboardPictures({root,brand,jobId,paths});
+    if(aimed==='storyboard' && (!current || current==='storyboard')) paths=withStoryboardPictures({root,brand,jobId,paths});
     // The final approval of a post made from supplied files covers every file the person gave, whatever the caller listed, so the posting plan can always be built from it.
     if(aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=[...paths,...(Array.isArray(snapshot.job?.suppliedMedia) ? snapshot.job.suppliedMedia : []).map(item=>item?.path).filter(path=>typeof path==='string' && !paths.includes(path))];
     ({gate,snapshot,moved}=moveToReview(root,brand,jobId,snapshot,requested ?? null,paths));
