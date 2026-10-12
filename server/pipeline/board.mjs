@@ -24,8 +24,7 @@ import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, op
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
-import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId, hostSessionKnown } from './session-claims.mjs';
-import { otherBoardOwner } from './board-freshness.mjs';
+import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId } from './session-claims.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
@@ -1451,9 +1450,9 @@ function requestFile(root,requestId) {
   return join(requestsDirectory(root),`${requestId}.json`);
 }
 
-export function listBoardRequests({ root, sessionId = null }) {
+export function listBoardRequests({ root }) {
   root = rootOf(root);
-  const me = sessionId || windowSessionId();
+  const me = windowSessionId();
   return readdirSync(requestsDirectory(root)).filter(name=>name.endsWith('.json')).map(name=>{
     const file=join(requestsDirectory(root),name),record=read(file);
     const listed=record.status==='requested' && existsSync(`${file}.claim`)?{...record,status:'needs_reconciliation',detail:'An earlier runner claimed this request. Inspect its local effects before retrying.'}:record;
@@ -2715,15 +2714,12 @@ function answeredQuestion(root,record) {
 // still be declined or tried again; a claim from a window that went away is taken over after REQUEST_CLAIM_TTL_MS.
 const sessionClaimFile = (root,requestId) => `${requestFile(root,requestId)}.session`;
 
-function actOnce(root,requestId,sessionId,run) {
+function actOnce(root,requestId,run) {
   root=rootOf(root);
   const file=requestFile(root,requestId),record=read(file);
   if(record.status!=='requested' && record.status!=='needs_reconciliation') return run();
-  const me=sessionId || windowSessionId(),claimFile=sessionClaimFile(root,requestId);
-  // The board's clicks belong to the window that owns the board. (Only checked when this window's id is the host's own,
-  // the one the owner was recorded under.)
-  const other=record.source==='artifact' && (sessionId || hostSessionKnown()) ? otherBoardOwner(root,me) : null;
-  if(other) return {...record,handledElsewhere:true,heldBy:other,message:'Another window owns this board and handles its clicks.'};
+  // Always this server process's own window id: one window can never lock itself out, two windows (two servers) cannot both win.
+  const me=windowSessionId(),claimFile=sessionClaimFile(root,requestId);
   const taken=takeClaim(claimFile,me,{ttlMs:REQUEST_CLAIM_TTL_MS});
   if(!taken.claimed) return {...record,handledElsewhere:true,heldBy:taken.owner?.sessionId ?? null,message:'Another window is already handling this request.'};
   try { return run(); }
@@ -2734,9 +2730,9 @@ function actOnce(root,requestId,sessionId,run) {
   }
 }
 
-export function applyBoardRequest(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>applyBoardRequestNow(args)); }
-export function declineBoardRequest(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>declineBoardRequestNow(args)); }
-export function applyBoardDecision(args) { return actOnce(args.root,args.requestId,args.sessionId,()=>applyBoardDecisionNow(args)); }
+export function applyBoardRequest(args) { return actOnce(args.root,args.requestId,()=>applyBoardRequestNow(args)); }
+export function declineBoardRequest(args) { return actOnce(args.root,args.requestId,()=>declineBoardRequestNow(args)); }
+export function applyBoardDecision(args) { return actOnce(args.root,args.requestId,()=>applyBoardDecisionNow(args)); }
 
 function applyBoardRequestNow({root,requestId,confirmedBy}) {
   root=rootOf(root);

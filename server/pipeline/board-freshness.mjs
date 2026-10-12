@@ -9,7 +9,7 @@ import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 import { handoffSent } from './handoff.mjs';
-import { BOARD_OWNER_TTL_MS, takeClaim } from './session-claims.mjs';
+import { BOARD_OWNER_TTL_MS, releaseClaim, takeClaim } from './session-claims.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
 const SAFE_ARTIFACT_ID = '[A-Za-z0-9_-]{8,128}';
@@ -228,36 +228,39 @@ export const ownerPath = root => boardPath(root, 'owner.json');
 const toldPath = root => boardPath(root, 'owner-told.json');
 
 /**
- * The board has one owner window: the one that claimed it first and keeps touching it. Only the owner arms the board's
- * wake-up and acts on its clicks; any other window leaves them alone. {owner: true} when this window owns it (or takes it
- * over because the old owner has been silent for BOARD_OWNER_TTL_MS), else {owner: false, by}. Without a session id nothing
- * can be told apart, so the window is treated as the owner.
+ * The board has one owner window: the newest one. A window that starts (a new chat, a resume or /clear) takes the board
+ * with {takeOver: true}; any other window keeps it only while no newer window has. Only the owner arms the board's wake-up;
+ * an older window is told once and leaves the board alone. {owner: true} when this window owns it (or takes it because the
+ * owner was released or has been silent for BOARD_OWNER_TTL_MS), else {owner: false, by}. Without a session id nothing can
+ * be told apart, so the window is treated as the owner.
  */
-export function claimBoardOwner(root, sessionId, { now = Date.now() } = {}) {
+export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = false } = {}) {
   if (!sessionId) return { owner: true, by: null };
   try {
     mkdirSync(dirname(ownerPath(root)), { recursive: true });
     const file = ownerPath(root);
-    const taken = takeClaim(file, sessionId, { ttlMs: BOARD_OWNER_TTL_MS, now });
+    const id = String(sessionId);
+    if (takeOver) {
+      writeJsonAtomic(file, { sessionId: id, pid: process.pid, claimedAt: new Date(now).toISOString() });
+      return { owner: true, by: id };
+    }
+    const taken = takeClaim(file, id, { ttlMs: BOARD_OWNER_TTL_MS, now });
     if (!taken.claimed) return { owner: false, by: taken.owner?.sessionId ?? null };
     // Still the owner: note that it is here, so a quiet owner is told apart from a gone one.
     const current = readJson(file);
-    if (plainObject(current) && current.sessionId === String(sessionId) && now - Date.parse(current.claimedAt ?? '') > 60 * 1000) {
+    if (plainObject(current) && current.sessionId === id && now - Date.parse(current.claimedAt ?? '') > 60 * 1000) {
       writeJsonAtomic(file, { ...current, claimedAt: new Date(now).toISOString() });
     }
-    return { owner: true, by: String(sessionId) };
+    return { owner: true, by: id };
   } catch {
     return { owner: true, by: null };
   }
 }
 
-/** The id of another live window that owns this board, else null (no owner, this window owns it, or the old owner went quiet). */
-export function otherBoardOwner(root, sessionId, now = Date.now()) {
-  if (!sessionId) return null;
-  const current = readJson(ownerPath(root));
-  if (!plainObject(current) || typeof current.sessionId !== 'string' || current.sessionId === String(sessionId)) return null;
-  const at = Date.parse(current.claimedAt ?? '');
-  return Number.isFinite(at) && now - at <= BOARD_OWNER_TTL_MS ? current.sessionId : null;
+/** A window that ends gives the board back (only the owner can), so a window left open can pick it up again. */
+export function releaseBoardOwner(root, sessionId) {
+  if (!sessionId) return false;
+  try { return releaseClaim(ownerPath(root), sessionId); } catch { return false; }
 }
 
 /** True the first time this window is told which window owns the board, false after, so it is said once. */
@@ -275,16 +278,12 @@ export function noteOtherWindowOnce(root, sessionId, ownerId) {
   return true;
 }
 
+/** The lines a starting window is told. A session start (startup, resume, clear) makes this window the board's owner. */
 export function boardSessionLines(root, sessionId) {
   try {
+    claimBoardOwner(root, sessionId, { takeOver: true });
     const link = readBoardLink(root);
     if (!link) return [];
-    const ownership = claimBoardOwner(root, sessionId);
-    if (!ownership.owner) {
-      return noteOtherWindowOnce(root, sessionId, ownership.by)
-        ? [`Social Campaign board (for Claude): this workspace's board is bound to ${link.url}, but ${BOARD_TEXT.otherWindow}`]
-        : [];
-    }
     const waiting = landedRequestCount(root);
     const lines = [
       `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`,

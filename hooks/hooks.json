@@ -11,6 +11,9 @@
         ]
       }
     ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-owner-release.mjs\"", "timeout": 10 }] }
+    ],
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-published.mjs\"" }] }
     ],

@@ -22,7 +22,6 @@ export function windowSessionId() {
   generated ??= `window-${process.pid}-${randomUUID().slice(0, 8)}`;
   return generated;
 }
-export const hostSessionKnown = () => Boolean(process.env.CLAUDE_CODE_SESSION_ID || process.env.CLAUDE_SESSION_ID);
 
 function readClaim(file) {
   try {
@@ -62,6 +61,16 @@ function createExclusive(file, body) {
   }
 }
 
+/** Put a claim moved aside back at `file`: a hard link, else an exclusive create. Whoever already holds `file` wins. */
+function putBack(aside, file) {
+  try {
+    linkSync(aside, file);
+  } catch (error) {
+    if (error.code === 'EEXIST') return;
+    try { writeFileSync(file, readFileSync(aside), { flag: 'wx' }); } catch { /* someone else already holds it; they win */ }
+  }
+}
+
 /**
  * Take the claim at `file` for `sessionId`. Returns {claimed: true} (also when this window already holds it) or
  * {claimed: false, owner} with the holder's record. Exactly one of any number of racing windows gets true.
@@ -78,11 +87,9 @@ export function takeClaim(file, sessionId, { ttlMs = REQUEST_CLAIM_TTL_MS, now =
     // Take over a dead window's claim: move it aside (only one racer can), and check it is the one judged stale.
     const aside = `${file}.stale-${randomUUID()}`;
     try { renameSync(file, aside); } catch { continue; }
-    const moved = readClaim(aside);
-    if (current && moved && (moved.sessionId !== current.sessionId || moved.claimedAt !== current.claimedAt)) {
-      // A newer claim landed between the check and the move: put it back, never overwrite whoever holds it now.
-      try { linkSync(aside, file); } catch { /* someone else already holds it; they win */ }
-    }
+    // Judge what was actually moved, not what was seen a moment ago: a fresh claim (a newer one landed between the check
+    // and the move, or the unreadable one was only half written) is put back, never overwritten or deleted.
+    if (!isStale(aside, readClaim(aside), { ttlMs, now })) putBack(aside, file);
     rmSync(aside, { force: true });
   }
   return { claimed: false, owner: readClaim(file) };
