@@ -8,10 +8,12 @@
  * caller allows them, because a research tool has no business reading a router's
  * admin page.
  *
- * webCrawl reads one page, a section or a site, same origin only, honours
+ * webCrawl reads one page, a section or a site, same site only (the one exception is a
+ * redirect of the first address to another host of the same brand, followed once), honours
  * robots.txt and its crawl delay, and waits between requests to the same host.
  */
 
+import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 
@@ -49,7 +51,7 @@ const MAX_REDIRECTS = 5;
 export class FetchFailure extends Error {
   /**
    * @param {string} message
-   * @param {'invalid_url'|'private_address'|'timed_out'|'network'|'too_many_redirects'} code
+   * @param {'invalid_url'|'private_address'|'timed_out'|'network'|'too_many_redirects'|'redirect_loop'} code
    */
   constructor(message, code) {
     super(message);
@@ -162,6 +164,62 @@ export async function assertPublicHost(url, allowPrivate) {
 }
 
 /**
+ * Second level labels that sit under a two letter country code and are part of the public suffix:
+ * `com.sg`, `co.uk`, `com.au`, `co.jp`. This project stays at zero npm dependencies, so a full public
+ * suffix list is out of reach; this covers the registries brands actually use.
+ */
+const SECOND_LEVEL_LABELS = new Set(['co', 'com', 'net', 'org', 'gov', 'gob', 'govt', 'edu', 'ac', 'or', 'ne', 'go', 'ltd', 'plc', 'me', 'sch', 'mil', 'asn', 'firm', 'gen', 'ind', 'nom']);
+
+/**
+ * The registrable domain of a host name: the name a person registered, with its public suffix
+ * (`www.killiney.com.sg` is `killiney.com.sg`, `shop.example.co.uk` is `example.co.uk`).
+ * An IP address or a single label name is returned as it is.
+ * @param {string} hostname
+ * @returns {string}
+ */
+export function registrableDomain(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (!host || isIP(host)) return host;
+  const labels = host.split('.');
+  if (labels.length <= 2) return host;
+  const last = labels[labels.length - 1];
+  const second = labels[labels.length - 2];
+  return labels.slice(last.length === 2 && SECOND_LEVEL_LABELS.has(second) ? -3 : -2).join('.');
+}
+
+/**
+ * The brand name part of a host: the label in front of the public suffix
+ * (`killiney` for `www.killiney.com.sg`), or null for an IP address, `localhost` and other single label names.
+ * @param {string} hostname
+ * @returns {string|null}
+ */
+export function brandLabel(hostname) {
+  const domain = registrableDomain(hostname);
+  if (!domain || isIP(domain) || !domain.includes('.')) return null;
+  return domain.split('.')[0] || null;
+}
+
+/** The shortest brand name that can be the first words of a longer one: `killiney` in `killiney-kopitiam`. */
+const MIN_BRAND_PREFIX = 4;
+
+/**
+ * Whether two hosts belong to the same brand: the same registrable name under any suffix
+ * (`killiney.com.sg` and `killiney.com`, `www.yakun.com` and `app.yakun.com`), or one name
+ * that is the other plus more words (`killiney` and `killiney-kopitiam`).
+ * @param {string} hostA
+ * @param {string} hostB
+ * @returns {boolean}
+ */
+export function sameBrandHost(hostA, hostB) {
+  const a = brandLabel(hostA);
+  const b = brandLabel(hostB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= MIN_BRAND_PREFIX && long.startsWith(`${short}-`);
+}
+
+/**
  * @typedef {object} FetchResult
  * @property {string} url the address asked for.
  * @property {string} final_url the address that answered, after redirects.
@@ -172,14 +230,19 @@ export async function assertPublicHost(url, allowPrivate) {
  * @property {number} bytes
  * @property {boolean} truncated
  * @property {string} fetched_at
+ * @property {string} [redirect_to] set only when `onRedirect` refused a redirect: the address it pointed at. `final_url` is then the address that sent it.
  */
 
 /**
  * Fetch one address with a size cap, a time cap and checked redirects.
  * A non 2xx answer is returned, not thrown: 403 and 429 are normal for bot protected
- * pages and the caller decides what they mean.
+ * pages and the caller decides what they mean. A redirect back to an address already
+ * seen in the same chain is a loop and throws `redirect_loop` at once, without waiting
+ * out the hop limit.
+ * `onRedirect(from, to)` is asked before each redirect is followed; returning false stops
+ * there and returns the redirect answer itself, with `redirect_to` set.
  * @param {string} rawUrl
- * @param {{timeoutMs?: number, maxBytes?: number, allowPrivate?: boolean, headers?: Record<string, string>, method?: string, body?: string, allowedProtocols?: string[], raw?: boolean}} [options]
+ * @param {{timeoutMs?: number, maxBytes?: number, allowPrivate?: boolean, headers?: Record<string, string>, method?: string, body?: string, allowedProtocols?: string[], raw?: boolean, onRedirect?: (from: URL, to: URL) => boolean}} [options]
  * @returns {Promise<FetchResult>}
  */
 export async function boundedFetch(rawUrl, options = {}) {
@@ -192,6 +255,7 @@ export async function boundedFetch(rawUrl, options = {}) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const visited = new Set([chainKey(url)]);
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       await assertPublicHost(url, allowPrivate);
@@ -217,6 +281,26 @@ export async function boundedFetch(rawUrl, options = {}) {
         const next = parseHttpUrl(new URL(String(response.headers.get('location')), url).href);
         await response.body?.cancel().catch(() => {});
         if (!next) throw new FetchFailure(`${url.href} redirected to an address that is not a web page.`, 'invalid_url');
+        // The same request, with no cookies kept between hops, gets the same answer: an address seen
+        // already in this chain is a loop (typically a cookie or consent wall), not a slow chain.
+        if (visited.has(chainKey(next))) {
+          throw new FetchFailure(`${next.href} redirects in a loop, usually a cookie or consent wall that a plain reader cannot pass.`, 'redirect_loop');
+        }
+        if (options.onRedirect && options.onRedirect(url, next) === false) {
+          return {
+            url: rawUrl,
+            final_url: url.href,
+            status: response.status,
+            ok: false,
+            content_type: '',
+            ...(raw ? { buffer: Buffer.alloc(0) } : { body: '' }),
+            bytes: 0,
+            truncated: false,
+            fetched_at: new Date().toISOString(),
+            redirect_to: next.href,
+          };
+        }
+        visited.add(chainKey(next));
         url = next;
         continue;
       }
@@ -237,6 +321,17 @@ export async function boundedFetch(rawUrl, options = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * An address as one redirect chain sees it: the fragment is never sent, so it does not tell two hops apart.
+ * @param {URL} url
+ * @returns {string}
+ */
+function chainKey(url) {
+  const copy = new URL(url.href);
+  copy.hash = '';
+  return copy.href;
 }
 
 /**
@@ -488,6 +583,14 @@ export class Politeness {
   }
 
   /**
+   * Record a request to the host that did not go through `wait`, such as the page a redirect landed on.
+   * @param {string} host
+   */
+  touch(host) {
+    this.last.set(host, Math.max(this.last.get(host) ?? 0, this.now()));
+  }
+
+  /**
    * Wait until the host may be asked again, then claim the slot.
    * @param {string} host
    * @param {number} [gapMs] a larger gap, for example a robots.txt crawl delay.
@@ -575,8 +678,59 @@ export function isEmptyShell(html, text) {
   return scriptBytes / html.length > EMPTY_SHELL_SCRIPT_RATIO;
 }
 
+/** Query parameters that only say where a visitor came from: two addresses that differ by these are the same page. */
+const TRACKING_PARAMS = /^(utm_[a-z0-9_]+|fbclid|gclid|gclsrc|dclid|msclkid|yclid|ttclid|twclid|igshid|mc_cid|mc_eid|_ga|_gl|srsltid|mkt_tok|li_fat_id|ref_src|ref_url|spm)$/i;
+
 /**
- * Read one page, a section or a site. Same origin only.
+ * What identifies a page apart from how a link spelled it: no scheme, `www.`, fragment, tracking
+ * parameters, trailing slash or `index.html`, and the remaining query parameters in a fixed order.
+ * @param {URL} url
+ * @returns {string}
+ */
+export function pageKey(url) {
+  const host = url.host.toLowerCase().replace(/^www\./, '');
+  let path = url.pathname.replace(/\/index\.(html?|php)$/i, '/');
+  if (path.length > 1) path = path.replace(/\/+$/, '');
+  const params = [...url.searchParams.entries()]
+    .filter(([name]) => !TRACKING_PARAMS.test(name))
+    .sort(([a, valueA], [b, valueB]) => (a === b ? valueA.localeCompare(valueB) : a.localeCompare(b)));
+  const query = params.length > 0 ? `?${params.map(([name, value]) => `${name}=${value}`).join('&')}` : '';
+  return `${host}${path}${query}`;
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function textKey(text) {
+  return createHash('sha1').update(text.replace(/\s+/g, ' ').trim().toLowerCase()).digest('hex');
+}
+
+/**
+ * The folder a section crawl stays in: the page's own path up to its last slash.
+ * @param {URL} url
+ * @returns {string}
+ */
+function sectionOf(url) {
+  return url.pathname.endsWith('/') ? url.pathname : url.pathname.replace(/[^/]*$/, '');
+}
+
+/**
+ * @param {Politeness} politeness
+ * @param {RobotsRules} robots
+ * @returns {number}
+ */
+function crawlGap(politeness, robots) {
+  return Math.max(politeness.gapMs, Math.min(robots.crawlDelayS ?? 0, MAX_CRAWL_DELAY_S) * 1000);
+}
+
+/**
+ * Read one page, a section or a site. Same site only: the one exception is the address the crawl
+ * starts from. When the site itself redirects that address to another host of the same brand (`www`
+ * to the bare name, `killiney.com.sg` to `killiney-kopitiam.com`), the crawl follows it once, says so in
+ * `followed_redirect`, and stays on the final host from then on. A redirect to any other host is not followed.
+ * Section and site crawls drop a page that is the same as one already read (the same address once
+ * tidied, or the same text) and report how many in `duplicates_dropped`.
  * @param {{url: string, scope?: 'page'|'section'|'site', max_pages?: number}} input
  * @param {CrawlOptions} [options]
  * @returns {Promise<Record<string, any>>}
@@ -592,18 +746,28 @@ export async function webCrawl(input, options = {}) {
   const clock = options.clock ?? (() => Date.now());
   const startedAt = clock();
   const remaining = () => budgetMs - (clock() - startedAt);
-  const origin = start.origin;
-  const sectionPrefix = start.pathname.endsWith('/') ? start.pathname : start.pathname.replace(/[^/]*$/, '');
+  let origin = start.origin;
+  let sectionPrefix = sectionOf(start);
 
-  const { robots, note: robotsNote } = await loadRobots(origin, options);
-  const gapMs = Math.max(politeness.gapMs, Math.min(robots.crawlDelayS ?? 0, MAX_CRAWL_DELAY_S) * 1000);
+  let { robots, note: robotsNote } = await loadRobots(origin, options);
+  let gapMs = crawlGap(politeness, robots);
 
   const queue = [start.href];
-  const queued = new Set(queue);
+  /** Every page already queued or read, by `pageKey`. */
+  const keys = new Set([pageKey(start)]);
+  /** Every spelling of an address queued, to tell a link repeated as it is from a variant of it. */
+  const spellings = new Set(queue);
+  /** The pages read, by `pageKey` and by text, with the address they were read at. */
+  const keptByKey = new Map();
+  const keptByText = new Map();
+  let duplicates = 0;
+  let duplicateReads = 0;
+  /** @type {{from: string, to: string}|null} */
+  let followedRedirect = null;
   const records = [];
   /**
    * Pages that were found but not read. `lost` marks the ones that lower coverage:
-   * a page the site closed or refused, not a broken link, another site or a file.
+   * a page the site closed or refused, not a broken link, another site, a file or a repeat.
    * @type {Array<{url: string, reason: string, lost: boolean, code: string|null}>}
    */
   const skipped = [];
@@ -612,49 +776,86 @@ export async function webCrawl(input, options = {}) {
   while (queue.length > 0 && records.length < maxPages) {
     const next = /** @type {string} */ (queue.shift());
     const url = new URL(next);
+    const isStart = next === start.href;
     // The crawl has one clock. A page is only started when its polite wait and a
     // useful fetch both still fit; otherwise the rest is left unread, not waited for.
     if (remaining() <= 1000 || (records.length > 0 && politeness.peek(url.host, gapMs) + 1000 > remaining())) {
       skipped.push({ url: next, reason: 'skipped: budget (the crawl used its 45 seconds)', lost: true, code: 'timed_out' });
-      if (next === start.href && records.length === 0) firstFailure = { code: 'timed_out', reason: 'The crawl ran out of time before the first page was read.', plan: 'full' };
+      if (isStart && records.length === 0) firstFailure = { code: 'timed_out', reason: 'The crawl ran out of time before the first page was read.', plan: 'full' };
       break;
     }
     if (!robotsAllows(robots, url.pathname + url.search)) {
       skipped.push({ url: next, reason: 'robots.txt asks automated readers not to open it', lost: true, code: 'unsupported' });
-      if (next === start.href) firstFailure = { code: 'unsupported', reason: robotsNote ?? 'The site asks automated readers not to open this page.', plan: 'search_only' };
+      if (isStart) firstFailure = { code: 'unsupported', reason: robotsNote ?? 'The site asks automated readers not to open this page.', plan: 'search_only' };
       continue;
     }
     await politeness.wait(url.host, gapMs);
+    // Only the first address may change host, once, and only to the same brand; every other redirect
+    // stays on the host that sent it. A redirect that is not allowed is not followed at all.
+    let changedHost = false;
+    const onRedirect = (/** @type {URL} */ from, /** @type {URL} */ to) => {
+      if (from.hostname === to.hostname) return true;
+      if (!isStart || changedHost || !sameBrandHost(start.hostname, to.hostname)) return false;
+      changedHost = true;
+      return true;
+    };
     let result;
     try {
-      result = await boundedFetch(next, { allowPrivate: options.allowPrivate, timeoutMs: Math.max(1000, Math.min(options.timeoutMs ?? FETCH_TIMEOUT_MS, remaining())), maxBytes: options.maxBytes });
+      result = await boundedFetch(next, { allowPrivate: options.allowPrivate, timeoutMs: Math.max(1000, Math.min(options.timeoutMs ?? FETCH_TIMEOUT_MS, remaining())), maxBytes: options.maxBytes, onRedirect });
     } catch (error) {
       const failure = error instanceof FetchFailure ? error : new FetchFailure(String(error), 'network');
       skipped.push({ url: next, reason: failure.message, lost: true, code: failure.code === 'timed_out' ? 'timed_out' : 'blocked' });
-      if (next === start.href) {
+      if (isStart) {
         const refused = failure.code === 'private_address' || failure.code === 'invalid_url';
+        // A loop of redirects is a cookie or consent wall a plain reader cannot pass: a refusal, not a missing page.
+        const walled = failure.code === 'redirect_loop' || failure.code === 'too_many_redirects';
         firstFailure = {
-          code: failure.code === 'timed_out' ? 'timed_out' : refused ? 'unsupported' : 'not_found',
+          code: failure.code === 'timed_out' ? 'timed_out' : refused ? 'unsupported' : walled ? 'blocked' : 'not_found',
           reason: failure.message,
           plan: refused ? 'none' : 'full',
         };
       }
       continue;
     }
-    if (new URL(result.final_url).origin !== origin) {
-      skipped.push({ url: next, reason: `it redirects to another site, ${new URL(result.final_url).origin}`, lost: false, code: null });
-      if (next === start.href) firstFailure = { code: 'unsupported', reason: `The address redirects to another site, ${result.final_url}, which a same site read does not follow.` };
+    if (result.redirect_to) {
+      const target = new URL(result.redirect_to);
+      skipped.push({ url: next, reason: `it redirects to another site, ${target.origin}`, lost: false, code: null });
+      if (isStart) firstFailure = { code: 'unsupported', reason: `The address redirects to another site, ${target.href}, which a same site read does not follow.` };
+      continue;
+    }
+    const landed = new URL(result.final_url);
+    if (isStart && landed.origin !== origin) {
+      // The crawl lives on the final host from here on: its robots.txt, its links, its section.
+      const movedHost = landed.host !== new URL(origin).host;
+      origin = landed.origin;
+      sectionPrefix = sectionOf(landed);
+      if (movedHost) {
+        followedRedirect = { from: start.href, to: result.final_url };
+        // The redirect itself just asked this host once, so its robots.txt waits out the gap like any other request.
+        politeness.touch(landed.host);
+        await politeness.wait(landed.host, gapMs);
+        ({ robots, note: robotsNote } = await loadRobots(origin, options));
+        gapMs = crawlGap(politeness, robots);
+        if (!robotsAllows(robots, landed.pathname + landed.search)) {
+          skipped.push({ url: result.final_url, reason: 'robots.txt asks automated readers not to open it', lost: true, code: 'unsupported' });
+          firstFailure = { code: 'unsupported', reason: robotsNote ?? 'The site asks automated readers not to open this page.', plan: 'search_only' };
+          continue;
+        }
+      }
+    }
+    if (landed.origin !== origin) {
+      skipped.push({ url: next, reason: `it redirects to another site, ${landed.origin}`, lost: false, code: null });
       continue;
     }
     if (!result.ok) {
       const status = statusFailure(result.status);
       skipped.push({ url: next, reason: `the site answered ${result.status}`, lost: status.code !== 'not_found', code: status.code });
-      if (next === start.href) firstFailure = statusFailure(result.status);
+      if (isStart) firstFailure = statusFailure(result.status);
       continue;
     }
     if (!isHtml(result)) {
       skipped.push({ url: next, reason: `it is not a web page (${result.content_type || 'unknown type'})`, lost: false, code: null });
-      if (next === start.href) firstFailure = { code: 'unsupported', reason: `The address is not a web page (${result.content_type || 'unknown type'}).` };
+      if (isStart) firstFailure = { code: 'unsupported', reason: `The address is not a web page (${result.content_type || 'unknown type'}).` };
       continue;
     }
     const pageText = htmlToText(result.body);
@@ -662,11 +863,29 @@ export async function webCrawl(input, options = {}) {
       // The transport and the HTML both succeeded, but the content is added by
       // JavaScript this reader never runs, so there is nothing here to call `full`.
       skipped.push({ url: next, reason: 'its content is added by JavaScript; the page reader saw an empty shell', lost: true, code: 'empty_page' });
-      if (next === start.href) {
+      if (isStart) {
         firstFailure = { code: 'empty_page', reason: 'This page\'s content is added by JavaScript; the plain page reader saw an empty shell.', plan: 'full' };
       }
       continue;
     }
+    const pageId = pageKey(landed);
+    const sameText = pageText.trim() ? textKey(pageText) : null;
+    const repeatOf = keptByKey.get(pageId) ?? (sameText ? keptByText.get(sameText) : undefined);
+    if (repeatOf) {
+      // Another link led to a page already read: the same address once tidied, a redirect to it, or a page with the same text.
+      duplicates += 1;
+      duplicateReads += 1;
+      skipped.push({ url: next, reason: `it is the same page as ${repeatOf}`, lost: false, code: null });
+      if (duplicateReads >= maxPages * 2) {
+        // A site that answers every address with the same page would otherwise be read until the budget ran out.
+        skipped.push({ url: queue[0] ?? next, reason: 'skipped: the pages kept repeating what was already read', lost: false, code: null });
+        break;
+      }
+      continue;
+    }
+    keptByKey.set(pageId, result.final_url);
+    if (sameText) keptByText.set(sameText, result.final_url);
+    keys.add(pageId);
     const links = extractLinks(result.body, result.final_url);
     records.push(
       pageRecord({
@@ -681,10 +900,20 @@ export async function webCrawl(input, options = {}) {
     if (scope === 'page') break;
     for (const link of links) {
       const candidate = new URL(link);
-      if (candidate.origin !== origin || queued.has(candidate.href)) continue;
+      if (candidate.origin !== origin) continue;
       if (scope === 'section' && !candidate.pathname.startsWith(sectionPrefix)) continue;
       if (/\.(pdf|jpe?g|png|gif|webp|svg|mp4|mov|zip|css|js|json|xml|ico|woff2?)$/i.test(candidate.pathname)) continue;
-      queued.add(candidate.href);
+      const key = pageKey(candidate);
+      if (keys.has(key)) {
+        // The same page spelled another way is a duplicate link; the same spelling again is just a repeated link.
+        if (!spellings.has(candidate.href)) {
+          spellings.add(candidate.href);
+          duplicates += 1;
+        }
+        continue;
+      }
+      keys.add(key);
+      spellings.add(candidate.href);
       queue.push(candidate.href);
     }
   }
@@ -717,7 +946,13 @@ export async function webCrawl(input, options = {}) {
     degraded_reason: degradedReason,
     records,
     web_evidence_plan: records.length === 0 ? crawlPlan(start.href, degradedReason ?? '', firstFailure?.plan ?? (degradedCode === 'not_found' ? 'none' : 'full')) : null,
-    extra: { scope, pages_read: records.length, skipped },
+    extra: {
+      scope,
+      pages_read: records.length,
+      skipped,
+      ...(scope === 'page' ? {} : { duplicates_dropped: duplicates }),
+      ...(followedRedirect ? { followed_redirect: followedRedirect } : {}),
+    },
   });
 }
 

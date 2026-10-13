@@ -3,7 +3,8 @@
  *
  *   workspaces/<brand>/library/
  *     bank/yours.jsonl       {id, kind, text, concept?, jobId?, edited?, was?, at, removed?}   the person's own lines
- *     bank/proven.jsonl      {id, kind, text, evidence:{url, views, date}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
+ *     bank/proven.jsonl      {id, kind, text, evidence:{url, views|likes, date}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
+ *                            (evidence counts views; a post whose platform shows none to a signed-out reader, Instagram, counts likes instead)
  *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own)
  *     research/<jobId>.json  {jobId, at, files:[{path, sha256, topic, at}], industry?}   the research a job left, by path
  *     jobs/<jobId>.json      the filed job record (below)
@@ -173,19 +174,34 @@ export function readBank({ root, brand, bank = 'yours', kind = null, includeRemo
   return Number.isInteger(limit) && limit > 0 ? items.slice(0, limit) : items;
 }
 
+const wholeCount = value => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Math.max(0, Math.round(Number(value))) : null);
+
+/**
+ * "12,000 views" or "954 likes" for an evidence entry or a post: views when it has them, otherwise likes (a signed-out reader sees
+ * likes but no views on Instagram). null when it carries neither, so a printed line never says "undefined", "null" or "NaN".
+ */
+export function countText(source) {
+  const count = (value, word) => `${value.toLocaleString('en-US')} ${value === 1 ? word : `${word}s`}`;
+  if (Number.isFinite(source?.views)) return count(source.views, 'view');
+  if (Number.isFinite(source?.likes)) return count(source.likes, 'like');
+  return null;
+}
+
+/** Evidence counts one measure: {url, views, date}, or {url, likes, date} when the post has likes and no views (Instagram). */
 function evidenceOf(value) {
   const input = value && typeof value === 'object' ? value : {};
   const url = runtime.webLink(input.url);
-  const views = Number.isFinite(Number(input.views)) && input.views !== null && input.views !== '' ? Math.max(0, Math.round(Number(input.views))) : null;
+  const views = wholeCount(input.views);
+  const likes = views === null ? wholeCount(input.likes) : null;
   const when = input.date ?? input.posted_at;
   const date = typeof when === 'string' && when.trim() ? clip(when, 40) : null;
-  return { url, views, date };
+  return likes !== null ? { url, likes, date } : { url, views, date };
 }
 
 /**
  * Put one item in a bank, once. Returns { item, saved }: saved is false when the same words are already there (that item is returned).
  * `yours` keeps the person's own lines; an item the person edited from an agent's line carries edited: true and was.
- * `proven` needs the https link of the post it comes from, with its views and date when known.
+ * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram) and date when known.
  */
 export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, now } = {}) {
   checkBank(bank);
@@ -200,7 +216,7 @@ export function addToBank({ root, brand, bank = 'yours', kind, text, concept = n
   let item;
   if (bank === 'proven') {
     const proof = evidenceOf(evidence);
-    if (!proof.url) throw new InvalidInputError('A proven item needs the link to the post it comes from.', { fix: 'Pass evidence with an https url, and its views and date when you know them.' });
+    if (!proof.url) throw new InvalidInputError('A proven item needs the link to the post it comes from.', { fix: 'Pass evidence with an https url, and its views (likes for Instagram) and date when you know them.' });
     if (source !== null && source !== undefined && !PROVEN_SOURCES.includes(source)) throw new InvalidInputError('The source is brand (one of the brand\'s own posts) or competitor.');
     const who = source === 'competitor' && typeof competitor === 'string' && competitor.trim() ? clip(competitor, 80) : null;
     item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), at };
@@ -617,9 +633,14 @@ const jobLine = (record, results) => ({
   ...(results ? { results } : {}),
 });
 
-/** The proven items, ranked by their posted results, then the ones with the most views (evidence), then the newest. */
+// Views and likes are different measures, so the evidence ranks within each: items with views first, then items with only likes, then the rest.
+const measureTier = evidence => (Number.isFinite(evidence?.views) ? 0 : Number.isFinite(evidence?.likes) ? 1 : 2);
+const measureSize = evidence => (Number.isFinite(evidence?.views) ? evidence.views : Number.isFinite(evidence?.likes) ? evidence.likes : -1);
+
+/** The proven items, ranked by their posted results, then the ones with the most views (evidence), then the ones with the most likes (Instagram), then the newest. */
 export function readProven({ root, brand, kind = null, limit = null } = {}) {
-  const byViews = readBank({ root, brand, bank: 'proven', kind, ranked: false }).sort((a, b) => (b.evidence?.views ?? -1) - (a.evidence?.views ?? -1) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
+  const byViews = readBank({ root, brand, bank: 'proven', kind, ranked: false })
+    .sort((a, b) => measureTier(a.evidence) - measureTier(b.evidence) || measureSize(b.evidence) - measureSize(a.evidence) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
   const items = applyRanking({ root, brand, items: byViews });
   return Number.isInteger(limit) && limit > 0 ? items.slice(0, limit) : items;
 }
@@ -627,7 +648,7 @@ export function readProven({ root, brand, kind = null, limit = null } = {}) {
 /**
  * The brand page's library: { counts, yours, proven, recentJobs }, small enough to ride in the board document (the person's items,
  * the proven items, the last jobs filed). Items with posted results come first, best score first, each with { score, uses, label };
- * after them the person's newest and the proven items with the most views. A filed job that has results carries them as
+ * after them the person's newest and the proven items with the most views (then the most likes: Instagram shows no views). A filed job that has results carries them as
  * results: { score, label, early, posts, views, at }. Never throws: a library that cannot be read is an empty one.
  */
 export function boardLibrary({ root, brand, now } = {}) {
@@ -650,7 +671,6 @@ export function boardLibrary({ root, brand, now } = {}) {
 }
 
 const quoted = text => `"${clip(text, 160)}"`;
-const viewsText = views => (Number.isFinite(views) ? `${views.toLocaleString('en-US')} views` : null);
 
 /**
  * A short block for an agent's brief: what the brand's posted results say (winners first with their numbers, weak lines to avoid),
@@ -667,8 +687,10 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     const scored = [...own.filter(item => item.kind !== 'industry').map(item => ({ ...item, own: true })), ...all];
     // The same words can sit in both banks (a winner promoted to proven keeps its place in the person's own lines): list them once.
     const once = list => list.filter((item, index) => list.findIndex(other => other.kind === item.kind && sameText(other.text, item.text)) === index);
-    winners = once(scored.filter(item => item.label === 'winner').sort((a, b) => b.score - a.score)).slice(0, 5);
-    weak = once(scored.filter(item => item.label === 'weak').sort((a, b) => a.score - b.score)).slice(0, 4);
+    // Views and likes are different measures: within the winners (and the weak lines) the ones that count only likes come after the rest.
+    const likesLast = (a, b) => Number(a.measure === 'likes') - Number(b.measure === 'likes');
+    winners = once(scored.filter(item => item.label === 'winner').sort((a, b) => likesLast(a, b) || b.score - a.score)).slice(0, 5);
+    weak = once(scored.filter(item => item.label === 'weak').sort((a, b) => likesLast(a, b) || a.score - b.score)).slice(0, 4);
     const shown = item => [...winners, ...weak].some(other => other.kind === item.kind && sameText(other.text, item.text));
     yours = own.filter(item => item.kind !== 'industry' && !shown(item)).slice(0, 6);
     proven = all.filter(item => !shown(item)).slice(0, 5);
@@ -693,7 +715,7 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
   }
   if (proven.length) {
     lines.push('Proven, with the post that shows it:');
-    for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", viewsText(item.evidence?.views), item.evidence?.date, item.evidence?.url].filter(Boolean).join(', ')})`);
+    for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", countText(item.evidence), item.evidence?.date, item.evidence?.url].filter(Boolean).join(', ')})`);
   }
   if (research.length) {
     lines.push('Research already done. Reuse brand and competitor research under 30 days old and trends under 7 days old; refresh only the rest, and say which you reused:');

@@ -58,8 +58,8 @@ done when:     research/trends.md exists at the absolute path given, every platf
 ## You own
 
 - The rising topics, formats, sounds and hashtags in the brand's industry on each platform of the job
-- The hooks and primary texts of ads that keep running in the industry, ranked by days running
-- The link, views and date of every post that shows a trend, and the link, start day, days running and variants of every ad, as the source displays them
+- The hooks and primary texts of ads that keep running in the industry: Meta ads ranked by days running, TikTok Top Ads ranked by the Creative Center's own likes and click-through rate when it gives them, else in its list order
+- The link, views and date of every post that shows a trend, and the link, start day, days running and variants of every Meta ad, as the source displays them; where a source shows no date or no start day (Instagram topics, YouTube Shorts search, TikTok Top Ads), the link and the counts it does show, and the words "undated" or "no start date".
 - The day you saw each trend
 - Why each trend fits this brand, and what it would look like for this brand, written as your inference
 - Keeping the brand library's trends current: only the trends you saw this run are saved
@@ -85,7 +85,14 @@ done when:     research/trends.md exists at the absolute path given, every platf
    Search a platform for organic trends only when it has fewer than 3 fresh trends (topics, formats, sounds and hashtags) for this industry.
    Search the ad libraries only when the library holds fewer than 3 fresh hooks (see Ads that keep running).
 3. For each platform to search, ask one question: what is rising now in the industry on this platform, as topics, formats, sounds and hashtags?
-   - `social_search` with the industry's own words and its hashtags (recent, high-performing posts first; on Instagram a `#topic` lists the reels on it with their exact play counts and no dates), then `social_outliers_find` on two or three accounts that posted a candidate, to see whether a post beat that account's usual (on Instagram, by likes against that account's own median, since Instagram shows no views to a signed out reader).
+   - `social_search` with the industry's own words, one call per topic.
+     On Instagram give one `#hashtag` (two words are read as one hashtag, a longer phrase is refused with hashtags to try): it lists the reels on that topic with their exact play counts, owners and addresses, and no dates.
+     On YouTube give the niche keywords with `platform: "youtube"`: it lists Shorts ranked by view count, with no dates.
+     A TikTok `#hashtag` gives the hashtag's totals only (its posts are not readable without a login) and a TikTok keyword is not open at all, so on TikTok find the posts through accounts: `social_outliers_find` on the competitors and on two or three accounts you met.
+   - `social_outliers_find` on two or three accounts that posted a candidate, to see whether a post beat that account's usual (on Instagram, by likes against that account's own median, since Instagram shows no views to a signed out reader).
+     An account that posts rarely gets a wider window by itself and the result says `stale`: its newest post date is then the date to quote, and an old outlier is not a rising trend.
+   - Do not run `site:tiktok.com`, `site:instagram.com/reel` or `site:youtube.com/shorts` web searches to find posts.
+     In a live test, seven of them returned articles and no single video, and they spend the search budget.
    - `WebSearch` and `WebFetch` for the platform's own trend pages that are public (for example a trending hashtags or sounds page) and for articles that name a trend with a date.
    - `social_post_get` on a post you will cite, to read its views, date and sound as they are displayed now.
 4. Keep only what meets "What counts as rising" below.
@@ -96,8 +103,11 @@ done when:     research/trends.md exists at the absolute path given, every platf
 8. Save what you saw this run with one `brand_trends_save` call: `{brand, items: [{kind, text, platform, industry, evidence: [...], why}]}`.
    `kind` is topic, format, sound, hashtag, hook or caption.
    `evidence` is the same links as the file.
-   For a post it is `{url, views, date}`; for an ad it is `{url (the ad snapshot link), startedAt, runningDays, variants, advertiser, source}` with no views.
-   `why` is the same one line on why it fits the brand, and for an ad it says the days running and that this is the proxy.
+   For a post it is `{url, views, date}`, and a source that shows no date (an Instagram topic, a YouTube search) leaves `date` out.
+   For a Meta ad it is `{url (the ad snapshot link), startedAt, runningDays, variants, advertiser, source}` with no views.
+   For a TikTok Top Ads entry it is `{url, advertiser, source: "tiktok_top_ads"}` with no `startedAt` and no `runningDays`, because the Creative Center shows no start day; its likes and click-through rate go in `why`.
+   `why` is the same one line on why it fits the brand, and for a Meta ad it says the days running and that this is the proxy.
+   For a TikTok ad it says its place in the Creative Center list, its likes and click-through rate when the result gives them, and that there is no start date.
    Leave a number or a date out when the source did not display it.
    If the call names an item that is wrong, fix that item and call again; nothing was saved by the first call.
 9. Return the summary.
@@ -107,6 +117,9 @@ done when:     research/trends.md exists at the absolute path given, every platf
 An advertiser pays to keep a winner running, so the ad libraries are the best place to find hooks and primary texts that work.
 They show no views and no spend.
 So you rank by two proxies and you say that they are proxies: days running (30 or more is a likely winner) and variants (how many ads from one advertiser use the same text).
+TikTok Top Ads is the exception: it carries no start day, so there is no days running for it.
+Its ads are the Creative Center's own ranking of top ads, and you rank them by the Creative Center likes and click-through rate (CTR) when the result gives them, else you keep the list order the Creative Center returned, and you say which you used.
+Never write "running since" or a days running figure for a TikTok ad.
 
 Run this when a platform of the job is Facebook, Instagram or TikTok and the library holds fewer than 3 fresh hooks.
 Follow the Ad research rules in the research skill: one attempt per library, then blank.
@@ -118,21 +131,26 @@ Follow the Ad research rules in the research skill: one attempt per library, the
    When the connector is not available to you or a call fails, make one attempt with `social_ad_search` with `platform: "meta"` (`advertiser_or_query` the industry keywords, `country`), which stands in for both Meta calls.
    If that also fails, leave the Meta rows blank with the reason.
 2. TikTok Top Ads, only when the job posts on TikTok.
-   One `social_ad_search` with `platform: "tiktok"` (`advertiser_or_query` the industry keywords, `country`).
-   If it returns nothing or fails, leave the TikTok rows blank with the reason.
+   One `social_ad_search` with `platform: "tiktok"` (`advertiser_or_query` brand or product words such as the industry's one or two key words or a competitor's brand name, `country`).
+   The keyword is typed into the Creative Center's own search box, so a long phrase matches nothing.
+   The result says `list_scope`: `keyword` is the ads that match the keyword, `region_wide` means the keyword could not be applied and the list is the region's top ads in general, which you say in the file and do not present as the industry's.
+   A search that matches nothing is an answer: write it under Not found and do not try another phrase.
+   If it fails, leave the TikTok rows blank with the reason.
 3. Read the active ads only.
-   - Days running is today minus the ad's start day (YYYY-MM-DD).
+   - Days running is today minus the ad's start day (YYYY-MM-DD). A TikTok ad has no start day, so it has no days running.
    - Variants is how many ads from the same advertiser use the same primary text (compare the words, ignoring case and punctuation); count each text once.
    - The hook is the ad's opening line: the first sentence or line of the primary text, exactly as the ad shows it (the headline when the result gives no primary text).
    - The caption is the primary text, exactly as the ad shows it (leave it out when the result gives only a headline).
-4. Rank the ads by days running, then by variants.
+4. Rank the Meta ads by days running, then by variants.
    30 days or more is a likely winner; under 30 is newer, and you say so.
-5. Take the best 5 to 10 ads, the likely winners first.
+   Rank the TikTok ads on their own: by the Creative Center likes and CTR when given, else by list order.
+   A TikTok ad is never called a likely winner from days running: you say it is in the Creative Center's top ads list and quote its likes and CTR.
+5. Take the best 5 to 10 ads, the likely winners first (for TikTok, the top of its ranking).
    When fewer than 5 are likely winners, fill up to 5 with the longest-running newer ones and say "newer" in `why`.
    When the libraries returned fewer than 5 ads in all, take what there is.
 6. Save each as a `hook` item and, when it has a primary text, a `caption` item.
    `platform` is `facebook` (`instagram` when the ad runs only there) for the Meta Ad Library and `tiktok` for TikTok Top Ads.
-   `evidence` has the ad snapshot link as `url`, with `startedAt`, `runningDays`, `variants`, `advertiser` and `source` (`meta_ad_library` or `tiktok_top_ads`).
+   `evidence` has the ad snapshot link as `url`, with `startedAt`, `runningDays`, `variants`, `advertiser` and `source` (`meta_ad_library` or `tiktok_top_ads`); a TikTok ad leaves `startedAt` and `runningDays` out.
 
 Ad calls count as searches in the budget.
 The result of each library goes in the file, even when it is empty or skipped.
@@ -161,7 +179,18 @@ A trend is rising when all of these hold:
 - The posts have traction: views clearly above what that account usually gets (from `social_outliers_find`; on Instagram, likes clearly above that account's usual) or a high view count for the industry. Write the views as displayed, with the date you saw them.
 - It is in the brand's industry, or a format or sound the industry's creators are using. An off-industry trend goes under Not found as a reason, never in the list.
 
-An ad hook is not judged by this list: it is judged by days running, as above.
+An ad hook is not judged by this list: a Meta ad is judged by days running and a TikTok ad by its place in the Creative Center ranking, as above.
+
+### Sources that show no date
+
+Instagram topic pages, YouTube Shorts search and TikTok Top Ads show no post date or start day.
+The 14 day rule cannot be checked on them, so you do not drop them for it, and you do not invent a date.
+Use the source's own counts and say so:
+- Write "seen {today}" (the day you read it) and the counts exactly as displayed (Instagram plays, YouTube views, Creative Center likes and CTR), with "undated: the source shows no dates" on the line.
+- Never write "rising since", and never describe such a post as published recently.
+- Keep the two-posts rule: at least two posts from different accounts, or one public trend page, still make a trend.
+- When one reel or Short matters (it will be cited or sketched), `social_post_get` on its address reads its posted date; use that date when the call returns one, within the budget.
+- An undated trend is a weaker finding: say "undated" in `Why it is rising` and leave `date` out of its evidence.
 
 Live is not rising: a post that exists is not a trend, and one post is not a pattern.
 Write "rising since {date}" only when two dated posts show it; otherwise write "seen on {date}".
@@ -200,8 +229,8 @@ Its sections are:
   - Why it is rising: what the posts show, as an OBSERVATION.
   - Why it fits {brand}: one line, as an INFERENCE.
   - What it would look like for {brand}: one or two lines sketching the video or post.
-- `## Ads that keep running`: for each library asked (Meta Ad Library, TikTok Top Ads), the ads in rank order. Start the section with one line saying that the libraries show no views or spend, so the order is days running, then variants, and 30 days or more is a likely winner (an INFERENCE). Each ad has:
-  - "{rank}. {advertiser} - running {N} days (started {date}), {M} variants - {ad snapshot link}"
+- `## Ads that keep running`: for each library asked (Meta Ad Library, TikTok Top Ads), the ads in rank order. Start the section with one line saying that the libraries show no views or spend, so the order is days running, then variants, and 30 days or more is a likely winner (an INFERENCE). For TikTok Top Ads say instead that it shows no start day, that the order is the Creative Center's likes and CTR when given, else its list order, and whether the list is for the keyword or region-wide. Each ad has:
+  - "{rank}. {advertiser} - running {N} days (started {date}), {M} variants - {ad snapshot link}" for a Meta ad, and "{rank}. {advertiser} - Creative Center top ads, {likes} likes, CTR {ctr}, no start date - {link}" for a TikTok ad (leave out the part it did not give)
   - Hook: the opening line, exactly as the ad shows it.
   - Caption: the primary text, exactly as the ad shows it, or "not returned".
   - Why it fits {brand}: one line, as an INFERENCE, and how a hook like it could be adapted for this brand without copying the words.
@@ -218,7 +247,11 @@ Return a summary of 15 lines at most: the file path, the trends found per platfo
 |---|---|
 | A trend with one post | One post is not a trend. Find a second account or a trend page, or write it under Not found |
 | Views or a date filled in from memory | Quote the displayed number with the day you saw it, or leave it out |
-| Views invented for an ad | The libraries show none. Leave views out and give days running and variants |
+| Views invented for an ad | The libraries show none. Leave views out and give days running and variants (a TikTok ad: its likes and CTR) |
+| A date or days running invented for a source that has none | Instagram topics, YouTube search and TikTok Top Ads show no dates. Write "undated" or "no start date" and use the source's own counts |
+| Dropping an Instagram or YouTube find because it has no date | Keep it as "seen {today}", undated, with the counts the source shows |
+| A TikTok Top Ads list called the industry's when it is region-wide | Check `list_scope`: `region_wide` means the keyword was not applied, and the file says so |
+| `site:` web searches for posts | They returned articles, not videos. Use `social_search`, `social_outliers_find` and `social_profile_get` |
 | Saving a reused trend again | It would reset its sighting date and make an old trend look fresh. Save only what you saw this run |
 | An old post presented as rising | Posts older than 14 days are not evidence of what is rising now |
 | Searching a platform the library already covers | Check `trends` first and search only the platform with fewer than 3 fresh trends, and the ads only with fewer than 3 fresh hooks |

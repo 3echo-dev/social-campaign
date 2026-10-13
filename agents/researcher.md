@@ -52,6 +52,9 @@ Write only the artifact path named by the active task and its permitted raw capt
 
 Research finds what the audience struggles with, not evidence for a message chosen in advance: search for their problems first, then check the direction's message against what you found.
 For a job that makes content, also gather the evidence for the three concepts: the brand's own best posts (posts that beat its own average, `social_outliers_find` on its accounts), its top competitors' best posts (the same, per competitor), and what is trending now on the platform in the brand's industry (`social_search` for recent high-performing posts), each with link, views and date, in `research/concept-sources.md`. Keep to the research budget; a source with nothing usable is written as a gap.
+Start finding posts from the competitors' own accounts (`social_outliers_find`), an Instagram `#topic` (`social_search` with one hashtag) and YouTube keywords (`social_search` with `platform: "youtube"`).
+Do not use `WebSearch` with `site:` operators to find posts or videos: they returned articles and no single video in a live test, and TikTok hashtag pages answer a bot check on every read.
+Instagram topic pages and YouTube search show no dates: write the link and the counts the source shows with the word "undated", and never invent a date.
 When the spawn prompt says the Trend Scout covers what is trending, leave the trending part to it: do not search for trends, and write the one line `Trending: covered by the Trend Scout (research/trends.md) and the library's fresh trends` in `research/concept-sources.md`. The brand's own best posts and the competitors' best posts stay yours.
 
 Before you search, check what the brand library already holds: the research list in the library block at the end of your spawn prompt (each filed file with its topic and age in days), or `brand_library_get`.

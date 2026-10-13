@@ -6,8 +6,9 @@
  *   - YouTube Shorts: `ytsearch{K}:{query} shorts --flat-playlist --dump-json`, ranked by view count, keeping only
  *     videos of maxDurationS seconds or less. Flat listings sometimes leave views or length empty, so the top few
  *     such items are opened once with --dump-json before they are counted.
- *   - TikTok (best effort, never blocks): hashtag pages through `--impersonate chrome`, which needs curl_cffi. A bot
- *     check or missing impersonation is recorded as a route status and the search goes on.
+ *   - TikTok hashtag pages through `--impersonate chrome` (needs curl_cffi) are NOT part of the default search: every
+ *     live read since 2026-10-13 got a bot check. They run only when the caller asks for platform "tiktok" outright, and
+ *     their refusals are kept apart from the TikTok breaker that the single URL verify and the downloads share.
  *
  * The Instaloader (Instagram) and TikTok-Api (TikTok) library routes that used to sit beside these were retired on
  * 2026-10-13: signed out, 0 of 5 live reads worked (Instaloader profile 429 and hashtag 403 login_required, TikTok-Api
@@ -62,37 +63,45 @@ export function createDeadline(totalMs, now = () => Date.now()) {
 
 /**
  * Remembers which platforms refused us during this call (and tells the shared breaker), so the rest of that
- * platform is skipped for the call and, via the breaker, for other tools for a while.
+ * platform is skipped for the call and, via the breaker, for other tools for a while. The single URL verify uses the
+ * host as a whole (the downloads share it); the keyword search and the TikTok tag pages each keep a scope of their own,
+ * so a search that was walled never says anything about one video's address.
  * @param {{isOpen: Function, recordFailure: Function, recordSuccess: Function}} breaker
  */
 function createGate(breaker) {
   /** @type {Map<string, {status: string, detail: string}>} */
   const walls = new Map();
+  const wallKey = (platform, scope) => (scope ? `${platform}#${scope}` : platform);
   return {
-    /** null when the platform may be tried; otherwise the route status to report instead. */
-    check(platform) {
-      const hit = walls.get(platform);
+    /** null when the platform may be tried; otherwise the route status to report instead. `scope` names a route of the host. */
+    check(platform, scope) {
+      const hit = walls.get(wallKey(platform, scope));
       if (hit) return { status: 'skipped', detail: `Skipped: ${hit.detail}` };
       const host = HOST_OF_PLATFORM[platform];
-      const state = host ? breaker.isOpen(host) : { open: false };
+      const state = host ? breaker.isOpen(host, scope) : { open: false };
       if (state.open) {
         const detail = state.reason || `${host} refused recent reads (${state.code ?? 'blocked'}).`;
-        walls.set(platform, { status: 'skipped', detail });
+        walls.set(wallKey(platform, scope), { status: 'skipped', detail });
         return { status: 'skipped', detail: `Skipped: ${detail}` };
       }
       return null;
     },
-    fail(platform, code, detail) {
-      if (WALL_CODES.has(code)) walls.set(platform, { status: code, detail: `${platform} answered ${code} earlier in this call.` });
+    fail(platform, code, detail, scope) {
+      if (WALL_CODES.has(code)) walls.set(wallKey(platform, scope), { status: code, detail: `${platform} answered ${code} earlier in this call.` });
       const host = HOST_OF_PLATFORM[platform];
-      if (host && BREAKER_CODES.has(code)) breaker.recordFailure(host, code, detail);
+      if (host && BREAKER_CODES.has(code)) breaker.recordFailure(host, code, detail, scope);
     },
-    ok(platform) {
+    ok(platform, scope) {
       const host = HOST_OF_PLATFORM[platform];
-      if (host) breaker.recordSuccess(host);
+      if (host) breaker.recordSuccess(host, scope);
     },
   };
 }
+
+/** The breaker scope of the TikTok tag pages: their refusals never reach the single URL verify or the downloads. */
+export const TAG_SCOPE = 'tag';
+const TAG_ROUTE_NOTE =
+  'TikTok hashtag pages answered a bot check on every live read, so they are not part of the search. For TikTok use social_search with a #hashtag (its totals), social_profile_get and social_outliers_find on competitor accounts, and urls to verify single videos; pass platform "tiktok" with tiktokTags to try the tag pages anyway.';
 
 const IMPERSONATION_NOTE = 'This yt-dlp has no browser impersonation (curl_cffi is not installed), so TikTok answers with a bot check.';
 /** @type {Map<string, Promise<boolean>>} */
@@ -317,7 +326,7 @@ export async function verifyReferenceUrls(urls, options = {}) {
 }
 
 /**
- * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both', tiktokTags?: string[], limit?: number,
+ * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both', tiktokTags?: string[] (only read when platform is "tiktok"), limit?: number,
  *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, budgetMs?: number, breaker?: any}} options
  */
 export async function searchReferences(options = {}) {
@@ -354,7 +363,7 @@ export async function searchReferences(options = {}) {
 
   if (platform === 'youtube' || platform === 'both') {
     const route = 'youtube_shorts_search';
-    const walled = gate.check('youtube');
+    const walled = gate.check('youtube', 'search');
     if (walled) {
       routes.push({ route, ...walled, count: 0 });
     } else if (deadline.expired()) {
@@ -367,19 +376,23 @@ export async function searchReferences(options = {}) {
       if (entries.length) {
         routes.push({ route, status: 'ok', count: entries.length });
         found.push(...entries.map((e) => toCandidate(e, 'youtube', route)).filter(Boolean));
-        gate.ok('youtube');
+        gate.ok('youtube', 'search');
       } else {
         const mapped = mapYtDlpError(result, 'youtube');
         const status = result.timedOut ? 'timed_out' : mapped.code;
         routes.push({ route, status, detail: mapped.reason, count: 0 });
-        gate.fail('youtube', status, mapped.reason);
+        gate.fail('youtube', status, mapped.reason, 'search');
       }
     }
   }
 
-  if (platform === 'tiktok' || platform === 'both') {
+  if (platform === 'both' && tags.length) {
+    routes.push({ route: 'tiktok_hashtag_impersonate', status: 'skipped', detail: TAG_ROUTE_NOTE, count: 0 });
+  }
+
+  if (platform === 'tiktok') {
     const route = 'tiktok_hashtag_impersonate';
-    const walled = tags.length ? gate.check('tiktok') : null;
+    const walled = tags.length ? gate.check('tiktok', TAG_SCOPE) : null;
     if (!tags.length) {
       routes.push({ route, status: 'skipped', detail: 'No tiktokTags given.', count: 0 });
     } else if (walled) {
@@ -397,16 +410,16 @@ export async function searchReferences(options = {}) {
         if (entries.length) {
           got += entries.length;
           found.push(...entries.map((e) => toCandidate(e, 'tiktok', route)).filter(Boolean));
-          gate.ok('tiktok');
+          gate.ok('tiktok', TAG_SCOPE);
         } else if (/impersonat/i.test(`${result.stderr}`) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(result.stderr)) {
           failure = { status: 'impersonation_unavailable', detail: IMPERSONATION_NOTE };
-          gate.fail('tiktok', 'impersonation_unavailable', IMPERSONATION_NOTE);
+          gate.fail('tiktok', 'impersonation_unavailable', IMPERSONATION_NOTE, TAG_SCOPE);
           break;
         } else {
           const mapped = mapYtDlpError(result, 'tiktok');
           const status = result.timedOut ? 'timed_out' : mapped.code;
           failure = { status, detail: mapped.reason };
-          gate.fail('tiktok', status, mapped.reason);
+          gate.fail('tiktok', status, mapped.reason, TAG_SCOPE);
           // A bot check on one tag says the same about the next: stop here.
           if (WALL_CODES.has(status)) break;
         }

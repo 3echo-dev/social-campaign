@@ -604,7 +604,7 @@ function draftProblems(draft, ctx) {
     if (checked && checked.bySource) bySource = checked.bySource;
   }
   // The audience, positioning and platform files, and the top posts that go to the brand library: both are checked against the
-  // sources above, so a quote that is not in a saved capture or a post with no views never reaches a file or the bank.
+  // sources above, so a quote that is not in a saved capture or a post with no views (no likes either, for Instagram) never reaches a file or the bank.
   const filesChecked = brandFiles.validate(draft.brandFiles, { bySource, competitors: expected });
   problems.push(...filesChecked.problems);
   const postsChecked = topPostsProblems(draft.topPosts, { competitors: expected, now });

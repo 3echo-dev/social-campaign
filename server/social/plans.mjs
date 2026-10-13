@@ -105,7 +105,7 @@ export function commentsPlan({ platform, url, limit }) {
   return plan({
     platform,
     record_kind: 'comment',
-    goal: `Up to ${limit} public comments on ${url}, most engaged first, with the commenter handle, exact text and like count when shown.`,
+    goal: `Up to ${limit} public comments on ${url}, with the commenter handle, exact text and like count when shown. List them by like count when the page shows counts, otherwise newest first, and say which.`,
     searches: [],
     fetch: [url],
     look_for: ['WebFetch sometimes shows the first few comments under a post; record each one exactly as written.'],
@@ -117,7 +117,7 @@ export function commentsPlan({ platform, url, limit }) {
  * @returns {Record<string, any>}
  */
 export function searchPlan({ platform, query, limit }) {
-  const host = { tiktok: 'tiktok.com', instagram: 'instagram.com', facebook: 'facebook.com' }[platform] ?? platform;
+  const host = { tiktok: 'tiktok.com', instagram: 'instagram.com', facebook: 'facebook.com', youtube: 'youtube.com' }[platform] ?? platform;
   const clean = query.trim();
   const tag = clean.startsWith('#') ? clean.slice(1) : null;
   const searches = tag

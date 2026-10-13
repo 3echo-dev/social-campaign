@@ -271,10 +271,11 @@ A phrase is words a customer or the audience used, taken from comments, reviews 
 ### Top posts
 
 `topPosts` lists the best posts `social_outliers_find` showed, at most 3 per declared own account and 2 per competitor.
-Each is `{source, competitor, platform, url, text, views, date}`.
+Each is `{source, competitor, platform, url, text, views, date}`; an Instagram post carries `likes` in place of `views`.
 `source` is `brand` or `competitor`, and `competitor` is the competitor's name from `competitorDetails`.
 `text` is the post's opening words exactly as its caption has them, `views` is the number shown, and `date` is the day it was published as YYYY-MM-DD.
-Leave out a post with no caption, no views or no date, and never fill in or round a figure.
+Instagram shows no view counts to a signed out reader, so for an Instagram post give `likes` (the number shown on the post, from `social_outliers_find`, which ranks Instagram by likes) and leave `views` out; the library labels it as likes.
+Leave out a post with no caption, no views (no likes for Instagram) or no date, and never fill in or round a figure.
 Save files them in the brand library as proven hooks.
 
 ### Audience fallback
@@ -361,12 +362,20 @@ N is the number the person asked for, and 3 when they gave none; never more than
 - A video counts as blocked only after its own single-video URL (`tiktok.com/@x/video/...`, `instagram.com/reel/...`, a short YouTube video address) was tried once with yt-dlp through `pipeline_reference_search` with `urls` and failed. Report it as `blocked`, `login_required`, `needs_sign_in`, `timed_out` or `not_found` for that URL, leave that slot blank and carry on. A per-video failure is never retried.
 - Report counts, not platform verdicts: "found X public video links, Y downloaded, Z blocked individually".
 
-**Harvesting single-video URLs (never opens a walled listing page).** Get candidate URLs from places that are not the platform's own search, hashtag or profile pages:
+**Harvesting single-video URLs (never opens a walled listing page).**
+Get candidate URLs from places that are not the platform's own search, hashtag or profile pages:
 
-- `WebSearch` with site-scoped queries: `site:tiktok.com "<niche keyword>"`, `site:tiktok.com/@<competitor>`, `site:instagram.com/reel "<niche keyword>"`, `site:instagram.com/reel <competitor name>`, `site:youtube.com/shorts "<niche keyword>"`. Keep only result links that are one video.
+- `social_outliers_find` and `social_profile_get` on each competitor's TikTok, Instagram and YouTube accounts: their best recent posts, each with its own address, views (likes on Instagram) and date.
+  An account that posts rarely gets a wider window by itself and the result says `stale`: quote the newest post's date and do not call an old outlier recent.
+- `social_search` with `platform: "instagram"` and one `#topic` (one call per topic): the reels on that topic with their exact play counts, owners and reel addresses, read from Instagram's public `/popular/<topic>/` page by the stealth reader.
+  It lists no dates, likes or comments.
+  Give one hashtag: two words are read as one hashtag, and a longer phrase is refused with hashtags to try, with no request made.
+- `social_search` with `platform: "youtube"` and the niche keywords: Shorts ranked by view count, from yt-dlp's search, undated.
 - The competitor's own website, Linktree, and press or news pages that embed their Reels and TikToks: fetch the page (`WebFetch` or `web_crawl`, one fetch per URL) and pull out every `tiktok.com/@x/video/...` and `instagram.com/reel/...` link.
 - TikTok oEmbed, `https://www.tiktok.com/oembed?url=<video url>`, as a login-free check of a TikTok video's author and title.
-- `social_search` with `platform: "instagram"` and a `#topic` (one call per topic): the reels on that topic with their exact play counts, owners and reel addresses, read from Instagram's public `/popular/<topic>/` page by the stealth reader (no dates, likes or comments). Its reels are candidates like any other: verify each with `pipeline_reference_search` `urls`.
+
+Do not harvest with `WebSearch` and `site:` operators (`site:tiktok.com`, `site:instagram.com/reel`, `site:youtube.com/shorts`): in a live test seven such searches returned articles and no single video, and they spend the search budget.
+TikTok hashtag and keyword pages are not a source either: the tag page answers a bot check on every read, so find TikTok posts through accounts.
 
 Every harvested URL is a candidate only. Never invent or complete a URL, and cite only links that appeared in a page or result you read.
 
@@ -374,9 +383,23 @@ Every harvested URL is a candidate only. Never invent or complete a URL, and cit
 
 **The ladder, in this order. Stop the moment N in-niche popular videos with a readable view count are verified.**
 
-1. Real competitors' public videos. For each competitor from Step 0, harvest their single video URLs (the site-scoped web searches and the competitor's site, Linktree and press pages above), verify them with `pipeline_reference_search` `urls`, then run `pipeline_video_teardown` on the best in-niche `ok` ones. The research helper tools `social_profile_get` and `social_outliers_find` may also be tried on a competitor account (TikTok, Instagram or a YouTube channel), only as extra, and never as the thing that decides anything: a 503, `blocked`, `login_required`, `timed_out` or empty result is one line in the log and the ladder moves on. One failure on a host ends the helper for that host for the run.
-2. The `pipeline_reference_search` public routes. Call it with the niche keywords (add the local market, for example `youth football coaching singapore`; pass `tiktokTags` such as `sgsports` too). It runs `yt-dlp "ytsearch{K}:{niche keywords} shorts" --flat-playlist --dump-json` from the research helper's environment, ranks by `view_count`, keeps only videos of 90 seconds or less, and tries TikTok hashtag pages with `--impersonate chrome` as a best-effort extra (a bot check or missing `curl_cffi` is just reported in `routes`). Work the routes in this order, recording each route's status: (a) short YouTube video search, the default call above; (b) the TikTok hashtag pages, in the same call, when `tiktokTags` are given. Each route gets one call. The Instaloader and TikTok-Api library routes (`platform: "instagram"` and `"tiktok_api"`) were retired: signed out, none of five live reads worked, and a call that still asks for one answers `route_retired`. For Instagram use `social_search` with a `#topic` (see Harvesting above). The candidates the routes return are verified and torn down through `pipeline_video_teardown` like any other. A candidate whose own download then fails is a per-video `blocked`, not a verdict on the platform.
-3. A niche keyword web search for single TikTok, Reel and short YouTube video URLs, one query set and no repeat: `WebSearch` with `site:tiktok.com "<niche keyword>"`, `site:instagram.com/reel "<niche keyword>"`, `site:youtube.com/shorts "<niche keyword>"` (add the local market), keep the single-video links, then verify them with `pipeline_reference_search` `urls` and run `pipeline_video_teardown` on the in-niche `ok` ones. Do not run a second round with other keywords. Also open the competitor's short-video tab with `web_crawl` or `WebFetch` when it loads without a login (one fetch each); TikTok Top Ads is not opened here, it belongs to "Ad research".
+1. Real competitors' public videos.
+   For each competitor from Step 0, run `social_outliers_find` (and `social_profile_get` for the account facts) on its TikTok, Instagram and YouTube accounts.
+   The posts it returns are single-video addresses: verify the best in-niche ones with `pipeline_reference_search` `urls`, then run `pipeline_video_teardown` on the in-niche `ok` ones.
+   A 503, `blocked`, `login_required`, `timed_out`, `not_found` or empty result for one account is one line in the log and the ladder moves on.
+   One failure on a host ends the helper for that host for the run.
+2. Topic discovery.
+   (a) `social_search` with `platform: "instagram"` and one `#topic` for the niche (one call per topic, two topics at most): reels with their play counts and addresses, undated.
+   (b) `social_search` with `platform: "youtube"` and the niche keywords, and `pipeline_reference_search` with the niche keywords (add the local market, for example `youth football coaching singapore`): it runs `yt-dlp "ytsearch{K}:{niche keywords} shorts" --flat-playlist --dump-json` from the research helper's environment, ranks by `view_count` and keeps only videos of 90 seconds or less.
+   Do not pass `tiktokTags`: TikTok hashtag pages answered a bot check on every live read, so `pipeline_reference_search` reports them as skipped.
+   Each route gets one call and its status is recorded.
+   The Instaloader and TikTok-Api library routes (`platform: "instagram"` and `"tiktok_api"`) were retired: signed out, none of five live reads worked, and a call that still asks for one answers `route_retired`.
+   The candidates the routes return are verified and torn down through `pipeline_video_teardown` like any other.
+   A candidate whose own download then fails is a per-video `blocked`, not a verdict on the platform.
+3. Pages that embed videos: the competitor's short-video tab, Linktree, and press or news pages, opened with `web_crawl` or `WebFetch` when they load without a login (one fetch each).
+   Pull out every single `tiktok.com/@x/video/...`, `instagram.com/reel/...` and short YouTube address they embed, verify them with `pipeline_reference_search` `urls`, and run `pipeline_video_teardown` on the in-niche `ok` ones.
+   There is no keyword web search rung: do not run `site:` searches, and do not run a second round with other keywords.
+   TikTok Top Ads is not opened here, it belongs to "Ad research".
 4. Claude in Chrome, the person's own signed-in browser, read-only, only if it is connected. At most 3 URLs, one look each: take the single video URLs that failed in yt-dlp (best candidates first), read views, likes, date and caption from the page, and move on whatever the page shows. Never reopen a URL, never search or browse profiles here. Never post, like, follow, comment, message, change settings or type credentials. If the Chrome tools are not connected, log `Rung 4: skipped: Chrome not connected` and go on.
 5. Report, do not wait. If fewer than N are verified after the rungs have run or been skipped, finish the file anyway and hand the Director the counts and the exact single video URLs that were tried with the status of each (`References: {n} of {N} verified` plus a status per URL), never a platform-wide login claim. The Director asks the person once, without holding the brief back (see the Director question in `skills/social-campaign/SKILL.md`). Never pad the count with off-niche or unreadable results. You are never sent back to run a rung again: a rung logged as `skipped:` counts as done. If the person later answers with links, those links go through `pipeline_reference_from_url` and the teardown, and nothing else is re-run. An answer without links, including "continue", means continue with the blank slots; it never restarts the ladder.
 
@@ -410,7 +433,7 @@ Public Reddit JSON needs no auth, and a 403 is a failure to record, not somethin
 Competitor ad research is one attempt per library, then blank.
 
 - **Meta Ad Library.** First use the Meta Ads connector tool `ads_library_search` (it may carry a connector prefix; match on the base name): `search_terms` for a brand or niche keyword, `page_ids` to pull one competitor's ads, `countries` as ISO-2 codes from the target market, `ad_active_status` `ACTIVE`, `limit` 50 or less. It needs an active ad account in that connector and returns the page name, headline, run dates and an `ad_snapshot_url` per ad; there is no video file. To watch an ad, open its snapshot link in the person's signed-in Chrome only if the Chrome tools are connected; otherwise record the ad text and the link and move on. Read-only: no other tool of that connector is used for research. If the connector is not connected or the call fails, make one attempt with the plugin's `social_ad_search` with `platform: "meta"` (`advertiser_or_query`, `country`), which falls back to a stealth browser read by itself; if that also fails, leave the Meta ad rows blank with the reason.
-- **TikTok Top Ads (Creative Center).** Use the plugin's `social_ad_search` with `platform: "tiktok"` (its stealth browser route), one attempt. If it returns nothing or fails, leave the TikTok ad rows blank with the reason. The TikTok for Business connector has no Top Ads tool, so do not look there for competitor ads.
+- **TikTok Top Ads (Creative Center).** Use the plugin's `social_ad_search` with `platform: "tiktok"` (its stealth browser route), one attempt, with brand or product words as the keyword (the competitor's brand name, or one or two key words): the keyword is typed into the Creative Center's own search box, so a long phrase matches nothing. The result says `list_scope`: `keyword` is the ads that match, `region_wide` means the keyword could not be applied and the list is the region's top ads in general (say so; it is not the industry's). A search that matches nothing is an answer, not a failure to retry. Top Ads shows no start date and no spend: rank by the Creative Center likes and CTR when the result gives them, else keep its list order, and never write "running since" for a TikTok ad. If it fails, leave the TikTok ad rows blank with the reason. The TikTok for Business connector has no Top Ads tool, so do not look there for competitor ads.
 - Record what each library returned, or `skipped: <reason>`, in `research/competitors.md`; a library that gave nothing is never searched a second way.
 
 Use the saved evidence-specific freshness policy.

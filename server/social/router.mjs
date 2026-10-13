@@ -20,16 +20,16 @@ import { InvalidInputError } from '../lib/errors.mjs';
 import { log } from '../lib/log.mjs';
 import { AdLibraryBackend, EU_LIKE, metaLibraryUrl, tiktokLibraryUrls } from './backends/adlibrary.mjs';
 import { BrowserBackend } from './backends/browser.mjs';
-import { popularTopicSlug, postFromPage, profileFromPage, readInstagramPage, topicFromPage } from './backends/instagram.mjs';
+import { commentsFromPage, instagramTopic, postFromPage, profileFromPage, readInstagramPage, topicFromPage } from './backends/instagram.mjs';
 import { PublicPageBackend } from './backends/public_page.mjs';
 import { STEALTH_TIMEOUT_MS } from './backends/stealth.mjs';
-import { TikTokPublicBackend } from './backends/tiktok_public.mjs';
+import { emptyAccountReason, isEmptyAccount, TikTokPublicBackend } from './backends/tiktok_public.mjs';
 import { CRAWL_BUDGET_MS, FETCH_TIMEOUT_MS, Politeness, webCrawl } from './backends/web.mjs';
 import { YTDLP_TIMEOUT_MS, YtDlpBackend } from './backends/ytdlp.mjs';
 import { breaker as sharedBreaker } from './breaker.mjs';
-import { findOutliers, WINDOWS } from './outliers.mjs';
+import { findOutliers, findOutliersWidening, MIN_BASELINE_SAMPLE, WINDOWS } from './outliers.mjs';
 import { adsPlan, commentsPlan, postPlan, profilePlan, searchPlan } from './plans.mjs';
-import { envelope, envelopeCode, pageRecord, parseHandle, parseHttpUrl, parseHumanCount, platformFromUrl, postRecord, profileRecord, tiktokPostId } from './records.mjs';
+import { envelope, envelopeCode, orderComments, pageRecord, parseHandle, parseHttpUrl, parseHumanCount, platformFromUrl, postRecord, profileRecord, tiktokPostId } from './records.mjs';
 import { evidenceCountFor, readCache, rememberPlan, savedEvidenceFor, writeCache } from './store.mjs';
 
 /** How long a failed backend is skipped for on one platform. */
@@ -54,8 +54,24 @@ const INSTAGRAM_READ_MIN_MS = 12_000;
 /** Most time the live probes of social_backends_status may take, all together. */
 export const STATUS_PROBE_CAP_MS = 30_000;
 
+/** The breaker scope of the ad libraries: Meta's and TikTok's ad pages never share an entry with the platforms' own pages. */
+const AD_SCOPE = 'ads';
+
 /** The platform host each route family talks to, for the shared circuit breaker. */
 const PLATFORM_HOST = { tiktok: 'tiktok.com', instagram: 'instagram.com', facebook: 'facebook.com', meta: 'facebook.com', youtube: 'youtube.com' };
+
+/**
+ * The breaker scope of one backend attempt: the backend and the kind of read (`stealth:search`, `tiktok_embed:profile`).
+ * Two routes to one host never share a breaker entry, so the public embed answering 503 cannot silence the stealth
+ * reader that exists to cover for it, and a login wall on an Instagram topic page cannot silence its profile reads.
+ * The unscoped host entry belongs to the downloads, the single URL verify and the video watcher.
+ * @param {string} backend
+ * @param {string} platform the platform and operation, for example instagram:search.
+ * @returns {string}
+ */
+export function breakerScope(backend, platform) {
+  return `${backend}:${String(platform).split(':')[1] ?? 'read'}`;
+}
 
 /**
  * The per call budget and the breaker state the call started with. It rides along
@@ -104,7 +120,8 @@ export const ROUTES = {
     profile: ['tiktok_embed', 'stealth|yt-dlp'],
     post: ['tiktok_embed', 'yt-dlp'],
     comments: ['tiktok_comments'],
-    search: ['yt-dlp', 'tiktok_embed'],
+    // Only the hashtag totals: the tag page itself answers a bot check every time (live 2026-10-13 and 2026-10-14).
+    search: ['tiktok_embed'],
     // The browser backend is never used for TikTok: the embed and yt-dlp already work.
     ads: ['tiktok_creative_center', 'browser'],
   },
@@ -114,9 +131,9 @@ export const ROUTES = {
   // One primary and ONE fallback per operation: the most proven fallback is kept, longer chains are trimmed.
   // Instagram (live 2026-10-13, logged out): the Scrapling page op (`stealth`) reads profiles, posts and /popular/
   // topic pages; yt-dlp's user extractor is broken, so it is not a profile route, only a post fallback.
-  instagram: { profile: ['stealth', 'instagram_page'], post: ['stealth', 'yt-dlp'], comments: ['yt-dlp'], search: ['stealth'] },
+  instagram: { profile: ['stealth', 'instagram_page'], post: ['stealth', 'yt-dlp'], comments: ['stealth', 'yt-dlp'], search: ['stealth'] },
   // YouTube: yt-dlp lists a channel's Shorts tab in about 1.5 seconds, and reads one video and its comments.
-  youtube: { profile: ['yt-dlp'], post: ['yt-dlp'], comments: ['yt-dlp'], search: [] },
+  youtube: { profile: ['yt-dlp'], post: ['yt-dlp'], comments: ['yt-dlp'], search: ['yt-dlp'] },
   facebook: { profile: ['facebook_page', 'browser'], post: ['facebook_page', 'browser'], comments: [], search: [] },
   meta: { ads: ['meta_ad_library', 'browser'] },
   web: { crawl: ['web_reader', 'browser'] },
@@ -147,7 +164,7 @@ export const VERIFIED_MATRIX = {
   tiktok: { profile: 'partial', post: 'full', comments: 'full', search: 'partial', outliers: 'partial', ads: 'none' },
   instagram: { profile: 'none', post: 'none', comments: 'none', search: 'none', outliers: 'none' },
   facebook: { profile: 'none', post: 'none', comments: 'none', search: 'none', outliers: 'none' },
-  youtube: { profile: 'partial', post: 'full', comments: 'none', search: 'none', outliers: 'partial' },
+  youtube: { profile: 'partial', post: 'full', comments: 'none', search: 'partial', outliers: 'partial' },
   meta: { ads: 'none' },
   web: { crawl: 'full' },
 };
@@ -200,6 +217,17 @@ function postComplete(platform, record) {
     return record.caption !== null && record.posted_at !== null && typeof record.metrics?.likes === 'number' && typeof record.metrics?.comments === 'number';
   }
   return hasFullMetrics(record) && record.caption !== null;
+}
+
+/**
+ * Whether an answer found nothing only because no backend was really asked: every attempt was skipped.
+ * Such an answer is never cached.
+ * @param {Record<string, any>} answer
+ * @returns {boolean}
+ */
+export function skippedOnly(answer) {
+  const attempts = Array.isArray(answer?.attempts) ? answer.attempts : [];
+  return answer?.coverage === 'none' && attempts.length > 0 && attempts.every((attempt) => attempt.outcome === 'skipped');
 }
 
 /**
@@ -364,8 +392,9 @@ export class SocialRouter {
       return null;
     }
     const host = PLATFORM_HOST[platform.split(':')[0]] ?? null;
+    const scope = breakerScope(backend, platform);
     if (host) {
-      const open = this.breakerState(host);
+      const open = this.breakerState(host, scope);
       if (open.open) {
         attempts.push({ backend, outcome: 'skipped', code: open.code ?? 'blocked', reason: `skipped: ${open.reason ?? `${host} refused earlier reads`}` });
         return null;
@@ -380,7 +409,7 @@ export class SocialRouter {
     }
     if (result.ok) {
       attempts.push({ backend, outcome: 'ok', code: null, reason: null });
-      if (host) this.breaker.recordSuccess(host);
+      if (host) this.breaker.recordSuccess(host, scope);
       return /** @type {any} */ (result);
     }
     const failure = /** @type {any} */ (result).failure ?? result;
@@ -388,7 +417,9 @@ export class SocialRouter {
     failure.code = envelopeCode(failure.code);
     attempts.push({ backend, outcome: 'failed', code: failure.code, reason: failure.reason });
     this.noteFailure(backend, platform, failure);
-    if (host) this.breaker.recordFailure(host, failure.code, failure.reason);
+    // Only a refusal that will not heal by retrying counts toward the breaker, and only for this route: a login wall on
+    // one page, a private account or a missing channel tab is that read's answer, not the host turning us away.
+    if (host && failure.trip !== false) this.breaker.recordFailure(host, failure.code, failure.reason, scope);
     return null;
   }
 
@@ -443,6 +474,10 @@ export class SocialRouter {
         }),
       );
     if (!profile && posts.length === 0) return { ok: false, code: 'empty_page', reason: 'The stealth reader found no profile or videos.', trip: false };
+    // TikTok answers a handle nobody owns with a stub: a name, no bio, 0 followers and 0 videos. That is no account.
+    if (profile && isEmptyAccount({ followers: profile.followers, videos: profile.post_count, posts: posts.length })) {
+      return { ok: false, code: 'not_found', reason: emptyAccountReason(profile.handle ?? target.handle), trip: false };
+    }
     const listEmpty = posts.length === 0;
     return { ok: true, profile, posts, listEmpty, listNote: listEmpty ? (typeof out.itemsNote === 'string' && out.itemsNote ? out.itemsNote : 'TikTok answered the profile page but its video list came back empty.') : null };
   }
@@ -477,18 +512,20 @@ export class SocialRouter {
   }
 
   /**
-   * Whether the shared breaker was open for a host when this call first asked.
+   * Whether the shared breaker was open for a route of a host when this call first asked.
    * A failure earlier in the same call never blocks that call's own fallback.
    * @param {string} host
+   * @param {string} [scope] the backend and kind of read (see breakerScope); none means the host as a whole.
    * @returns {{open: boolean, code?: string, reason?: string}}
    */
-  breakerState(host) {
+  breakerState(host, scope) {
     const store = callBudget.getStore();
-    if (!store) return this.breaker.isOpen(host);
-    let state = store.hosts.get(host);
+    if (!store) return this.breaker.isOpen(host, scope);
+    const key = scope ? `${host}#${scope}` : host;
+    let state = store.hosts.get(key);
     if (!state) {
-      state = this.breaker.isOpen(host);
-      store.hosts.set(host, state);
+      state = this.breaker.isOpen(host, scope);
+      store.hosts.set(key, state);
     }
     return state;
   }
@@ -563,7 +600,9 @@ export class SocialRouter {
     if (typeof fresh.coverage === 'string') this.recordObserved(key.platform, key.kind, fresh.coverage);
     if (db) {
       try {
-        writeCache(db, { platform: key.platform, kind: key.kind, source_ref: key.target, envelope: fresh, now: this.now() });
+        // A read that never asked the platform (skipped by a breaker, a trip, the budget, a missing helper or a query it
+        // refused) says nothing about the platform: it is not kept, so the next call asks for real.
+        if (!skippedOnly(fresh)) writeCache(db, { platform: key.platform, kind: key.kind, source_ref: key.target, envelope: fresh, now: this.now() });
         if (fresh.web_evidence_plan) {
           rememberPlan(db, { plan: fresh.web_evidence_plan, platform: fresh.web_evidence_plan.platform ?? key.platform, operation: key.kind, target: key.target });
           const earlier = evidenceCountFor(db, fresh.web_evidence_plan.platform ?? key.platform, key.kind, key.target);
@@ -668,6 +707,8 @@ export class SocialRouter {
     let posts = [];
     /** Set when the stealth reader read the profile but TikTok's video list came back empty (after its one retry). */
     let emptyListNote = null;
+    /** Which YouTube tab the posts came from, when it was not the Shorts tab. */
+    let listingTab = null;
     const plan = () => profilePlan({ platform, handle: target.handle, url: target.url, limit });
 
     if (platform === 'tiktok') {
@@ -711,7 +752,13 @@ export class SocialRouter {
             }
           }
         } else if (backend === 'yt-dlp') {
-          const listing = await this.attempt(attempts, backend, `${platform}:profile`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(target.url, platform, limit));
+          let listing = await this.attempt(attempts, backend, `${platform}:profile`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(target.url, platform, limit));
+          if (!listing && platform === 'youtube' && attempts.at(-1)?.code === 'empty_page') {
+            // No Shorts tab: the channel's videos tab is the next best list of what it posts (long videos included).
+            const videosUrl = target.url.replace(/\/shorts\/?$/, '/videos');
+            listing = await this.attempt(attempts, backend, `${platform}:profile`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(videosUrl, platform, limit));
+            if (listing) listingTab = 'videos';
+          }
           if (listing) {
             posts = listing.posts;
             profile = profile ?? listing.profile;
@@ -752,7 +799,12 @@ export class SocialRouter {
         );
       }
       reason = `Read directly, except ${gaps.join(' and ')}.`;
-      code = mostTelling(attempts)?.code ?? (platform === 'instagram' ? 'login_required' : 'unsupported');
+      // A refusal that a later route covered (the embed's 503 before the stealth reader's answer) is not why this is partial.
+      code = mostTelling(attempts.slice(attempts.findLastIndex((attempt) => attempt.outcome === 'ok') + 1))?.code ?? (platform === 'instagram' ? 'login_required' : 'unsupported');
+      if (listingTab === 'videos') {
+        reason = `This channel has no Shorts tab, so its latest videos were read instead (long videos included, rounded view counts, no dates). ${reason}`;
+        code = 'unsupported';
+      }
       if (emptyListNote && posts.length === 0) {
         // The stealth reader read the profile but TikTok's video list stayed empty after its one retry.
         reason = `${emptyListNote} The profile facts were read; the videos were not.`;
@@ -768,6 +820,7 @@ export class SocialRouter {
       code,
       plan,
       extra: {
+        ...(listingTab ? { listing_tab: listingTab } : {}),
         missing_fields: posts.some((post) => !hasFullMetrics(post))
           ? platform === 'instagram'
             ? ['metrics.views', 'metrics.likes', 'metrics.comments', 'metrics.shares']
@@ -807,6 +860,23 @@ export class SocialRouter {
     const record = postFromPage(read.page, url, read.observed_at);
     if (!record) return { ok: false, code: 'empty_page', reason: 'Instagram answered, but the page held no post facts.', trip: false };
     return { ok: true, record };
+  }
+
+  /**
+   * The comments an Instagram post page embeds, through the stealth reader's page op (photo posts and carousels too).
+   * @param {any} stealth
+   * @param {string} url
+   * @param {number} ms time left in this call.
+   * @returns {Promise<{ok: true, records: Array<Record<string, any>>, total: number|null, complete: boolean}|{ok: false, code: string, reason: string, trip: boolean}>}
+   */
+  async instagramCommentsRead(stealth, url, ms) {
+    const read = await readInstagramPage(stealth, url, { timeoutMs: ms, politeness: this.politeness });
+    if (!read.ok) return read;
+    const { records, total } = commentsFromPage(read.page, url, read.observed_at);
+    if (records.length === 0 && total !== 0) {
+      return { ok: false, code: 'empty_page', reason: 'Instagram answered, but the post page embedded none of its comments.', trip: false };
+    }
+    return { ok: true, records, total, complete: total !== null ? records.length >= total : false };
   }
 
   /**
@@ -926,10 +996,19 @@ export class SocialRouter {
     let complete = false;
     let total = null;
     for (const backend of ROUTES[platform].comments) {
-      const read =
-        backend === 'tiktok_comments'
-          ? await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.tiktok, ms).comments(/** @type {string} */ (postId), url, limit))
-          : await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).comments(url, platform, limit));
+      let read = null;
+      if (backend === 'tiktok_comments') {
+        read = await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.tiktok, ms).comments(/** @type {string} */ (postId), url, limit));
+      } else if (backend === 'stealth') {
+        const stealth = await this.stealthReady();
+        if (!stealth) {
+          attempts.push({ backend, outcome: 'skipped', code: 'backend_missing', reason: 'skipped: the stealth reader (Scrapling) is not installed.' });
+          continue;
+        }
+        read = await this.attempt(attempts, backend, `${platform}:comments`, (ms) => this.instagramCommentsRead(stealth, url, ms));
+      } else {
+        read = await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).comments(url, platform, limit));
+      }
       if (read) {
         records = read.records;
         total = read.total ?? null;
@@ -940,16 +1019,24 @@ export class SocialRouter {
     if (ROUTES[platform].comments.length === 0) {
       attempts.push({ backend: 'none', outcome: 'skipped', code: 'login_required', reason: 'Facebook shows comments only to signed in visitors, and Social Campaign never signs in.' });
     }
+    const ordered = orderComments(records);
+    records = ordered.records.slice(0, limit);
     const coverage = records.length === 0 && !complete ? 'none' : complete ? 'full' : 'partial';
+    const embeddedOnly = platform === 'instagram' && coverage === 'partial' && attempts.some((attempt) => attempt.backend === 'stealth' && attempt.outcome === 'ok');
     return this.finish({
       platform,
       records,
       coverage,
       attempts,
-      reason: coverage === 'partial' ? `Read ${records.length} comments; the platform stopped before ${limit}.` : null,
-      code: coverage === 'partial' ? 'rate_limited' : null,
+      reason:
+        coverage === 'partial'
+          ? embeddedOnly
+            ? `Read ${records.length} of the post's ${total ?? 'many'} comments: Instagram embeds only the first comments in the post page it gives a signed out reader.`
+            : `Read ${records.length} comments; the platform stopped before ${limit}.`
+          : null,
+      code: coverage === 'partial' ? (embeddedOnly ? 'login_required' : 'rate_limited') : null,
       plan: () => commentsPlan({ platform, url, limit }),
-      extra: { total_comments: total },
+      extra: { total_comments: total, comment_order: ordered.order, comment_order_note: ordered.note },
     });
   }
 
@@ -958,7 +1045,7 @@ export class SocialRouter {
    * @returns {Promise<Record<string, any>>}
    */
   async search(input) {
-    const platform = /** @type {'tiktok'|'instagram'|'facebook'} */ (input.platform);
+    const platform = /** @type {'tiktok'|'instagram'|'facebook'|'youtube'} */ (input.platform);
     const limit = input.limit ?? 20;
     const query = String(input.query ?? '').trim();
     if (!query) throw new InvalidInputError('Say what to search for: a topic, a #hashtag or an @account.');
@@ -971,7 +1058,7 @@ export class SocialRouter {
   }
 
   /**
-   * @param {'tiktok'|'instagram'|'facebook'} platform
+   * @param {'tiktok'|'instagram'|'facebook'|'youtube'} platform
    * @param {string} query
    * @param {number} limit
    * @returns {Promise<Record<string, any>>}
@@ -980,7 +1067,7 @@ export class SocialRouter {
     /** @type {Attempt[]} */
     const attempts = [];
     const plan = () => searchPlan({ platform, query, limit });
-    const name = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' }[platform];
+    const name = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube' }[platform];
 
     if (query.startsWith('@')) {
       const profile = await this.profile({ platform, handle_or_url: query, limit });
@@ -996,6 +1083,7 @@ export class SocialRouter {
     }
 
     if (platform === 'instagram') return this.readInstagramSearch(query, limit, plan);
+    if (platform === 'youtube') return this.readYoutubeSearch(query, limit, plan);
 
     if (platform !== 'tiktok') {
       attempts.push({ backend: 'none', outcome: 'skipped', code: 'login_required', reason: `${name} search is only open to signed in visitors, and Social Campaign never signs in.` });
@@ -1007,27 +1095,47 @@ export class SocialRouter {
       return this.finish({ platform, records: [], coverage: 'none', attempts, plan, extra: { search_mode: 'keyword' } });
     }
 
+    // The tag page itself (yt-dlp, even with browser impersonation) answered a bot check on every live read since
+    // 2026-10-13, and each refusal counted against TikTok; the hashtag's totals are the part a signed out reader gets.
     const tag = query.slice(1).replace(/\s+/g, '');
-    let records = [];
-    const listing = await this.attempt(attempts, 'yt-dlp', `${platform}:search`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(`https://www.tiktok.com/tag/${encodeURIComponent(tag)}`, platform, limit));
-    if (listing) records = listing.posts.slice(0, limit);
     let hashtag = null;
     const stats = await this.attempt(attempts, 'tiktok_embed', `${platform}:search`, (ms) => limited(this.tiktok, ms).hashtag(tag));
     if (stats) hashtag = stats.hashtag;
-    const coverage = records.length >= Math.min(limit, 1) && records.every(hasFullMetrics) ? 'full' : records.length > 0 || hashtag ? 'partial' : 'none';
     return this.finish({
       platform,
-      records,
-      coverage,
+      records: [],
+      coverage: hashtag ? 'partial' : 'none',
       attempts,
-      reason:
-        coverage === 'partial' && records.length === 0
-          ? `TikTok shows the totals for #${tag} to signed out readers but not its posts.`
-          : coverage === 'partial'
-            ? 'Some posts were listed without all of their counts.'
-            : null,
+      reason: hashtag ? `TikTok shows the totals for #${tag} to signed out readers but not its posts: the tag page itself always answers a bot check, so its videos are not listed. Find posts through accounts (social_profile_get, social_outliers_find) or single addresses.` : undefined,
+      code: hashtag ? 'unsupported' : undefined,
       plan,
       extra: { search_mode: 'hashtag', hashtag },
+    });
+  }
+
+  /**
+   * YouTube keyword search for Shorts through yt-dlp's `ytsearch`: titles, channels and view counts (rounded by YouTube),
+   * ranked by views. The listing carries no dates, likes or comments, and the answer says so.
+   * @param {string} query
+   * @param {number} limit
+   * @param {() => Record<string, any>} plan
+   * @returns {Promise<Record<string, any>>}
+   */
+  async readYoutubeSearch(query, limit, plan) {
+    /** @type {Attempt[]} */
+    const attempts = [];
+    const text = query.replace(/^#+/, '').replace(/\s+/g, ' ').trim();
+    const found = await this.attempt(attempts, 'yt-dlp', 'youtube:search', (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).search(text, 'youtube', limit));
+    const posts = found ? found.posts.slice(0, limit) : [];
+    return this.finish({
+      platform: 'youtube',
+      records: posts,
+      coverage: posts.length > 0 ? 'partial' : 'none',
+      attempts,
+      reason: posts.length > 0 ? "YouTube's search lists Shorts with their title, channel and view count (rounded by YouTube), ranked here by views; it carries no dates, like counts or comment counts." : undefined,
+      code: posts.length > 0 ? 'unsupported' : undefined,
+      plan,
+      extra: { search_mode: 'keyword', query_read_as: text, dated: false },
     });
   }
 
@@ -1042,9 +1150,15 @@ export class SocialRouter {
   async readInstagramSearch(query, limit, plan) {
     /** @type {Attempt[]} */
     const attempts = [];
-    const slug = popularTopicSlug(query);
+    const topic = instagramTopic(query);
     const searchMode = query.startsWith('#') ? 'hashtag' : 'keyword';
-    const stealth = slug ? await this.stealthReady() : null;
+    if (!topic.ok) {
+      // Refused before any request: a phrase has no topic page, and asking for a made up one only gets the sign-in wall.
+      attempts.push({ backend: 'none', outcome: 'skipped', code: 'unsupported', reason: topic.reason });
+      return this.finish({ platform: 'instagram', records: [], coverage: 'none', attempts, plan: () => null, extra: { search_mode: searchMode, hashtag: null, suggested_queries: topic.suggestions } });
+    }
+    const slug = topic.slug;
+    const stealth = await this.stealthReady();
     /** @type {Array<Record<string, any>>} */
     let posts = [];
     let hashtag = null;
@@ -1053,9 +1167,7 @@ export class SocialRouter {
         backend: 'none',
         outcome: 'skipped',
         code: 'login_required',
-        reason: slug
-          ? "Instagram search is only open to signed in visitors, and Social Campaign never signs in. The stealth reader that reads Instagram's public /popular/ topic pages is not installed."
-          : 'Say a topic or #hashtag made of letters and digits.',
+        reason: "Instagram search is only open to signed in visitors, and Social Campaign never signs in. The stealth reader that reads Instagram's public /popular/ topic pages is not installed.",
       });
     } else {
       const url = `https://www.instagram.com/popular/${encodeURIComponent(slug)}/`;
@@ -1081,15 +1193,16 @@ export class SocialRouter {
         };
       }
     }
+    const note = topic.note ? ` ${topic.note}` : '';
     return this.finish({
       platform: 'instagram',
       records: posts,
       coverage: posts.length > 0 ? 'partial' : 'none',
       attempts,
-      reason: posts.length > 0 ? "Instagram's public topic page lists reels with their play counts, captions and owners; it carries no dates, like counts or comment counts." : undefined,
+      reason: posts.length > 0 ? `Instagram's public topic page lists reels with their play counts, captions and owners; it carries no dates, like counts or comment counts.${note}` : undefined,
       code: posts.length > 0 ? 'login_required' : undefined,
       plan,
-      extra: { search_mode: searchMode, hashtag },
+      extra: { search_mode: searchMode, hashtag, topic_read_as: `#${slug}`, ...(posts.length > 0 ? { dated: false } : {}) },
     });
   }
 
@@ -1110,9 +1223,10 @@ export class SocialRouter {
    * the call has time, and return the list with the counts filled in.
    * @param {Array<Record<string, any>>} posts the profile's post records.
    * @param {'30d'|'90d'|'180d'|'all'} window
+   * @param {number} [max] most posts to open; default INSTAGRAM_OUTLIER_READS.
    * @returns {Promise<{posts: Array<Record<string, any>>, opened: number, wanted: number, stopped: string|null}>}
    */
-  async enrichInstagramPosts(posts, window) {
+  async enrichInstagramPosts(posts, window, max = INSTAGRAM_OUTLIER_READS) {
     const days = WINDOWS[window];
     const cutoff = days === null || days === undefined ? -Infinity : this.now() - days * 86_400_000;
     const wanted = posts
@@ -1122,7 +1236,7 @@ export class SocialRouter {
         return !Number.isFinite(at) || at >= cutoff;
       })
       .sort((a, b) => Date.parse(b.posted_at ?? '') - Date.parse(a.posted_at ?? ''))
-      .slice(0, INSTAGRAM_OUTLIER_READS);
+      .slice(0, Math.max(0, max));
     /** @type {Map<string, Record<string, any>>} */
     const opened = new Map();
     let stopped = null;
@@ -1164,30 +1278,56 @@ export class SocialRouter {
     const options = { window, now: this.now() };
     let instagramNote = null;
     if (input.platform === 'instagram' && posts.length > 0) {
+      const listed = posts.length;
       const enriched = await this.enrichInstagramPosts(posts, window);
       posts = enriched.posts;
+      let opened = enriched.opened;
+      let stopped = enriched.stopped;
       options.measure = 'likes';
-      instagramNote = `Instagram shows no view counts to signed out readers, so posts are ranked by likes against this account's own median likes; ${enriched.opened} of its ${posts.length} listed posts were opened one by one for their counts${enriched.stopped ? ` (stopped early: ${enriched.stopped})` : ''}.`;
+      // Fewer than a baseline's worth of posts in the window: open some older ones too (same cap), so widening has counts to use.
+      if (window !== 'all' && !stopped && findOutliers(posts, { ...options, window }).baseline.sample < MIN_BASELINE_SAMPLE && opened < INSTAGRAM_OUTLIER_READS) {
+        const more = await this.enrichInstagramPosts(posts, 'all', INSTAGRAM_OUTLIER_READS - opened);
+        posts = more.posts;
+        opened += more.opened;
+        stopped = more.stopped;
+      }
+      instagramNote = `Instagram shows no view counts to signed out readers, so posts are ranked by likes against this account's own median likes; ${opened} of its ${listed} listed posts were opened one by one for their counts${stopped ? ` (stopped early: ${stopped})` : ''}.`;
     }
     // A channel listing with no dates at all (YouTube Shorts) is the account's latest posts: that is its window.
     if (input.platform === 'youtube' && posts.length > 0 && posts.every((post) => post.posted_at === null)) options.includeUndated = true;
-    const found = findOutliers(posts, options);
+    const found = findOutliersWidening(posts, options);
+    const baseline = found.baseline;
     const thinListing = profile.coverage !== 'full' || instagramNote !== null;
     let coverage = 'full';
     let code = null;
     let reason = null;
+    /** @type {string[]} */
+    const notes = [];
+    if (baseline.widened) {
+      notes.push(
+        `Only ${baseline.requested_sample} post${baseline.requested_sample === 1 ? '' : 's'} fell in the last ${WINDOWS[window]} days, so the baseline window was widened to ${baseline.window === 'all' ? 'the whole listing' : `${WINDOWS[baseline.window]} days`}${baseline.stale ? ` (stale: the newest post is from ${baseline.newest_post_at})` : ''}.`,
+      );
+    }
+    if (options.includeUndated) {
+      notes.push("The listing carries no dates (undated): these are the channel's latest posts, ranked by views, not a time window.");
+    }
     if (posts.length === 0) {
       coverage = 'none';
       code = profile.degraded_code ?? 'not_found';
       reason = profile.degraded_reason ?? 'No posts could be read for this account.';
     } else if (found.problem) {
       coverage = 'partial';
-      code = profile.degraded_code ?? 'not_found';
-      reason = instagramNote ? `${found.problem} ${instagramNote}` : found.problem;
-    } else if (thinListing) {
+      code = instagramNote ? 'login_required' : 'unsupported';
+      reason = [found.problem, baseline.newest_post_at ? `The newest post is from ${baseline.newest_post_at}.` : null, instagramNote].filter(Boolean).join(' ');
+    } else if (thinListing || baseline.widened || options.includeUndated) {
       coverage = 'partial';
       code = profile.degraded_code ?? (instagramNote ? 'login_required' : 'unsupported');
-      reason = instagramNote ?? `The baseline comes from the ${posts.length} most recent posts that could be read, not the whole account${options.includeUndated ? ', and the listing carries no dates' : ''}.`;
+      reason = [
+        ...notes,
+        instagramNote ?? (thinListing ? `The baseline comes from the ${posts.length} most recent posts that could be read, not the whole account${options.includeUndated ? ', and the listing carries no dates' : ''}.` : null),
+      ]
+        .filter(Boolean)
+        .join(' ');
     }
     return envelope({
       platform: input.platform,
@@ -1199,8 +1339,12 @@ export class SocialRouter {
       web_evidence_plan: coverage === 'full' ? null : profile.web_evidence_plan ?? null,
       observed_at: profile.observed_at,
       extra: {
-        baseline: found.baseline,
+        baseline,
         posts_considered: posts.length,
+        stale: baseline.stale === true,
+        newest_post_at: baseline.newest_post_at,
+        dated: baseline.dated,
+        ...(profile.listing_tab ? { listing_tab: profile.listing_tab } : {}),
         attempts: profile.attempts ?? [],
         from_cache: profile.from_cache ?? false,
       },
@@ -1229,7 +1373,7 @@ export class SocialRouter {
       const attempts = [];
       const backend = platform === 'meta' ? 'meta_ad_library' : 'tiktok_creative_center';
       const adHost = PLATFORM_HOST[platform] ?? null;
-      const adsOpen = adHost ? this.breakerState(adHost) : { open: false };
+      const adsOpen = adHost ? this.breakerState(adHost, AD_SCOPE) : { open: false };
       if (adsOpen.open || this.remainingMs() <= 0) {
         const why = adsOpen.open ? `skipped: ${adsOpen.reason ?? `${adHost} refused earlier reads`}` : 'skipped: budget (this call used its 45 seconds)';
         attempts.push({ backend, outcome: 'skipped', code: adsOpen.open ? adsOpen.code ?? 'blocked' : 'timed_out', reason: why });
@@ -1250,15 +1394,15 @@ export class SocialRouter {
       const adReader = limited(this.ads, this.remainingMs());
       const outcome = platform === 'meta' ? await adReader.meta(query, country) : await adReader.tiktok(query, country);
       if (adHost) {
-        if (outcome.records.length > 0) this.breaker.recordSuccess(adHost);
-        else if (['blocked', 'login_required', 'rate_limited', 'timed_out'].includes(outcome.code)) this.breaker.recordFailure(adHost, outcome.code, outcome.reason);
+        if (outcome.records.length > 0) this.breaker.recordSuccess(adHost, AD_SCOPE);
+        else if (['blocked', 'rate_limited', 'timed_out'].includes(outcome.code)) this.breaker.recordFailure(adHost, outcome.code, outcome.reason, AD_SCOPE);
       }
       attempts.push({ backend, outcome: outcome.records.length > 0 ? 'ok' : 'failed', code: outcome.records.length > 0 ? null : outcome.code, reason: outcome.reason || null });
       let records = outcome.records;
       let usedBackend = outcome.reached ? 'ad_library_page' : 'none';
       // The library page itself is tried first; the browser backend only runs when
       // that page carried nothing, since it is much slower and heavier to spawn.
-      if (records.length === 0) {
+      if (records.length === 0 && !outcome.extra?.definitive) {
         const browserOutcome = await this.browserAttempt(attempts, `${platform}:ads`, (ms) => limited(this.browser, ms).adLibraryPage(outcome.urls.library, platform));
         if (browserOutcome && browserOutcome.records.length > 0) {
           records = browserOutcome.records;
@@ -1272,10 +1416,10 @@ export class SocialRouter {
         records,
         coverage,
         attempts,
-        reason: coverage === 'partial' ? 'These are the ads the library page itself carried; the full list is only in the browser.' : outcome.reason,
+        reason: coverage === 'partial' ? (outcome.extra?.list_scope ? outcome.reason : 'These are the ads the library page itself carried; the full list is only in the browser.') : outcome.reason,
         code: coverage === 'partial' ? 'unsupported' : outcome.code,
         plan: () => adsPlan({ platform, query, country: /** @type {string} */ (country), eu: EU_LIKE.has(/** @type {string} */ (country)), urls: outcome.urls }),
-        extra: { country, country_source: countrySource, library_url: outcome.urls.library },
+        extra: { country, country_source: countrySource, library_url: outcome.urls.library, ...(usedBackend === 'ad_library_page' || outcome.extra?.definitive ? outcome.extra ?? {} : {}) },
       });
     });
   }
@@ -1550,7 +1694,7 @@ export class SocialRouter {
     });
     const adProbes = [
       ['meta_ad_library', () => this.ads.meta('Meta', 'US')],
-      ['tiktok_creative_center', () => this.ads.tiktok('skincare', 'US')],
+      ['tiktok_creative_center', () => this.ads.tiktok('', 'US')],
     ].map(async ([id, run]) => {
       const read = await probe(/** @type {string} */ (id), /** @type {() => Promise<any>} */ (run)());
       if (!read || typeof read !== 'object') return missed(/** @type {string} */ (id));
@@ -1600,7 +1744,8 @@ export function matrixFromHealth(healthy, observed) {
       profile: tiktokProfile,
       post: embed || ytdlp ? 'full' : 'none',
       comments: healthy.tiktok_comments ? 'full' : 'none',
-      search: ytdlp ? 'full' : embed ? 'partial' : 'none',
+      // Only the hashtag totals are readable: the tag page itself answers a bot check every time.
+      search: embed ? 'partial' : 'none',
       outliers: tiktokProfile,
       ads: healthy.tiktok_creative_center ? 'partial' : 'none',
     },
@@ -1608,12 +1753,13 @@ export function matrixFromHealth(healthy, observed) {
     instagram: {
       profile: page('instagram_page'),
       post: page('instagram_post'),
-      comments: 'none',
+      // The post page embeds its first comments (live 2026-10-14), photo posts and carousels included.
+      comments: page('instagram_post'),
       search: page('instagram_page'),
       outliers: healthy.instagram_page && healthy.instagram_post ? 'partial' : 'none',
     },
     facebook: { profile: page('facebook_page'), post: page('facebook_page'), comments: 'none', search: 'none', outliers: 'none' },
-    youtube: { profile: page('youtube_channel'), post: healthy.youtube_post ? 'full' : 'none', comments: 'none', search: 'none', outliers: page('youtube_channel') },
+    youtube: { profile: page('youtube_channel'), post: healthy.youtube_post ? 'full' : 'none', comments: 'none', search: page('youtube_channel'), outliers: page('youtube_channel') },
     meta: { ads: healthy.meta_ad_library ? 'partial' : 'none' },
     web: { crawl: healthy.web_reader ? 'full' : 'none' },
   };

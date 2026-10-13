@@ -12,14 +12,13 @@
  */
 
 import { createRequire } from 'node:module';
-import { isIP } from 'node:net';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
-import { boundedFetch, assertPublicHost, parseRobots, robotsAllows, decodeEntities, extractMeta } from '../social/backends/web.mjs';
+import { boundedFetch, assertPublicHost, parseRobots, robotsAllows, decodeEntities, extractMeta, registrableDomain } from '../social/backends/web.mjs';
 import { imageInfo } from '../brand-kit/capture.mjs';
 import { parseHttpUrl } from '../social/records.mjs';
 
@@ -63,37 +62,6 @@ function allowPrivateHosts() {
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const EXT_FOR_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 
-/**
- * A short curated list of two label public suffixes, so a registrable domain check does
- * not mistake "example.co.uk" for the whole of ".co.uk". This project stays at zero npm
- * dependencies, so a full public suffix list is out of reach; this covers the common cases.
- */
-const TWO_LABEL_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'gov.uk', 'ac.uk', 'me.uk', 'ltd.uk', 'plc.uk', 'net.uk', 'sch.uk',
-  'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp',
-  'co.nz', 'org.nz', 'govt.nz', 'net.nz',
-  'co.za', 'org.za', 'net.za',
-  'co.in', 'net.in', 'org.in', 'firm.in', 'gen.in', 'ind.in',
-  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'asn.au',
-  'com.br', 'net.br', 'org.br', 'gov.br',
-  'com.mx', 'com.sg', 'com.hk', 'co.kr', 'co.id', 'com.tr', 'com.ar', 'com.cn', 'com.tw',
-]);
-
-function isIpLiteral(host) {
-  return isIP(host.replace(/^\[|\]$/g, '')) !== 0;
-}
-
-/** @param {string} hostname */
-function registrableDomain(hostname) {
-  const host = String(hostname || '').toLowerCase().replace(/\.$/, '');
-  if (!host || isIpLiteral(host)) return host;
-  const labels = host.split('.');
-  if (labels.length <= 2) return host;
-  const lastTwo = labels.slice(-2).join('.');
-  if (labels.length >= 3 && TWO_LABEL_SUFFIXES.has(lastTwo)) return labels.slice(-3).join('.');
-  return lastTwo;
-}
-
 /** Whether candidateHost is the declared site itself or a subdomain of it. */
 function sameOfficialDomain(candidateHost, declaredHost) {
   const candidate = registrableDomain(candidateHost);
@@ -125,47 +93,6 @@ function resolveUrl(href, base) {
   try { return new URL(href, base).href; } catch { return null; }
 }
 
-/** @param {unknown} image */
-function firstImageValue(image) {
-  if (!image) return null;
-  if (typeof image === 'string') return image;
-  if (Array.isArray(image)) {
-    for (const entry of image) {
-      const value = firstImageValue(entry);
-      if (value) return value;
-    }
-    return null;
-  }
-  if (typeof image === 'object') {
-    if (typeof image.url === 'string') return image.url;
-    if (typeof image.contentUrl === 'string') return image.contentUrl;
-  }
-  return null;
-}
-
-/** @param {unknown} node */
-function productImageFrom(node) {
-  if (!node || typeof node !== 'object') return null;
-  const type = node['@type'];
-  const isProduct = type === 'Product' || (Array.isArray(type) && type.includes('Product'));
-  if (!isProduct) return null;
-  return firstImageValue(node.image);
-}
-
-/** @param {string} html */
-function findJsonLdProductImage(html) {
-  for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
-    let data;
-    try { data = JSON.parse(match[1]); } catch { continue; }
-    const nodes = Array.isArray(data) ? data : Array.isArray(data?.['@graph']) ? data['@graph'] : [data];
-    for (const node of nodes) {
-      const image = productImageFrom(node);
-      if (image) return image;
-    }
-  }
-  return null;
-}
-
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'for', 'of', 'to', 'with', 'our', 'new', 'on', 'in', 'is',
   'are', 'it', 'this', 'that', 'post', 'campaign', 'photo', 'picture', 'image', 'product',
@@ -179,43 +106,224 @@ function productWords(job) {
   return [...new Set(words.filter((word) => word.length >= 3 && !STOP_WORDS.has(word)))];
 }
 
-/** @param {string} html @param {string[]} words @param {string} baseUrl */
-function findLargestMatchingImg(html, words, baseUrl) {
-  let best = null;
-  let bestArea = -1;
-  for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
-    const tag = match[0];
-    const src = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
-    if (!src) continue;
-    const alt = tag.match(/\balt\s*=\s*["']([^"']*)["']/i)?.[1] || '';
-    const haystack = `${alt} ${src}`.toLowerCase();
-    if (words.length > 0 && !words.some((word) => haystack.includes(word))) continue;
-    const width = Number(tag.match(/\bwidth\s*=\s*["']?(\d+)/i)?.[1] || 0);
-    const height = Number(tag.match(/\bheight\s*=\s*["']?(\d+)/i)?.[1] || 0);
-    const area = width * height;
-    if (area > bestArea) {
-      bestArea = area;
-      best = decodeEntities(src);
-    }
-  }
-  return best ? resolveUrl(best, baseUrl) : null;
+/**
+ * The value of one attribute of a tag, or null. `src` never matches `data-src`.
+ * @param {string} tag
+ * @param {string} name
+ * @returns {string|null}
+ */
+function attr(tag, name) {
+  const match = tag.match(new RegExp(`(?<![\\w-])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  const value = match ? match[1] ?? match[2] ?? match[3] : null;
+  return value === null || value === undefined ? null : decodeEntities(value).trim();
 }
 
 /**
- * The main product image address on a fetched page, or null. JSON-LD Product.image first,
- * then og:image, then the largest <img> whose alt or src matches the job's own product words.
+ * Every address in a JSON-LD `image` value: a string, an ImageObject, or a list of them.
+ * @param {unknown} image
+ * @returns {string[]}
  */
-function findProductImageUrl({ html, meta, finalUrl, words }) {
-  const jsonLd = findJsonLdProductImage(html);
-  if (jsonLd) {
-    const resolved = resolveUrl(jsonLd, finalUrl);
-    if (resolved) return resolved;
+function imageValues(image) {
+  if (!image) return [];
+  if (typeof image === 'string') return [image];
+  if (Array.isArray(image)) return image.flatMap((entry) => imageValues(entry));
+  if (typeof image === 'object') {
+    const value = typeof image.url === 'string' ? image.url : typeof image.contentUrl === 'string' ? image.contentUrl : null;
+    return value ? [value] : [];
   }
-  if (meta['og:image']) {
-    const resolved = resolveUrl(meta['og:image'], finalUrl);
-    if (resolved) return resolved;
+  return [];
+}
+
+/**
+ * The Product nodes in a JSON-LD document, however it nests them.
+ * @param {unknown} node
+ * @param {Array<Record<string, any>>} out
+ * @param {number} [depth]
+ */
+function collectProductNodes(node, out, depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 4) return;
+  if (Array.isArray(node)) {
+    for (const entry of node) collectProductNodes(entry, out, depth + 1);
+    return;
   }
-  return findLargestMatchingImg(html, words, finalUrl);
+  const type = node['@type'];
+  if ((Array.isArray(type) ? type : [type]).some((name) => name === 'Product' || name === 'ProductGroup')) out.push(node);
+  for (const key of ['@graph', 'mainEntity', 'hasVariant']) collectProductNodes(node[key], out, depth + 1);
+}
+
+/**
+ * Every image a JSON-LD Product carries, in page order.
+ * @param {string} html
+ * @returns {string[]}
+ */
+function jsonLdProductImages(html) {
+  const images = [];
+  for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    let data;
+    try { data = JSON.parse(match[1]); } catch { continue; }
+    const products = [];
+    collectProductNodes(data, products);
+    for (const product of products) images.push(...imageValues(product.image));
+  }
+  return images;
+}
+
+/**
+ * Every picture the page marks `itemprop="image"` (microdata): a meta, link or img tag.
+ * @param {string} html
+ * @returns {string[]}
+ */
+function itempropImages(html) {
+  const images = [];
+  for (const match of html.matchAll(/<(?:meta|link|img)\b[^>]*(?<![\w-])itemprop\s*=\s*["']image["'][^>]*>/gi)) {
+    const value = attr(match[0], 'content') || attr(match[0], 'href') || attr(match[0], 'src') || attr(match[0], 'data-src');
+    if (value) images.push(value);
+  }
+  return images;
+}
+
+/**
+ * The widest address in a srcset.
+ * @param {string|null} srcset
+ * @returns {string|null}
+ */
+function widestFromSrcset(srcset) {
+  if (!srcset) return null;
+  let best = null;
+  let bestSize = -1;
+  for (const part of srcset.split(',')) {
+    const [address, size] = part.trim().split(/\s+/);
+    if (!address) continue;
+    const value = Number.parseFloat(size ?? '1') || 1;
+    if (value > bestSize) {
+      bestSize = value;
+      best = address;
+    }
+  }
+  return best;
+}
+
+/** How many of a page's own pictures are carried forward as candidates, best first. */
+const MAX_PAGE_IMAGES = 3;
+
+/**
+ * The pictures on the page itself that look like the product: named like it (by the job's own words) or sitting in
+ * a product card, and not declared tiny. Best first.
+ * @param {string} html
+ * @param {string[]} words
+ * @returns {Array<{address: string, alt: string, score: number, area: number}>}
+ */
+function pageImages(html, words) {
+  const scored = [];
+  for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = match[0];
+    const address = widestFromSrcset(attr(tag, 'srcset') || attr(tag, 'data-srcset')) || attr(tag, 'src') || attr(tag, 'data-src') || attr(tag, 'data-lazy-src') || attr(tag, 'data-original');
+    if (!address || /^data:/i.test(address) || address.includes('{')) continue;
+    const width = Number(attr(tag, 'width') || 0);
+    const height = Number(attr(tag, 'height') || 0);
+    if ((width && width < 150) || (height && height < 150)) continue;
+    const alt = attr(tag, 'alt') || '';
+    const haystack = `${alt} ${address} ${attr(tag, 'class') || ''}`.toLowerCase();
+    const before = html.slice(Math.max(0, (match.index ?? 0) - 500), match.index);
+    let score = 0;
+    if (words.length > 0 && words.some((word) => haystack.includes(word))) score += 3;
+    if (haystack.includes('product') || /(?:class|id|href)\s*=\s*["'][^"']*product/i.test(before)) score += 2;
+    if (score === 0) continue;
+    scored.push({ address, alt, score, area: width * height });
+  }
+  scored.sort((a, b) => b.score - a.score || b.area - a.area);
+  return scored.slice(0, MAX_PAGE_IMAGES);
+}
+
+/**
+ * Words in a picture's address that say it is page furniture or share art, not a photo of the product.
+ * Matched against whole words, so "dog" never counts as "og".
+ */
+const NOT_A_PRODUCT_WORDS = new Set([
+  'banner', 'banners', 'og', 'ogimage', 'opengraph', 'share', 'sharing', 'social', 'logo', 'logos', 'favicon', 'sprite', 'sprites',
+  'placeholder', 'default', 'icon', 'icons', 'avatar', 'splash', 'facebook', 'twitter', 'blank', 'spacer', 'pixel', 'noimage',
+]);
+
+/** The same, for the alt text of a picture, where a few of those words are ordinary words about a product. */
+const NOT_A_PRODUCT_ALT_WORDS = new Set(['banner', 'logo', 'logos', 'icon', 'icons', 'avatar', 'favicon']);
+
+/**
+ * The word that gives a picture away as not being a product photo, or null.
+ * @param {string} address
+ * @param {string} [alt]
+ * @returns {string|null}
+ */
+function notAProductWord(address, alt = '') {
+  const split = (text) => text.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  let path = address;
+  try { path = new URL(address).pathname; } catch { /* a bare path is split as it is */ }
+  return split(path).find((word) => NOT_A_PRODUCT_WORDS.has(word)) ?? split(alt).find((word) => NOT_A_PRODUCT_ALT_WORDS.has(word)) ?? null;
+}
+
+/** A product photo is wider than tall by at most this much; the 1.91 : 1 share card every site publishes as og:image is past it. */
+const MAX_PRODUCT_ASPECT = 1.85;
+/** ...and not a thin strip either. */
+const MIN_PRODUCT_ASPECT = 0.4;
+/** The shorter side of a usable photo, in pixels. */
+const MIN_PRODUCT_SIDE = 300;
+/** Pictures downloaded to be measured, at most, before giving up. */
+const MAX_IMAGES_TRIED = 4;
+
+/**
+ * Why a picture of this size cannot be the main product photo, or null when its size and shape fit one.
+ * @param {{width: number|null, height: number|null}} info
+ * @returns {string|null}
+ */
+function badShape(info) {
+  const { width, height } = info;
+  if (!width || !height) return null; // not measurable: the other checks stand
+  if (Math.min(width, height) < MIN_PRODUCT_SIDE) return `it is only ${width} by ${height} pixels`;
+  const aspect = width / height;
+  if (aspect > MAX_PRODUCT_ASPECT) return `it is a wide banner shape (${width} by ${height})`;
+  if (aspect < MIN_PRODUCT_ASPECT) return `it is a tall strip (${width} by ${height})`;
+  return null;
+}
+
+/**
+ * Whether the page is about a product, which is what makes its share image (og:image) a candidate at all. A home page's
+ * share image is the brand's banner or logo card; a product page's is usually the product.
+ * @param {Record<string, string>} meta
+ * @param {string} finalUrl
+ * @returns {boolean}
+ */
+function pageIsAboutAProduct(meta, finalUrl) {
+  if ((meta['og:type'] || '').toLowerCase().includes('product')) return true;
+  if (Object.keys(meta).some((name) => /^(product|og):price/.test(name))) return true;
+  try {
+    return /\/(products?|items?|p)\//i.test(new URL(finalUrl).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every picture on the page that might be the product photo, most trustworthy first: the JSON-LD Product image,
+ * the microdata image, the page's own pictures that look like the product, and only then the Open Graph / Twitter
+ * share image, which is usually a banner or a logo.
+ * @param {{html: string, meta: Record<string, string>, finalUrl: string, words: string[]}} page
+ * @returns {Array<{url: string, from: 'json-ld'|'itemprop'|'page'|'share-image', alt: string}>}
+ */
+function candidateImages({ html, meta, finalUrl, words }) {
+  const found = [
+    ...jsonLdProductImages(html).map((address) => ({ address, from: 'json-ld', alt: '' })),
+    ...itempropImages(html).map((address) => ({ address, from: 'itemprop', alt: '' })),
+    ...pageImages(html, words).map((image) => ({ address: image.address, from: 'page', alt: image.alt })),
+    ...[meta['og:image'], meta['og:image:secure_url'], meta['twitter:image'], meta['twitter:image:src']].filter(Boolean).map((address) => ({ address, from: 'share-image', alt: '' })),
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const entry of found) {
+    const url = resolveUrl(entry.address, finalUrl);
+    if (!url || !parseHttpUrl(url) || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, from: /** @type {any} */ (entry.from), alt: entry.alt });
+  }
+  return out;
 }
 
 function jobFilePath(brand, jobId) {
@@ -284,35 +392,76 @@ export const productPhotoTools = [
       const meta = extractMeta(html);
       const { job } = readJobRecord(brand, jobId);
       const words = productWords(job);
-      const imageUrl = findProductImageUrl({ html, meta, finalUrl: page.final_url, words });
-      if (!imageUrl) return { status: 'not_found' };
-      const imageParsed = parseHttpUrl(imageUrl);
-      if (!imageParsed || !sameOfficialDomain(imageParsed.hostname, declaredParsed.hostname)) {
-        return { status: 'not_found' };
-      }
+      const candidates = candidateImages({ html, meta, finalUrl: page.final_url, words });
+      const aboutAProduct = pageIsAboutAProduct(meta, page.final_url);
 
-      let fetched;
-      try {
-        fetched = await boundedFetch(imageUrl, { allowPrivate, raw: true, timeoutMs: 15_000, maxBytes: MAX_IMAGE_BYTES });
-      } catch {
-        return { status: 'not_found' };
-      }
-      if (!fetched.ok || fetched.truncated || !fetched.buffer || fetched.buffer.length === 0) return { status: 'not_found' };
-      if (fetched.bytes > MAX_IMAGE_BYTES) return { status: 'not_found' };
-      const info = imageInfo(fetched.buffer);
-      if (!info) return { status: 'not_found' };
+      // Every candidate is judged, most trustworthy first, and the first one that is a product photo wins. A share
+      // image that is a banner or a logo is never attached just because it is the only picture the page declares.
+      /** @type {Array<{url: string, why: string}>} */
+      const rejected = [];
+      let tried = 0;
+      for (const candidate of candidates) {
+        if (candidate.from === 'share-image' && !aboutAProduct) {
+          rejected.push({ url: candidate.url, why: 'it is the share image of a page that is not about a product' });
+          continue;
+        }
+        const imageParsed = parseHttpUrl(candidate.url);
+        if (!imageParsed || !sameOfficialDomain(imageParsed.hostname, declaredParsed.hostname)) {
+          rejected.push({ url: candidate.url, why: 'it is hosted outside the brand\'s own website' });
+          continue;
+        }
+        const word = notAProductWord(candidate.url, candidate.alt);
+        if (word) {
+          rejected.push({ url: candidate.url, why: `its address says "${word}", so it is site art and not a product photo` });
+          continue;
+        }
+        if (tried >= MAX_IMAGES_TRIED) break;
+        tried += 1;
 
-      const tmpDir = mkdtempSync(join(tmpdir(), 'sc-product-photo-'));
-      try {
-        const tmpFile = join(tmpDir, `photo.${EXT_FOR_MIME[info.mimeType]}`);
-        writeFileSync(tmpFile, fetched.buffer);
-        // The photo is the brand's own, from its own site: attach it as that, so the licence text and
-        // the route's rights flags are worked out together rather than patched after the re-route.
-        runtime.attachOfficialProductPhoto({ root, brand: brand.slug, jobId, path: tmpFile }, imageUrl);
-        return { status: 'attached', sourceUrl: imageUrl };
-      } finally {
-        try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
+        let fetched;
+        try {
+          fetched = await boundedFetch(candidate.url, { allowPrivate, raw: true, timeoutMs: 15_000, maxBytes: MAX_IMAGE_BYTES });
+        } catch {
+          rejected.push({ url: candidate.url, why: 'it could not be downloaded' });
+          continue;
+        }
+        if (!fetched.ok || fetched.truncated || !fetched.buffer || fetched.buffer.length === 0 || fetched.bytes > MAX_IMAGE_BYTES) {
+          rejected.push({ url: candidate.url, why: 'it could not be downloaded' });
+          continue;
+        }
+        const info = imageInfo(fetched.buffer);
+        if (!info) {
+          rejected.push({ url: candidate.url, why: 'it is not a PNG, JPEG or WebP picture' });
+          continue;
+        }
+        const shape = badShape(info);
+        if (shape) {
+          rejected.push({ url: candidate.url, why: shape });
+          continue;
+        }
+
+        const tmpDir = mkdtempSync(join(tmpdir(), 'sc-product-photo-'));
+        try {
+          const tmpFile = join(tmpDir, `photo.${EXT_FOR_MIME[info.mimeType]}`);
+          writeFileSync(tmpFile, fetched.buffer);
+          // The photo is the brand's own, from its own site: attach it as that, so the licence text and
+          // the route's rights flags are worked out together rather than patched after the re-route.
+          runtime.attachOfficialProductPhoto({ root, brand: brand.slug, jobId, path: tmpFile }, candidate.url);
+          return { status: 'attached', sourceUrl: candidate.url, found_in: candidate.from, width: info.width, height: info.height };
+        } finally {
+          try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
+        }
       }
+      // Nothing is attached. `not_found` is the status every caller already treats as "ask the person for the photo";
+      // `code` and `reason` say plainly that the page had pictures, but none of them was a product photo.
+      return {
+        status: 'not_found',
+        code: 'no_product_photo',
+        reason: rejected.length > 0
+          ? 'No product photo was found on this page; the pictures it offers are banners, logos, share art or too small to use.'
+          : 'No product photo was found on this page.',
+        ...(rejected.length > 0 ? { rejected: rejected.slice(0, 6) } : {}),
+      };
     },
   ),
 ];

@@ -11,7 +11,8 @@
  *     ({ jobId, at, files: [{ path, sha256, topic, at }], industry? }), with the topics `brand` and `competitors`, so the
  *     30-day rule applies and a newer job's file of the same topic takes over;
  *   - saves the top posts the run found on the brand's own accounts and on each competitor's as proven bank items
- *     (source brand or competitor, with the competitor's name and the post's link, views and date), the same call
+ *     (source brand or competitor, with the competitor's name and the post's link, views and date; an Instagram post, which
+ *     shows no views to a signed-out reader, carries its likes instead), the same call
  *     brand_bank_save makes, so saving the same run twice adds nothing.
  *
  * The industry the person picks afterwards is not saved here: the onboard-brand skill saves it with brand_bank_save as an
@@ -26,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { addToBank, brandLibraryDir } from './brand-library.mjs';
+import { addToBank, brandLibraryDir, countText } from './brand-library.mjs';
 import * as runtime from './runtime.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -59,9 +60,11 @@ function hostMatches(url, platform) {
 // ---------------------------------------------------------------- the top posts in the draft
 /**
  * Check a draft's `topPosts`: the best posts social_outliers_find (or social_profile_get) showed on the brand's own accounts
- * and on its competitors'. Each is { source: 'brand' | 'competitor', competitor?, platform, url, text, views, date }.
+ * and on its competitors'. Each is { source: 'brand' | 'competitor', competitor?, platform, url, text, views, likes?, date }.
  * `text` is the post's opening words exactly as its caption has them. A post without a caption, views or date is left out of the
- * draft by the researcher, never filled in or rounded.
+ * draft by the researcher, never filled in or rounded. Instagram shows no view counts to a signed-out reader, so an Instagram post
+ * may carry `likes` instead of `views`; a post that has both keeps both, with views as the headline. Every other platform needs views.
+ * A checked post always has both keys: `views` and `likes` are a whole number or null.
  * @returns {{ value: object[], problems: {field: string, problem: string}[] }}
  */
 export function topPostsProblems(input, { competitors = [], now = new Date() } = {}) {
@@ -78,7 +81,7 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
     const fail = (key, problem) => problems.push({ field: `${field}.${key}`, problem });
     if (!isObject(item)) { problems.push({ field, problem: 'Each post must be an object.' }); return; }
     for (const key of Object.keys(item)) {
-      if (!['source', 'competitor', 'platform', 'url', 'text', 'views', 'date'].includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views, date.`);
+      if (!['source', 'competitor', 'platform', 'url', 'text', 'views', 'likes', 'date'].includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views (likes instead of views for Instagram), date.`);
     }
     const source = item.source;
     if (source !== 'brand' && source !== 'competitor') fail('source', 'source must be brand (one of the brand\'s own posts) or competitor.');
@@ -90,8 +93,16 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
     const text = plain(item.text);
     if (!text) fail('text', 'text is empty. Use the post\'s opening words exactly as its caption has them, or leave the post out.');
     else if (text.length > POST_TEXT_MAX) fail('text', `text must be at most ${POST_TEXT_MAX} characters (has ${text.length}).`);
-    const views = typeof item.views === 'number' ? item.views : Number.NaN;
-    if (!Number.isFinite(views) || views < 0) fail('views', 'views must be the number shown on the post. A post with no readable views is left out.');
+    const count = (raw) => (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.round(raw) : null);
+    const views = count(item.views);
+    const likes = count(item.likes);
+    const given = (raw) => raw !== undefined && raw !== null;
+    if (given(item.likes) && likes === null) fail('likes', 'likes must be the number shown on the post, or left out.');
+    else if (views === null && (given(item.views) || !(platform === 'instagram' && likes !== null))) {
+      fail('views', platform === 'instagram'
+        ? 'views must be the number shown on the post. Instagram shows no views to a signed-out reader, so an Instagram post carries its likes instead: give likes, the number shown on the post. A post with neither readable is left out.'
+        : 'views must be the number shown on the post. A post with no readable views is left out. Only an Instagram post may carry likes instead of views, because Instagram shows no views to a signed-out reader.');
+    }
     const date = typeof item.date === 'string' ? item.date.trim() : '';
     if (!PLAIN_DATE.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) fail('date', 'date must be the day the post was published, as YYYY-MM-DD. A post with no readable date is left out.');
     else if (Date.parse(`${date}T00:00:00Z`) > now.getTime() + DAY_MS) fail('date', 'date is in the future.');
@@ -110,9 +121,15 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
       theirs[competitor] = (theirs[competitor] ?? 0) + 1;
       if (theirs[competitor] === PER_COMPETITOR + 1) problems.push({ field: 'topPosts', problem: `Keep at most ${PER_COMPETITOR} posts per competitor (${competitor} has more).` });
     }
-    value.push({ source, competitor, platform, url, text, views: Number.isFinite(views) ? Math.round(views) : null, date });
+    value.push({ source, competitor, platform, url, text, views, likes, date });
   });
   return { value, problems };
+}
+
+/** The evidence a post leaves in the proven bank: {url, likes, date} for a post with likes and no views (Instagram), {url, views, date} otherwise. */
+function evidenceOfPost(post) {
+  const likesOnly = !Number.isFinite(post.views) && Number.isFinite(post.likes);
+  return likesOnly ? { url: post.url, likes: post.likes, date: post.date } : { url: post.url, views: post.views, date: post.date };
 }
 
 /**
@@ -128,7 +145,7 @@ export function fileTopPosts({ root, brand, posts, now }) {
     try {
       const out = addToBank({
         root, brand, bank: 'proven', kind: 'hook', text: post.text,
-        evidence: { url: post.url, views: post.views, date: post.date },
+        evidence: evidenceOfPost(post),
         source: post.source, competitor: post.source === 'competitor' ? post.competitor : null, now,
       });
       if (out.saved) saved += 1; else existing += 1;
@@ -152,7 +169,7 @@ function findingText(value) {
 }
 
 function post(item) {
-  return `- ${item.platform}: "${clip(item.text, 200)}" - ${item.views.toLocaleString('en-US')} views, ${item.date}, ${item.url}`;
+  return `- ${item.platform}: "${clip(item.text, 200)}" - ${[countText(item), item.date, item.url].filter(Boolean).join(', ')}`;
 }
 
 function sourceLine(source, base) {

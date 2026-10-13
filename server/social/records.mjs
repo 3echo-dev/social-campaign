@@ -330,6 +330,32 @@ export function commentRecord(input) {
   };
 }
 
+/** What each comment order means, in words a reader of the envelope can quote. */
+export const COMMENT_ORDER_NOTES = {
+  most_liked_first: 'Sorted by like count, highest first; ties keep the newest first.',
+  newest_first: 'The platform shows no like counts on these comments, so they are listed newest first, not by engagement.',
+  source_order: 'The platform shows no like counts or dates on these comments, so they are in the order the platform returned them, not by engagement.',
+};
+
+/**
+ * Put comments in the order they can honestly be called: by like count when the source gave counts, else newest first
+ * when it gave dates, else as returned. The order is named so nobody reads "most engaged first" into a plain newest
+ * first list.
+ * @param {Array<Record<string, any>>} records comment records.
+ * @returns {{records: Array<Record<string, any>>, order: 'most_liked_first'|'newest_first'|'source_order', note: string}}
+ */
+export function orderComments(records) {
+  const at = (comment) => (comment.posted_at ? Date.parse(comment.posted_at) : Number.NEGATIVE_INFINITY);
+  if (records.some((comment) => (comment.likes ?? 0) > 0)) {
+    const sorted = [...records].sort((a, b) => (b.likes ?? -1) - (a.likes ?? -1) || (b.replies ?? -1) - (a.replies ?? -1) || at(b) - at(a));
+    return { records: sorted, order: 'most_liked_first', note: COMMENT_ORDER_NOTES.most_liked_first };
+  }
+  if (records.length > 0 && records.filter((comment) => comment.posted_at).length * 2 >= records.length) {
+    return { records: [...records].sort((a, b) => at(b) - at(a)), order: 'newest_first', note: COMMENT_ORDER_NOTES.newest_first };
+  }
+  return { records, order: 'source_order', note: COMMENT_ORDER_NOTES.source_order };
+}
+
 /**
  * @param {Record<string, any>} input
  * @returns {Record<string, any>}
@@ -354,6 +380,9 @@ export function adRecord(input) {
     landing_url: text(input.landing_url),
     media_urls: Array.isArray(input.media_urls) ? input.media_urls : [],
     metrics: input.metrics && typeof input.metrics === 'object' ? input.metrics : undefined,
+    // TikTok Top Ads only: the Creative Center's industry (a name, not a label code) and campaign objective.
+    ...(text(input.industry) ? { industry: text(input.industry) } : {}),
+    ...(text(input.objective) ? { objective: text(input.objective) } : {}),
     ...provenance({ source_type: 'ad_library', ...input }, input.library_url ?? input.url),
   };
 }

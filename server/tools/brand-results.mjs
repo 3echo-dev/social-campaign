@@ -100,7 +100,7 @@ export const brandResultsTools = [
     name: 'brand_results_get',
     description: [
       'Read what the brand\'s posted results say. Changes nothing.',
-      'Returns results (the latest readings, newest first), jobs (each job\'s score, label winner, average, weak or early, posts and views, with the reading behind each post), items (the yours and proven bank items that have results behind them, best first, each with score, uses, label and views),',
+      'Returns results (the latest readings, newest first), jobs (each job\'s score, label winner, average, weak or early, posts and views, with the reading behind each post), items (the yours and proven bank items that have results behind them, best first, each with score, uses, label and views, or likes and measure likes for a post with no views, which Instagram shows a signed-out reader; views and likes are ranked apart, never against each other),',
       'dimensions (the same for the concept source, style, call to action, format, angle, voice and music the filed jobs used), baseline (the brand\'s own medians per platform) and cutoffs.',
       'Pass jobId to see one job. A score of 1.0 is this brand\'s usual. Say the numbers when you use a winner; avoid a weak line unless the person asks.',
     ].join(' '),

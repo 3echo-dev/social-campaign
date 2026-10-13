@@ -103,6 +103,7 @@ export function parseCreativeCenter(html) {
  * @property {string} code a degraded code when records is empty.
  * @property {string} reason
  * @property {{library: string, alternate?: string}} urls
+ * @property {Record<string, any>} [extra] fields the envelope carries as they are (for TikTok Top Ads: list_scope, keyword_applied).
  */
 
 /**
@@ -156,6 +157,8 @@ export class AdLibraryBackend {
             active: true,
             countries: [country],
             primary_text: ad.text ?? null,
+            headline: ad.headline ?? null,
+            cta: ad.cta ?? null,
             source_ref: publicUrl,
             observed_at: observedAt,
             confidence: 0.75,
@@ -229,12 +232,25 @@ export class AdLibraryBackend {
             landing_url: ad.landing ?? null,
             media_urls: [ad.videoUrl, ad.cover].filter(Boolean),
             metrics: { likes: ad.likes ?? null, ctr: ad.ctr ?? null },
+            industry: ad.industryName ?? ad.industry ?? null,
+            objective: ad.objective ?? null,
             source_ref: pub.creativeCenter,
             observed_at: observedAt,
             confidence: 0.8,
           }),
         );
-        return { reached: true, records, code: 'unsupported', reason: '', urls };
+        // The list is the Creative Center's own ranking for the region (or for the keyword, when the page ran that
+        // search). It carries no start dates, so nothing here is ordered by how long an ad has been running.
+        const applied = read.keywordApplied === true;
+        const scope = applied ? 'keyword' : 'region_wide';
+        const reason = applied
+          ? `Creative Center top ads matching the keyword "${query}" in ${country} over the last 30 days, in its own order. It carries no start dates.`
+          : `Creative Center's region-wide top ads list for ${country} over the last 30 days, in its own order, with no start dates. ${read.keywordNote ?? `The keyword "${query}" was not applied.`}`;
+        return { reached: true, records, code: 'unsupported', reason, urls, extra: { list_scope: scope, keyword: query, keyword_applied: applied, dated: false } };
+      }
+      if (read.ok && read.keywordApplied === true) {
+        // The page ran the search and nothing matches the keyword: the answer, so no other reader is tried.
+        return { reached: true, records: [], code: 'empty_page', reason: read.note ?? `Creative Center has no top ads matching "${query}" in ${country} over the last 30 days.`, urls, extra: { list_scope: 'keyword', keyword: query, keyword_applied: true, dated: false, definitive: true } };
       }
       return {
         reached: true,

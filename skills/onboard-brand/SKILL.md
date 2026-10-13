@@ -167,7 +167,7 @@ After that one run the notes are filled or say research found nothing, so the ne
 
 Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (12 searches, 16 fetches and 40 turns, the budget of a campaign job's research), `draftPath`, and `rawDir`, the folder where it saves the text of every page it reads.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
-Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and, having no views, are not filed as top posts), and keeps a saved capture behind every source.
+Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and are filed as top posts with their likes in place of views), and keeps a saved capture behind every source.
 It has no Chrome tools; the Instagram look below is yours.
 The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
 Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
@@ -230,7 +230,7 @@ When no post was saved and Instagram is not the reason, say so once in plain wor
 
 ### Instagram behind a login
 
-The research helper reads a public Instagram account when its stealth reader is installed (followers, bio, recent posts, and likes and comments per post, never views). When that reader is missing or Instagram refuses it, the helper cannot read Instagram without a login, so a brand whose posts are on Instagram has none in its library after the save.
+The research helper reads a public Instagram account when its stealth reader is installed (followers, bio, recent posts, and likes and comments per post, never views; its posts are filed with their likes). When that reader is missing or Instagram refuses it, the helper cannot read Instagram without a login, so a brand whose posts are on Instagram has none in its library after the save.
 Look at its declared Instagram once through the person's own signed-in Chrome, but only when the Claude in Chrome browser tools are among your tools.
 Do it in a background helper, so you keep answering board requests.
 Open the declared profile (its Reels tab when it has one), then at most 3 of its posts, one look each; never reopen a page, never scroll hunting for more, and never open a competitor's page.

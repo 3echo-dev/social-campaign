@@ -29,6 +29,9 @@ export const OUTLIER_RATIO = 3;
 /** Window lengths in days. */
 export const WINDOWS = { '30d': 30, '90d': 90, '180d': 180, all: null };
 
+/** The windows an account that posts rarely is widened through, narrowest first. */
+export const WIDENING = ['30d', '90d', '180d', 'all'];
+
 const DAY_MS = 86_400_000;
 
 /**
@@ -48,6 +51,55 @@ export function median(values) {
  * @property {Array<Record<string, any>>} outliers post records plus outlier_ratio, baseline_median_views and verdict, highest ratio first.
  * @property {string|null} problem why no outliers could be judged, or null.
  */
+
+/**
+ * The windows to try for a requested one: itself, then each wider one up to "all".
+ * @param {'30d'|'90d'|'180d'|'all'} window
+ * @returns {Array<'30d'|'90d'|'180d'|'all'>}
+ */
+export function windowsFrom(window) {
+  const index = WIDENING.indexOf(window);
+  return /** @type {any} */ (index < 0 ? [window] : WIDENING.slice(index));
+}
+
+/**
+ * findOutliers, widening the window while it holds fewer than MIN_BASELINE_SAMPLE settled posts (90 days, then 180,
+ * then the whole listing). An account that posts rarely would otherwise answer "none" for a window it simply did not
+ * fill. A widened answer says so, and is flagged `stale` with the date of its newest post, because the baseline then
+ * reaches back past what was asked and the account has been quiet inside it.
+ * @param {Array<Record<string, any>>} posts
+ * @param {Parameters<typeof findOutliers>[1]} [options]
+ * @returns {OutlierResult}
+ */
+export function findOutliersWidening(posts, options = {}) {
+  const requested = options.window ?? '90d';
+  let result = findOutliers(posts, { ...options, window: requested });
+  const requestedSample = result.baseline.sample;
+  let used = requested;
+  if (result.baseline.sample < MIN_BASELINE_SAMPLE) {
+    for (const wider of windowsFrom(requested).slice(1)) {
+      const next = findOutliers(posts, { ...options, window: wider });
+      result = next;
+      used = wider;
+      if (next.baseline.sample >= MIN_BASELINE_SAMPLE) break;
+    }
+  }
+  const widened = used !== requested;
+  const days = WINDOWS[requested];
+  const now = options.now ?? Date.now();
+  const cutoff = days === null || days === undefined ? -Infinity : now - days * DAY_MS;
+  result.baseline.requested_window = requested;
+  result.baseline.requested_sample = requestedSample;
+  result.baseline.widened = widened;
+  result.baseline.stale = widened && result.baseline.dated;
+  if (widened) {
+    result.outliers = result.outliers.map((post) => {
+      const at = post.posted_at ? Date.parse(post.posted_at) : NaN;
+      return Number.isFinite(at) && at < cutoff ? { ...post, outside_requested_window: true } : post;
+    });
+  }
+  return result;
+}
 
 /**
  * Rank a set of one account's posts against that account's own baseline.
@@ -88,6 +140,7 @@ export function findOutliers(posts, options = {}) {
     candidates.push({ post, views, settled });
   }
 
+  const datedMs = posts.map((post) => (post.posted_at ? Date.parse(post.posted_at) : NaN)).filter(Number.isFinite);
   const baselineViews = candidates.filter((entry) => entry.settled).map((entry) => entry.views);
   const medianViews = median(baselineViews);
   const baseline = {
@@ -101,6 +154,10 @@ export function findOutliers(posts, options = {}) {
     excluded_recent: recent,
     excluded_no_views: noViews,
     outside_window: outsideWindow,
+    // The newest dated post considered (YYYY-MM-DD), or null when none of them carries a date.
+    newest_post_at: datedMs.length > 0 ? new Date(Math.max(...datedMs)).toISOString().slice(0, 10) : null,
+    // False when the listing carries no dates at all (YouTube's Shorts tab): the posts are the latest ones, undated.
+    dated: datedMs.length > 0,
     method: `median ${measure} of the account's own posts from the ${window === 'all' ? 'whole listing' : options.includeUndated ? 'whole listing (it carries no dates)' : `last ${days} days`}, leaving out posts younger than ${SETTLE_DAYS} days; ratio = post ${measure} / median`,
   };
 

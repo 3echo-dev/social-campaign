@@ -3,6 +3,12 @@
 // Once a platform host has refused us (bot check, login wall, rate limit,
 // repeated timeouts) every other route in this process skips it for 15 minutes
 // instead of hammering it again and stalling the run. In memory, per process.
+//
+// A key is the host alone (the downloads, the single URL verify and the video watcher share it) or the host plus a
+// scope (`tiktok.com#stealth:profile`). The research router scopes every read to its own backend and kind of read, so
+// a flaky embed, a login wall on one Instagram topic page or a tag page that always answers a bot check can never
+// silence a different route to the same host (live 2026-10-14: one multi word Instagram search took down every
+// Instagram read for 15 minutes, and two TikTok tag reads took down the profile reader and the single URL verify).
 
 /** Failure classes that will not heal by retrying right away. */
 export const NON_HEALING = new Set(['bot_check', 'blocked', 'login_required', 'rate_limited', 'timed_out']);
@@ -53,18 +59,23 @@ export class Breaker {
     this.hosts = new Map();
   }
 
-  /** @param {string} host */
-  _key(host) {
+  /**
+   * @param {string} host
+   * @param {string} [scope] a route of that host (a backend and a kind of read); none means the host as a whole.
+   */
+  _key(host, scope) {
     const h = String(host || '');
-    return normaliseHost(h.includes('/') ? hostOf(h) : h);
+    const base = normaliseHost(h.includes('/') ? hostOf(h) : h);
+    return base && scope ? `${base}#${scope}` : base;
   }
 
   /**
    * @param {string} host
+   * @param {string} [scope]
    * @returns {{ open: boolean, code?: string, reason?: string, retryAfterMs?: number }}
    */
-  isOpen(host) {
-    const key = this._key(host);
+  isOpen(host, scope) {
+    const key = this._key(host, scope);
     const e = key && this.hosts.get(key);
     if (!e || !e.openUntil) return { open: false };
     const left = e.openUntil - this.now();
@@ -79,9 +90,10 @@ export class Breaker {
    * @param {string} host
    * @param {string} code
    * @param {string} [reason]
+   * @param {string} [scope]
    */
-  recordFailure(host, code, reason = '') {
-    const key = this._key(host);
+  recordFailure(host, code, reason = '', scope) {
+    const key = this._key(host, scope);
     if (!key || !NON_HEALING.has(code)) return;
     const now = this.now();
     const e = this.hosts.get(key) || { fails: [], openUntil: 0, code, reason: '' };
@@ -96,9 +108,12 @@ export class Breaker {
     this.hosts.set(key, e);
   }
 
-  /** @param {string} host */
-  recordSuccess(host) {
-    const key = this._key(host);
+  /**
+   * @param {string} host
+   * @param {string} [scope]
+   */
+  recordSuccess(host, scope) {
+    const key = this._key(host, scope);
     if (key) this.hosts.delete(key);
   }
 

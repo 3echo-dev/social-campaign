@@ -17,7 +17,7 @@
  * change that removes the JSON lowers coverage instead of failing the read.
  */
 
-import { envelopeCode, parseHumanCount, postRecord, profileRecord } from '../records.mjs';
+import { commentRecord, envelopeCode, parseHumanCount, postRecord, profileRecord } from '../records.mjs';
 import { parseInstagramPostDescription, parseInstagramProfileDescription } from './public_page.mjs';
 
 /** Longest one Instagram page read may take (the worker's own limit is 3 s shorter). */
@@ -68,6 +68,37 @@ export function popularTopicSlug(query) {
     .replace(/^#/, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}_]/gu, '');
+}
+
+/**
+ * What Instagram topic page a search query can be read from. Instagram's /popular/<topic>/ pages are single hashtags:
+ * "kayatoast" has one, "kaya toast singapore" does not, and building a slug out of a longer phrase sends the reader to a
+ * page that does not exist, which Instagram answers with its sign-in wall (live 2026-10-14).
+ *
+ * One word is its own hashtag. Two words are read as the one hashtag people write them as (#kayatoast). Three words or
+ * more have no best single hashtag, so the query is refused plainly, with hashtags to try instead.
+ * @param {string} query a topic, a #hashtag or a phrase.
+ * @returns {{ok: true, slug: string, joined: boolean, note: string|null}|{ok: false, reason: string, suggestions: string[]}}
+ */
+export function instagramTopic(query) {
+  const text = String(query ?? '').trim();
+  const words = text
+    .replace(/^#+/, '')
+    .split(/[\s,;|/+&]+/u)
+    .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}_]/gu, ''))
+    .filter(Boolean);
+  if (words.length === 0) return { ok: false, reason: 'Say a topic or #hashtag made of letters and digits.', suggestions: [] };
+  if (words.length === 1) return { ok: true, slug: words[0], joined: false, note: null };
+  if (words.length === 2) {
+    const slug = words.join('');
+    return { ok: true, slug, joined: true, note: `Instagram topic pages are single hashtags, so "${text}" was read as #${slug}.` };
+  }
+  const suggestions = [...new Set([words.slice(0, 2).join(''), words.slice(-2).join(''), words[0]])].map((tag) => `#${tag}`);
+  return {
+    ok: false,
+    reason: `Instagram topic pages are single hashtags, and "${text}" is ${words.length} words with no single hashtag to read it as. Search one hashtag at a time, for example ${suggestions.join(', ')}.`,
+    suggestions,
+  };
 }
 
 /**
@@ -197,6 +228,41 @@ export function postFromPage(page, url, observedAt) {
   record.url = url.replace(/[?#].*$/, '');
   record.thumbnail_url = typeof meta['og:image'] === 'string' && meta['og:image'] ? meta['og:image'] : typeof meta['twitter:image'] === 'string' ? meta['twitter:image'] : null;
   return record;
+}
+
+/**
+ * The first comments of a post, from the comments its page embeds for a signed out visitor (newest first, around a
+ * dozen, photo posts and carousels included), plus the post's comment total.
+ * @param {Record<string, any>} page the worker's page result.
+ * @param {string} url the address that was read.
+ * @param {string} observedAt
+ * @returns {{records: Array<Record<string, any>>, total: number|null}}
+ */
+export function commentsFromPage(page, url, observedAt) {
+  const facts = page.instagram && typeof page.instagram === 'object' ? page.instagram : { media: [] };
+  const code = instagramPostCode(url);
+  const media = (Array.isArray(facts.media) ? facts.media : []).find((entry) => entry?.code === code) ?? null;
+  const sourceRef = page.finalUrl || url;
+  const postUrl = url.replace(/[?#].*$/, '');
+  const records = (Array.isArray(facts.comments) ? facts.comments : [])
+    .filter((comment) => comment && typeof comment.text === 'string')
+    .map((comment) =>
+      commentRecord({
+        platform: 'instagram',
+        post_url: postUrl,
+        url: postUrl,
+        comment_id: comment.id || null,
+        author_handle: comment.username ?? null,
+        text: comment.text,
+        likes: comment.likes,
+        replies: comment.replies,
+        posted_at: comment.createdAt,
+        source_ref: sourceRef,
+        observed_at: observedAt,
+        confidence: 0.85,
+      }),
+    );
+  return { records, total: typeof media?.comments === 'number' ? media.comments : null };
 }
 
 /**

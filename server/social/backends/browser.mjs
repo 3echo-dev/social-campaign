@@ -279,7 +279,7 @@ export class BrowserBackend {
     const outcome = await this.fetch({ url, extract: 'text' });
     if (!outcome.ok) return outcome;
     const mapped = mapBlocked(outcome.result);
-    if (mapped) return mapped;
+    if (mapped && !isFalseBotCheck(outcome.result)) return mapped;
     const { result } = outcome;
     const fetchedAt = new Date().toISOString();
     const record = pageRecord({
@@ -409,6 +409,27 @@ function firstOfType(blocks, types) {
     }
   }
   return null;
+}
+
+/** Wording that a bot check or challenge page shows its visitor. A normal page does not say any of it. */
+const CHALLENGE_WORDING = /checking your browser|just a moment|are you a (robot|human)|verify you are (a )?human|access denied|attention required|unusual traffic|captcha|cf-challenge|challenge-platform|enable javascript and cookies/i;
+
+/**
+ * Whether a `bot_check` flag from the worker is a false alarm. The worker looks for the word "captcha"
+ * in the first 20 KB of the page's HTML, so a normal page that merely loads reCAPTCHA for its sign up form
+ * (duolingo.com) is flagged although it rendered completely. A real challenge page is a short answer to a
+ * refused request that says so in words a visitor can read; a 2xx page with plenty of text and none of that
+ * wording is the page itself.
+ * @param {Record<string, any>} result
+ * @returns {boolean}
+ */
+function isFalseBotCheck(result) {
+  if (result?.reason !== 'bot_check') return false;
+  const status = Number(result.status ?? 0);
+  if (status < 200 || status >= 300) return false;
+  const text = String(result.text ?? '');
+  if (text.trim().length < 400) return false;
+  return !CHALLENGE_WORDING.test(`${result.title ?? ''}\n${text}`);
 }
 
 /**

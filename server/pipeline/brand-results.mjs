@@ -29,16 +29,21 @@
  *     click rate ratio     = ctr / median ctr                                       weight 0.4
  *     cost ratio           = roas / median roas, else median cost per result / cost per result (cheaper is better)   weight 0.6
  *   Each ratio is capped at 4, a missing one is left out, and the score is the weighted average of the ones there are.
+ *   Instagram shows a signed-out reader likes but no views. A post read with likes and no views is scored on its likes in the views
+ *   slot (weight 0.5), against the median likes of the brand's other likes-only posts on that platform, never against views. Views and
+ *   likes are different measures, so everything that ranks says which one a row uses (measure: views, likes or mixed), ranks within
+ *   each measure (the likes-only rows come after the others at the same standing) and prints "N likes" where it prints "N views".
  *   A job's score is the average of its posts' scores (grown-up ones when it has any). An item's score (an opening line, a style, a
  *   call to action, a format, an angle) is the average of the scores of the jobs that used it, and `uses` is how many jobs that is.
- * "Early": a post under 48 hours old, with fewer than 100 views (an ad: under 1000 impressions), or on a platform where the brand has
+ * "Early": a post under 48 hours old, with fewer than 100 views (an ad: under 1000 impressions; a likes-only post: under 10 likes), or on a platform where the brand has
  * fewer than 3 grown-up posts to compare with. An early post is scored when there is a baseline, but it never counts toward one, and an
  * item that rests only on early posts is labelled early.
  * Labels (needs 3 grown-up jobs, so a "top quartile" means something): winner = top quartile of the brand's job scores and at least
  * 1.25; weak = bottom quartile and at most 0.7; average = the rest.
  *
- * A job that becomes a winner has its opening line promoted to bank/proven (source 'brand', evidence {url, views, date},
- * promotedFrom: jobId), once: a line already in the bank, or one the person removed, is left alone.
+ * A job that becomes a winner has its opening line promoted to bank/proven (source 'brand', evidence {url, views, date}, or
+ * {url, likes, date} when its best post has likes and no views, promotedFrom: jobId), once: a line already in the bank, or one the
+ * person removed, is left alone.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -59,13 +64,14 @@ export const MIN_BASELINE_POSTS = 3;
 export const MIN_LABEL_JOBS = 3;
 export const EARLY_HOURS = 48;
 export const EARLY_VIEWS = 100;
+export const EARLY_LIKES = 10;
 export const EARLY_IMPRESSIONS = 1000;
 export const SCORE_CAP = 4;
 export const WINNER_MIN = 1.25;
 export const WEAK_MAX = 0.7;
 export const SCORE_WEIGHTS = Object.freeze({ views: 0.5, watch: 0.3, saveShare: 0.2, ctr: 0.4, cost: 0.6 });
 /** The one-paragraph version of the formula, for the tool replies. */
-export const SCORE_WORDS = '1.0 is this brand\'s usual on that platform. A post is views (50%), watch-through (30%) and saves plus shares per view (20%), each divided by the brand\'s median; an ad is click rate (40%) and cost per result or return on ad spend (60%). Under 48 hours, under 100 views (ads: 1000 impressions) or fewer than 3 posts to compare with is early. A winner is in the top quarter of the brand\'s jobs and at least 1.25; weak is the bottom quarter and at most 0.7.';
+export const SCORE_WORDS = '1.0 is this brand\'s usual on that platform. A post is views (50%), watch-through (30%) and saves plus shares per view (20%), each divided by the brand\'s median; an ad is click rate (40%) and cost per result or return on ad spend (60%). Under 48 hours, under 100 views (ads: 1000 impressions) or fewer than 3 posts to compare with is early. A winner is in the top quarter of the brand\'s jobs and at least 1.25; weak is the bottom quarter and at most 0.7. A post with likes and no views (Instagram shows signed-out readers no views) is scored on its likes against the brand\'s other likes-only posts, and every row says its measure (views, likes or mixed); rows are ranked within a measure, never views against likes.';
 
 const HOUR_MS = 60 * 60 * 1000;
 const TEXT_LIMIT = 600;
@@ -275,11 +281,23 @@ function partsOf(row) {
     return parts;
   }
   if (isNum(m.views)) parts.push({ key: 'views', group: 'views', value: m.views, invert: false });
+  else if (isNum(m.likes)) parts.push({ key: 'likes', group: 'views', value: m.likes, invert: false });
   if (isNum(m[WATCH_PCT])) parts.push({ key: WATCH_PCT, group: 'watch', value: m[WATCH_PCT], invert: false });
   else if (isNum(m[WATCH_SEC])) parts.push({ key: WATCH_SEC, group: 'watch', value: m[WATCH_SEC], invert: false });
   if (m.views > 0 && (isNum(m.saves) || isNum(m.shares))) parts.push({ key: 'saveShare', group: 'saveShare', value: (((m.saves || 0) + (m.shares || 0)) / m.views) * 1000, invert: false });
   return parts;
 }
+
+/** What a reading counts: views, likes when it has likes and no views (Instagram), or null (an ad, or a reading with neither). */
+const measureOf = row => (row.paid ? null : isNum(row.metrics.views) ? 'views' : isNum(row.metrics.likes) ? 'likes' : null);
+/** One measure for several readings or rows: the one they share, 'mixed' when they differ, null when none counts anything. */
+function sharedMeasure(measures) {
+  const kinds = new Set(measures.filter(Boolean));
+  return kinds.size > 1 ? 'mixed' : [...kinds][0] ?? null;
+}
+/** Rows are ranked within a measure: the ones that count only likes come after the others. */
+const likesSide = row => (row.measure === 'likes' ? 1 : 0);
+const countOf = (value, word) => `${value.toLocaleString('en-US')} ${word}`;
 
 function ageHours(row) {
   const from = Date.parse(row.postedAt || '');
@@ -291,7 +309,9 @@ function ageHours(row) {
 function isEarly(row) {
   const m = row.metrics;
   const sample = row.paid ? m.impressions : (m.views ?? m.reach ?? m.impressions);
+  const likesOnly = !row.paid && !isNum(sample) && isNum(m.likes);
   const age = ageHours(row);
+  if (likesOnly) return m.likes < EARLY_LIKES || (age !== null && age < EARLY_HOURS);
   return !isNum(sample) || sample < (row.paid ? EARLY_IMPRESSIONS : EARLY_VIEWS) || (age !== null && age < EARLY_HOURS);
 }
 
@@ -336,7 +356,8 @@ function summarise(units) {
   const grown = scored.filter(unit => !unit.early);
   const pool = grown.length ? grown : scored;
   const views = units.map(unit => unit.row.metrics.views).filter(isNum);
-  return { score: pool.length ? mean(pool.map(unit => unit.score)) : null, early: !grown.length, posts: units.length, views: views.length ? sum(views) : null };
+  const likes = units.filter(unit => unit.measure === 'likes').map(unit => unit.row.metrics.likes);
+  return { score: pool.length ? mean(pool.map(unit => unit.score)) : null, early: !grown.length, posts: units.length, views: views.length ? sum(views) : null, likes: likes.length ? sum(likes) : null, measure: sharedMeasure(units.map(unit => unit.measure)) };
 }
 
 /** Several jobs' results for one thing, averaged: { score, early, uses, views } or null when no job is in it. */
@@ -346,7 +367,8 @@ function aggregate(entries) {
   const early = entries.filter(entry => entry.score !== null && entry.early);
   const pool = grown.length ? grown : early.length ? early : entries;
   const views = pool.map(entry => entry.views).filter(isNum);
-  return { score: grown.length || early.length ? mean(pool.map(entry => entry.score)) : null, early: !grown.length, uses: pool.length, views: views.length ? sum(views) : null };
+  const likes = pool.map(entry => entry.likes).filter(isNum);
+  return { score: grown.length || early.length ? mean(pool.map(entry => entry.score)) : null, early: !grown.length, uses: pool.length, views: views.length ? sum(views) : null, likes: likes.length ? sum(likes) : null, measure: sharedMeasure(pool.map(entry => entry.measure)) };
 }
 
 function labelOf(summary, cutoffs) {
@@ -360,7 +382,7 @@ function labelOf(summary, cutoffs) {
 const NONE = Object.freeze({ score: null, uses: 0, label: null });
 function statOf(summary, cutoffs) {
   if (!summary) return NONE;
-  return { score: summary.score === null ? null : round(summary.score, 2), uses: summary.uses ?? summary.posts, label: labelOf(summary, cutoffs), ...(isNum(summary.views) ? { views: summary.views } : {}) };
+  return { score: summary.score === null ? null : round(summary.score, 2), uses: summary.uses ?? summary.posts, label: labelOf(summary, cutoffs), ...(isNum(summary.views) ? { views: summary.views } : {}), ...(isNum(summary.likes) ? { likes: summary.likes } : {}), ...(summary.measure ? { measure: summary.measure } : {}) };
 }
 
 // ---------------------------------------------------------------- what a filed job used
@@ -411,7 +433,7 @@ function rankingContext(root, brand) {
   const rows = readResults({ root, brand });
   if (!rows.length) return { empty: true, jobs: [], baseline: [], cutoffs: { labels: false, matureJobs: 0, winner: WINNER_MIN, weak: WEAK_MAX } };
   const filed = new Map(readFiledJobs({ root, brand }).map(record => [record.jobId, record]));
-  const units = latestReadings(rows).map(row => ({ row, parts: partsOf(row), early: isEarly(row) }));
+  const units = latestReadings(rows).map(row => ({ row, parts: partsOf(row), early: isEarly(row), measure: measureOf(row) }));
   const bases = baselinesOf(units);
   for (const unit of units) unit.score = scoreUnit(unit, bases.get(`${unit.row.platform}\u0000${unit.row.paid ? 'paid' : 'organic'}`));
   const byJob = new Map();
@@ -434,7 +456,7 @@ function itemStat(item, context) {
   const entries = [];
   for (const job of context.jobs) {
     const units = job.units.filter(unit => matchesItem(item, job, unit));
-    if (units.length) { const summary = summarise(units); entries.push({ score: summary.score, early: summary.early, views: summary.views }); }
+    if (units.length) { const summary = summarise(units); entries.push({ score: summary.score, early: summary.early, views: summary.views, likes: summary.likes, measure: summary.measure }); }
   }
   return statOf(aggregate(entries), context.cutoffs);
 }
@@ -442,21 +464,24 @@ function itemStat(item, context) {
 function jobStat(job, context) {
   return {
     jobId: job.jobId, title: job.title, filed: job.filed, score: job.score === null ? null : round(job.score, 2), label: job.label, early: job.early, posts: job.posts,
-    views: job.views, at: job.at,
+    views: job.views, ...(isNum(job.likes) ? { likes: job.likes } : {}), ...(job.measure ? { measure: job.measure } : {}), at: job.at,
     units: job.units.map(unit => ({
       platform: unit.row.platform, paid: unit.row.paid === true, ...(unit.row.postUrl ? { postUrl: unit.row.postUrl } : {}), ...(unit.row.adId ? { adId: unit.row.adId } : {}),
       ...(unit.row.variant ? { variant: unit.row.variant } : {}), ...(unit.row.postedAt ? { postedAt: unit.row.postedAt } : {}), at: unit.row.at, source: unit.row.source,
-      score: unit.score === null ? null : round(unit.score, 2), early: unit.early, metrics: unit.row.metrics,
+      score: unit.score === null ? null : round(unit.score, 2), early: unit.early, ...(unit.measure ? { measure: unit.measure } : {}), metrics: unit.row.metrics,
     })),
     ...(job.score === null ? { note: `Not enough posts to compare yet: a platform needs ${MIN_BASELINE_POSTS} posts at least ${EARLY_HOURS / 24} days old with ${EARLY_VIEWS} or more views (ads: ${EARLY_IMPRESSIONS} impressions) before its posts are scored.` }
       : context.cutoffs.labels ? {} : { note: `Winners and weak lines are called once ${MIN_LABEL_JOBS} jobs have results that are not early.` }),
   };
 }
 
-/** Items in the order they should be offered: grown-up scores high to low, then early ones, then the unscored in the order they came. */
+/**
+ * Items in the order they should be offered: grown-up scores high to low, then early ones, then the unscored in the order they came.
+ * Within a tier the items that count only likes come after the rest, so views and likes are never ranked against each other.
+ */
 function order(rows) {
   const tier = row => (row.stat.score === null ? 2 : row.stat.label === 'early' ? 1 : 0);
-  return rows.sort((a, b) => tier(a) - tier(b) || (tier(a) < 2 ? b.stat.score - a.stat.score : 0) || a.index - b.index);
+  return rows.sort((a, b) => tier(a) - tier(b) || (tier(a) < 2 ? likesSide(a.stat) - likesSide(b.stat) || b.stat.score - a.stat.score : 0) || a.index - b.index);
 }
 
 /**
@@ -488,13 +513,13 @@ export function rankBank({ root, brand } = {}) {
       if (!key) continue;
       const id = `${dimension}\u0000${key}`;
       if (!groups.has(id)) groups.set(id, { dimension, key, entries: [] });
-      groups.get(id).entries.push({ score: job.score, early: job.early, views: job.views });
+      groups.get(id).entries.push({ score: job.score, early: job.early, views: job.views, likes: job.likes, measure: job.measure });
     }
   }
   const dimensions = {};
   for (const group of groups.values()) (dimensions[group.dimension] ||= []).push({ key: group.key, ...statOf(aggregate(group.entries), context.cutoffs) });
-  for (const list of Object.values(dimensions)) list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.key.localeCompare(b.key));
-  const jobs = context.jobs.map(job => jobStat(job, context)).sort((a, b) => Number(a.early) - Number(b.early) || (b.score ?? -1) - (a.score ?? -1) || String(b.at).localeCompare(String(a.at)));
+  for (const list of Object.values(dimensions)) list.sort((a, b) => likesSide(a) - likesSide(b) || (b.score ?? -1) - (a.score ?? -1) || a.key.localeCompare(b.key));
+  const jobs = context.jobs.map(job => jobStat(job, context)).sort((a, b) => Number(a.early) - Number(b.early) || likesSide(a) - likesSide(b) || (b.score ?? -1) - (a.score ?? -1) || String(b.at).localeCompare(String(a.at)));
   return {
     brand, hasResults: !context.empty,
     cutoffs: { labels: context.cutoffs.labels, grownUpJobs: context.cutoffs.matureJobs, winnerAtLeast: round(context.cutoffs.winner, 2), weakAtMost: round(context.cutoffs.weak, 2) },
@@ -508,24 +533,30 @@ export function jobResults({ root, brand } = {}) {
   const out = new Map();
   try {
     const context = rankingContext(root, brand);
-    for (const job of context.jobs) out.set(job.jobId, { score: job.score === null ? null : round(job.score, 2), label: job.label, early: job.early, posts: job.posts, ...(isNum(job.views) ? { views: job.views } : {}), at: job.at });
+    for (const job of context.jobs) out.set(job.jobId, { score: job.score === null ? null : round(job.score, 2), label: job.label, early: job.early, posts: job.posts, ...(isNum(job.views) ? { views: job.views } : {}), ...(isNum(job.likes) ? { likes: job.likes } : {}), ...(job.measure ? { measure: job.measure } : {}), at: job.at });
   } catch { /* a results file that cannot be read is none */ }
   return out;
 }
 
-/** A short plain description of an item's stat for an agent: "2.3x this brand's usual (3 posts, 45,200 views)". */
+/**
+ * A short plain description of an item's stat for an agent: "2.3x this brand's usual (3 posts, 45,200 views)". A stat that counts
+ * only likes (Instagram shows no views) says so: "2.3x this brand's usual likes (1 post, 954 likes)"; one that has both says which
+ * count belongs to which posts: "(3 posts, 45,200 views, 954 likes on the posts with no views)".
+ */
 export function describeStat(stat) {
   if (!stat || !stat.uses) return '';
   const posts = `${stat.uses} ${stat.uses === 1 ? 'post' : 'posts'}`;
-  const views = isNum(stat.views) ? `, ${stat.views.toLocaleString('en-US')} views` : '';
-  if (stat.label === 'early' || stat.score === null) return `too early to call (${posts}${views})`;
-  return `${stat.score.toFixed(1)}x this brand's usual (${posts}${views})`;
+  const likesOnly = stat.measure === 'likes';
+  const counts = [isNum(stat.views) ? countOf(stat.views, 'views') : null, isNum(stat.likes) ? countOf(stat.likes, isNum(stat.views) ? 'likes on the posts with no views' : 'likes') : null].filter(Boolean);
+  const detail = [posts, ...counts].join(', ');
+  if (stat.label === 'early' || stat.score === null) return `too early to call (${detail})`;
+  return `${stat.score.toFixed(1)}x this brand's usual${likesOnly ? ' likes' : ''} (${detail})`;
 }
 
 // ---------------------------------------------------------------- winners go to the proven bank
 /**
- * Promote the opening line of every winning job to bank/proven (kind hook, source 'brand', evidence {url, views, date}, promotedFrom
- * the job). Safe to run any time: a line already in the bank, one the person removed, or one promoted before is left alone.
+ * Promote the opening line of every winning job to bank/proven (kind hook, source 'brand', evidence {url, views, date} or, for a best post
+ * that has likes and no views, {url, likes, date}, promotedFrom the job). Safe to run any time: a line already in the bank, one the person removed, or one promoted before is left alone.
  * Returns { promoted: [{ jobId, item }], skipped: [{ jobId, reason }] }; a winner with no opening line or no link to its post is skipped.
  */
 export function promoteWinners({ root, brand, now } = {}) {
@@ -534,17 +565,18 @@ export function promoteWinners({ root, brand, now } = {}) {
   if (context.empty) return out;
   for (const job of context.jobs) {
     if (job.label !== 'winner') continue;
-    const best = job.units.filter(unit => !unit.row.paid && unit.row.postUrl && runtime.webLink(unit.row.postUrl)).sort((a, b) => (b.row.metrics.views ?? -1) - (a.row.metrics.views ?? -1))[0]
+    const best = job.units.filter(unit => !unit.row.paid && unit.row.postUrl && runtime.webLink(unit.row.postUrl)).sort((a, b) => (isNum(a.row.metrics.views) ? 0 : 1) - (isNum(b.row.metrics.views) ? 0 : 1) || (b.row.metrics.views ?? b.row.metrics.likes ?? -1) - (a.row.metrics.views ?? a.row.metrics.likes ?? -1))[0]
       || job.units.filter(unit => unit.row.postUrl && runtime.webLink(unit.row.postUrl))[0];
     const line = best ? hookOf(best, job.traits) : job.traits.hook;
     if (!line) { out.skipped.push({ jobId: job.jobId, reason: 'no opening line is filed for this job' }); continue; }
     if (!best) { out.skipped.push({ jobId: job.jobId, reason: 'no link to the post' }); continue; }
     const had = readBank({ root, brand, bank: 'proven', kind: 'hook', includeRemoved: true, ranked: false }).find(item => item.promotedFrom === job.jobId || sameText(item.text, line));
     if (had) continue;
-    const views = best.row.metrics.views;
+    const { views, likes } = best.row.metrics;
+    const date = String(best.row.postedAt || best.row.at).slice(0, 10);
     const added = addToBank({
       root, brand, bank: 'proven', kind: 'hook', text: line, source: 'brand', jobId: job.jobId, promotedFrom: job.jobId, now,
-      evidence: { url: best.row.postUrl, views: isNum(views) ? views : null, date: String(best.row.postedAt || best.row.at).slice(0, 10) },
+      evidence: !isNum(views) && isNum(likes) ? { url: best.row.postUrl, likes, date } : { url: best.row.postUrl, views: isNum(views) ? views : null, date },
     });
     if (added.saved) out.promoted.push({ jobId: job.jobId, item: added.item });
   }

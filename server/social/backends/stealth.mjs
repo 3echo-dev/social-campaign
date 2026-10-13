@@ -40,8 +40,11 @@ import { killTree } from './ytdlp.mjs';
  */
 export const STEALTH_TIMEOUT_MS = 75_000;
 
-/** Longest a Creative Center call may run. */
-export const STEALTH_TOP_ADS_TIMEOUT_MS = 40_000;
+/**
+ * Longest a Creative Center call may run: the page load, then (for a keyword) the visit to its search box and the wait
+ * for the list it asks for.
+ */
+export const STEALTH_TOP_ADS_TIMEOUT_MS = 60_000;
 
 /** Largest stdout the worker may produce before it is cut off. */
 export const STEALTH_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;

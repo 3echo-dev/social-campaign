@@ -23,6 +23,9 @@ const PLATFORMS = ['tiktok', 'instagram', 'facebook'];
 /** Account reads (a profile and its outliers) also cover YouTube channels: yt-dlp lists a channel's Shorts. */
 const ACCOUNT_PLATFORMS = [...PLATFORMS, 'youtube'];
 
+/** Search also covers YouTube: yt-dlp's `ytsearch` lists Shorts for a keyword. */
+const SEARCH_PLATFORMS = [...PLATFORMS, 'youtube'];
+
 /**
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @returns {import('node:sqlite').DatabaseSync|null}
@@ -148,7 +151,9 @@ export const socialTools = [
   }),
   defineTool({
     name: 'social_comments_get',
-    description: 'Read the public comments on one post, most engaged first, for audience and objection research.',
+    description:
+      'Read the public comments on one post, for audience and objection research. Sorted by like count when the platform gives counts, otherwise newest first ' +
+      '(comment_order says which; Instagram shows a signed out reader the first dozen or so comments of a post, newest first, photo posts included).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,12 +167,15 @@ export const socialTools = [
   }),
   defineTool({
     name: 'social_search',
-    description: 'Find public posts or accounts on one platform that match a topic, hashtag or phrase.',
+    description:
+      'Find public posts or accounts on one platform that match a topic, hashtag or phrase. ' +
+      'YouTube: Shorts for a keyword, ranked by views (no dates). Instagram: one hashtag or two words read as one hashtag (a longer phrase is refused with hashtags to try); reels with play counts, no dates. ' +
+      'TikTok: a #hashtag returns its totals only (its posts are not readable), a keyword is not open to signed out readers.',
     inputSchema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', enum: PLATFORMS },
-        query: { type: 'string', description: 'A topic, #hashtag or phrase.' },
+        platform: { type: 'string', enum: SEARCH_PLATFORMS },
+        query: { type: 'string', description: 'A topic, #hashtag or phrase. Instagram needs one hashtag (or two words).' },
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Default 20.' },
       },
       required: ['platform', 'query'],
@@ -175,7 +183,7 @@ export const socialTools = [
     },
     handler: (args, context) =>
       routerFor(context).search({
-        platform: oneOf(args.platform, PLATFORMS, 'platform'),
+        platform: oneOf(args.platform, SEARCH_PLATFORMS, 'platform'),
         query: String(args.query),
         limit: integerIn(args.limit, 'limit', 1, 50, 20),
       }),
@@ -208,7 +216,9 @@ export const socialTools = [
   defineTool({
     name: 'social_ad_search',
     description:
-      'Look up the ads an advertiser is running, or ads matching a phrase, in the public Meta or TikTok ad libraries.',
+      'Look up the ads an advertiser is running, or ads matching a phrase, in the public Meta or TikTok ad libraries. ' +
+      'Meta ads come with the page (advertiser) name, the ad copy and the start date. TikTok Top Ads is the Creative Center ranking: the keyword is typed into its search box (brand or product words), ' +
+      'it has no start dates, and when the keyword cannot be applied the list is the region-wide one and says so (list_scope).',
     inputSchema: {
       type: 'object',
       properties: {

@@ -94,6 +94,24 @@ export function postFromEmbed(videoData, observedAt, sourceRef) {
   });
 }
 
+/**
+ * Whether a profile read is the empty shell TikTok sends for a handle nobody owns (or a deleted one): no followers, no
+ * videos and nothing listed. A real account always has at least one of the three.
+ * @param {{followers: number|null, videos: number|null, posts: number}} facts
+ * @returns {boolean}
+ */
+export function isEmptyAccount(facts) {
+  return facts.followers === 0 && facts.videos === 0 && facts.posts === 0;
+}
+
+/**
+ * @param {string} handle
+ * @returns {string}
+ */
+export function emptyAccountReason(handle) {
+  return `TikTok has no public account called @${handle}: the page answered with an empty profile (0 followers, 0 videos).`;
+}
+
 /** Most comment pages read for one post; a fourth page is never worth the wait. */
 export const COMMENT_PAGES_MAX = 3;
 
@@ -184,6 +202,9 @@ export class TikTokPublicBackend {
     }
     if (user.privateAccount) {
       return { ok: false, code: 'login_required', reason: `@${handle} is a private TikTok account.`, trip: false };
+    }
+    if (isEmptyAccount({ followers: toCount(user.followerCount), videos: toCount(user.videoCount), posts: Array.isArray(data.videoList) ? data.videoList.length : 0 })) {
+      return { ok: false, code: 'not_found', reason: emptyAccountReason(handle), trip: false };
     }
     const sourceRef = `${TIKTOK_BASE_URL}/embed/@${user.uniqueId}`;
     const profile = profileRecord({

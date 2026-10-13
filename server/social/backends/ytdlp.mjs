@@ -23,6 +23,9 @@ import { postRecord, profileRecord, commentRecord, toCount, toIso } from '../rec
 /** Longest a single yt-dlp metadata read may take. */
 export const YTDLP_TIMEOUT_MS = 30_000;
 
+/** A YouTube Short may run up to three minutes. */
+export const SHORT_MAX_S = 180;
+
 /** Most output read from one yt-dlp run. A 50 post listing is well under 1 MB. */
 export const YTDLP_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -211,6 +214,12 @@ export function mapYtDlpError(run, platform) {
   return { code: 'download_failed', reason: last ? `yt-dlp could not read this ${name} address: ${last}` : `yt-dlp could not read this ${name} address.`, trip: true };
 }
 
+/** yt-dlp's answer for a channel that has no such tab: "This channel does not have a shorts tab". */
+const NO_TAB = /does not have an? (shorts|videos|streams|live) tab/i;
+
+/** yt-dlp's answer for an Instagram post with no video in it (a photo or a carousel of photos). */
+const NO_VIDEO_FORMATS = /no video formats found/i;
+
 /** The codes the research router understands; the newer yt-dlp codes read as `blocked`, `unsupported` or `blocked` there. */
 const ROUTER_CODE = { save_failed: 'unsupported', ffmpeg_missing: 'unsupported', impersonation_missing: 'blocked', download_failed: 'blocked' };
 
@@ -366,7 +375,12 @@ export class YtDlpBackend {
   async listing(url, platform, limit) {
     const run = await this.run(['--flat-playlist', '-J', '--playlist-end', String(limit), url], platform);
     const info = run.ok ? parseInfo(run.stdout) : null;
-    if (!info || !Array.isArray(info.entries)) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
+    if (!info || !Array.isArray(info.entries)) {
+      // A channel with no Shorts (or Videos) tab is a channel that has none: empty, not a refusal, and nothing to trip.
+      const tab = `${run.stderr}`.match(NO_TAB)?.[1]?.toLowerCase();
+      if (tab) return { ok: false, failure: { code: /** @type {any} */ ('empty'), reason: `This YouTube channel has no ${tab} tab.`, trip: false } };
+      return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
+    }
     const observedAt = new Date().toISOString();
     const posts = info.entries
       .filter((entry) => entry && typeof entry === 'object')
@@ -388,6 +402,38 @@ export class YtDlpBackend {
   }
 
   /**
+   * YouTube keyword search for Shorts: `ytsearchN:<words> shorts`, flat, so each entry is a title, a channel, a duration
+   * and a rounded view count with no date. Videos longer than a Short (3 minutes) are dropped; the rest are ranked by views.
+   * @param {string} query
+   * @param {'youtube'} platform
+   * @param {number} limit
+   * @returns {Promise<{ok: true, posts: Array<Record<string, any>>}|{ok: false, failure: YtDlpFailure}>}
+   */
+  async search(query, platform, limit) {
+    const asked = Math.min(Math.max(limit * 3, 10), 40);
+    const run = await this.run(['--flat-playlist', '--dump-json', `ytsearch${asked}:${query} shorts`], platform);
+    const entries = [];
+    for (const line of run.stdout.split(/\r?\n/)) {
+      const text = line.trim();
+      if (!text.startsWith('{')) continue;
+      try {
+        const entry = JSON.parse(text);
+        if (entry && typeof entry === 'object') entries.push(entry);
+      } catch {
+        // a stray line that is not JSON
+      }
+    }
+    if (entries.length === 0) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
+    const observedAt = new Date().toISOString();
+    const posts = entries
+      .filter((entry) => entry.id && (typeof entry.duration !== 'number' || entry.duration <= SHORT_MAX_S))
+      .map((entry) => postFromInfo({ ...entry, webpage_url: `https://www.youtube.com/shorts/${entry.id}` }, platform, observedAt, `yt-dlp:ytsearch:${query}`))
+      .sort((a, b) => (b.metrics.views ?? -1) - (a.metrics.views ?? -1));
+    if (posts.length === 0) return { ok: false, failure: { code: 'empty', reason: 'YouTube listed nothing short enough to be a Short for that search.', trip: false } };
+    return { ok: true, posts };
+  }
+
+  /**
    * Comments on one post, where yt-dlp's extractor supports them (Instagram does;
    * TikTok's extractor in 2026.03.17 has no comment support).
    * @param {string} url
@@ -398,7 +444,13 @@ export class YtDlpBackend {
   async comments(url, platform, limit) {
     const run = await this.run(['-J', '--skip-download', '--no-playlist', '--write-comments', url], platform);
     const info = run.ok ? parseInfo(run.stdout) : null;
-    if (!info) return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
+    if (!info) {
+      // yt-dlp's Instagram extractor only knows video posts: on a photo or carousel it stops before the comments.
+      if (!run.timedOut && !run.missing && NO_VIDEO_FORMATS.test(run.stderr)) {
+        return { ok: false, failure: { code: 'unsupported', reason: 'yt-dlp reads comments only on video posts, and this one is a photo or a carousel.', trip: false } };
+      }
+      return { ok: false, failure: mapYtDlpErrorForRouter(run, platform) };
+    }
     if (!Array.isArray(info.comments)) {
       return { ok: false, failure: { code: 'unsupported', reason: 'yt-dlp read the post but cannot read its comments.', trip: false } };
     }

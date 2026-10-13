@@ -20,13 +20,18 @@ Data by operation:
                    items [{url,id,views,likes,comments,shares,createdAt,caption,durationS}],
                    attempts (1 or 2), itemsStatus ("empty" when the profile was read but no video was),
                    itemsNote
-  tiktok_top_ads   ads [{id,title,caption,brand,industry,ctr,likes,videoUrl,cover,landing,url}]
-  meta_ad_library  ads [{id,pageName,startDate,text,snapshotUrl}]
+  tiktok_top_ads   ads [{id,title,caption,brand,industry,industryName,objective,ctr,likes,videoUrl,cover,landing,url}],
+                   keyword, keywordApplied, listScope ("keyword" or "region_wide"), keywordNote. The keyword is typed into
+                   the Creative Center's own "Search by brand or product keywords" box; when that box cannot be driven
+                   the region-wide list comes back, labelled as such.
+  meta_ad_library  ads [{id,pageName,startDate,text,headline,cta,domain,snapshotUrl}]; pageName is the advertiser's
+                   page, text is the ad copy
   page             finalUrl, httpStatus, title, text (20k), links (200), method, meta {og:*, description, ...};
                    a page that is only a JavaScript shell (no text, no links) is reported as status "empty".
                    instagram.com pages also carry instagram {user, media}: the account and post facts the
                    page embeds for a signed out visitor (followers, caption, likes, comments, date, video
-                   address, popular-topic play counts). Instagram is read with the plain request only.
+                   address, popular-topic play counts, and on a post page its first comments, photo posts included).
+                   Instagram is read with the plain request only.
 
 Scrapling's own browser install is never run from here (the plugin installs Chromium in setup).
 """
@@ -54,6 +59,7 @@ SHELL_TEXT_MAX = 60
 META_CAP = 40
 META_VALUE_CAP = 1_000
 INSTAGRAM_MEDIA_CAP = 60
+INSTAGRAM_COMMENT_CAP = 100
 
 TIKTOK_PROFILE_URL = "https://www.tiktok.com/@{handle}"
 TIKTOK_ITEM_LIST = r"/api/post/item_list/"
@@ -350,7 +356,63 @@ def op_tiktok_profile(request):
 
 # ---------------------------------------------------------------- TikTok Creative Center top ads
 
-def ads_from_top_ads(payloads, country, limit):
+# The 21 top level industries of the Creative Center (its filters list carries all 258 with their names).
+TOP_INDUSTRIES = {
+    "10": "Education", "11": "Vehicle & Transportation", "12": "Baby, Kids & Maternity", "13": "Financial Services",
+    "14": "Beauty & Personal Care", "15": "Tech & Electronics", "16": "Appliances", "17": "Travel",
+    "18": "Household Products", "19": "Pets", "20": "Apps", "21": "Home Improvement", "22": "Apparel & Accessories",
+    "23": "News & Entertainment", "24": "Business Services", "25": "Games", "26": "Life Services",
+    "27": "Food & Beverage", "28": "Sports & Outdoor", "29": "Health", "30": "E-Commerce (Non-app)",
+}
+TOP_ADS_LIST = "top_ads/v2/list"
+TOP_ADS_FILTERS = "top_ads/v2/filters"
+KEYWORD_SEARCH_BOX = 'input[placeholder*="brand or product"]'
+KEYWORD_SETTLE_MS = 2000
+KEYWORD_WAIT_MS = 6500
+
+
+def xhr_pairs(response):
+    """The (address, parsed JSON) of every XHR the page made that the capture pattern matched."""
+    pairs = []
+    for item in getattr(response, "captured_xhr", []) or []:
+        payload = body_json(item)
+        if payload:
+            pairs.append((str(getattr(item, "url", "") or ""), payload))
+    return pairs
+
+
+def label_names(pairs):
+    """Industry and objective names from the page's own filters list: {'label_20105000000': 'Apps', ...}."""
+    names = {}
+    for address, payload in pairs:
+        if TOP_ADS_FILTERS not in address:
+            continue
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            continue
+        for group in ("industry", "objective"):
+            for entry in data.get(group) or []:
+                if not isinstance(entry, dict) or not isinstance(entry.get("value"), str):
+                    continue
+                if entry.get("label"):
+                    names[str(entry["label"])] = entry["value"]
+                if group == "industry" and entry.get("id") is not None:
+                    names["label_%s" % entry["id"]] = entry["value"]
+    return names
+
+
+def industry_name(code, names):
+    """'label_20105000000' -> the sub industry's name from the filters list, else its top level industry's name."""
+    if not isinstance(code, str) or not code:
+        return None
+    if code in names:
+        return names[code]
+    digits = re.sub(r"\D", "", code)
+    return TOP_INDUSTRIES.get(digits[:2]) if len(digits) >= 2 else None
+
+
+def ads_from_top_ads(payloads, country, limit, names=None):
+    names = names or {}
     ads, seen = [], set()
     for payload in payloads:
         data = payload.get("data") if isinstance(payload, dict) else None
@@ -369,13 +431,17 @@ def ads_from_top_ads(payloads, country, limit):
             if isinstance(video_url, dict):
                 video_url = next((video_url[key] for key in ("720p", "540p", "480p", "360p") if video_url.get(key)), None) or next(iter(video_url.values()), None)
             industry = item.get("industry_key") or item.get("industry")
+            industry = industry if isinstance(industry, str) else None
+            objective = item.get("objective_key") if isinstance(item.get("objective_key"), str) else None
             title = item.get("ad_title") or item.get("title") or ""
             ads.append({
                 "id": ad_id,
                 "title": title,
                 "caption": title,
                 "brand": item.get("brand_name"),
-                "industry": industry if isinstance(industry, str) else None,
+                "industry": industry,
+                "industryName": industry_name(industry, names),
+                "objective": names.get(objective, objective) if objective else None,
                 "ctr": item.get("ctr"),
                 "likes": to_int(item.get("like")),
                 "videoUrl": video_url if isinstance(video_url, str) else None,
@@ -389,6 +455,33 @@ def ads_from_top_ads(payloads, country, limit):
     return ads
 
 
+def apply_keyword_search(page, keyword, state):
+    """Type the keyword into the page's own search box and press Enter, the way a visitor would.
+
+    The page ignores a keyword in its address; its search box asks the list service for the matching ads. A welcome
+    popup can cover the box, so it is dismissed first. Any problem is noted in `state` and the region-wide list that
+    was already loaded is what comes back.
+    """
+    try:
+        page.wait_for_timeout(KEYWORD_SETTLE_MS)
+        try:
+            page.keyboard.press("Escape")
+            page.evaluate("() => document.querySelectorAll('[class*=\"Popup\"]').forEach((e) => e.remove())")
+        except Exception:  # noqa: BLE001 - no popup to dismiss
+            pass
+        boxes = page.query_selector_all(KEYWORD_SEARCH_BOX)
+        box = next((candidate for candidate in boxes if candidate.is_visible()), None)
+        if box is None:
+            state["error"] = "the page has no search box"
+            return
+        box.focus()
+        box.fill(keyword, timeout=5000, force=True)
+        box.press("Enter")
+        page.wait_for_timeout(KEYWORD_WAIT_MS)
+    except Exception as error:  # noqa: BLE001
+        state["error"] = type(error).__name__
+
+
 def op_tiktok_top_ads(request):
     country = re.sub(r"[^A-Za-z]", "", str(request.get("country") or "US")).upper()[:2] or "US"
     try:
@@ -398,29 +491,47 @@ def op_tiktok_top_ads(request):
     if period not in (7, 30, 180):
         period = 30
     limit = max(1, min(int(request.get("limit") or 20), 50))
-    params = {"region": country, "period": period}
     keyword = str(request.get("keyword") or "").strip()[:80]
+    # The address carries the region and period only: a keyword in it is ignored by the page.
+    url = f"{TOP_ADS_URL}?{urlencode({'region': country, 'period': period})}"
+    state = {"error": None}
+    options = {"capture_xhr": TOP_ADS_XHR, "load_dom": False, "wait": 4000 if keyword else 8000, "network_idle": False}
     if keyword:
-        params["keyword"] = keyword
-    url = f"{TOP_ADS_URL}?{urlencode(params)}"
+        options["page_action"] = lambda page: apply_keyword_search(page, keyword, state)
     # network_idle=True hung this page for 8+ minutes in a live test: never use it here.
-    response = stealth_fetch(url, capture_xhr=TOP_ADS_XHR, load_dom=False, wait=8000, network_idle=False)
-    payloads = [p for p in (body_json(x) for x in getattr(response, "captured_xhr", []) or []) if p]
-    ads = ads_from_top_ads(payloads, country, limit)
+    response = stealth_fetch(url, **options)
+    pairs = xhr_pairs(response)
+    names = label_names(pairs)
+    lists = [(address, payload) for address, payload in pairs if TOP_ADS_LIST in address]
+    keyed = [payload for address, payload in lists if "keyword=" in address]
+    if keyword and keyed:
+        # The list the search box asked for (the last one, should it have asked twice).
+        applied, payloads = True, [keyed[-1]]
+    else:
+        applied = False
+        payloads = [payload for _address, payload in lists] or [payload for _address, payload in pairs]
+    ads = ads_from_top_ads(payloads, country, limit, names)
+    if applied and not ads:
+        # The search ran and nothing matches: an answer, not a failure (and no reason to look anywhere else).
+        return {"status": "ok", "ads": [], "keyword": keyword, "keywordApplied": True, "listScope": "keyword", "note": 'Creative Center has no top ads matching "%s" in %s over the last %d days.' % (keyword, country, period)}
     if not ads:
         html = body_text(response)
         match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
         if match:
             try:
                 materials = json.loads(match.group(1))["props"]["pageProps"]["data"]["materials"]
-                ads = ads_from_top_ads([{"data": {"materials": materials}}], country, limit)
+                ads = ads_from_top_ads([{"data": {"materials": materials}}], country, limit, names)
             except Exception:  # noqa: BLE001
                 ads = []
         if not ads:
             if looks_blocked(response, html):
                 return {"status": "blocked", "detail": "TikTok Creative Center answered with a bot check."}
             return {"status": "empty", "detail": "Creative Center did not return its top ads list."}
-    return {"status": "ok", "ads": ads}
+    result = {"status": "ok", "ads": ads, "keyword": keyword or None, "keywordApplied": applied, "listScope": "keyword" if applied else "region_wide"}
+    if keyword and not applied:
+        why = state["error"] or "the page did not run the search"
+        result["keywordNote"] = 'The keyword "%s" was not applied (%s), so this is the region-wide top ads list.' % (keyword, why)
+    return result
 
 
 # ---------------------------------------------------------------- Meta Ad Library
@@ -432,8 +543,26 @@ def text_of(response):
         return ""
 
 
+VIDEO_TIMER = re.compile(r"^\d{1,2}:\d{2}$")
+DOMAIN_LINE = re.compile(r"^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9-]+)+(/\S*)?$")
+CARD_EDGE = re.compile(r"^(Library ID|See ad details|See summary details|Platforms?|Open Dropdown|Active|Inactive|EU transparency)\b", re.I)
+CTA_LINES = {
+    "learn more", "shop now", "sign up", "download", "play game", "book now", "order now", "get offer", "subscribe",
+    "apply now", "contact us", "install now", "watch more", "send message", "get quote", "listen now", "see menu",
+    "call now", "get directions", "use app", "donate now", "request time", "get showtimes", "open link", "watch video",
+    "get started", "send whatsapp message", "message us", "view more", "buy now",
+}
+COPY_LINES_MAX = 30
+COPY_CHARS_MAX = 2000
+
+
 def ads_from_text(text, limit):
-    """Cards in the rendered page text: each starts at 'Library ID: <digits>'."""
+    """Cards in the rendered page text: each starts at 'Library ID: <digits>'.
+
+    A card reads: the page (advertiser) name, the word "Sponsored", the ad copy, then for a video its timer ("0:00",
+    "/", "0:27"), the destination domain in capitals, a headline and the call to action button. The advertiser is the
+    line BEFORE "Sponsored"; the copy is what follows it.
+    """
     ads = []
     parts = re.split(r"Library ID:?\s*", text)
     for part in parts[1:]:
@@ -441,7 +570,7 @@ def ads_from_text(text, limit):
         if not match:
             continue
         ad_id = match.group(1)
-        lines = [line.strip() for line in part[match.end():].split("\n") if line.strip()]
+        lines = [line for line in (raw.replace("\u200b", "").strip() for raw in part[match.end():].split("\n")) if line]
         started = None
         for line in lines[:12]:
             date = re.search(r"Started running on\s+(.+)", line, re.I)
@@ -450,18 +579,37 @@ def ads_from_text(text, limit):
                 break
         page_name = None
         body = None
+        headline = None
+        cta = None
+        domain = None
         for index, line in enumerate(lines[:40]):
-            if line.lower() == "sponsored":
-                if index + 1 < len(lines):
-                    page_name = lines[index + 1]
-                body_lines = []
-                for follow in lines[index + 2:index + 14]:
-                    if re.match(r"(Library ID|See ad details|See summary details|Platforms|Open Dropdown)", follow, re.I):
-                        break
-                    body_lines.append(follow)
-                body = " ".join(body_lines).strip() or None
-                break
-        ads.append({"id": ad_id, "pageName": page_name, "startDate": started, "text": body})
+            if line.lower() != "sponsored":
+                continue
+            before = lines[index - 1] if index > 0 else None
+            if before and not CARD_EDGE.match(before) and before.lower() != "sponsored":
+                page_name = before
+            copy = []
+            cursor = index + 1
+            while cursor < len(lines) and cursor - index <= COPY_LINES_MAX:
+                follow = lines[cursor]
+                if CARD_EDGE.match(follow) or VIDEO_TIMER.match(follow) or (DOMAIN_LINE.match(follow) and follow.upper() == follow) or follow.lower() in CTA_LINES:
+                    break
+                copy.append(follow)
+                cursor += 1
+            body = "\n".join(copy).strip()[:COPY_CHARS_MAX] or None
+            # What follows the copy: the video timer, the destination domain, the headline and the button.
+            tail = []
+            while cursor < len(lines) and len(tail) < 8 and not CARD_EDGE.match(lines[cursor]):
+                if not (VIDEO_TIMER.match(lines[cursor]) or lines[cursor] == "/"):
+                    tail.append(lines[cursor])
+                cursor += 1
+            if tail and DOMAIN_LINE.match(tail[0]) and tail[0].upper() == tail[0]:
+                domain = tail.pop(0)
+            if tail and tail[-1].lower() in CTA_LINES:
+                cta = tail.pop()
+            headline = tail[0] if tail else None
+            break
+        ads.append({"id": ad_id, "pageName": page_name, "startDate": started, "text": body, "headline": headline, "cta": cta, "domain": domain})
         if len(ads) >= limit * 2:
             break
     return ads
@@ -476,7 +624,7 @@ def ads_from_html(html):
         name = re.search(r'"page_name"\s*:\s*"((?:[^"\\]|\\.)*)"', window)
         start = re.search(r'"start_date"\s*:\s*(\d{9,11})', window)
         body = re.search(r'"body"\s*:\s*\{[^{}]*?"text"\s*:\s*"((?:[^"\\]|\\.)*)"', window)
-        entry = found.setdefault(ad_id, {"id": ad_id, "pageName": None, "startDate": None, "text": None})
+        entry = found.setdefault(ad_id, {"id": ad_id, "pageName": None, "startDate": None, "text": None, "headline": None, "cta": None, "domain": None})
         def unescape(value):
             try:
                 return json.loads(f'"{value}"')
@@ -731,6 +879,23 @@ def user_from_node(node):
     }
 
 
+def comment_from_node(node):
+    """One top level comment as the post page embeds it (typename XIGComment), or None."""
+    if node.get("__typename") != "XIGComment" or not isinstance(node.get("text"), str):
+        return None
+    if node.get("parent_comment_id"):
+        return None
+    user = node.get("user") if isinstance(node.get("user"), dict) else {}
+    return {
+        "id": str(node.get("pk") or node.get("id") or ""),
+        "username": user.get("username") if isinstance(user.get("username"), str) else None,
+        "text": node["text"],
+        "likes": count_or_none(node.get("comment_like_count")),
+        "replies": count_or_none(node.get("child_comment_count")),
+        "createdAt": count_or_none(node.get("created_at")),
+    }
+
+
 def instagram_facts(html):
     """What an Instagram page embeds for a signed out visitor: the account and its posts, in page order.
 
@@ -742,9 +907,10 @@ def instagram_facts(html):
     user = None
     media = {}
     order = []
+    comments = {}
     for block in SJS_BLOCK.finditer(html or ""):
         raw = block.group(1)
-        if '"code"' not in raw and '"follower_count"' not in raw:
+        if '"code"' not in raw and '"follower_count"' not in raw and "XIGComment" not in raw:
             continue
         try:
             document = json.loads(raw)
@@ -753,6 +919,10 @@ def instagram_facts(html):
         for node in iter_dicts(document):
             if user is None:
                 user = user_from_node(node)
+            comment = comment_from_node(node)
+            if comment is not None:
+                comments.setdefault(comment["id"] or "%d" % len(comments), comment)
+                continue
             found = media_from_node(node)
             if found is None:
                 continue
@@ -762,7 +932,12 @@ def instagram_facts(html):
                 order.append(found["code"])
             else:
                 merge_media(existing, found)
-    return {"user": user, "media": [media[code] for code in order[:INSTAGRAM_MEDIA_CAP]]}
+    facts = {"user": user, "media": [media[code] for code in order[:INSTAGRAM_MEDIA_CAP]]}
+    if comments:
+        # The first comments of a post, newest first, which a signed out visitor gets embedded in the post page
+        # (photo posts and carousels included). The key is left out when there are none.
+        facts["comments"] = list(comments.values())[:INSTAGRAM_COMMENT_CAP]
+    return facts
 
 
 def op_instagram_page(url):
