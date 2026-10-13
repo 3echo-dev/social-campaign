@@ -1,10 +1,23 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
+import { createRequire } from 'node:module';
 import * as runtime from './runtime.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
 
 export const QUESTION_ID = /^q-[0-9a-f]{12}$/;
+
+// Keep the job's Next action and Blocked on lines true after a question is answered or taken back, whichever path did it
+// (a board click, a chat answer, an upload): a job never keeps saying it waits on a question nobody is asking.
+let openQuestionLines = null;
+function refreshJobStatus(root, jobId) {
+  if (!jobId) return;
+  try {
+    openQuestionLines ||= createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-open-questions.js'));
+    const job = runtime.listJobs({ root }).find(item => item.jobId === jobId);
+    if (job) openQuestionLines.refreshStatusLines(job.path, root, jobId);
+  } catch { /* the lines are a courtesy; the answer itself is saved */ }
+}
 export const QUESTION_TEXT_LIMIT = 300;
 export const QUESTION_OPTION_LIMIT = 6;
 export const OPTION_TEXT_LIMIT = 80;
@@ -218,6 +231,7 @@ export function answerQuestion({ root, questionId, choice, text, via, requestId 
   const next = { ...question, status: 'answered', answer, answeredVia: via, answeredAt: new Date().toISOString(), requestId: typeof requestId === 'string' && requestId ? requestId : null };
   writeAtomic(questionFile(root, questionId), next);
   syncJobAnswers({ root, jobId: next.jobId });
+  refreshJobStatus(root, next.jobId);
   return next;
 }
 
@@ -230,6 +244,7 @@ export function closeUploadQuestion({ root, questionId, jobId, summary, file = n
   const next = { ...question, status: 'answered', answer, answeredVia: 'board', answeredAt: new Date().toISOString() };
   writeAtomic(questionFile(root, questionId), next);
   syncJobAnswers({ root, jobId });
+  refreshJobStatus(root, jobId);
   return next;
 }
 
@@ -283,6 +298,7 @@ export function withdrawQuestion({ root, questionId }) {
   if (question.status !== 'open') return question;
   const next = { ...question, status: 'withdrawn' };
   writeAtomic(questionFile(root, questionId), next);
+  refreshJobStatus(root, next.jobId);
   return next;
 }
 
