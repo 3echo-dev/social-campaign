@@ -8,9 +8,11 @@ import { projectJobMetrics } from '../studio/metrics.mjs';
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { UserFacingError } from '../lib/errors.mjs';
-import { buildJobDocument, parseConcepts, previewThumb, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
+import { buildJobDocument, largePreview, parseConcepts, previewThumb, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
-import { addReference, checkReference, referenceSummaries } from './references.mjs';
+import { addReference, checkReference, readReferences, referenceSummaries, removeReference } from './references.mjs';
+import { referenceFromUrl } from './url-reference.mjs';
+import { isPrivateAddress } from '../social/backends/web.mjs';
 import { researchCoverage } from './research-coverage.mjs';
 import { referenceAssets } from './brand-references.mjs';
 import { answerQuestion, closeUploadQuestion, listQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
@@ -1324,10 +1326,67 @@ function withinPreviewBudget(items) {
   });
 }
 
+// Files a brand has saved that a job can reuse as a reference: its logo and its reference photos. The board only ever sees
+// an id and a small picture; the real path is worked out here, inside that brand's own folder, and never taken from a request.
+const BRAND_FILES_PER_BRAND = 6;
+const BRAND_FILES_BUDGET = 30 * 1024;
+const BRAND_FILE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+export function brandFilesOf(brandDir, rawProfile) {
+  const base = join(brandDir, 'brand');
+  const files = [];
+  const add = (id, kind, name, rel) => {
+    if (typeof rel !== 'string' || !rel || isAbsolute(rel) || rel.includes('\0') || rel.split(/[\\/]/).includes('..')) return;
+    const ext = extname(rel).toLowerCase();
+    const full = join(base, rel);
+    if (!BRAND_FILE_EXT.has(ext) || !existsSync(full)) return;
+    files.push({ id, kind, name: name || basename(rel), file: full, fileName: extname(String(name || '')).toLowerCase() === ext ? basename(String(name)) : basename(rel) });
+  };
+  try {
+    const kit = libBrandKit.read(brandDir);
+    const logo = kit?.confirmed?.logo || kit?.provided?.logo;
+    if (logo?.file) add('logo', 'logo', 'Logo', logo.file);
+  } catch { /* no kit yet */ }
+  for (const item of referenceAssets(rawProfile?.assets)) add(basename(item.uri), 'photo', typeof item.name === 'string' ? item.name.slice(0, 80) : '', item.uri);
+  return files.slice(0, BRAND_FILES_PER_BRAND);
+}
+// The one place a brand file's id turns into a path. Throws a plain line when the brand has no such file.
+function brandFileFor(root, brandSlug, id) {
+  const brand = runtime.listBrands({ root }).find(item => item.slug === brandSlug);
+  if (!brand || typeof id !== 'string') throw new Error('That brand file could not be found.');
+  let raw = null;
+  try { raw = read(join(brand.path, 'brand', 'profile.json')); } catch { /* no profile */ }
+  const found = brandFilesOf(brand.path, raw).find(item => item.id === id);
+  if (!found) throw new Error('That brand file could not be found.');
+  return found;
+}
+// Small pictures of the brand's files share a tight budget across all brands; past it a file shows by name only.
+export function brandFileList(files, preview, state) {
+  return files.map(({ id, kind, name, file }) => {
+    const entry = { id, kind, name };
+    const thumb = preview(file);
+    if (thumb && state.used + thumb.length <= BRAND_FILES_BUDGET) { state.used += thumb.length; entry.thumb = thumb; }
+    return entry;
+  });
+}
+const ADD_FROM_BRAND_FIELDS = new Set(['type', 'action', 'brandAssetId', 'note', 'role']);
+
 // The pictures on the reference cards (job page "Add a reference") share their own slice of the board's size budget,
 // newest jobs first; a card past it shows its type icon instead. Each file is turned into a picture once per change.
 const REFERENCE_PREVIEW_BUDGET = 56 * 1024;
+const REFERENCE_LARGE_BUDGET = 72 * 1024;
 const referenceThumbs = new Map();
+const referenceLarges = new Map();
+export function referenceLarge(root) {
+  return (file, { video = false } = {}) => {
+    let key;
+    try { const info = statSync(file); key = `${file}|${info.size}|${info.mtimeMs}|${video ? 1 : 0}`; } catch { return null; }
+    if (!referenceLarges.has(key)) {
+      if (referenceLarges.size > 200) referenceLarges.clear();
+      referenceLarges.set(key, largePreview(file, thumbnailDirectory(root), { video }));
+    }
+    return referenceLarges.get(key);
+  };
+}
 export function referencePreview(root) {
   return (file, { video = false } = {}) => {
     let key;
@@ -1360,12 +1419,18 @@ function transparentThumb(file, cacheDir, key) {
     return null;
   }
 }
-export function withinReferencePreviewBudget(projects, budget = REFERENCE_PREVIEW_BUDGET) {
+export function withinReferencePreviewBudget(projects, budget = REFERENCE_PREVIEW_BUDGET, largeBudget = REFERENCE_LARGE_BUDGET) {
   let used = 0;
+  let usedLarge = 0;
   const order = projects.map((project, index) => ({ project, index, at: Date.parse(project.usage?.startedAt || '') || 0 })).sort((a, b) => b.at - a.at);
   const kept = new Array(projects.length);
   for (const { project, index } of order) {
     const references = (project.references || []).slice().reverse().map(ref => {
+      // The bigger picture for the "see it large" view has its own, smaller allowance; past it the small picture is shown larger.
+      if (ref.large) {
+        if (usedLarge + ref.large.length <= largeBudget) usedLarge += ref.large.length;
+        else { const { large, ...rest } = ref; ref = rest; }
+      }
       if (!ref.thumb) return ref;
       if (used + ref.thumb.length <= budget) { used += ref.thumb.length; return ref; }
       const { thumb, ...rest } = ref;
@@ -1375,7 +1440,7 @@ export function withinReferencePreviewBudget(projects, budget = REFERENCE_PREVIE
   }
   return kept;
 }
-const withoutReferenceThumbs = projects => projects.map(project => ({ ...project, references: (project.references || []).map(({ thumb, ...rest }) => rest) }));
+const withoutReferenceThumbs = projects => projects.map(project => ({ ...project, references: (project.references || []).map(({ thumb, large, ...rest }) => rest) }));
 
 function workspaceInbox(jobItems, looseQuestions, brandNames) {
   const loose = looseQuestions.map(question => questionItem(question, { jobId: null, jobTitle: null, brandName: question.brand ? brandNames.get(question.brand) || null : null }));
@@ -1526,6 +1591,7 @@ export function boardSnapshot({ root } = {}) {
   const metricoolOn = metricoolConnected(root);
   const metricoolOptions = metricoolQuestionOptions(metricoolBrands);
   const rawBrandEntries = runtime.listBrands({ root });
+  const brandFileState = { used: 0 };
   const brands = rawBrandEntries.map(brand => {
     let raw = null;
     try { raw = read(join(brand.path, 'brand', 'profile.json')); rawProfiles.set(brand.slug, raw); } catch { /* No saved profile yet. */ }
@@ -1544,7 +1610,8 @@ export function boardSnapshot({ root } = {}) {
     // The agents behind onboarding (the Director and the Researcher), shown on the Brand onboarding page until the brand is ready.
     const agents = !readyForJobs || usage.status === 'running' ? onboardingAgents({ brandDir: brand.path, brandName: brand.name, usage, onboardingStatus: brand.onboardingStatus, readyForJobs }) : null;
     const referencePhotos = referenceAssets(raw?.assets).length;
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
+    const brandFiles = brandFileList(brandFilesOf(brand.path, raw), referencePreview(root), brandFileState);
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -1588,7 +1655,7 @@ export function boardSnapshot({ root } = {}) {
       ...(handoffState ? { handoff: handoffState } : {}),
       ...(research ? { research } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
-      references:referenceSummaries(job.path, 40, { preview: referencePreview(root) }),
+      references:referenceSummaries(job.path, 40, { preview: referencePreview(root), large: referenceLarge(root), copyUrl: sha => reviewUrlFor(root, { sourceSha: sha }) }),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
       usage:{
@@ -1619,7 +1686,9 @@ export function boardSnapshot({ root } = {}) {
       : 'brand_onboarding';
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   // Reference pictures are the first thing to go when the board is near its size limit.
-  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.projects = withoutReferenceThumbs(projection.projects);
+  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) { projection.projects = withoutReferenceThumbs(projection.projects); projection.brands = projection.brands.map(brand => (brand.brandFiles ? { ...brand, brandFiles: brand.brandFiles.map(({ thumb, ...rest }) => rest) } : brand)); }
+  // Then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
+  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
   return applyProjectionBudget(projection);
 }
 
@@ -1686,7 +1755,7 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
@@ -1698,6 +1767,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
   if (operation === 'add_reference') validateAddReference(root, args);
+  if (operation === 'remove_reference') validateRemoveReference(root, args);
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
@@ -1718,13 +1788,32 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
 // `to` says the reference came from that agent's chat (the chat then shows it as a chip); `questionId` is the open question that asked for the file.
 const ADD_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'reference', 'workspaceId', 'title', 'expectedRevision', 'to', 'questionId']);
 
+// A link the person pasted on the job page travels as an add_reference whose reference is { action: 'link', url, note }.
+// Applying it saves the link as a job reference exactly as pipeline_reference_from_url does for a link pasted in chat.
+const isLinkReference = reference => plainObject(reference) && reference.action === 'link';
+function checkLinkReference(reference) {
+  if (Object.keys(reference).some(key => !['action', 'url', 'note'].includes(key))) throw new Error('A link carries only its address and a note.');
+  const url = runtime.webLink(reference.url);
+  if (!url) throw new Error('Paste a full web address that starts with https://.');
+  const host = new URL(url).hostname;
+  if (isPrivateAddress(host) || !host.includes('.') && !host.includes(':')) throw new Error('That address points at a private network, so it cannot be saved. Paste a public link.');
+  if (reference.note !== undefined && typeof reference.note !== 'string') throw new Error('The note must be text.');
+  const note = String(reference.note || '').replace(/\s+/g, ' ').trim();
+  if (note.length > 500) throw new Error('Keep the note under 500 characters.');
+  return { url, note };
+}
+
 function validateAddReference(root, args) {
   if (!plainObject(args)) throw new Error('Say which job this is for.');
   if (Object.keys(args).some(key => !ADD_REFERENCE_FIELDS.has(key))) throw new Error('This request carries more than a reference, so it was not accepted.');
   if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
   if (typeof args.brand !== 'string' || typeof args.jobId !== 'string' || !facts.jobAt(root, args.brand.trim(), args.jobId.trim())) throw new Error('That job could not be found for that brand.');
-  checkReference(args.reference, { shapeOnly: !(typeof args.reference?.dataBase64 === 'string' && args.reference.dataBase64) && !args.reference?.path });
   const job = facts.jobAt(root, args.brand.trim(), args.jobId.trim());
+  if (isLinkReference(args.reference)) checkLinkReference(args.reference);
+  else if (plainObject(args.reference) && args.reference.action === 'brand') {
+    if (Object.keys(args.reference).some(key => !ADD_FROM_BRAND_FIELDS.has(key))) throw new Error('A brand file is added by choosing it, nothing more, so this request was not accepted.');
+    brandFileFor(root, job.brand, args.reference.brandAssetId);
+  } else checkReference(args.reference, { shapeOnly: !(typeof args.reference?.dataBase64 === 'string' && args.reference.dataBase64) && !args.reference?.path });
   if (args.to !== undefined) {
     if (typeof args.to !== 'string') throw new Error('Choose who the file is for.');
     const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
@@ -1737,6 +1826,21 @@ function validateAddReference(root, args) {
     if (!question || question.jobId !== job.jobId || !question.wantsUpload) throw new Error('That question is not asking for a file on this job.');
     if (question.status === 'withdrawn') throw new Error('This question was taken back, so it no longer needs a file.');
   }
+}
+
+// Taking a reference off a job: exactly these fields, a job that exists and a reference that is still on it.
+// Allowed at any time; nothing is deleted (the files are moved aside inside the job folder when it is applied).
+const REMOVE_REFERENCE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'referenceId', 'workspaceId', 'title', 'expectedRevision']);
+
+function validateRemoveReference(root, args) {
+  if (!plainObject(args)) throw new Error('Say which job this is for.');
+  if (Object.keys(args).some(key => !REMOVE_REFERENCE_FIELDS.has(key))) throw new Error('This request carries more than a reference to remove, so it was not accepted.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  if (typeof args.brand !== 'string' || typeof args.jobId !== 'string') throw new Error('Say which job this is for.');
+  const job = facts.jobAt(root, args.brand.trim(), args.jobId.trim());
+  if (!job) throw new Error('That job could not be found for that brand.');
+  if (typeof args.referenceId !== 'string' || !readReferences(job.dir).some(item => item.id === args.referenceId.trim())) throw new Error('That reference is no longer on this job.');
+  return job;
 }
 
 // The deliverable the way the person sees it ("the Instagram Reel"), never its id.
@@ -2446,9 +2550,15 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     return {...result,message:`${result.job?.subject==='character'?'Character picture':'Product photo'} saved. Your Claude session can now continue this job.`};
   }
   if(operation==='add_reference') {
+    if(isLinkReference(args.reference)) throw new Error('A link is saved when the request is applied from the board, not here.');
     const job=facts.jobAt(root,String(args.brand||'').trim(),String(args.jobId||'').trim());
     if(!job) throw new Error('That job could not be found for that brand.');
-    const {reference,added}=addReference({jobDir:job.dir,reference:args.reference,requestId:args.requestId,by:args.requestedBy});
+    let toSave=args.reference;
+    if(plainObject(toSave)&&toSave.action==='brand') {
+      const brandFile=brandFileFor(root,job.brand,toSave.brandAssetId);
+      toSave={type:'picture',fileName:brandFile.fileName,path:brandFile.file,note:toSave.note,...(brandFile.kind==='logo'?{role:'logo'}:{role:toSave.role})};
+    }
+    const {reference,added}=addReference({jobDir:job.dir,reference:toSave,requestId:args.requestId,by:args.requestedBy});
     const shown=reference.originalName||reference.label;
     if(args.to) {
       const said=`Added a reference: ${reference.label.toLowerCase()} "${shown}"${reference.note?` (${reference.note})`:''}. It is saved on the job.`;
@@ -2458,6 +2568,11 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     if(args.questionId) closeUploadQuestion({root,questionId:args.questionId,jobId:job.jobId,summary:`Added ${reference.label.toLowerCase()}: ${shown}`,file:typeof reference.path==='string' && reference.path ? `inputs/references/${reference.path}` : null});
     if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {jobId:job.jobId,reference,added,message:`${reference.label} saved to this job. Your Claude session can now use it.`};
+  }
+  if(operation==='remove_reference') {
+    const job=validateRemoveReference(root,args);
+    const {reference}=removeReference({jobDir:job.dir,referenceId:args.referenceId});
+    return {jobId:job.jobId,referenceId:reference.id,message:`${reference.label||'Reference'} removed from this job.`};
   }
   if(operation==='import_inputs') return runtime.importLocalInputs({root,brand:args.brand,jobId:args.jobId,sourcePaths:[args.path],ownedByBrand:args.ownedByBrand===true,usedInPost:args.usedInPost===true});
   if(operation==='skip_provider') {
@@ -2558,6 +2673,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'continue_job') return result.project?.jobId || result.jobId ? { jobId: result.project?.jobId || result.jobId } : null;
   if (operation === 'update_intake' || operation === 'attach_product_photo') return result.jobId ? { jobId: result.jobId, ...(Number.isSafeInteger(result.revision) ? { revision: result.revision } : {}) } : null;
   if (operation === 'add_reference') return result.jobId ? { jobId: result.jobId, referenceId: result.reference?.id } : null;
+  if (operation === 'remove_reference') return result.jobId ? { jobId: result.jobId, referenceId: result.referenceId } : null;
   if (operation === 'import_inputs') return result.revisionId ? { revisionId: result.revisionId } : null;
   if (operation === 'connect_provider' || operation === 'skip_provider') {
     return typeof result.provider === 'string' && typeof result.state === 'string' ? { provider: result.provider, state: result.state } : null;
@@ -3148,9 +3264,12 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='mark_posted') checkMarkPosted(root,record.args);
   if(record.operation==='agent_message') checkAgentMessage(root,record.args);
   if(record.operation==='retry_step') checkRetryStep(root,record.args);
+  if(record.operation==='remove_reference') validateRemoveReference(root,record.args);
   if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);
   if(claimed) return claimed;
+  // A pasted link is downloaded, which takes a while: the apply is the one that waits for it (the tool handler awaits it).
+  if(record.operation==='add_reference' && isLinkReference(record.args?.reference)) return applyLinkReference({root,file,record,confirmedBy});
   let result;
   try { result=record.operation==='continue_job'
     ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
@@ -3176,6 +3295,32 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
     appliedAt,
     artifactReceipt: artifactReceipt(record, { status: 'applied', appliedAt, result }),
   };
+  writeFileSync(file,JSON.stringify(next,null,2));
+  return next;
+}
+
+// Save a pasted link as a job reference with the same saver pipeline_reference_from_url uses (video sites through yt-dlp, a direct
+// picture or video file, or any web page with its title, text and main picture). A link that cannot be saved is refused with the
+// saver's plain reason, so the request can be declined with that line.
+async function applyLinkReference({root,file,record,confirmedBy}) {
+  const fail=error=>{
+    const next={...record,status:'needs_reconciliation',detail:error.message,artifactReceipt:artifactReceipt(record,{status:'needs_reconciliation'})};
+    writeFileSync(file,JSON.stringify(next,null,2));
+    return error;
+  };
+  let result;
+  try {
+    const args=record.args,{url,note}=checkLinkReference(args.reference);
+    const job=facts.jobAt(root,String(args.brand||'').trim(),String(args.jobId||'').trim());
+    if(!job) throw new Error('That job could not be found for that brand.');
+    const got=await referenceFromUrl({jobDir:job.dir,url,note,type:'auto'});
+    if(!got?.ok) throw new Error([got?.message||'That link could not be saved.',got?.detail].filter(Boolean).join(' '));
+    const added=got.status!=='already_downloaded';
+    if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
+    result={jobId:job.jobId,link:url,reference:got.entry?{id:got.entry.id,type:got.entry.type,title:got.entry.title||null}:null,added,message:added?'Link saved to this job. Your Claude session can now use it.':'That link was already saved on this job.'};
+  } catch(error) { throw fail(error); }
+  const appliedAt=new Date().toISOString();
+  const next={...record,status:'applied',confirmedBy,result,appliedAt,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt,result})};
   writeFileSync(file,JSON.stringify(next,null,2));
   return next;
 }

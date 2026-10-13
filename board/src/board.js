@@ -708,6 +708,19 @@ const REFERENCE_EXT = Object.freeze({
   png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', mp4: 'video', mov: 'video', webm: 'video', m4v: 'video',
   mp3: 'audio', wav: 'audio', m4a: 'audio', ogg: 'audio', aac: 'audio', pdf: 'document', txt: 'text', md: 'text', srt: 'text', vtt: 'text',
 });
+// One optional tap saying what a reference is for. Only the roles that fit the chosen type are offered (none for typed text).
+export const REFERENCE_ROLES = Object.freeze([
+  { id: 'logo', label: 'Logo', types: ['picture', 'addon'] },
+  { id: 'product', label: 'Product', types: ['picture', 'addon'] },
+  { id: 'person', label: 'Person or character', types: ['picture', 'addon'] },
+  { id: 'style', label: 'Style or look', types: ['picture', 'video', 'addon'] },
+  { id: 'motion', label: 'Motion', types: ['video', 'addon'] },
+  { id: 'sound', label: 'Music or voice', types: ['audio', 'addon'] },
+]);
+export const referenceRolesFor = typeId => REFERENCE_ROLES.filter(role => role.types.includes(typeId));
+// The role to send: the picked one only while it still fits the chosen type, else none.
+export const referenceRoleOf = (typeId, role) => (referenceRolesFor(typeId).some(item => item.id === role) ? role : '');
+export const referenceRoleLabel = role => REFERENCE_ROLES.find(item => item.id === role)?.label || '';
 export const REFERENCE_LIMIT_MB = Object.freeze({ image: 20, video: 100, audio: 50, document: 20 });
 export const REFERENCE_TEXT_MAX = 20000;
 export const REFERENCE_NOTE_MAX = 500;
@@ -730,10 +743,10 @@ export function referenceProblem(typeId, file) {
 }
 // The wire shape of one reference. A file goes to the asset store when `assets` is there, else inline when small;
 // text always goes inline. Throws a plain-worded Error. Never reads the file into chat.
-export async function encodeReferenceUpload(assets, { type, file, text, note }) {
+export async function encodeReferenceUpload(assets, { type, file, text, note, role }) {
   const cleanNote = String(note || '').replace(/\s+/g, ' ').trim();
   if (cleanNote.length > REFERENCE_NOTE_MAX) throw new Error(`Keep the note under ${REFERENCE_NOTE_MAX} characters.`);
-  const base = { type, ...(cleanNote ? { note: cleanNote } : {}) };
+  const base = { type, ...(cleanNote ? { note: cleanNote } : {}), ...(referenceRoleOf(type, role) ? { role: referenceRoleOf(type, role) } : {}) };
   const kind = file ? referenceKindOf(file.name) : 'text';
   if (kind === 'text') {
     const body = file ? await file.text() : String(text || '');
@@ -771,9 +784,58 @@ export function referenceThumb({ kind = '', thumb = '' } = {}) {
   return `<span class="ref-thumb ref-thumb-${esc(REF_ICON_PATHS[kind] ? kind : 'document')}${picture ? ' has-picture' : ''}" aria-hidden="true">${picture ? `<img src="${esc(picture)}" alt="" loading="lazy" decoding="async">` : refIcon(kind)}${play}</span>`;
 }
 // One reference as a small card: the picture or icon, the name, and what it is (with the site for a link).
-export function referenceCard({ kind, thumb, name, label, note, site } = {}) {
-  const small = [label, site, note ? truncateText(note, 60) : ''].filter(Boolean).map(esc).join(' · ');
+export function referenceCard({ kind, thumb, name, label, note, site, role } = {}) {
+  const small = [label, referenceRoleLabel(role), site, note ? truncateText(note, 60) : ''].filter(Boolean).map(esc).join(' · ');
   return `<span class="ref-card" title="${esc(name || '')}">${referenceThumb({ kind, thumb })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(name || 'Reference', 48))}</span>${small ? `<small>${small}</small>` : ''}</span></span>`;
+}
+// A saved reference on the job page: the card opens a larger view, and a small X takes it off the job after a question in the card.
+export function savedReferenceItem(ref = {}, { confirming = false, removing = false } = {}) {
+  const name = String(ref.name || 'Reference');
+  const id = esc(ref.id || '');
+  if (removing) return `<span class="ref-card ref-removing" role="status"><span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(name, 48))}</span><small>Removing...</small></span></span>`;
+  if (confirming) return `<span class="ref-card ref-confirm" role="group" aria-label="${esc(`Remove ${name}?`)}"><span class="ref-card-text"><span class="ref-card-name">Remove this reference?</span><small>${esc(truncateText(name, 48))}</small><span class="ref-confirm-actions"><button type="button" class="primary" data-ref-confirm="${id}">Remove</button><button type="button" class="quiet" data-ref-keep="${id}">Keep</button></span></span></span>`;
+  return `<button type="button" class="ref-open" data-ref-open="${id}" aria-haspopup="dialog" aria-label="${esc(`See ${name} larger`)}">${referenceCard(ref)}</button><button type="button" class="ref-x" data-ref-remove="${id}" aria-label="${esc(`Remove ${name}`)}" title="Remove"><svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`;
+}
+// The larger view of one saved reference (inside the board's full-size viewer). The board cannot read local files, so it shows what
+// the snapshot carries: a bigger picture (or the small one), the full copy when one was uploaded to the board, and the start of a text.
+export function referenceViewer(ref = {}) {
+  const name = String(ref.name || 'Reference');
+  const kind = ref.kind || 'document';
+  const url = safePreviewUrl(ref.url);
+  const picture = safePreviewUrl(ref.large) || safePreviewUrl(ref.thumb);
+  const image = alt => (picture ? `<img class="ref-viewer-img" src="${esc(picture)}" alt="${esc(alt)}">` : '');
+  const icon = `<span class="ref-viewer-icon">${refIcon(kind)}</span>`;
+  let media = '';
+  let hint = '';
+  if (kind === 'image') {
+    const full = url && !/\.(mp4|mov|webm|m4v|mp3|wav|m4a|ogg|aac|pdf)(\?|$)/i.test(url) ? url : picture;
+    media = full ? `<img class="ref-viewer-img" src="${esc(full)}" alt="${esc(name)}">` : icon;
+  } else if (kind === 'video') {
+    media = url ? `<video class="ref-viewer-media" controls playsinline preload="metadata" src="${esc(url)}"${picture ? ` poster="${esc(picture)}"` : ''} aria-label="${esc(name)}"></video>` : (image(`First picture of ${name}`) || icon);
+    if (!url) hint = 'This clip cannot be played here yet. Claude can still use it.';
+  } else if (kind === 'audio') {
+    media = url ? `${icon}<audio class="ref-viewer-audio" controls preload="metadata" src="${esc(url)}" aria-label="${esc(name)}"></audio>` : icon;
+    if (!url) hint = 'This audio cannot be played here yet. Claude can still use it.';
+  } else if (kind === 'text') {
+    const text = String(ref.excerpt || '');
+    media = text ? `<pre class="ref-viewer-text">${esc(text)}${text.length >= 400 ? '…' : ''}</pre>` : icon;
+  } else if (kind === 'page') {
+    media = image(`Main picture of ${name}`) || icon;
+  } else {
+    media = icon;
+  }
+  const link = kind === 'page' ? safeHttpsLink(ref.link) : null;
+  const facts = [ref.label, referenceRoleLabel(ref.role), ref.site].filter(Boolean).map(esc).join(' · ');
+  return `<div class="ref-viewer-media-box">${media}</div><div class="ref-viewer-info"><h2 id="ref-viewer-title" class="ref-viewer-title">${esc(name)}</h2>${facts ? `<p class="ref-viewer-facts">${facts}</p>` : ''}${ref.note ? `<p class="ref-viewer-note">${esc(ref.note)}</p>` : ''}${hint ? `<p class="muted">${esc(hint)}</p>` : ''}${link ? `<p>${externalLink(link, 'Open the page')}</p>` : ''}</div>`;
+}
+// Forget "Removing..." for references the snapshot no longer lists, and give up on one that never went through (Claude was asked
+// a couple of minutes ago and it is still there), so the X comes back with a plain line.
+export function pruneRemoving(state = {}, refs = [], now = Date.now()) {
+  if (state.confirm && !refs.some(ref => ref.id === state.confirm)) state.confirm = null;
+  for (const [id, at] of Object.entries(state.removing || {})) {
+    if (!refs.some(ref => ref.id === id)) delete state.removing[id];
+    else if (now - at > 120000) { delete state.removing[id]; state.removeError = 'That reference is still here. Removing it did not go through. Try again.'; }
+  }
 }
 // A small picture of a file the person has just picked, made in the browser before anything is sent. Pictures are scaled on a
 // canvas and videos give a frame; anything else, or a browser that cannot, shows the type icon. Each file is done once.
@@ -845,27 +907,65 @@ function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = ''
   const type = REFERENCE_TYPES.find(item => item.id === (state.type || 'picture')) || REFERENCE_TYPES[0];
   const isText = type.id === 'caption';
   const fileId = `${prefix}-file${idKey ? `-${idKey}` : ''}`;
-  const fileInput = `<input type="file" id="${fileId}" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
+  const several = prefix === 'ref' || prefix === 'nref';
+  const fileInput = `<input type="file" id="${fileId}" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}"${several ? ' multiple' : ''} aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
   const pickedKind = state.fileName ? referenceKindOf(state.fileName) : '';
+  const queue = Array.isArray(state.queue) ? state.queue : [];
   const picked = state.fileName
     ? `<span class="ref-picked">${referenceThumb({ kind: pickedKind, thumb: pickedPreview(state.file) })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(state.fileName, 48))}</span><small>${pickedKind === 'image' ? 'Check this is the right picture' : pickedKind === 'video' ? 'Check this is the right clip' : 'Ready to add'}</small></span></span>`
-    : `<span class="muted">${esc(type.hint)}</span>`;
+    : queue.length ? '' : `<span class="muted">${esc(type.hint)}</span>`;
+  const waiting = queue.length
+    ? `<ul class="ref-queue" aria-label="Files waiting to be added">${queue.map((item, index) => `<li>${referenceCard({ kind: referenceKindOf(item.file?.name), thumb: pickedPreview(item.file), name: item.file?.name, label: REFERENCE_TYPES.find(entry => entry.id === item.type)?.label })}<button type="button" class="sb-ask" data-ref-unqueue="${index}" aria-label="${esc(`Remove ${item.file?.name || 'file'}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
+    : '';
   const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
-  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
+  const roles = referenceRolesFor(type.id);
+  const picked_role = referenceRoleOf(type.id, state.role);
+  const roleRow = roles.length ? `<div class="ref-roles" role="group" aria-label="Use it for (optional)"><span class="ref-roles-label">Use it for (optional)</span><span class="ref-role-chips">${roles.map(role => `<button type="button" class="ref-role${role.id === picked_role ? ' on' : ''}" data-ref-role="${role.id}" data-ref-prefix="${prefix}" aria-pressed="${role.id === picked_role ? 'true' : 'false'}" ${busy ? 'disabled' : ''}>${esc(role.label)}</button>`).join('')}</span></div>` : '';
+  const link = prefix === 'ref' ? `<label class="field-wide">Or paste a link<input name="ref_link" inputmode="url" autocomplete="off" value="${esc(state.link || '')}" placeholder="TikTok, YouTube, Instagram, any web page, or a picture or video link" ${busy ? 'disabled' : ''}></label>` : '';
+  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${roleRow}${textArea}<div class="ref-drop" data-ref-drop="${prefix}"><div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : several ? 'Choose files' : 'Choose a file'}</span></label>${picked}</div>${waiting}<small class="ref-drop-hint">or drop a file here, or paste a screenshot</small></div>${link}<label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
+}
+// A pasted or typed link as a full https address, or a plain-words problem.
+export function referenceLinkOf(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return { url: '' };
+  if (/\s/.test(raw)) return { error: 'Paste one link at a time.' };
+  const full = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  let url;
+  try { url = new URL(full); } catch { return { error: 'That does not look like a web address. Paste the whole link.' }; }
+  if (url.protocol !== 'https:' || !url.hostname.includes('.')) return { error: 'Paste a full web address that starts with https://.' };
+  return { url: full };
+}
+export const REFERENCE_QUEUE_MAX = 10;
+// How many references the panel's button will send: the queued files, plus the link, or the typed text when nothing is queued.
+export function referencePanelCount(state = {}) {
+  const queued = Array.isArray(state.queue) ? state.queue.length : 0;
+  const link = String(state.link || '').trim() ? 1 : 0;
+  const text = !queued && state.type === 'caption' && String(state.text || '').trim() ? 1 : 0;
+  return queued + link + text;
 }
 // The References panel on a job page: what is saved, and the control that adds more.
 // When Claude asked for a file (a question with wantsUpload), the panel opens on that question: its text and its own upload,
 // which answers it, come first, so the open panel never shows only a general form that does not say what is wanted.
-export function referencesPanel(project, state = {}, { openKeys = new Set(), open: forceOpen = false, asking = [], uploadState = () => ({}) } = {}) {
+// "From this brand": the brand's saved logo and photos as small pictures to tap, then "Add to this job" copies the chosen one
+// into the job's references without uploading it again. Shown only when the brand has saved files.
+export function brandFilesPicker(files = [], state = {}) {
+  const list = (Array.isArray(files) ? files : []).filter(file => file && typeof file.id === 'string');
+  if (!list.length) return '';
+  const busy = Boolean(state.busy);
+  const chosen = list.some(file => file.id === state.brandPick) ? state.brandPick : '';
+  const items = list.map(file => `<li><button type="button" class="ref-brand-file${file.id === chosen ? ' on' : ''}" data-ref-brand="${esc(file.id)}" aria-pressed="${file.id === chosen ? 'true' : 'false'}" title="${esc(file.name || '')}" ${busy ? 'disabled' : ''}>${referenceThumb({ kind: 'image', thumb: file.thumb })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(file.name || (file.kind === 'logo' ? 'Logo' : 'Photo'), 30))}</span><small>${file.kind === 'logo' ? 'Brand logo' : 'Brand photo'}</small></span></button></li>`).join('');
+  return `<div class="ref-brand"><p class="field-hint">From this brand</p><ul class="ref-brand-list" aria-label="Files saved on this brand">${items}</ul><div class="ref-actions"><button type="button" class="sb-ask" data-ref-action="brand" ${busy || !chosen ? 'disabled' : ''}>Add to this job</button></div></div>`;
+}
+export function referencesPanel(project, state = {}, { openKeys = new Set(), open: forceOpen = false, asking = [], uploadState = () => ({}), brandFiles = [] } = {}) {
   const refs = Array.isArray(project?.references) ? project.references : [];
   const busy = Boolean(state.busy);
   const asked = (Array.isArray(asking) ? asking : []).filter(item => item?.questionId && item.wantsUpload);
-  const chips = refs.map(ref => `<li aria-label="${esc(`${ref.label}: ${ref.name}`)}">${referenceCard(ref)}</li>`).join('');
-  const list = refs.length ? `<ul class="ref-cards" aria-label="References on this job">${chips}</ul>` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+  const chips = refs.map(ref => `<li class="ref-item" aria-label="${esc(`${ref.label}: ${ref.name}`)}">${savedReferenceItem(ref, { confirming: state.confirm === ref.id, removing: Boolean(state.removing?.[ref.id]) })}</li>`).join('');
+  const list = refs.length ? `<ul class="ref-cards" aria-label="References on this job">${chips}</ul>${state.removeError ? `<p class="field-error" role="alert">${esc(state.removeError)}</p>` : ''}` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
   const questions = asked.map(item => `<div class="ref-asked"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionUpload(item, uploadState(item) || {}, { place: 'refs' })}</div>`).join('');
   const other = asked.length ? '<p class="field-hint">Any other picture, clip, audio or wording for this job:</p>' : '';
-  const form = `<div class="ref-form">${other}${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="${asked.length ? 'quiet' : 'primary'}" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
-  const open = forceOpen || asked.length > 0 || openKeys.has('more:refs') || busy || Boolean(state.error);
+  const form = `${brandFilesPicker(brandFiles, state)}<div class="ref-form">${other}${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="${asked.length ? 'quiet' : 'primary'}" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : referencePanelCount(state) > 1 ? `Add ${referencePanelCount(state)} references` : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
+  const open = forceOpen || asked.length > 0 || openKeys.has('more:refs') || busy || Boolean(state.error) || (Array.isArray(state.queue) && state.queue.length > 0);
   const title = asked.length ? (asked.length === 1 ? 'Claude asks for a file' : `Claude asks for ${asked.length} files`) : 'Add a reference';
   return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">${title}</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${questions}${list}${form}</div></details>`;
 }
@@ -879,6 +979,9 @@ export function referenceTypeFor(typeId, file) {
   if (!kind || (type && type.kinds.includes(kind))) return type ? type.id : 'picture';
   return REFERENCE_TYPE_OF_KIND[kind] || 'addon';
 }
+
+// The type a picked file is, by itself: what the dropdown shows until the person changes it.
+export function detectedReferenceType(file) { return referenceTypeFor('', file); }
 
 // The paperclip in the agent chat composer, and the same control below it: pick a file, check its type, add a note, send.
 const PAPERCLIP = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 11-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>';
@@ -918,12 +1021,12 @@ export function newJobReferenceItem(state) {
   }
   const note = String(state.note || '').replace(/\s+/g, ' ').trim();
   if (note.length > REFERENCE_NOTE_MAX) return { error: `Keep the note under ${REFERENCE_NOTE_MAX} characters.` };
-  return { item: { type: state.type, file: state.file || null, text: state.file ? '' : text, note, name: state.file ? state.file.name : 'Typed text', label: type.label } };
+  return { item: { type: state.type, role: referenceRoleOf(state.type, state.role), file: state.file || null, text: state.file ? '' : text, note, name: state.file ? state.file.name : 'Typed text', label: type.label } };
 }
 export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}) {
   const items = Array.isArray(refs.items) ? refs.items : [];
   const list = items.length
-    ? `<ul class="ab-chips" aria-label="References for this job">${items.map((item, index) => `<li>${referenceCard({ kind: item.file ? referenceKindOf(item.file.name) : 'text', thumb: item.file ? pickedPreview(item.file) : '', name: item.name, label: item.label, note: item.note })} <button type="button" class="sb-ask" data-nref-remove="${index}" aria-label="${esc(`Remove ${item.name}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
+    ? `<ul class="ab-chips" aria-label="References for this job">${items.map((item, index) => `<li>${referenceCard({ kind: item.file ? referenceKindOf(item.file.name) : 'text', thumb: item.file ? pickedPreview(item.file) : '', name: item.name, label: item.label, note: item.note, role: item.role })} <button type="button" class="sb-ask" data-nref-remove="${index}" aria-label="${esc(`Remove ${item.name}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
     : '';
   const full = items.length >= NEW_JOB_REFERENCES_MAX;
   const control = full
@@ -5504,6 +5607,8 @@ function requestComment(operation, args = {}) {
       return `${args?.subject === 'character' ? 'Character picture' : 'Product photo'} added${quotedTitle(args?.title)}.`;
     case 'add_reference':
       return `Reference added${quotedTitle(args?.title)}.`;
+    case 'remove_reference':
+      return `Reference removed${quotedTitle(args?.title)}.`;
     case 'continue_job':
       return args?.title ? `Carry on with "${truncateText(args.title, 120)}".` : 'Carry on with this job.';
     case 'import_inputs':
@@ -6440,7 +6545,8 @@ if (typeof document !== 'undefined') {
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
     const asking = needItems.filter(item => item.kind === 'question' && item.wantsUpload && !item.closing && !item.inChat && !questionState(item.questionId).answered);
-    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, asking, uploadState: item => questionState(item.questionId).upload });
+    if (ui.refs) pruneRemoving(ui.refs, project.references || []);
+    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, asking, uploadState: item => questionState(item.questionId).upload, brandFiles: (data.brands || []).find(item => item.slug === project.brand)?.brandFiles || [] });
     const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
@@ -6613,6 +6719,7 @@ if (typeof document !== 'undefined') {
     return `<div class="scrim" data-action="close"></div><section class="drawer" role="dialog" aria-modal="true" aria-label="Output details"><div class="drawer-head"><div><span class="eyebrow">Project output</span><h2 class="drawer-title">${esc(label.title)}${label.tags.map(refTag).join('')}</h2></div><button data-action="close" aria-label="Close output details">✕</button></div><div class="tabs" role="tablist">${tabs.map(tab=>`<button role="tab" aria-selected="${drawerTab===tab}" data-tab="${tab}">${esc(DRAWER_TAB_LABELS[tab] || humanize(tab))}</button>`).join('')}</div><div class="drawer-body" role="tabpanel">${content}</div></section>`;
   }
   function renderViewer() {
+    if (viewer.ref) return `<div class="scrim viewer-scrim" data-action="close"></div><section class="viewer ref-viewer" role="dialog" aria-modal="true" aria-labelledby="ref-viewer-title"><button class="viewer-close" data-action="close" aria-label="Close larger view">✕</button><div class="ref-viewer-card">${referenceViewer(viewer.ref)}</div></section>`;
     return `<div class="scrim viewer-scrim" data-action="close"></div><section class="viewer" role="dialog" aria-modal="true" aria-label="${esc(viewer.alt || 'Full size')}"><button class="viewer-close" data-action="close" aria-label="Close full size view">✕</button><img src="${esc(viewer.src)}" alt="${esc(viewer.alt || '')}"></section>`;
   }
   let researchWake = null;
@@ -6978,7 +7085,8 @@ if (typeof document !== 'undefined') {
   // --- Add a reference (job page) -------------------------------------------------------------
   function refStateFor(project) {
     const ui = uiFor(project);
-    ui.refs ||= { type: 'picture', file: null, fileName: '', text: '', note: '', busy: false, error: '', message: '' };
+    ui.refs ||= { type: 'picture', file: null, fileName: '', text: '', note: '', link: '', queue: [], typeTouched: false, busy: false, error: '', message: '' };
+    ui.refs.queue ||= [];
     return ui.refs;
   }
   function currentRefProject() {
@@ -6988,24 +7096,42 @@ if (typeof document !== 'undefined') {
   function captureRefInputs(state) {
     const note = app.querySelector('[name="ref_note"]');
     const text = app.querySelector('[name="ref_text"]');
+    const link = app.querySelector('[name="ref_link"]');
     if (note) state.note = note.value;
     if (text) state.text = text.value;
+    if (link) state.link = link.value;
   }
-  function onRefChange(field) {
+  // Put picked or dropped files in the queue. Until the person changes the dropdown, each file gets the type that fits it.
+  function queueRefFiles(state, files) {
+    const queue = state.queue ||= [];
+    let problem = '', first = null;
+    for (const file of files) {
+      if (queue.some(item => item.file.name === file.name && item.file.size === file.size)) continue;
+      if (queue.length >= REFERENCE_QUEUE_MAX) { problem = `Add up to ${REFERENCE_QUEUE_MAX} files at a time. Add these, then pick the rest.`; break; }
+      const type = state.typeTouched ? state.type : detectedReferenceType(file);
+      const wrong = referenceProblem(type, file);
+      if (wrong) { problem ||= wrong; continue; }
+      queue.push({ file, type });
+      first ||= type;
+    }
+    if (first && !state.typeTouched) state.type = first;
+    state.error = problem;
+    state.message = '';
+  }
+  function onRefChange(field, dropped = null) {
     const project = currentRefProject();
     if (!project) return;
     const state = refStateFor(project);
     captureRefInputs(state);
-    if (field.name === 'ref_type') {
+    if (!dropped && field.name === 'ref_type') {
       state.type = field.value;
-      state.file = null; state.fileName = ''; state.error = ''; state.message = '';
-    } else if (field.name === 'ref_file') {
-      const file = field.files?.[0] || null;
-      const problem = referenceProblem(state.type, file);
-      state.file = problem ? null : file;
-      state.fileName = problem || !file ? '' : file.name;
-      state.error = problem;
+      state.typeTouched = true;
+      const before = state.queue.length;
+      state.queue = state.queue.filter(item => !referenceProblem(state.type, item.file)).map(item => ({ ...item, type: state.type }));
+      state.error = state.queue.length < before ? `Some files do not fit "${REFERENCE_TYPES.find(item => item.id === state.type)?.label || 'that type'}" and were taken off the list.` : '';
       state.message = '';
+    } else {
+      queueRefFiles(state, dropped || [...(field.files || [])]);
     }
     render();
   }
@@ -7014,27 +7140,95 @@ if (typeof document !== 'undefined') {
     const state = refStateFor(project);
     captureRefInputs(state);
     if (state.busy) return;
-    if (!state.file && !(state.type === 'caption' && state.text.trim())) {
-      state.error = state.type === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file first.';
+    const files = [...state.queue];
+    const typed = !files.length && state.type === 'caption' && state.text.trim();
+    const linked = referenceLinkOf(state.link);
+    if (linked.error) { state.error = linked.error; render(); return; }
+    if (!files.length && !typed && !linked.url) {
+      state.error = state.type === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file, or paste a link.';
       render();
       return;
     }
     state.busy = true; state.error = ''; state.message = '';
     render();
+    const total = files.length + (typed ? 1 : 0) + (linked.url ? 1 : 0);
+    let sent = 0, name = '';
     try {
       let assets = null;
       if (artifactMode() && globalThis.claude?.use) {
         try { assets = await globalThis.claude.use('assets'); } catch { assets = null; }
       }
-      const reference = await encodeReferenceUpload(assets, { type: state.type, file: state.file, text: state.text, note: state.note });
-      const requestId = randomId(globalThis);
-      const result = await transport.call('add_reference', { requestId, brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, reference, ...(project.title ? { title: project.title } : {}) });
-      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', message: result?.message || 'Saving. Claude will confirm shortly.' });
-      notify(result?.status === 'requested' ? 'Reference sent. Claude will save it to this job.' : (result?.message || 'Reference saved.'));
+      const send = async reference => {
+        const requestId = randomId(globalThis);
+        const result = await transport.call('add_reference', { requestId, brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, reference, ...(project.title ? { title: project.title } : {}) });
+        sent += 1;
+        return result;
+      };
+      let result = null;
+      for (const item of files) {
+        name = total > 1 ? item.file.name : '';
+        const problem = referenceProblem(item.type, item.file);
+        if (problem) throw new Error(problem);
+        result = await send(await encodeReferenceUpload(assets, { type: item.type, file: item.file, note: state.note, role: state.role }));
+        state.queue = state.queue.filter(entry => entry !== item);
+      }
+      if (typed) { name = ''; result = await send(await encodeReferenceUpload(assets, { type: state.type, file: null, text: state.text, note: state.note, role: state.role })); }
+      if (linked.url) {
+        name = linked.url;
+        const note = String(state.note || '').replace(/\s+/g, ' ').trim();
+        if (note.length > REFERENCE_NOTE_MAX) throw new Error(`Keep the note under ${REFERENCE_NOTE_MAX} characters.`);
+        result = await send({ action: 'link', url: linked.url, ...(note ? { note } : {}) });
+        state.link = '';
+      }
+      const onlyLink = total === 1 && Boolean(linked.url);
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', typeTouched: false, role: '', queue: [], message: onlyLink ? 'Saving the link. Claude will confirm shortly.' : total > 1 ? `Sent ${total} references. Claude will confirm shortly.` : (result?.message || 'Saving. Claude will confirm shortly.') });
+      notify(result?.status === 'requested' ? (onlyLink ? 'Link sent. Claude will save it to this job.' : total > 1 ? `${total} references sent. Claude will save them to this job.` : 'Reference sent. Claude will save it to this job.') : (result?.message || 'Reference saved.'));
       render();
       await refresh();
     } catch (e) {
-      Object.assign(state, { busy: false, error: e.message || 'Could not add that reference.' });
+      const why = e.message || 'Could not add that reference.';
+      Object.assign(state, { busy: false, error: `${name ? `${name}: ` : ''}${why}${sent ? ` ${sent} of ${total} ${sent === 1 ? 'was' : 'were'} sent; the rest are still waiting.` : ''}` });
+      render();
+    }
+  }
+  // Copy one of the brand's saved files (its logo or a photo) into this job. Only the file's id travels; the server finds the file.
+  async function submitBrandReference(project) {
+    if (!transport) return;
+    const state = refStateFor(project);
+    const file = ((data.brands || []).find(item => item.slug === project.brand)?.brandFiles || []).find(item => item.id === state.brandPick);
+    if (!file || state.busy) return;
+    state.busy = true; state.error = ''; state.message = '';
+    render();
+    try {
+      const reference = { type: 'picture', action: 'brand', brandAssetId: file.id, ...(file.kind === 'logo' ? { role: 'logo' } : {}) };
+      const result = await transport.call('add_reference', { requestId: randomId(globalThis), brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, reference, ...(project.title ? { title: project.title } : {}) });
+      Object.assign(state, { busy: false, brandPick: '', message: result?.message || 'Saving. Claude will confirm shortly.' });
+      notify(result?.status === 'requested' ? 'Brand file sent. Claude will save it to this job.' : (result?.message || 'Reference saved.'));
+      render();
+      await refresh();
+    } catch (e) {
+      Object.assign(state, { busy: false, error: e.message || 'Could not add that file.' });
+      render();
+    }
+  }
+  // Take a saved reference off the job: the request is applied by the server (files are moved aside, not deleted) and the card
+  // goes when the next snapshot no longer lists it.
+  async function removeSavedReference(project, id) {
+    if (!transport) return;
+    const state = refStateFor(project);
+    if (state.removing?.[id]) return;
+    state.confirm = null; state.removeError = '';
+    (state.removing ||= {})[id] = Date.now();
+    render();
+    try {
+      const requestId = randomId(globalThis);
+      const result = await transport.call('remove_reference', { requestId, brand: project.brand, jobId: project.jobId, referenceId: id, expectedRevision: project.revision, ...(project.title ? { title: project.title } : {}) });
+      notify(result?.status === 'requested' ? 'Removing that reference. It disappears once Claude confirms.' : (result?.message || 'Reference removed.'));
+      render();
+      await refresh();
+    } catch (e) {
+      delete state.removing[id];
+      state.removeError = e.message || 'Could not remove that reference.';
       render();
     }
   }
@@ -7046,15 +7240,32 @@ if (typeof document !== 'undefined') {
     if (note) state.note = note.value;
     if (text) state.text = text.value;
   }
-  function onNewRefChange(field) {
+  function onNewRefChange(field, dropped = null) {
     const state = newRefsOf();
     captureNewRefInputs(state);
-    if (field.name === 'nref_type') {
-      Object.assign(state, { type: field.value, file: null, fileName: '', error: '' });
-    } else if (field.name === 'nref_file') {
-      const file = field.files?.[0] || null;
-      const problem = referenceProblem(state.type, file);
-      Object.assign(state, { file: problem ? null : file, fileName: problem || !file ? '' : file.name, error: problem });
+    if (!dropped && field.name === 'nref_type') {
+      Object.assign(state, { type: field.value, file: null, fileName: '', error: '', typeTouched: true });
+    } else {
+      const files = dropped || [...(field.files || [])];
+      if (files.length > 1) {
+        // Several at once go straight onto the list, each as the type that fits it (or the one the person chose).
+        let problem = '';
+        for (const file of files) {
+          const type = state.typeTouched ? state.type : detectedReferenceType(file);
+          const wrong = referenceProblem(type, file);
+          if (wrong) { problem ||= wrong; continue; }
+          if ((state.items || []).length >= NEW_JOB_REFERENCES_MAX) { problem ||= `Add up to ${NEW_JOB_REFERENCES_MAX} references now; the rest can go on the job page.`; break; }
+          const checked = newJobReferenceItem({ type, file, text: '', note: state.note, role: state.role });
+          if (checked.error) { problem ||= checked.error; continue; }
+          state.items = [...(state.items || []), checked.item];
+        }
+        Object.assign(state, { file: null, fileName: '', text: '', note: problem ? state.note : '', role: problem ? state.role : '', error: problem, typeTouched: false });
+      } else {
+        const file = files[0] || null;
+        if (file && !state.typeTouched) state.type = detectedReferenceType(file);
+        const problem = referenceProblem(state.type, file);
+        Object.assign(state, { file: problem ? null : file, fileName: problem || !file ? '' : file.name, error: problem });
+      }
     }
     state.open = true;
     render();
@@ -7066,7 +7277,7 @@ if (typeof document !== 'undefined') {
     const checked = newJobReferenceItem(state);
     if (checked.error) { state.error = checked.error; return false; }
     state.items = [...(state.items || []), checked.item];
-    Object.assign(state, { file: null, fileName: '', text: '', note: '', error: '' });
+    Object.assign(state, { file: null, fileName: '', text: '', note: '', role: '', error: '', typeTouched: false });
     return true;
   }
   // The wire shape of every listed reference: files to the asset store (inline when small), text inline. Done once per item.
@@ -7077,7 +7288,7 @@ if (typeof document !== 'undefined') {
     }
     const out = [];
     for (const item of state.items) {
-      item.encoded ||= await encodeReferenceUpload(assets, { type: item.type, file: item.file, text: item.text, note: item.note });
+      item.encoded ||= await encodeReferenceUpload(assets, { type: item.type, file: item.file, text: item.text, note: item.note, role: item.role });
       out.push(item.encoded);
     }
     return out;
@@ -7088,7 +7299,7 @@ if (typeof document !== 'undefined') {
     const id = field?.closest?.('[data-qref]')?.dataset.qref;
     return id ? (questionState(id).upload ||= { ...freshNewJobRefs(), type: inboxQuestions.get(id)?.wantsUpload?.type || 'picture' }) : null;
   }
-  function onUploadFieldChange(prefix, field) {
+  function onUploadFieldChange(prefix, field, dropped = null) {
     const state = uploadStateFor(prefix, field);
     if (!state) return;
     const scope = field.closest('[data-qref],[data-aref]') || app;
@@ -7096,10 +7307,10 @@ if (typeof document !== 'undefined') {
     const text = scope.querySelector(`[name="${prefix}_text"]`);
     if (note) state.note = note.value;
     if (text) state.text = text.value;
-    if (field.name === `${prefix}_type`) {
+    if (!dropped && field.name === `${prefix}_type`) {
       Object.assign(state, { type: field.value, file: null, fileName: '', error: '', typeTouched: true });
     } else {
-      const file = field.files?.[0] || null;
+      const file = dropped ? dropped[0] || null : field.files?.[0] || null;
       if (file && !state.typeTouched) state.type = referenceTypeFor(state.type, file);
       const problem = referenceProblem(state.type, file);
       Object.assign(state, { file: problem ? null : file, fileName: problem || !file ? '' : file.name, error: problem });
@@ -7107,6 +7318,44 @@ if (typeof document !== 'undefined') {
     state.message = '';
     render();
   }
+  // --- Drop a file on a control, or paste a screenshot: the same as choosing it with the button ---
+  function acceptFiles(prefix, files, scope) {
+    const list = [...files];
+    if (!list.length) return;
+    if (prefix === 'ref') onRefChange(scope, list);
+    else if (prefix === 'nref') onNewRefChange(scope, list);
+    else if (prefix === 'aref' || prefix === 'qref') onUploadFieldChange(prefix, scope, list);
+  }
+  const hasFiles = event => [...(event.dataTransfer?.types || [])].includes('Files');
+  const dropZoneOf = target => target?.closest?.('[data-ref-drop]') || null;
+  app.addEventListener('dragenter', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); } });
+  app.addEventListener('dragover', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); } });
+  app.addEventListener('dragleave', event => { const zone = dropZoneOf(event.target); if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove('is-dragover'); });
+  app.addEventListener('drop', event => {
+    const zone = dropZoneOf(event.target);
+    if (!zone) return;
+    event.preventDefault();
+    zone.classList.remove('is-dragover');
+    if (zone.querySelector('input[type="file"]')?.disabled) return;
+    acceptFiles(zone.dataset.refDrop, event.dataTransfer?.files || [], zone);
+  });
+  // Ctrl/Cmd+V of a picture goes to the control the person is in or pointing at, or to the open "Add a reference" panel.
+  const PASTE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+  document.addEventListener('paste', event => {
+    const clip = event.clipboardData;
+    const pictures = [...(clip?.files || [])].filter(file => /^image\//.test(file.type));
+    if (!pictures.length || !app.contains(event.target) && event.target !== document.body && event.target !== document.documentElement) return;
+    const typing = event.target?.closest?.('input,textarea,[contenteditable="true"]');
+    if (typing && clip.getData('text/plain')) return;
+    const zone = dropZoneOf(event.target)
+      || event.target?.closest?.('.ref-form,details.new-refs')?.querySelector?.('[data-ref-drop]')
+      || app.querySelector('[data-ref-drop]:hover')
+      || app.querySelector('details[data-open-key="more:refs"][open] [data-ref-drop="ref"]');
+    if (!zone || zone.querySelector('input[type="file"]')?.disabled) return;
+    event.preventDefault();
+    const named = pictures.map((file, at) => new File([file], `pasted-picture${at ? `-${at + 1}` : ''}.${PASTE_EXT[file.type] || 'png'}`, { type: file.type }));
+    acceptFiles(zone.dataset.refDrop, named, zone);
+  });
   // Send the file as an add_reference request: from the chat (shown there as a chip) or as the answer to a question that asked for it.
   async function sendUploadedReference(prefix, field) {
     if (!transport) return;
@@ -7130,11 +7379,11 @@ if (typeof document !== 'undefined') {
       if (artifactMode() && globalThis.claude?.use) {
         try { assets = await globalThis.claude.use('assets'); } catch { assets = null; }
       }
-      const reference = await encodeReferenceUpload(assets, { type: state.type, file: state.file, text: state.text, note: state.note });
+      const reference = await encodeReferenceUpload(assets, { type: state.type, file: state.file, text: state.text, note: state.note, role: state.role });
       const requestId = randomId(globalThis);
       const args = { requestId, brand: ownerJob.brand, jobId: ownerJob.jobId, expectedRevision: ownerJob.revision, reference, ...(ownerJob.title ? { title: ownerJob.title } : {}), ...(prefix === 'aref' ? { to: agentBoxState(ownerJob).chat || agentBoxState(ownerJob).to || 'producer' } : {}), ...(questionId ? { questionId } : {}) };
       const result = await transport.call('add_reference', args);
-      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', typeTouched: false, open: false, message: result?.message || 'Sent. Claude will save it to this job.' });
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', role: '', typeTouched: false, open: false, message: result?.message || 'Sent. Claude will save it to this job.' });
       if (questionId) state.type = item?.wantsUpload?.type || 'picture';
       notify(result?.status === 'requested' ? 'File sent. Claude will save it to this job.' : (result?.message || 'File saved.'));
       render();
@@ -7155,7 +7404,7 @@ if (typeof document !== 'undefined') {
       if (state) state[name.endsWith('note') ? 'note' : 'text'] = event.target.value;
       return;
     }
-    if (name !== 'ref_note' && name !== 'ref_text') return;
+    if (name !== 'ref_note' && name !== 'ref_text' && name !== 'ref_link') return;
     const project = currentRefProject();
     if (project) captureRefInputs(refStateFor(project));
   });
@@ -7168,12 +7417,32 @@ if (typeof document !== 'undefined') {
   });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
-    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send]');if(!target)return;
+    const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-ref-role],[data-ref-brand],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send],[data-ref-open],[data-ref-remove],[data-ref-keep],[data-ref-confirm],[data-ref-unqueue]');if(!target)return;
     if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
     if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
     if(target.dataset.qrefSend!==undefined){void sendUploadedReference('qref',target);return;}
     if(target.dataset.nrefAction==='add'){const state=newRefsOf();state.open=true;queueNewRef(state);render();return;}
     if(target.dataset.nrefRemove!==undefined){const state=newRefsOf();state.items=(state.items||[]).filter((_,index)=>String(index)!==target.dataset.nrefRemove);state.error='';render();return;}
+    if(target.dataset.refRole!==undefined){
+      const prefix=target.dataset.refPrefix;
+      const scope=target.closest('.ref-form')||app;
+      const state=prefix==='ref'?(currentRefProject()?refStateFor(currentRefProject()):null):prefix==='nref'?newRefsOf():uploadStateFor(prefix,target);
+      if(state){
+        const note=scope.querySelector(`[name="${prefix}_note"]`);const text=scope.querySelector(`[name="${prefix}_text"]`);
+        if(note)state.note=note.value;if(text)state.text=text.value;
+        state.role=state.role===target.dataset.refRole?'':target.dataset.refRole;
+        if(prefix==='nref')state.open=true;
+        render();
+      }
+      return;
+    }
+    if(target.dataset.refBrand!==undefined){const refProject=currentRefProject();if(refProject){const state=refStateFor(refProject);state.brandPick=state.brandPick===target.dataset.refBrand?'':target.dataset.refBrand;render();}return;}
+    if(target.dataset.refAction==='brand'){const refProject=currentRefProject();if(refProject)void submitBrandReference(refProject);return;}
+    if(target.dataset.refOpen!==undefined){const refProject=currentRefProject();const ref=refProject?.references?.find(item=>item.id===target.dataset.refOpen);if(!ref)return;captureInlineValues();returnFocus=target;returnSelector=`[data-ref-open="${CSS.escape(ref.id)}"]`;viewer={ref};render();app.querySelector('.viewer-close')?.focus();return;}
+    if(target.dataset.refRemove!==undefined){const refProject=currentRefProject();if(refProject){const state=refStateFor(refProject);state.confirm=target.dataset.refRemove;state.removeError='';render();app.querySelector(`[data-ref-keep="${CSS.escape(target.dataset.refRemove)}"]`)?.focus();}return;}
+    if(target.dataset.refKeep!==undefined){const refProject=currentRefProject();if(refProject){refStateFor(refProject).confirm=null;render();app.querySelector(`[data-ref-remove="${CSS.escape(target.dataset.refKeep)}"]`)?.focus();}return;}
+    if(target.dataset.refConfirm!==undefined){const refProject=currentRefProject();if(refProject)void removeSavedReference(refProject,target.dataset.refConfirm);return;}
+    if(target.dataset.refUnqueue!==undefined){const refProject=currentRefProject();if(refProject){const state=refStateFor(refProject);state.queue=state.queue.filter((_,index)=>String(index)!==target.dataset.refUnqueue);state.error='';render();}return;}
     if(target.dataset.refAction==='send'){const refProject=currentRefProject();if(refProject)void submitReference(refProject);return;}
     if(target.dataset.publishToggle!==undefined){
       const key=target.dataset.publishToggle;
@@ -8488,7 +8757,7 @@ if (typeof document !== 'undefined') {
   });
   document.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&(drawer||viewer)){close();return;}
-    if(event.key==='Tab'&&(drawer||viewer)){const box=app.querySelector(viewer?'.viewer':'.drawer');const controls=[...box.querySelectorAll('button:not(:disabled),input,select,textarea,a[href],video[controls]')];const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
+    if(event.key==='Tab'&&(drawer||viewer)){const box=app.querySelector(viewer?'.viewer':'.drawer');const controls=[...box.querySelectorAll('button:not(:disabled),input,select,textarea,a[href],video[controls],audio[controls]')];const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
   });
   app.addEventListener('toggle', event => {
     const key = event.target?.dataset?.openKey;

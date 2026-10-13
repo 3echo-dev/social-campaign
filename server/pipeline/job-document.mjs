@@ -997,6 +997,24 @@ export function previewThumb(file, cacheDir, { video = false } = {}) {
   }
 }
 
+/**
+ * A larger JPEG (480 pixels on its long edge) of an image or a video's first frame as a data URI, or null when it is not small
+ * enough to travel with the board (then the board shows the small one). Cached beside the small ones; never throws.
+ */
+const LARGE_EDGE = 480;
+const LARGE_BYTES = 36 * 1024;
+export function largePreview(file, cacheDir, { video = false } = {}) {
+  try {
+    const info = statSync(file);
+    if (!info.isFile() || !info.size) return null;
+    const key = createHash('sha256').update(`${resolve(file)}|${info.size}|${info.mtimeMs}`).digest('hex');
+    const scaled = scaledThumbnail(file, key, cacheDir, { video, edge: LARGE_EDGE });
+    return scaled && scaled.length <= LARGE_BYTES ? `data:image/jpeg;base64,${scaled.toString('base64')}` : null;
+  } catch {
+    return null;
+  }
+}
+
 function redact(text, root) {
   if (!root) return text;
   let out = text;

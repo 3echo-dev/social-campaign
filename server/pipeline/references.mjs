@@ -8,8 +8,8 @@
  * the job folder.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
-import { basename, extname, isAbsolute, join, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path';
 
 export const REFERENCE_TYPES = Object.freeze({
   picture: { label: 'Reference picture', use: 'Studio reference image', kinds: ['image'] },
@@ -40,6 +40,20 @@ export const REFERENCE_LIMITS = Object.freeze({
   document: 20 * 1024 * 1024,
   text: 20000,
 });
+// What a reference is for, picked with one tap on the board. Optional; a fixed list, anything else is ignored.
+// `means` is the one line the agents read to know how to use it.
+export const REFERENCE_ROLES = Object.freeze({
+  logo: { label: 'Logo', means: 'Put the brand logo in exactly as it is; never redraw or restyle it.', types: ['picture', 'addon'] },
+  product: { label: 'Product', means: 'Keep the product exactly as shown (shape, colours, labels).', types: ['picture', 'addon'] },
+  person: { label: 'Person or character', means: 'Keep this person or character consistent: same face, look and outfit.', types: ['picture', 'addon'] },
+  style: { label: 'Style or look', means: 'Match the colours, lighting and mood of this.', types: ['picture', 'video', 'addon'] },
+  motion: { label: 'Motion', means: 'Copy the movement and pacing of this.', types: ['video', 'addon'] },
+  sound: { label: 'Music or voice', means: 'Match the sound of this (the music or the voice).', types: ['audio', 'addon'] },
+});
+export const referenceRoleLabel = role => (typeof role === 'string' && Object.hasOwn(REFERENCE_ROLES, role) ? REFERENCE_ROLES[role].label : null);
+function cleanRole(role, type) {
+  return typeof role === 'string' && Object.hasOwn(REFERENCE_ROLES, role) && REFERENCE_ROLES[role].types.includes(type) ? role : '';
+}
 export const NOTE_MAX = 500;
 export const REFERENCES_PER_JOB = 60;
 const MANIFEST = 'manifest.json';
@@ -90,7 +104,7 @@ function slugOf(name) {
 
 /**
  * Check one reference (the request shape) without writing anything. Returns what apply needs:
- * { type, note, fileName, ext, kind, buffer }. Throws plain-worded errors.
+ * { type, note, role, fileName, ext, kind, buffer }. Throws plain-worded errors.
  */
 export function checkReference(reference, { readFile = readFileSync, shapeOnly = false } = {}) {
   if (!reference || typeof reference !== 'object' || Array.isArray(reference)) throw new Error('Add a file or some text to attach.');
@@ -98,6 +112,7 @@ export function checkReference(reference, { readFile = readFileSync, shapeOnly =
   if (!Object.hasOwn(REFERENCE_TYPES, type)) throw new Error('Choose what this is: a reference picture, reference video, audio, caption or text, or an add-on.');
   const spec = REFERENCE_TYPES[type];
   const note = cleanNote(reference.note);
+  const role = cleanRole(reference.role, type);
   const rawName = cleanName(reference.fileName);
 
   if (typeof reference.text === 'string' && reference.text.trim()) {
@@ -106,7 +121,7 @@ export function checkReference(reference, { readFile = readFileSync, shapeOnly =
     if (text.length > REFERENCE_LIMITS.text) throw new Error(`That text is too long (limit ${REFERENCE_LIMITS.text.toLocaleString('en-US')} characters). Shorten it or split it.`);
     let ext = rawName ? extname(rawName).toLowerCase() : '.txt';
     if (EXT[ext] !== 'text') ext = '.txt';
-    return { type, note, fileName: rawName || 'caption.txt', ext, kind: 'text', buffer: Buffer.from(text, 'utf8') };
+    return { type, note, role, fileName: rawName || 'caption.txt', ext, kind: 'text', buffer: Buffer.from(text, 'utf8') };
   }
 
   const ext = extname(rawName).toLowerCase();
@@ -117,7 +132,7 @@ export function checkReference(reference, { readFile = readFileSync, shapeOnly =
   }
   if (kind === 'text') throw new Error('Text files are read in the board and sent as text; this one arrived as a file.');
   if (Number.isFinite(reference.size) && reference.size > REFERENCE_LIMITS[kind]) throw new Error(`That file is too big (limit ${megabytes(REFERENCE_LIMITS[kind])} for ${kind === 'document' ? 'documents' : kind}). Try a smaller or shorter copy.`);
-  if (shapeOnly) return { type, note, fileName: rawName, ext, kind, buffer: null };
+  if (shapeOnly) return { type, note, role, fileName: rawName, ext, kind, buffer: null };
 
   let buffer;
   if (typeof reference.dataBase64 === 'string' && reference.dataBase64) buffer = Buffer.from(reference.dataBase64, 'base64');
@@ -130,7 +145,7 @@ export function checkReference(reference, { readFile = readFileSync, shapeOnly =
   if (buffer.length > REFERENCE_LIMITS[kind]) throw new Error(`That file is too big (limit ${megabytes(REFERENCE_LIMITS[kind])} for ${kind === 'document' ? 'documents' : kind}). Try a smaller or shorter copy.`);
   const seen = sniff(buffer);
   if (!seen || seen.kind !== kind || !seen.ext.includes(ext)) throw new Error(`That file does not look like a real ${ext.slice(1).toUpperCase()} file, so it was not saved.`);
-  return { type, note, fileName: rawName, ext, kind, buffer };
+  return { type, note, role, fileName: rawName, ext, kind, buffer };
 }
 
 export const referencesDir = jobDir => join(jobDir, 'inputs', 'references');
@@ -223,6 +238,7 @@ export function addReference({ jobDir, reference, requestId = null, by = null, n
       originalName: checked.fileName || null,
       mimeType: MIME[checked.ext] || 'application/octet-stream',
       note: checked.note,
+      ...(checked.role ? { role: checked.role } : {}),
       sha256,
       bytes: checked.buffer.length,
       usage: 'reference_only',
@@ -237,23 +253,75 @@ export function addReference({ jobDir, reference, requestId = null, by = null, n
   return result;
 }
 
+/**
+ * Take one reference off a job: its manifest entry is removed under the manifest lock and its files are moved (never deleted) to
+ * <job>/inputs/references/.removed/<id>/, keeping their folders, with the old entry saved beside them. Every path is checked to stay
+ * inside the job's references folder. An id that is not on the job is a plain error. Returns { reference }.
+ */
+export function removeReference({ jobDir, referenceId, now = new Date() }) {
+  if (!jobDir || !isAbsolute(jobDir)) throw new Error('A job folder is required.');
+  const id = typeof referenceId === 'string' ? referenceId.trim() : '';
+  if (!/^[A-Za-z0-9._-]{1,80}$/.test(id) || id.startsWith('.')) throw new Error('That reference is no longer on this job.');
+  let removed = null;
+  updateReferenceManifest(jobDir, manifest => {
+    const entry = manifest.entries.find(item => item.id === id);
+    if (!entry) throw new Error('That reference is no longer on this job.');
+    const base = realpathSync(referencesDir(jobDir));
+    const keepRoot = join(base, '.removed');
+    let keep = join(keepRoot, id);
+    if (existsSync(keep)) keep = join(keepRoot, `${id}-${now.getTime()}`);
+    const rels = [...new Set([entry.path, ...(Array.isArray(entry.files) ? entry.files : [])].filter(safeRelative))];
+    mkdirSync(keep, { recursive: true });
+    for (const rel of rels) {
+      const from = join(base, ...rel.split(/[\\/]/));
+      let real;
+      try { real = realpathSync(from); } catch { continue; } // already gone
+      if (!inside(base, real) || !statSync(real).isFile()) continue;
+      const to = join(keep, ...rel.split(/[\\/]/));
+      if (!inside(keep, to)) continue;
+      mkdirSync(dirname(to), { recursive: true });
+      renameSync(real, to);
+      // Tidy the emptied folders (type/id), never the references folder itself.
+      for (let dir = dirname(real); inside(base, dir) && dir !== base; dir = dirname(dir)) { try { rmdirSync(dir); } catch { break; } }
+    }
+    writeFileSync(join(keep, 'entry.json'), `${JSON.stringify({ ...entry, removedAt: now.toISOString() }, null, 2)}\n`);
+    removed = entry;
+    return { ...manifest, entries: manifest.entries.filter(item => item !== entry) };
+  });
+  return { reference: removed };
+}
+
 /** What the board shows for a job: no bytes, no absolute paths, capped. */
-export function referenceSummaries(jobDir, limit = 40, { preview = null, previews = 8 } = {}) {
+export function referenceSummaries(jobDir, limit = 40, { preview = null, previews = 8, large = null, larges = 3, copyUrl = null } = {}) {
   const entries = readReferences(jobDir).slice(-limit);
   return entries.map((item, index) => {
     const summary = {
       id: item.id, type: item.type, kind: item.type === 'page' ? 'page' : item.kind || (item.type === 'video' ? 'video' : 'text'),
       label: item.label || REFERENCE_TYPES[item.type]?.label || 'Reference',
       name: item.originalName || item.title || String(item.path || '').split('/').pop(),
-      note: item.note || '', uploadedAt: item.uploadedAt || item.downloadedAt || null, bytes: item.bytes ?? null,
+      note: item.note || '', ...(referenceRoleLabel(item.role) ? { role: item.role } : {}), uploadedAt: item.uploadedAt || item.downloadedAt || null, bytes: item.bytes ?? null,
     };
     const site = siteOf(item.finalUrl || item.sourceUrl);
     if (site) summary.site = site;
     // Only the newest few carry a picture, so a job with many references stays light on the board.
     const source = preview && index >= entries.length - previews ? previewSource(item) : null;
     const thumb = source ? preview(join(referencesDir(jobDir), source.path), { video: source.video }) : null;
-    return thumb ? { ...summary, thumb } : summary;
+    // What the "see it large" view shows: a link, the start of a text, a bigger picture for the newest few, and a full copy's
+    // address when one was uploaded to the board (the same copies the review gates play).
+    const link = item.type === 'page' ? httpsLink(item.finalUrl || item.sourceUrl) : null;
+    if (link) summary.link = link;
+    if (item.kind === 'text' && typeof item.caption === 'string' && item.caption.trim()) summary.excerpt = item.caption.trim().slice(0, 400);
+    const url = typeof copyUrl === 'function' && /^[0-9a-f]{64}$/i.test(item.sha256 || '') ? copyUrl(item.sha256) : null;
+    if (url) summary.url = url;
+    const bigger = source && large && index >= entries.length - larges ? large(join(referencesDir(jobDir), source.path), { video: source.video }) : null;
+    if (thumb) summary.thumb = thumb;
+    if (bigger) summary.large = bigger;
+    return summary;
   });
+}
+
+function httpsLink(url) {
+  try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.username && !parsed.password && parsed.href.length <= 400 ? parsed.href : null; } catch { return null; }
 }
 
 function siteOf(url) {

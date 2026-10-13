@@ -112,4 +112,4 @@ Use these exact calls and nothing else for this job.
 
 Return a short summary with the job ID, active stage, artifacts written, reused artifacts, blockers, and next action.
 
-Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.
+Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting. Each entry may carry a `role` (what the person said it is for): logo = put the brand logo in exactly as it is, never redraw it; product = keep the product exact; person = keep this person or character consistent; style = match the colours, lighting and mood; motion = copy the movement and pacing; sound = match the music or voice.

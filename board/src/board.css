@@ -1328,7 +1328,44 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .ref-card-name{font-size:12px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ref-card-text small{color:var(--faint);font-size:11px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .new-refs-body .ab-chips li .ref-card{flex:1}
+.ref-item{position:relative}
+.ref-open{display:block;width:100%;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:8px}
+.ref-open:hover .ref-card{border-color:var(--dim)}
+.ref-item .ref-open .ref-card{padding-right:32px}
+.ref-x{position:absolute;top:4px;right:4px;width:24px;height:24px;min-height:0;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--faint);cursor:pointer}
+.ref-x:hover,.ref-x:focus-visible{background:var(--tint);color:var(--paper)}
+.ref-confirm,.ref-removing{width:100%}
+.ref-confirm-actions{display:flex;gap:6px;margin-top:4px}
+.ref-confirm-actions button{min-height:0;padding:4px 12px;font-size:12px}
+.ref-removing{opacity:.7}
+.ref-viewer-card{pointer-events:auto;display:flex;flex-direction:column;gap:12px;width:min(560px,100%);max-height:100%;overflow:auto;padding:12px;border:1px solid var(--line2);border-radius:var(--radius);background:var(--panel);color:var(--paper);box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.ref-viewer-media-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:96px;border-radius:8px;background:var(--panel2)}
+.ref-viewer-img,.ref-viewer-media{display:block;max-width:100%;max-height:min(60vh,480px);object-fit:contain;border-radius:8px}
+.ref-viewer-media{width:100%}
+.ref-viewer-audio{width:calc(100% - 24px);margin-bottom:12px}
+.ref-viewer-icon{color:var(--dim);display:grid;place-items:center;padding:20px}
+.ref-viewer-icon svg{width:48px;height:48px}
+.ref-viewer-text{margin:0;padding:12px;width:100%;box-sizing:border-box;max-height:40vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:13px;line-height:1.5}
+.ref-viewer-title{margin:0;font-size:15px;line-height:1.3;overflow-wrap:anywhere}
+.ref-viewer-facts,.ref-viewer-note{margin:2px 0 0;font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+.ref-viewer-info p{margin:6px 0 0}
 .ref-actions{display:flex;gap:8px}
+.ref-roles{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+.ref-role-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ref-role{min-height:30px;padding:4px 11px;border:1px solid var(--line2);border-radius:999px;background:transparent;color:var(--paper);font:inherit;font-size:12px;cursor:pointer}
+.ref-role.on{border-color:var(--go-dim);background:rgba(126,217,160,.1);color:var(--go);font-weight:700}
+.ref-brand{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line2)}
+.ref-brand .field-hint{margin:0}
+.ref-brand-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.ref-brand-list li{min-width:0}
+.ref-brand-file{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:6px 10px 6px 6px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);color:var(--paper);font:inherit;text-align:left;cursor:pointer}
+.ref-brand-file.on{border-color:var(--go-dim);box-shadow:0 0 0 1px var(--go-dim)}
+.ref-drop{display:flex;flex-direction:column;gap:8px;padding:8px;border:1px dashed var(--line2);border-radius:8px;transition:border-color .12s,background .12s}
+.ref-drop.is-dragover{border-color:var(--accent,var(--paper));background:var(--panel2)}
+.ref-drop-hint{color:var(--faint);font-size:11px;line-height:1.3}
+.ref-queue{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ref-queue li{display:flex;align-items:center;gap:8px;min-width:0}
+.ref-queue li .ref-card{flex:1}
 .new-refs{border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 .new-refs>summary{cursor:pointer;font-size:13px}
 .new-refs-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}

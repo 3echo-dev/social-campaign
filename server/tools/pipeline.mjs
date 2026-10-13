@@ -13,7 +13,7 @@ import { reconcileMetricoolChoicesQuietly } from '../pipeline/metricool.mjs';
 import { referenceFromUrl } from '../pipeline/url-reference.mjs';
 import { videoTeardown } from '../pipeline/video-teardown.mjs';
 import { searchReferences } from '../pipeline/reference-search.mjs';
-import { addReference, readReferences, referencesDir } from '../pipeline/references.mjs';
+import { addReference, readReferences, referencesDir, REFERENCE_ROLES } from '../pipeline/references.mjs';
 import { recordSearchCoverage } from '../pipeline/research-coverage.mjs';
 import { join } from 'node:path';
 import { leanResult, leanSnapshot } from '../pipeline/lean.mjs';
@@ -103,17 +103,17 @@ export const pipelineTools = [
     const projection = writeBoardDocuments({root,snapshot:boardSnapshot({root}),jobIds:[args.jobId]});
     return {...record,projectionFile:projection.projectionFile,documents:projection.documents,reviewCopies:reviewCopiesFor(root,record)};
   }),
-  tool('pipeline_references_list','List the references saved on a job (pictures, video, audio, caption text, add-ons the person uploaded from the board or handed over in chat), from the job\'s inputs/references/manifest.json. Each entry has type, kind, originalName, note, sha256, uploadedAt, by and an absolute path to read. Read this before planning, writing or making anything for the job, and use each reference as its use says.',ref,['brand','jobId'],(args,{workspace})=>{
+  tool('pipeline_references_list','List the references saved on a job (pictures, video, audio, caption text, add-ons the person uploaded from the board or handed over in chat), from the job\'s inputs/references/manifest.json. Each entry has type, kind, originalName, note, role (optional: what the person said it is for), sha256, uploadedAt, by and an absolute path to read; an entry with a role also carries roleLabel and roleMeans. Read this before planning, writing or making anything for the job, and use each reference as its use says. A role means: logo = put the brand logo in as it is, never redraw it; product = keep the product exact; person = keep this person or character consistent; style = match the colours, lighting and mood; motion = copy the movement and pacing; sound = match the music or voice.',ref,['brand','jobId'],(args,{workspace})=>{
     const root=local(workspace);
     const job=facts.jobAt(root,String(args.brand).trim(),String(args.jobId).trim());
     if(!job) throw new Error('That job could not be found for that brand.');
-    return {jobId:job.jobId,folder:referencesDir(job.dir),references:readReferences(job.dir).map(item=>({...item,absolutePath:join(referencesDir(job.dir),item.path)}))};
+    return {jobId:job.jobId,folder:referencesDir(job.dir),references:readReferences(job.dir).map(item=>({...item,...(Object.hasOwn(REFERENCE_ROLES,item.role)?{roleLabel:REFERENCE_ROLES[item.role].label,roleMeans:REFERENCE_ROLES[item.role].means}:{}),absolutePath:join(referencesDir(job.dir),item.path)}))};
   }),
-  tool('pipeline_reference_add','Save a reference to a job from a local file already on disk (absolute path) or from typed text, the same way the board\'s Add a reference upload does: checked by type, extension and the file\'s own bytes, copied into <job>/inputs/references/<type>/ and recorded in the manifest. type is picture, video, audio, caption or addon.',{...ref,type:{type:'string',enum:['picture','video','audio','caption','addon']},path:{...string,description:'Absolute path of a local file. Omit for typed text.'},text:{...string,description:'Caption or notes text instead of a file.'},fileName:string,note:string},['brand','jobId','type'],(args,{workspace})=>{
+  tool('pipeline_reference_add','Save a reference to a job from a local file already on disk (absolute path) or from typed text, the same way the board\'s Add a reference upload does: checked by type, extension and the file\'s own bytes, copied into <job>/inputs/references/<type>/ and recorded in the manifest. type is picture, video, audio, caption or addon. role is optional: logo, product, person, style, motion or sound (only the ones that fit the type).',{...ref,role:{type:'string',enum:Object.keys(REFERENCE_ROLES)},type:{type:'string',enum:['picture','video','audio','caption','addon']},path:{...string,description:'Absolute path of a local file. Omit for typed text.'},text:{...string,description:'Caption or notes text instead of a file.'},fileName:string,note:string},['brand','jobId','type'],(args,{workspace})=>{
     const root=local(workspace);
     const job=facts.jobAt(root,String(args.brand).trim(),String(args.jobId).trim());
     if(!job) throw new Error('That job could not be found for that brand.');
-    return addReference({jobDir:job.dir,by:'chat',reference:{type:args.type,path:args.path,text:args.text,fileName:args.fileName||(args.path?args.path.split(/[\\/]/).pop():undefined),note:args.note}});
+    return addReference({jobDir:job.dir,by:'chat',reference:{type:args.type,path:args.path,text:args.text,fileName:args.fileName||(args.path?args.path.split(/[\\/]/).pop():undefined),note:args.note,role:args.role}});
   }),
   tool('pipeline_board_request_land','Persist an artifact request for review by the local runner. This does not execute it or authenticate its author. Pass the request record\'s by field when it has one; it is kept as the actor on the saved request.',{operation:string,args:object,workspaceId:string,by:{...string,description:'Optional: the by field of the artifact request record, the opaque id of the viewer who made it.'},from:{type:'string',enum:['board','chat'],description:'Where the request came from. Pass board only for a record you read from the board\'s requests collection. Pass chat (the default) for anything the person typed to you in chat. Money and posting approvals typed in chat are refused: the person must tap the button on the board.'}},['operation','args','workspaceId'],(args,{workspace})=>{
     const root = local(workspace);
