@@ -625,8 +625,11 @@ button.sb-cell-body:active{transform:none}
 .inbox-thumb img{display:block;width:100%;height:100%;object-fit:contain}
 .inbox-question{padding-top:10px;margin-top:10px;border-top:1px solid var(--line2)}
 .inbox-question:first-of-type{border-top:0;margin-top:4px;padding-top:0}
-.inbox-previews{display:flex;gap:6px;margin:6px 0 8px}
-.inbox-preview{position:relative;flex:none;width:64px;height:96px;padding:0;overflow:hidden;background:#050608;border:1px solid var(--line2);border-radius:6px;cursor:pointer}
+.inbox-previews{display:flex;gap:6px;margin:8px 0 10px}
+.inbox-item.opens-job{cursor:pointer}
+.inbox-item.opens-job:hover{border-color:var(--tape)}
+.inbox-more{margin:8px 0 0;font-size:12px;color:var(--dim)}
+.inbox-preview{position:relative;flex:none;width:min(150px,60%);aspect-ratio:9 / 16;height:auto;padding:0;overflow:hidden;background:#050608;border:1px solid var(--line2);border-radius:6px;cursor:pointer}
 .inbox-preview img{display:block;width:100%;height:100%;object-fit:cover}
 .inbox-preview.is-video::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-35%,-50%);border-style:solid;border-width:8px 0 8px 13px;border-color:transparent transparent transparent rgba(255,255,255,.9);filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 .review-panel,.intake{scroll-margin-top:var(--gap)}
@@ -1196,7 +1199,13 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .overview-main>*{min-width:0}
 .needs-strip{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:calc(var(--pad) * .85) var(--pad);background:var(--surface);border:1px solid rgba(245,200,75,.45);border-radius:var(--r3);box-shadow:0 0 0 1px rgba(245,200,75,.08),0 14px 30px -22px rgba(245,200,75,.55),inset 0 -1px 1px rgb(255 255 255/.05)}
 .needs-strip .section-head{align-items:center;margin:0}
-.needs-strip .inbox-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:calc(var(--gap) / 2);align-items:start}
+.needs-strip .inbox-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:calc(var(--gap) / 2);align-items:stretch}
+.needs-strip .inbox-item>div:first-of-type{margin-top:auto}
+.needs-strip .inbox-actions{justify-content:flex-start}
+.needs-strip .inbox-options{align-items:center}
+.needs-strip .inbox-options .inbox-type{align-self:center;margin:0;padding:0;min-height:auto}
+.needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type){background:linear-gradient(135deg,#FFD65A,#FFA234) border-box;border-color:transparent;color:#1A1206;font-weight:800}
+.needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type):hover:not(:disabled){filter:brightness(1.06)}
 .project-card.is-waiting{border-color:var(--tape);box-shadow:0 0 0 1px rgba(245,200,75,.35),0 14px 32px -20px rgba(245,200,75,.6),inset 0 -1px 1px rgb(255 255 255/.05)}
 .project-card.is-waiting .pc-body>.pill{color:var(--tape-ink);background:var(--tape);border-color:var(--tape)}
 @media (hover:hover) and (pointer:fine){.project-card.is-waiting:hover{box-shadow:0 0 0 1px rgba(245,200,75,.5),0 18px 36px -20px rgba(245,200,75,.75),inset 0 -1px 1px rgb(255 255 255/.05)}}
@@ -4728,7 +4737,8 @@ const box=typing
 const upload=item.wantsUpload&&!locked?questionUpload(item,state.upload||{},{place}):'';
 const sent=locked&&state.text?`<p class="inbox-sent">${esc(`"${truncateText(state.text,160)}"`)}</p>`:'';
 const done=state.answered?'<p class="inbox-note" role="status">Claude has your answer.</p>':inboxStatus(state,signal);
-return`${takeList(item.takes)}${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
+const row=buttons&&link?buttons.replace(/<\/div>$/,`${link}</div>`):buttons||link;
+return`${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
 }
 function sampleThumb(doc){
 const sample=doc?.review?.sample;
@@ -4770,8 +4780,8 @@ const summaryLine=text=>(text?`<p class="inbox-summary">${esc(text)}</p>`:'');
 if(trimmed(item.summary)===REVIEW_NOT_READY)return summaryLine(summary);
 const inline=Boolean(item.inline)&&!inboxDecisionArgs(item).error;
 const reviewButton=`<button type="button"${inline?'':' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
-const offer=ctx.offer?`<p class="inbox-summary">Or send it to Post-production for a full edit.</p>${handoffButtons(ctx.offer,ctx.offerState||{},{sendOnly:true})}`:'';
-if(!inline)return`${summaryLine(summary)}${decisionPreviews(item,jobId)}<div class="inbox-actions">${reviewButton}</div>${offer}`;
+const offer=ctx.offer?handoffButtons(ctx.offer,ctx.offerState||{},{sendOnly:true,bare:true}):'';
+if(!inline)return`${summaryLine(summary)}${decisionPreviews(item,jobId)}<div class="inbox-actions">${offer}${reviewButton}</div>${ctx.offer?inboxError(ctx.offerState||{}):''}`;
 const shown=doc&&doc.revision===item.revision&&doc.review?.gate===gate?doc:null;
 const status=shown&&project&&project.detailsLoaded!==false?reviewStatus(project,shown,docState):null;
 const plan=status==='ready'?approval(gate,shown,state,{}):{label:gate==='price'?'Approve price':'Approve sample',line:''};
@@ -4905,12 +4915,13 @@ export const isHandoffItem=item=>item?.kind==='handoff_offer'||item?.kind==='han
 export const handoffArgs=({project,requestId})=>({requestId,brand:project.brand,jobId:project.jobId});
 export const researchLine=project=>(typeof project?.research?.line==='string'?project.research.line.trim():'');
 export const handoffStatusLine=project=>(project?.handoff?.status==='sent'?trimmed(project.handoff.line):'');
-export function handoffButtons(item,state={},{sendOnly=false}={}){
+export function handoffButtons(item,state={},{sendOnly=false,bare=false}={}){
 const buttons=(HANDOFF_BUTTONS[item?.kind]||[]).filter(([operation])=>!sendOnly||operation==='handoff_send');
 if(!buttons.length||!item.jobId)return'';
 const locked=Boolean(state.busy||state.sent);
 const row=buttons.map(([operation,label,tone])=>`<button type="button" class="${tone}" data-handoff="${operation}" data-handoff-job="${esc(item.jobId)}"${locked?' disabled':''}>${esc(label)}</button>`).join('');
 const note=state.sent?'<p class="inbox-note" role="status">Saved. Claude will carry on.</p>':'';
+if(bare)return`${row}${note}`;
 return`<div class="inbox-actions">${row}</div>${note}${inboxError(state)}`;
 }
 function postCard(item){
@@ -4933,7 +4944,9 @@ const body=onboarding?onboardingCard(item)
 :item.kind==='question'?questionCard(item,ctx.question||{},ctx.signal||{},index)
 :item.kind==='decision'?decisionCard(item,ctx)
 :briefCard(item,ctx,index);
-return`<li class="inbox-item${onboarding&&!item.needsYou?' is-info':''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace&&!onboarding?inboxJobLine(item):''}${inboxFromLine(item)}${text?`<p class="inbox-text">${esc(text)}</p>`:''}${body}</li>`;
+const more=Number.isInteger(ctx.more)&&ctx.more>0?`<p class="inbox-more">${esc(`${ctx.more} more ${ctx.more===1?'thing waits':'things wait'} in this job.`)}</p>`:'';
+const opens=ctx.opensJob&&item.jobId?` data-card-job="${esc(item.jobId)}"`:'';
+return`<li class="inbox-item${onboarding&&!item.needsYou?' is-info':''}${opens?' opens-job':''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace&&!onboarding?inboxJobLine(item):''}${inboxFromLine(item)}${text?`<p class="inbox-text">${esc(text)}</p>`:''}${more}${body}</li>`;
 }
 function questionGroupCard(items,contexts,indexes,{signal={},workspace=false}={}){
 const head=items[0];
@@ -4973,6 +4986,32 @@ if(item.kind!=='brief')return{};
 const same=briefs.filter(other=>(other.jobId||null)===(item.jobId||null));
 return{briefKeys:same.map(other=>other.field),briefLead:!same.length||same[0]===item};
 };
+if(workspace){
+const order=item=>({decision:0,question:1,brief:2,post:3,handoff_return:4,handoff_offer:5,stuck:6}[item.kind]??7);
+const jobs=new Map();
+const loose=[];
+list.forEach((item,index)=>{
+if(!item.jobId){loose.push([index]);return;}
+if(!jobs.has(item.jobId))jobs.set(item.jobId,[]);
+jobs.get(item.jobId).push(index);
+});
+const open=at=>!isAnswered(at)&&((list[at].kind!=='onboarding'&&!list[at].closing)||list[at].needsYou);
+const lead=indexes=>[...indexes].sort((a,b)=>Number(isAnswered(a))-Number(isAnswered(b))||order(list[a])-order(list[b])||(list[a].kind==='question'?b-a:a-b))[0];
+const groups=[...[...jobs.values()].map(indexes=>({indexes,at:lead(indexes)})),...loose.map(([index])=>({indexes:[index],at:index}))]
+.sort((a,b)=>Math.min(...a.indexes)-Math.min(...b.indexes));
+const jobCards=groups.map(({indexes,at})=>{
+const item=list[at];
+const more=indexes.filter(index=>index!==at&&open(index)).length;
+const card=inboxCard(item,{signal,...contexts[at],...brief(item),workspace,index:at,more,opensJob:Boolean(item.jobId)});
+return card;
+}).join('');
+const waiting=groups.filter(({indexes})=>indexes.some(open)).length;
+const jobTag=waiting?`<span class="pill needed">${waiting} ${waiting===1?'needs':'need'} you</span>`:'';
+if(strip)return list.length?`<section class="needs-strip" aria-labelledby="needs-strip-title"><div class="section-head"><h2 id="needs-strip-title">Needs you</h2>${jobTag}</div><ol class="inbox-list">${jobCards}</ol></section>`:'';
+const jobBody=list.length?`<ol class="inbox-list">${jobCards}</ol>`:empty?`<p class="inbox-announce">${esc(empty)}</p>`:'';
+if(bare)return jobBody?`<div class="director-inbox">${jobBody}</div>`:'';
+return`<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Needs you</h2>${jobTag}</div>${jobBody}${starter?`<div class="inbox-starter">${starter}</div>`:''}</section></aside>`;
+}
 const groups=[];
 const byJob=new Map();
 list.forEach((item,index)=>{
@@ -7573,6 +7612,8 @@ if(name==='qref_type'||name==='qref_file')onUploadFieldChange('qref',event.targe
 });
 function openInline(value){captureInlineValues();if(inline&&value&&inline!==value)inlineDrafts.set(draftKey(inline),inline);const requested=value||defaultInline();inline=inlineDrafts.get(draftKey(requested))||requested;render();const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea');if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus();}
 app.addEventListener('click',async event=>{
+const card=event.target.closest('[data-card-job]');
+if(card&&!event.target.closest('a,button,input,textarea,select,label,form,video,[data-view-media]')){location.hash='#/project/'+encodeURIComponent(card.dataset.cardJob);return;}
 const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-ref-role],[data-ref-brand],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send],[data-ref-open],[data-ref-remove],[data-ref-keep],[data-ref-confirm],[data-ref-unqueue]');if(!target)return;
 if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
 if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
