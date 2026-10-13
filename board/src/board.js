@@ -4230,7 +4230,8 @@ export function takeList(takes) {
   }).join('')}</div>`;
 }
 
-function questionCard(item, state = {}, signal = {}, index = 0) {
+// place keeps element ids unique when the same question is also shown on its stage (place 'stage').
+function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } = {}) {
   if (item.inChat) return `<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
   const key = String(item.questionId);
   const options = inboxOptions(item.options);
@@ -4242,11 +4243,11 @@ function questionCard(item, state = {}, signal = {}, index = 0) {
   const typed = item.allowText !== false;
   const typing = typed && !locked && (Boolean(state.open) || !options.length);
   const link = typed && options.length && !typing && !locked ? `<button type="button" class="sb-ask inbox-type" data-inbox-type="${esc(key)}">Type an answer</button>` : '';
-  const id = `inbox-answer-${index}`;
+  const id = `${place ? `${place}-` : ''}inbox-answer-${index}`;
   const box = typing
     ? `<form class="inbox-answer" data-inbox-form="${esc(key)}" novalidate><label class="visually-hidden" for="${id}">Your answer</label><textarea id="${id}" name="answer" maxlength="${ANSWER_LIMIT}" placeholder="Your answer">${esc(state.draft || '')}</textarea><div class="inbox-actions">${options.length ? `<button type="button" class="quiet" data-inbox-cancel="${esc(key)}">Cancel</button>` : ''}<button type="submit" class="primary">Send</button></div></form>`
     : '';
-  const upload = item.wantsUpload && !locked ? questionUpload(item, state.upload || {}) : '';
+  const upload = item.wantsUpload && !locked ? questionUpload(item, state.upload || {}, { place }) : '';
   const sent = locked && state.text ? `<p class="inbox-sent">${esc(`"${truncateText(state.text, 160)}"`)}</p>` : '';
   const done = state.answered ? '<p class="inbox-note" role="status">Claude has your answer.</p>' : inboxStatus(state, signal);
   return `${takeList(item.takes)}${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
@@ -5439,9 +5440,24 @@ function decidedGateTrace(gate, body) {
  * waiting opens to its history (`who` gives the agent card behind a step as `agent`, `chipContext` links its files);
  * one not reached yet is disabled.
  */
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {} } = {}) {
+// The Director's open questions on a job, with their answers, for the stage that is waiting on them.
+export function stageQuestions(items, { stateOf = () => ({}), signal = {} } = {}) {
+  const open = (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && item.questionId);
+  if (!open.length) return '';
+  const blocks = open.map((item, at) => `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionCard(item, stateOf(item) || {}, signal, at, { place: 'stage' })}</div>`).join('');
+  return `<div class="stage-ask" role="group" aria-label="Claude's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'Claude needs your answer to carry on' : `Claude needs ${open.length} answers to carry on`)}</p>${blocks}</div>`;
+}
+
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, asking = '' } = {}) {
   const placed = new Set();
   let prev = '';
+  let askPlaced = false;
+  // The open questions sit right under the first step or decision that waits on the person, so "Waiting on you" always has its buttons.
+  const withAsk = (row, item) => {
+    if (!asking || askPlaced || item.status !== 'waiting') return row;
+    askPlaced = true;
+    return `${row}<li class="step step-ask">${asking}</li>`;
+  };
   const merged = mergeDecidedGates(model);
   for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
   const stages = merged.stages.map((stage, at) => {
@@ -5453,7 +5469,7 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
         const decided = item.decided ? decidedGateTrace(item.decided, bodies[item.decided.gate]?.html || '') : '';
         const card = stepCard(item, prev, who, { trace: item.status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext }) + decided, open: isOpen(key, false), key });
         prev = item.name;
-        return card;
+        return withAsk(card, item);
       }
       const own = bodies[item.gate] || null;
       if (own?.html) placed.add(item.gate);
@@ -5461,11 +5477,11 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
       const author = item.agent ? who(item.agent) : null;
       const director = who('producer');
       const trace = item.status === 'pending' ? '' : gateTrace(item, { agent: author?.agent || null, person: author, director: director?.agent || null, chipContext });
-      return gateSection(item, { jobId, body: own?.html || '', open: Boolean(own?.open), isOpen, trace });
+      return withAsk(gateSection(item, { jobId, body: own?.html || '', open: Boolean(own?.open), isOpen, trace }), item);
     });
     return `<li class="stg"><div class="stg-h"><h3>Stage ${at + 1} <span>${esc(stage.label)}</span></h3><span class="cnt num">${done} of ${stage.items.length} done</span></div><ol class="steps">${rows.join('')}</ol></li>`;
   });
-  return { html: stages.length ? `<ol class="flow" aria-label="Steps of this job">${stages.join('')}</ol>` : '', placed };
+  return { html: stages.length ? `<ol class="flow" aria-label="Steps of this job">${stages.join('')}</ol>` : '', placed, askPlaced };
 }
 
 // The Brand onboarding page's own Inbox and chat: the Director and the Researcher (and anyone else who ran), from brand.agents.
@@ -6547,9 +6563,11 @@ if (typeof document !== 'undefined') {
     const stages = stageItems(project, { pendingGate });
     if (storyboard && storyboardKeptByStep(stages, who, doc)) storyboard = '';
     extra('storyboard', storyboard);
-    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext });
+    const openQuestions = needItems.filter(item => item.kind === 'question' && !item.closing && !questionState(item.questionId).answered);
+    const stageAsking = stageQuestions(openQuestions, { stateOf: item => questionState(item.questionId), signal: signalInfo() });
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext, asking: stageAsking });
     const left = (gate, html) => (flow.placed.has(gate) ? '' : html);
-    const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + (flow.placed.has(pendingGate) ? '' : review) + recipeStandalone;
+    const standalone = (flow.askPlaced ? '' : stageAsking) + left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + (flow.placed.has(pendingGate) ? '' : review) + recipeStandalone;
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;

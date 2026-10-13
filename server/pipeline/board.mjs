@@ -1777,7 +1777,11 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   catch(error) {
     if(error.code!=='EEXIST') throw error;
     const prior = read(file);
-    if(prior.operation!==operation || !sameRequesterData(operation,prior.args,record.args)) throw new Error('Request ID was reused with different data.');
+    // A board click that was already applied or declined is landed again by a later session while the board still lists it as waiting
+    // (its receipt was never written back), sometimes in another form (an uploaded file named by its board asset id instead of the path
+    // it was saved from). It is the same click: say so and hand back the receipt, so the session settles the card and moves on.
+    if(prior.operation===operation && (prior.status==='applied' || prior.status==='declined')) return {...prior,alreadyHandled:true,message:`This board request was already ${prior.status}. Write its artifactReceipt to the board's request document so the board stops showing it as waiting; there is nothing else to do.`};
+    if(prior.operation!==operation || !sameRequesterData(operation,prior.args,record.args)) throw new UserFacingError('Request ID was reused with different data.',{code:'invalid_input',fix:'Land each board request once, with the data the board saved for it.'});
     return prior;
   }
   return {...record,message:'Request saved locally. The running Claude session will validate and apply it.'};
@@ -2355,6 +2359,12 @@ function requesterData(operation, args) {
   if (operation !== 'create_job' || !plainObject(args)) return args;
   const { job, ...requester } = args;
   return requester;
+}
+
+// What a continue_job apply hands back: where the job is, not its whole snapshot (which ran past 100,000 characters and filled the session).
+function continueJobResult(snapshot, args) {
+  const project = snapshot?.project || {};
+  return { jobId: project.jobId || args.jobId, brand: args.brand, state: project.state ?? null, revision: project.revision ?? null, nextAction: project.nextAction ?? snapshot?.status?.nextAction ?? null, message: 'Read the job with pipeline_job_read when the full snapshot is needed.' };
 }
 
 function sameRequesterData(operation, left, right) {
@@ -3272,7 +3282,7 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='add_reference' && isLinkReference(record.args?.reference)) return applyLinkReference({root,file,record,confirmedBy});
   let result;
   try { result=record.operation==='continue_job'
-    ? runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId})
+    ? continueJobResult(runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId}),record.args)
     : record.operation==='answer_question'
       ? answeredQuestion(root,record)
       : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'||record.operation==='create_job'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
