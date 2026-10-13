@@ -2223,9 +2223,10 @@ metricool:'Add Metricool in claude.ai: Settings, Connectors, then come back and 
 meta_ads:'Add Meta ads in claude.ai: Settings, Connectors, as a custom connector with the URL https://mcp.facebook.com/ads, then come back and say done.',
 tiktok_ads:'Add TikTok for Business in claude.ai: Settings, Connectors, then come back and say done.',
 });
+const CONNECTOR_MARKS=Object.freeze({metricool:'MC',meta_ads:'MA'});
 export function connectorCard(connector,{busy=false}={}){
 const state=connector.state;
-const mark=esc(String(connector.name||'').slice(0,2).toUpperCase());
+const mark=esc(CONNECTOR_MARKS[connector.key]||String(connector.name||'').slice(0,2).toUpperCase());
 const key=esc(connector.key);
 const refreshable=connector.key==='metricool';
 const connect=(extra='',label='Connect')=>`<button${extra} data-connect="${key}" ${busy?'disabled':''}>${label}</button>`;

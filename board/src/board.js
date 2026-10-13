@@ -1275,9 +1275,12 @@ const CONNECTOR_GUIDANCE = Object.freeze({
   tiktok_ads: 'Add TikTok for Business in claude.ai: Settings, Connectors, then come back and say done.',
 });
 
+// Marks for connectors whose first two letters would match another's (Metricool and Meta ads are both ME).
+const CONNECTOR_MARKS = Object.freeze({ metricool: 'MC', meta_ads: 'MA' });
+
 export function connectorCard(connector, { busy = false } = {}) {
   const state = connector.state;
-  const mark = esc(String(connector.name || '').slice(0, 2).toUpperCase());
+  const mark = esc(CONNECTOR_MARKS[connector.key] || String(connector.name || '').slice(0, 2).toUpperCase());
   const key = esc(connector.key);
   // Metricool is added in claude.ai and then looked for. Once connected, the same connect request reads its brands
   // again, so the button says what it does: Refresh brands, for after a brand or social account is added in Metricool.
