@@ -472,7 +472,7 @@ export const campaignTools = [
 
   defineTool({
     name: 'job_plan_save',
-    description: 'Store a plan for a job, keeping the previous one. Use after changing a plan the user asked to adjust.',
+    description: 'Store a plan for a job, keeping the previous one. Use after changing a plan the user asked to adjust. This is the older campaign plan, named by campaign_id; the plan of a Social Campaign job is plan.md in its job folder (pipeline_job_read returns it too).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -500,7 +500,7 @@ export const campaignTools = [
 
   defineTool({
     name: 'job_plan_get',
-    description: 'Fetch the current plan for a job, or an earlier version of it.',
+    description: 'Fetch the current plan for a job, or an earlier version of it. This is the older campaign plan, named by campaign_id; the plan of a Social Campaign job is plan.md in its job folder (pipeline_job_read returns it too).',
     inputSchema: {
       type: 'object',
       properties: {
