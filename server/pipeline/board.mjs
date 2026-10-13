@@ -578,12 +578,14 @@ const transcriptionOnly = items => items.length > 0 && items.every(facts.isTrans
 
 const referenceArtSeat = state => REFERENCE_ART_STATES.has(state) || state === 'CHANGES_REQUESTED';
 
-function priceRefusal(job, items) {
+// dropOnly: the call adds nothing and only takes items out of the price. That cannot start any spending, so what is left in the
+// price is not judged (an emptied price, or one that still lists a clip, is no reason to keep a picture in it).
+function priceRefusal(job, items, { dropOnly = false } = {}) {
   const state = facts.readJobState(job.dir).state;
   if (transcriptionOnly(items)) return facts.isFinishedState(state) ? PRICE_TOO_EARLY : null;
   if (facts.referenceArtOnly(job)) {
     if (!referenceArtSeat(state)) return PRICE_TOO_EARLY;
-    return picturesOnly(notTranscription(items)) ? null : REFERENCE_ART_ONLY;
+    return dropOnly || picturesOnly(notTranscription(items)) ? null : REFERENCE_ART_ONLY;
   }
   return PRICE_STATES.has(state) ? null : PRICE_TOO_EARLY;
 }
@@ -1558,7 +1560,7 @@ const requesterIdOf = by => (typeof by === 'string' && REQUESTER_ID.test(by) ? b
 // Nothing else is stored, so a request from older code has no origin and is treated as the board's.
 const ORIGINS = ['board', 'chat'];
 
-export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin }) {
+export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
   if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
@@ -1575,7 +1577,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
   if (operation === 'create_job') createJobFields(args, root);
   if (operation === 'answer_question') validateBoardAnswer(root, args);
-  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',...(ORIGINS.includes(origin) ? {origin} : {}),createdAt:new Date().toISOString(),...(requesterIdOf(by) ? {by:requesterIdOf(by)} : {})};
+  const record = {requestId,operation,args:{...(operation === 'create_job' ? withoutPhoto(args) : args),requestId},source:source === 'local' ? 'local' : 'artifact',status:'requested',...(ORIGINS.includes(origin) ? {origin} : {}),...(chatOnly===true ? {chatOnly:true} : {}),createdAt:new Date().toISOString(),...(requesterIdOf(by) ? {by:requesterIdOf(by)} : {})};
   const file = requestFile(root,requestId);
   try { writeFileSync(file,JSON.stringify(record,null,2),{flag:'wx'}); }
   catch(error) {
@@ -2768,13 +2770,13 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   let moved=null;
   if(requested===SAMPLE_GATE) {
     const pending=pendingReview(root,brand,jobId,snapshot);
-    if(pending.gate===SAMPLE_GATE) return pending.review;
+    if(pending.gate===SAMPLE_GATE) return markPresented(root,pending.review);
     if(!sampleReview(root,brand,jobId,snapshot)) throw new Error('There is no sample waiting for a decision. It shows once the sample has been made and before the rest is made.');
     throw new Error('Another decision on this job comes first.');
   }
   if(MEDIA_GATES.includes(requested)) {
     const pending=pendingReview(root,brand,jobId,snapshot);
-    if(pending.gate===requested) return pending.review;
+    if(pending.gate===requested) return markPresented(root,pending.review);
     if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(`There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}${requested===CUT_GATE ? ' and joined, after the clips are approved' : ''}${requested===FINISH_GATE ? ' once finishing has run on the approved joined video (finish-video.py), and only when captions or music were chosen' : ''}.`);
     throw new Error('Another decision on this job comes first.');
   }
@@ -2828,6 +2830,99 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   const record={brand,jobId,gate,revision:snapshot.project.revision,artifacts,createdAt:new Date().toISOString()};
   writeFileSync(reviewFile(root,brand,jobId,gate),JSON.stringify(record,null,2));
   return moved ? {...record,moved} : record;
+}
+
+// ---- Answers given in chat ----
+// The sample, the pictures, the clips, the joined video and the finished video are reviews worked out from the files, so they have
+// no record of their own. Presenting one leaves this marker: the exact files and job revision the person was shown. A chat answer
+// is taken only against what was shown, so a file that changed after the person looked cannot be approved by a "yes".
+const presentedFile = (root,jobId,gate) => join(requestsDirectory(root),`presented-${digest(JSON.stringify([jobId,gate]))}.record`);
+
+function markPresented(root,review) {
+  const {brand,jobId,gate,revision,artifacts}=review;
+  writeJsonAtomic(presentedFile(root,jobId,gate),{brand,jobId,gate,revision,artifacts,presentedAt:new Date().toISOString()});
+  return review;
+}
+
+const CHAT_GATES = Object.freeze([SAMPLE_GATE,...MEDIA_GATES,PRICE_GATE,'concept','storyboard','content','publish']);
+const CHAT_DECISIONS = Object.freeze({approve:'approve',changes:'request_changes'});
+const CHAT_NEXT = Object.freeze({
+  sample: {approve:'The sample is approved. Make the other pictures now, each under its approved price.',changes:'Make the sample again with the changes asked (a redo of the sample needs no price line), then present the sample again.'},
+  pictures: {approve:'The pictures are approved. Make the clips now.',changes:'Make the pictures with changes again, then present the pictures again.'},
+  clips: {approve:'The clips are approved. Join them with stitch-clips.py, then present the joined video (gate cut).',changes:'Make the clips with changes again, then present the clips again.'},
+  cut: {approve:'The joined video is approved. Record what goes on it if that is not done yet, run finish-video.py, then carry on.',changes:'Change the joined video as asked, then present it again.'},
+  finish: {approve:'The finished video is approved. Carry on to the final post.',changes:'Change the finished video as asked, then present it again.'},
+  price: {approve:'The price is approved. Make the items in it now.',changes:'Change the price as asked with pipeline_quote_save, then present it again.'},
+});
+
+/**
+ * An answer the person gave in chat, recorded through the board's own validation and writers: the files under approvals/ and the
+ * approval records are the same as a board click would leave, and are bound to the exact review that was presented (job revision and
+ * file hashes). It builds the request the board would have sent, saves it as chat-<id>, and applies it with applyBoardDecision.
+ *
+ * Money and posting approvals (the price, the sample, the posting plan) typed in chat are taken only on a chat-only job, which has no
+ * board to tap. On any other job they stay a tap on the board, and this refuses them the same way a landed chat request is refused.
+ */
+export function applyChatDecision({root,brand,jobId,gate,decision,note,panels,finishing,combine,maxCredits,chosen,recipe,acceptedFlagIds,confirmedBy}) {
+  root=rootOf(root);
+  if(typeof confirmedBy!=='string' || !confirmedBy.trim()) throw new Error("Say who answered: pass confirmedBy with the person's own words or their name.");
+  if(!CHAT_GATES.includes(gate)) throw new Error(`gate must be one of ${CHAT_GATES.join(', ')}.`);
+  if(!Object.hasOwn(CHAT_DECISIONS,decision)) throw new Error('decision must be approve or changes.');
+  const job=facts.jobAt(root,brand,jobId);
+  if(!job) throw new Error('Job not found in this workspace.');
+  const chatOnly=readJsonFile(join(job.dir,'job.json'),{})?.chatOnly===true;
+  const snapshot=runtime.readJobSnapshot({root,brand,jobId});
+  const word=GATE_WORDS[gate];
+  const pending=pendingReview(root,brand,jobId,snapshot);
+  if(pending.gate!==gate) {
+    throw new UserFacingError(pending.gate ? `This job is waiting on the ${GATE_WORDS[pending.gate]} decision, not the ${word} one.` : `Nothing is waiting on the ${word} decision. It was not presented yet, or it was already answered, on the board or in chat.`,{
+      code:'not_waiting',
+      fix:pending.gate ? `Answer the ${GATE_WORDS[pending.gate]} first.` : 'If it was answered, say so in one line and carry on. Otherwise present it first with pipeline_review_present.',
+    });
+  }
+  const derived=gate===SAMPLE_GATE || MEDIA_GATES.includes(gate);
+  const shown=derived ? readJsonFile(presentedFile(root,jobId,gate),null) : pending.review;
+  const showAgain=`Present the ${word} again with pipeline_review_present, show it to the person, and ask again.`;
+  if(!shown || !Array.isArray(shown.artifacts) || !shown.artifacts.length) throw new UserFacingError(`The ${word} has not been presented yet, so there is nothing to approve.`,{code:'not_presented',fix:`Present it with pipeline_review_present (gate ${gate}), show it to the person, then ask.`});
+  const identity=items=>JSON.stringify(items.map(item=>[item.path,item.sha256]).sort((a,b)=>a[0].localeCompare(b[0])));
+  if(shown.revision!==snapshot.project.revision || (derived && identity(shown.artifacts)!==identity(pending.review.artifacts))) {
+    throw new UserFacingError(`The ${word} changed after it was shown, so this answer cannot be taken for what the person saw.`,{code:'review_changed',fix:showAgain});
+  }
+  const dir=jobDirectory(root,brand,jobId);
+  for(const artifact of shown.artifacts) {
+    let current=null;
+    try { current=digest(readFileSync(artifactFile(dir,artifact.path))); } catch { /* a missing file counts as changed */ }
+    if(current!==artifact.sha256) throw new UserFacingError(`A file in the ${word} (${artifact.path}) changed after it was shown, so this answer cannot be taken for what the person saw.`,{code:'review_changed',fix:showAgain});
+  }
+  const args={
+    requestId:`chat-${randomUUID()}`,brand,jobId,reviewId:gate,revision:shown.revision,artifacts:shown.artifacts.map(({path,sha256})=>({path,sha256})),
+    decision:CHAT_DECISIONS[decision],
+    ...(note!==undefined ? {note} : {}),
+    ...(panels!==undefined ? {panels} : {}),
+    ...(finishing!==undefined ? {finishing} : {}),
+    ...(combine!==undefined ? {combine} : {}),
+    ...(chosen!==undefined ? {chosen} : {}),
+    ...(recipe!==undefined ? {recipe} : {}),
+    ...(acceptedFlagIds!==undefined ? {acceptedFlagIds} : {}),
+  };
+  // The board sends the total it showed; the person was shown the saved price, so that is the total the approval is checked against.
+  if(gate===PRICE_GATE) {
+    const quote=facts.readQuote(job);
+    if(!quote) throw new Error('This price is no longer saved. Save and present it again.');
+    args.totals=facts.quoteTotals(quote.quote.items);
+  }
+  const saved=saveBoardRequest({root,operation:'submit_decision',source:'artifact',origin:'chat',chatOnly,args});
+  try {
+    const applied=applyBoardDecision({root,requestId:saved.requestId,confirmedBy:confirmedBy.trim(),...(maxCredits!==undefined ? {maxCredits} : {})});
+    const approved=applied.decision?.decision ? applied.decision.decision==='approve' : decision==='approve';
+    const board=chatOnly ? '' : ' The board shows the old state until it is written again (pipeline_status).';
+    return {...applied,next:`${(CHAT_NEXT[gate]?.[approved ? 'approve' : 'changes']) || (approved ? `The ${word} is approved. Carry on with the next step.` : `Changes are asked on the ${word}. Make them, then present it again.`)}${board}`};
+  } catch(error) {
+    // A refused answer leaves nothing behind: a request nobody claimed would otherwise sit in the board's list as waiting.
+    const file=requestFile(root,saved.requestId);
+    if(!existsSync(`${file}.claim`)) { rmSync(file,{force:true}); rmSync(sessionClaimFile(root,saved.requestId),{force:true}); }
+    throw error;
+  }
 }
 
 function claimBoardRequest(file) {
@@ -2888,8 +2983,10 @@ const CLICK_ONLY_GATES = Object.freeze([PRICE_GATE, SAMPLE_GATE, 'publish']);
 const CLICK_ONLY_OPERATIONS = Object.freeze(['choose_publish_route', 'choose_post_time']);
 const CLICK_ONLY_REASON = 'Please tap Approve on the card in the board. Money and posting steps need your click.';
 
+// A chat-only job has no board to tap, so the person's typed answer is the only approval there is: applyChatDecision marks the
+// request chatOnly after checking the job itself. A request landed from chat for a job on the board stays click-only.
 function refuseChatClick(record) {
-  if(record.origin!=='chat') return;
+  if(record.origin!=='chat' || record.chatOnly===true) return;
   const gated = record.operation==='submit_decision' ? record.args?.decision==='approve' && CLICK_ONLY_GATES.includes(record.args?.reviewId) : CLICK_ONLY_OPERATIONS.includes(record.operation);
   if(gated) throw new UserFacingError(CLICK_ONLY_REASON,{code:'click_required',fix:'Tell the person to tap the button on the card in the board, then leave this request unapplied.'});
 }
@@ -3002,7 +3099,7 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
     }
   }
   const comment = args.reviewId==='storyboard' ? storyboardComment(args) : args.note || '';
-  const command = [join(runtime.runtimeConstants.pipelineRoot,'scripts','record-approval.js'),validated.snapshot.brand.slug,args.jobId,args.reviewId,args.decision==='approve'?'approve':'change','--by',confirmedBy,'--comment',comment,'--channel','file','--root',root];
+  const command = [join(runtime.runtimeConstants.pipelineRoot,'scripts','record-approval.js'),validated.snapshot.brand.slug,args.jobId,args.reviewId,args.decision==='approve'?'approve':'change','--by',confirmedBy,'--comment',comment,'--channel',record.origin==='chat' ? 'chat' : 'file','--root',root];
   command.push('--expect-revision',String(args.revision),'--expected-artifacts',JSON.stringify(args.artifacts.map(({path,sha256})=>({path,sha256}))));
   if(Number.isInteger(maxCredits)) command.push('--max-credits',String(maxCredits));
   if(typeof args.chosen==='string' && CHOSEN_ID.test(args.chosen)) command.push('--chosen',args.chosen);
@@ -3091,7 +3188,8 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   let finishingResult = null;
   if(finishingChoiceId) {
     const job = facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
-    finishingResult = (combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, board button (request ${record.requestId})`}) : recordFinishingChoice({job,choice:finishingChoiceId,by:fromNote ? `the person, board note "${note.slice(0,120)}" (request ${record.requestId})` : `the person, board button (request ${record.requestId})`}));
+    const via = record.origin==='chat' ? 'in chat' : 'board';
+    finishingResult = (combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`}) : recordFinishingChoice({job,choice:finishingChoiceId,by:fromNote ? `the person, ${via} note "${note.slice(0,120)}" (request ${record.requestId})` : `the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`}));
   }
   const finishingWords = finishingChoiceId ? ` and ${finishingResult?.choice==='skip' ? 'used as it is' : combinePicks ? `finishing set (music ${combinePicks.music?.source ?? 'default'}, voice-over ${combinePicks.voice?.source ?? 'default'}, captions ${combinePicks.captions?.source ?? 'default'})` : `finishing set to ${finishingChoiceId}`}${fromNote ? ' (read from the note, the cut is not redone)' : ''}` : '';
   const summary = approve ? `All ${word} approved${finishingWords}` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}`;
@@ -3151,7 +3249,8 @@ export function saveJobQuote({root,brand,jobId,items,drop}) {
   const job=facts.jobAt(root,brand,jobId);
   if(!job) throw new Error('Job not found in this workspace.');
   if(kinds.suppliesMedia(readJsonFile(join(job.dir,'job.json'),{})?.kind)) throw new Error('This post is made from files you already have, so nothing is made and there is no price to approve.');
-  const refusal=priceRefusal(job,facts.buildQuote(job,items,{drop}).quote.items);
+  const dropOnly=!(Array.isArray(items) && items.length) && Array.isArray(drop) && drop.length>0;
+  const refusal=priceRefusal(job,facts.buildQuote(job,items,{drop}).quote.items,{dropOnly});
   if(refusal) throw new Error(refusal);
   const saved=facts.saveQuote(job,items,{drop});
   const outstanding=facts.pricePending(job);

@@ -237,6 +237,11 @@ Read pipeline_board_requests before handling a request submitted from a board ar
 
 When the person asks to work in chat without the board, set `chatOnly: true` on the job (in `job` when creating it, or in the intake patch later).
 Present each step and every approval in chat, with pictures and videos as files, and take the approvals from chat.
+First present the review with `pipeline_review_present` as usual, show its files in chat, then record the person's answer with `pipeline_chat_decision`.
+Pass the gate you presented, approve or changes, and the person's own words as `confirmedBy`.
+It writes the same approval the board would, so the spend guard, the price and the later steps work as on the board.
+It refuses an answer to a review that was not presented, or whose files changed after the person saw them; present it again and ask again.
+On a job that uses the board, the price, the sample and the posting plan still need the person's tap on the board.
 Never open or publish the board for that job.
 
 Board requests are intent only until the local runner validates them; server validation still runs on every apply.
@@ -255,7 +260,8 @@ Show decision saved and decision applied as separate states.
 
 Every decision, from the concept pick to going live, is presented on the board from the job document and summarised once in chat with the same options; follow `board-sync` under Decisions on the board and in chat.
 Every decision summary and every result line, in chat or in a board comment reply, names the job's brand and title in plain words, for example 'SK-II "Anna Sawai serum Reel": price approved.'
-An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is applied with the same decision tools and the board is written again.
+An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is recorded with `pipeline_chat_decision` and the board is written again.
+The board click and the chat answer are the same answer: take the first, and if the call says it was already answered, say so in one line and carry on.
 When the person types a decision in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each waiting job's brand and title as an option, and wait for whichever answer arrives first.
 Never apply a chat decision to a guessed job.
 When only one job is waiting on a decision, apply the chat answer to that job, and still name it in the reply.

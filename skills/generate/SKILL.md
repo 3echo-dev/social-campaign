@@ -47,6 +47,8 @@ Items already priced stay, saving the same key again re-prices an item not yet m
 The board then shows each item, its credits, the total, and the ceiling or balance when known, with Approve at that total and Ask for changes.
 
 Follow the hand-off in `board-sync` under Decisions on the board and in chat: post one short chat summary with the same total and options, and apply whichever answer comes first with the same decision tools.
+An answer typed in chat is recorded with `pipeline_chat_decision` (gate `price`, `sample`, `pictures`, `clips`, `cut` or `finish`) after the review was presented.
+On a chat-only job it takes the price and the sample approval; on a job that uses the board those two need the person's tap on the board.
 `maxCredits` is for a concept approval only, equal to the credits shown.
 A price approval carries `totals` equal to the `pipeline_quote_save` totals and is applied with no `maxCredits`.
 Follow social-campaign's Never stop waiting on an open gate rule: keep the decision open until an answer arrives, and never fall back to asking the person to reply in chat.
@@ -67,6 +69,7 @@ Use the provider only through the person's own claude.ai connector; the plugin h
 
 Keep sample first, then the rest, exactly as `pipeline/skills/make-image/SKILL.md` and `pipeline/skills/make-video/SKILL.md` detail, with the job key as `idempotencyKey`.
 The storyboard pictures are made before the storyboard is approved: the first picture made is the sample, and once it lands, present it for approval on the board and in chat like every other decision and hold the rest until the person answers.
+A chat answer to the sample is recorded with `pipeline_chat_decision` (gate `sample`); the guard holds the rest until it, or the board click, is recorded.
 The storyboard review shows every panel with its picture, and approving it approves them as the start pictures for the clips. After the whole batch of clips is made, stop for the clips review (`gate: "clips"`) before joining them. Never go on to the next stage without the person's approval. A redo of a picture is free until the panel has had 3; a redo of a clip is a new priced version the person approves first.
 
 The hooks record every paid call and its credits, land every output the moment a download link comes back, and move the job's state at the first paid call and once every quoted item lands; never write credits, a manifest `status` or `file`, or the job state for media by hand.
