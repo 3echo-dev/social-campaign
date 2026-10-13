@@ -238,11 +238,49 @@ export function addReference({ jobDir, reference, requestId = null, by = null, n
 }
 
 /** What the board shows for a job: no bytes, no absolute paths, capped. */
-export function referenceSummaries(jobDir, limit = 40) {
-  return readReferences(jobDir).slice(-limit).map(item => ({
-    id: item.id, type: item.type, kind: item.kind || (item.type === 'video' ? 'video' : 'text'),
-    label: item.label || REFERENCE_TYPES[item.type]?.label || 'Reference',
-    name: item.originalName || item.title || String(item.path || '').split('/').pop(),
-    note: item.note || '', uploadedAt: item.uploadedAt || item.downloadedAt || null, bytes: item.bytes ?? null,
-  }));
+export function referenceSummaries(jobDir, limit = 40, { preview = null, previews = 8 } = {}) {
+  const entries = readReferences(jobDir).slice(-limit);
+  return entries.map((item, index) => {
+    const summary = {
+      id: item.id, type: item.type, kind: item.type === 'page' ? 'page' : item.kind || (item.type === 'video' ? 'video' : 'text'),
+      label: item.label || REFERENCE_TYPES[item.type]?.label || 'Reference',
+      name: item.originalName || item.title || String(item.path || '').split('/').pop(),
+      note: item.note || '', uploadedAt: item.uploadedAt || item.downloadedAt || null, bytes: item.bytes ?? null,
+    };
+    const site = siteOf(item.finalUrl || item.sourceUrl);
+    if (site) summary.site = site;
+    // Only the newest few carry a picture, so a job with many references stays light on the board.
+    const source = preview && index >= entries.length - previews ? previewSource(item) : null;
+    const thumb = source ? preview(join(referencesDir(jobDir), source.path), { video: source.video }) : null;
+    return thumb ? { ...summary, thumb } : summary;
+  });
+}
+
+function siteOf(url) {
+  try { return url ? new URL(url).hostname.replace(/^www\./, '') : null; } catch { return null; }
+}
+
+/**
+ * The saved file that best shows what a reference looks like, as { path, video }, or null: the picture itself, a link
+ * video's own thumbnail (else the video's first frame), or a web page's main picture. Paths stay inside the references folder.
+ */
+export function previewSource(item) {
+  const files = (Array.isArray(item?.files) ? item.files : []).filter(safeRelative);
+  const picture = pattern => files.find(file => pattern.test(file));
+  if (item?.type === 'page') {
+    const image = picture(/(^|\/)image\.(png|jpe?g|webp)$/i);
+    return image ? { path: image, video: false } : null;
+  }
+  const path = safeRelative(item?.path) ? item.path : null;
+  if (item?.kind === 'image' && path) return { path, video: false };
+  if (item?.kind === 'video') {
+    const thumbnail = picture(/(^|\/)thumbnail\.(png|jpe?g|webp)$/i);
+    if (thumbnail) return { path: thumbnail, video: false };
+    if (path && /\.(mp4|mov|webm|m4v)$/i.test(path)) return { path, video: true };
+  }
+  return null;
+}
+
+function safeRelative(path) {
+  return typeof path === 'string' && path && !path.includes('\0') && !isAbsolute(path) && !/^[a-z]:/i.test(path) && !path.split(/[\\/]/).includes('..');
 }

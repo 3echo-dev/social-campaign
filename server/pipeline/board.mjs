@@ -1324,6 +1324,59 @@ function withinPreviewBudget(items) {
   });
 }
 
+// The pictures on the reference cards (job page "Add a reference") share their own slice of the board's size budget,
+// newest jobs first; a card past it shows its type icon instead. Each file is turned into a picture once per change.
+const REFERENCE_PREVIEW_BUDGET = 56 * 1024;
+const referenceThumbs = new Map();
+export function referencePreview(root) {
+  return (file, { video = false } = {}) => {
+    let key;
+    try { const info = statSync(file); key = `${file}|${info.size}|${info.mtimeMs}|${video ? 1 : 0}`; } catch { return null; }
+    if (!referenceThumbs.has(key)) {
+      if (referenceThumbs.size > 500) referenceThumbs.clear();
+      const alpha = !video && /\.(png|webp)$/i.test(file);
+      referenceThumbs.set(key, (alpha && transparentThumb(file, thumbnailDirectory(root), key)) || previewThumb(file, thumbnailDirectory(root), { video }));
+    }
+    return referenceThumbs.get(key);
+  };
+}
+// A PNG or WebP (a logo, usually) keeps its see-through background as a small PNG, so a dark logo is not lost on black.
+const TRANSPARENT_THUMB_BYTES = 16 * 1024;
+function transparentThumb(file, cacheDir, key) {
+  try {
+    const raw = readFileSync(file);
+    if (/\.png$/i.test(file) && raw.length <= TRANSPARENT_THUMB_BYTES) return `data:image/png;base64,${raw.toString('base64')}`;
+    mkdirSync(cacheDir, { recursive: true });
+    const target = join(cacheDir, `ref-${digest(key)}.png`);
+    if (!existsSync(target)) {
+      const temp = `${target}.${process.pid}.${randomUUID()}.tmp.png`;
+      const result = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', file, '-frames:v', '1', '-vf', "scale='min(144,iw)':'min(144,ih)':force_original_aspect_ratio=decrease", '-pix_fmt', 'rgba', temp], { windowsHide: true, shell: false, timeout: 20000 });
+      if (result.status !== 0 || !existsSync(temp)) { rmSync(temp, { force: true }); return null; }
+      renameSync(temp, target);
+    }
+    const png = readFileSync(target);
+    return png.length <= TRANSPARENT_THUMB_BYTES ? `data:image/png;base64,${png.toString('base64')}` : null;
+  } catch {
+    return null;
+  }
+}
+export function withinReferencePreviewBudget(projects, budget = REFERENCE_PREVIEW_BUDGET) {
+  let used = 0;
+  const order = projects.map((project, index) => ({ project, index, at: Date.parse(project.usage?.startedAt || '') || 0 })).sort((a, b) => b.at - a.at);
+  const kept = new Array(projects.length);
+  for (const { project, index } of order) {
+    const references = (project.references || []).slice().reverse().map(ref => {
+      if (!ref.thumb) return ref;
+      if (used + ref.thumb.length <= budget) { used += ref.thumb.length; return ref; }
+      const { thumb, ...rest } = ref;
+      return rest;
+    }).reverse();
+    kept[index] = { ...project, references };
+  }
+  return kept;
+}
+const withoutReferenceThumbs = projects => projects.map(project => ({ ...project, references: (project.references || []).map(({ thumb, ...rest }) => rest) }));
+
 function workspaceInbox(jobItems, looseQuestions, brandNames) {
   const loose = looseQuestions.map(question => questionItem(question, { jobId: null, jobTitle: null, brandName: question.brand ? brandNames.get(question.brand) || null : null }));
   const items = [...jobItems, ...loose].sort(newestFirst);
@@ -1535,7 +1588,7 @@ export function boardSnapshot({ root } = {}) {
       ...(handoffState ? { handoff: handoffState } : {}),
       ...(research ? { research } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
-      references:referenceSummaries(job.path),
+      references:referenceSummaries(job.path, 40, { preview: referencePreview(root) }),
       waitingOn:gate ? GATE_WORDS[gate] || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
       usage:{
@@ -1551,7 +1604,7 @@ export function boardSnapshot({ root } = {}) {
     };
     return { project, rawEventCount: snapshot.events.length, inboxItems };
   });
-  const projects = projectEntries.map(entry => entry.project);
+  const projects = withinReferencePreviewBudget(projectEntries.map(entry => entry.project));
   const localEventCount = projectEntries.reduce((sum,entry) => sum + entry.rawEventCount,0);
   const brandNames = new Map(runtime.listBrands({ root, includeGeneral: true }).map(brand => [brand.slug, brand.name]));
   const inbox = workspaceInbox(projectEntries.flatMap(entry => entry.inboxItems), questionsByJob.get(null) || [], brandNames);
@@ -1565,6 +1618,8 @@ export function boardSnapshot({ root } = {}) {
       ? 'ready'
       : 'brand_onboarding';
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
+  // Reference pictures are the first thing to go when the board is near its size limit.
+  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.projects = withoutReferenceThumbs(projection.projects);
   return applyProjectionBudget(projection);
 }
 

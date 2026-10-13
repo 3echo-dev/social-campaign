@@ -754,6 +754,91 @@ export async function encodeReferenceUpload(assets, { type, file, text, note }) 
   }
   return { ...common, action: 'upload', dataBase64: await blobToBase64(file) };
 }
+// What a reference looks like at a glance: its picture when there is one (a video gets a play mark on it), else an icon for
+// its type, so the person can see it is the right file. Used for saved references, files waiting in a list and a picked file.
+const REF_ICON_PATHS = Object.freeze({
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
+  video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/>',
+  audio: '<path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  document: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  text: '<path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>',
+  page: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+});
+const refIcon = kind => `<svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${REF_ICON_PATHS[kind] || REF_ICON_PATHS.document}</svg>`;
+export function referenceThumb({ kind = '', thumb = '' } = {}) {
+  const picture = typeof thumb === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(thumb) ? thumb : '';
+  const play = kind === 'video' && picture ? '<span class="ref-thumb-play" aria-hidden="true"></span>' : '';
+  return `<span class="ref-thumb ref-thumb-${esc(REF_ICON_PATHS[kind] ? kind : 'document')}${picture ? ' has-picture' : ''}" aria-hidden="true">${picture ? `<img src="${esc(picture)}" alt="" loading="lazy" decoding="async">` : refIcon(kind)}${play}</span>`;
+}
+// One reference as a small card: the picture or icon, the name, and what it is (with the site for a link).
+export function referenceCard({ kind, thumb, name, label, note, site } = {}) {
+  const small = [label, site, note ? truncateText(note, 60) : ''].filter(Boolean).map(esc).join(' · ');
+  return `<span class="ref-card" title="${esc(name || '')}">${referenceThumb({ kind, thumb })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(name || 'Reference', 48))}</span>${small ? `<small>${small}</small>` : ''}</span></span>`;
+}
+// A small picture of a file the person has just picked, made in the browser before anything is sent. Pictures are scaled on a
+// canvas and videos give a frame; anything else, or a browser that cannot, shows the type icon. Each file is done once.
+const PICK_PREVIEW_EDGE = 160;
+const pickPreviews = new WeakMap();
+let onPickPreviewReady = () => {};
+export function pickedPreview(file) {
+  if (!file || typeof file !== 'object') return '';
+  if (pickPreviews.has(file)) return pickPreviews.get(file) || '';
+  pickPreviews.set(file, '');
+  const kind = referenceKindOf(file.name);
+  if ((kind === 'image' || kind === 'video') && typeof document !== 'undefined') {
+    (kind === 'image' ? imagePreview(file) : videoPreview(file)).then(uri => {
+      if (!uri) return;
+      pickPreviews.set(file, uri);
+      onPickPreviewReady();
+    }, () => {});
+  }
+  return '';
+}
+function drawPreview(source, width, height) {
+  if (!width || !height) return '';
+  const scale = Math.min(1, PICK_PREVIEW_EDGE / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}
+async function imagePreview(file) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      try { return drawPreview(bitmap, bitmap.width, bitmap.height); } finally { bitmap.close?.(); }
+    } catch { /* fall through to reading it as a data URL */ }
+  }
+  if (file.size > 2 * 1024 * 1024) return '';
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => { try { resolve(drawPreview(img, img.naturalWidth, img.naturalHeight)); } catch { resolve(''); } };
+      img.onerror = () => resolve('');
+      img.src = String(reader.result || '');
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+function videoPreview(file) {
+  if (typeof URL?.createObjectURL !== 'function') return Promise.resolve('');
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    let settled = false;
+    const done = uri => { if (settled) return; settled = true; clearTimeout(timer); URL.revokeObjectURL(url); video.removeAttribute('src'); resolve(uri); };
+    const timer = setTimeout(() => done(''), 8000);
+    video.muted = true; video.playsInline = true; video.preload = 'auto';
+    video.onloadeddata = () => { try { video.currentTime = Math.min(0.5, (video.duration || 1) / 2); } catch { done(''); } };
+    video.onseeked = () => { try { done(drawPreview(video, video.videoWidth, video.videoHeight)); } catch { done(''); } };
+    video.onerror = () => done('');
+    video.src = url;
+  });
+}
+
 // The control that adds one reference: what it is, the file or the typed text, and a note. The job page's panel and the
 // new-job form both use it; `prefix` only keeps their field names and ids apart ('ref' on the job page, 'nref' in the form).
 function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = '' } = {}) {
@@ -761,7 +846,10 @@ function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = ''
   const isText = type.id === 'caption';
   const fileId = `${prefix}-file${idKey ? `-${idKey}` : ''}`;
   const fileInput = `<input type="file" id="${fileId}" class="kit-file visually-hidden" name="${prefix}_file" accept="${type.kinds.includes('text') && type.kinds.length === 1 ? '.txt,.md,.srt,.vtt' : ''}" aria-label="Choose a file to add" ${busy ? 'disabled' : ''}>`;
-  const picked = state.fileName ? `<span class="muted">${esc(state.fileName)}</span>` : `<span class="muted">${esc(type.hint)}</span>`;
+  const pickedKind = state.fileName ? referenceKindOf(state.fileName) : '';
+  const picked = state.fileName
+    ? `<span class="ref-picked">${referenceThumb({ kind: pickedKind, thumb: pickedPreview(state.file) })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(state.fileName, 48))}</span><small>${pickedKind === 'image' ? 'Check this is the right picture' : pickedKind === 'video' ? 'Check this is the right clip' : 'Ready to add'}</small></span></span>`
+    : `<span class="muted">${esc(type.hint)}</span>`;
   const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
   return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
 }
@@ -772,8 +860,8 @@ export function referencesPanel(project, state = {}, { openKeys = new Set(), ope
   const refs = Array.isArray(project?.references) ? project.references : [];
   const busy = Boolean(state.busy);
   const asked = (Array.isArray(asking) ? asking : []).filter(item => item?.questionId && item.wantsUpload);
-  const chips = refs.map(ref => `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note ? ` · ${esc(truncateText(ref.note, 60))}` : ''}</small></button></li>`).join('');
-  const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+  const chips = refs.map(ref => `<li aria-label="${esc(`${ref.label}: ${ref.name}`)}">${referenceCard(ref)}</li>`).join('');
+  const list = refs.length ? `<ul class="ref-cards" aria-label="References on this job">${chips}</ul>` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
   const questions = asked.map(item => `<div class="ref-asked"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionUpload(item, uploadState(item) || {}, { place: 'refs' })}</div>`).join('');
   const other = asked.length ? '<p class="field-hint">Any other picture, clip, audio or wording for this job:</p>' : '';
   const form = `<div class="ref-form">${other}${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="${asked.length ? 'quiet' : 'primary'}" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
@@ -835,7 +923,7 @@ export function newJobReferenceItem(state) {
 export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}) {
   const items = Array.isArray(refs.items) ? refs.items : [];
   const list = items.length
-    ? `<ul class="ab-chips" aria-label="References for this job">${items.map((item, index) => `<li><span class="ab-chip">${esc(truncateText(item.name, 40))}<small>${esc(item.label)}${item.note ? ` · ${esc(truncateText(item.note, 60))}` : ''}</small></span> <button type="button" class="sb-ask" data-nref-remove="${index}" aria-label="${esc(`Remove ${item.name}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
+    ? `<ul class="ab-chips" aria-label="References for this job">${items.map((item, index) => `<li>${referenceCard({ kind: item.file ? referenceKindOf(item.file.name) : 'text', thumb: item.file ? pickedPreview(item.file) : '', name: item.name, label: item.label, note: item.note })} <button type="button" class="sb-ask" data-nref-remove="${index}" aria-label="${esc(`Remove ${item.name}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
     : '';
   const full = items.length >= NEW_JOB_REFERENCES_MAX;
   const control = full
@@ -6539,6 +6627,7 @@ if (typeof document !== 'undefined') {
     const form = app.querySelector('#starter-form');
     if (form) starterValues = Object.fromEntries(new FormData(form));
   }
+  onPickPreviewReady = () => render();
   function render() {
     const project = current();
     captureStarter();
