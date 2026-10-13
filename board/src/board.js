@@ -4689,6 +4689,7 @@ export function previewUnavailableReason({ type = '', path = '', hasDoc = true }
   const noun = /image/.test(guess) ? 'picture' : /video/.test(guess) ? 'video' : /audio/.test(guess) ? 'audio clip' : null;
   if (!hasDoc) return 'The details for this job are still loading. Try again in a moment.';
   if (noun) return `Claude has not added a viewable copy of this ${noun} to the board yet. Ask Claude to add one, or open it from your computer.`;
+  if (/\.(md|txt|csv)$/i.test(path)) return 'This document is not on the board right now. Ask Claude to refresh the board, or open it from your computer.';
   return 'The board cannot show this kind of file. Open it from your computer.';
 }
 

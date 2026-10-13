@@ -1059,12 +1059,15 @@ function priorityOf(path, reviewPaths, strategyPath, researchPaths) {
   if (path === strategyPath) return 1;
   if (researchPaths.includes(path)) return 2;
   const value = path.toLowerCase();
-  if (value.startsWith('drafts/')) return 3;
-  if (value.startsWith('media/')) return 4;
-  if (value.startsWith('handoff/')) return 5;
-  if (!value.includes('/')) return 6;
-  if (value.startsWith('validation/')) return 7;
-  return 8;
+  // The written record of each stage (concepts, script, storyboard, post) comes before pictures and clips, so a job with many
+  // media files never pushes a past stage's document off the board.
+  if (value.endsWith('.md') && (!value.includes('/') || value.startsWith('drafts/'))) return 3;
+  if (value.startsWith('drafts/')) return 4;
+  if (value.startsWith('media/')) return 5;
+  if (value.startsWith('handoff/')) return 6;
+  if (!value.includes('/')) return 7;
+  if (value.startsWith('validation/')) return 8;
+  return 9;
 }
 
 function researchFiles(artifacts) {
@@ -1875,7 +1878,15 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       else { delete entry.text; delete entry.truncated; entry.omitted = true; }
       cost = byteSize(entry) + 1;
     }
-    if (size + cost > budgetBytes - margin) { document.truncated = true; continue; }
+    if (size + cost > budgetBytes - margin) {
+      document.truncated = true;
+      // Keep the file's name on the board even when its content no longer fits, so its chip says it is on this computer
+      // instead of "the board cannot show this kind of file".
+      const stub = { path, sha256: entry.sha256, kind: entry.kind, title: entry.title, ...(entry.mimeType ? { mimeType: entry.mimeType } : {}), omitted: true };
+      const stubCost = byteSize(stub) + 1;
+      if (size + stubCost <= budgetBytes - margin) { document.files.push(stub); size += stubCost; }
+      continue;
+    }
     if (entry.truncated || entry.omitted) document.truncated = true;
     document.files.push(entry);
     size += cost;
