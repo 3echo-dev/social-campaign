@@ -4090,7 +4090,8 @@ function decisionCard(item, ctx = {}) {
   if (trimmed(item.summary) === REVIEW_NOT_READY) return summaryLine(summary);
   const inline = Boolean(item.inline) && !inboxDecisionArgs(item).error;
   const reviewButton = `<button type="button"${inline ? '' : ' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
-  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${reviewButton}</div>`;
+  const offer = ctx.offer ? `<p class="inbox-summary">Or send it to Post-production for a full edit.</p>${handoffButtons(ctx.offer, ctx.offerState || {}, { sendOnly: true })}` : '';
+  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${reviewButton}</div>${offer}`;
   const shown = doc && doc.revision === item.revision && doc.review?.gate === gate ? doc : null;
   const status = shown && project && project.detailsLoaded !== false ? reviewStatus(project, shown, docState) : null;
   const plan = status === 'ready' ? approval(gate, shown, state, {}) : { label: gate === 'price' ? 'Approve price' : 'Approve sample', line: '' };
@@ -4246,9 +4247,9 @@ export const handoffArgs = ({ project, requestId }) => ({ requestId, brand: proj
 // The one small line on a job saying which platforms research could read, or ''. The server words it.
 export const researchLine = project => (typeof project?.research?.line === 'string' ? project.research.line.trim() : '');
 export const handoffStatusLine = project => (project?.handoff?.status === 'sent' ? trimmed(project.handoff.line) : '');
-export function handoffButtons(item, state = {}) {
-  const buttons = HANDOFF_BUTTONS[item?.kind];
-  if (!buttons || !item.jobId) return '';
+export function handoffButtons(item, state = {}, { sendOnly = false } = {}) {
+  const buttons = (HANDOFF_BUTTONS[item?.kind] || []).filter(([operation]) => !sendOnly || operation === 'handoff_send');
+  if (!buttons.length || !item.jobId) return '';
   const locked = Boolean(state.busy || state.sent);
   const row = buttons.map(([operation, label, tone]) => `<button type="button" class="${tone}" data-handoff="${operation}" data-handoff-job="${esc(item.jobId)}"${locked ? ' disabled' : ''}>${esc(label)}</button>`).join('');
   const note = state.sent ? '<p class="inbox-note" role="status">Saved. Claude will carry on.</p>' : '';
@@ -4279,11 +4280,40 @@ export function inboxCard(item, ctx = {}) {
   return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}</li>`;
 }
 
+// Several questions from one job on one card: the job line once, then each question with its own answers.
+function questionGroupCard(items, contexts, indexes, { signal = {}, workspace = false } = {}) {
+  const head = items[0];
+  const blocks = items.map((item, at) => {
+    const text = inboxItemText(item);
+    return `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}">${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${questionCard(item, contexts[at].question || {}, signal, indexes[at])}</div>`;
+  }).join('');
+  const lead = `<p class="inbox-summary">${esc(`${items.length} questions from Claude about this job.`)}</p>`;
+  return `<li class="inbox-item is-group" data-inbox-key="${esc(`questions-${head.jobId}`)}">${workspace ? inboxJobLine(head) : ''}${inboxFromLine(head)}${lead}${blocks}</li>`;
+}
+
 export function inboxPanel({ items = [], count = null, announcement = '', workspace = false, starter = '', signal = {}, context = () => ({}), bare = false, strip = false } = {}) {
-  const list = inboxItemsOf(items);
-  const contexts = list.map(item => context(item) || {});
-  const answered = list.filter((item, at) => item.kind === 'question' && (contexts[at].question?.submitted || contexts[at].question?.answered)).length;
-  const needs = Math.max(0, Math.max(Number.isSafeInteger(count) ? count : 0, list.filter(item => (item.kind !== 'onboarding' && !item.closing) || item.needsYou).length) - answered);
+  const all = inboxItemsOf(items);
+  // The Post-production offer is the other way to finish the same joined video, so it sits inside that video's review card.
+  const cutJobs = new Set(all.filter(item => item.kind === 'decision' && item.gate === 'cut' && item.jobId).map(item => item.jobId));
+  const offers = new Map(all.filter(item => item.kind === 'handoff_offer' && cutJobs.has(item.jobId)).map(item => [item.jobId, item]));
+  const list = all.filter(item => !(item.kind === 'handoff_offer' && offers.get(item.jobId) === item));
+  const contexts = list.map(item => {
+    const own = context(item) || {};
+    const offer = item.kind === 'decision' && item.gate === 'cut' ? offers.get(item.jobId) : null;
+    return offer ? { ...own, offer, offerState: (context(offer) || {}).handoff || {} } : own;
+  });
+  const isAnswered = at => list[at].kind === 'question' && Boolean(contexts[at].question?.submitted || contexts[at].question?.answered);
+  // A job's questions share one card, so they count once while any of them is still open.
+  const seenJobs = new Set();
+  const answered = list.filter((item, at) => {
+    if (item.kind !== 'question') return false;
+    if (item.inChat || !item.jobId) return isAnswered(at);
+    if (seenJobs.has(item.jobId)) return true;
+    seenJobs.add(item.jobId);
+    return list.every((other, j) => other.kind !== 'question' || other.inChat || other.jobId !== item.jobId || isAnswered(j));
+  }).length;
+  const hidden = Number.isSafeInteger(count) ? Math.max(0, count - all.length) : 0;
+  const needs = Math.max(0, list.filter(item => (item.kind !== 'onboarding' && !item.closing) || item.needsYou).length - answered + hidden);
   const tag = needs ? `<span class="pill needed">${needs} ${needs === 1 ? 'needs' : 'need'} you</span>` : '';
   const empty = trimmed(announcement) || (workspace ? INBOX_EMPTY : '');
   const briefs = list.filter(item => item.kind === 'brief' && item.inline && item.field);
@@ -4292,12 +4322,26 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
     const same = briefs.filter(other => (other.jobId || null) === (item.jobId || null));
     return { briefKeys: same.map(other => other.field), briefLead: !same.length || same[0] === item };
   };
+  // One card per job for its questions: the job's open questions sit together on the first one's card, one after the other.
+  const groups = [];
+  const byJob = new Map();
+  list.forEach((item, index) => {
+    const groupable = item.kind === 'question' && !item.inChat && item.jobId;
+    if (groupable && byJob.has(item.jobId)) { byJob.get(item.jobId).push(index); return; }
+    const group = [index];
+    if (groupable) byJob.set(item.jobId, group);
+    groups.push(group);
+  });
+  const cardOf = group => (group.length === 1
+    ? inboxCard(list[group[0]], { signal, ...contexts[group[0]], ...brief(list[group[0]]), workspace, index: group[0] })
+    : questionGroupCard(group.map(index => list[index]), group.map(index => contexts[index]), group, { signal, workspace }));
+  const cards = groups.map(cardOf).join('');
   const body = list.length
-    ? `<ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol>`
+    ? `<ol class="inbox-list">${cards}</ol>`
     : empty ? `<p class="inbox-announce">${esc(empty)}</p>` : '';
   if (bare) return body ? `<div class="director-inbox">${body}</div>` : '';
   // The compact "Needs you" strip at the top of the home and new-job pages, and nothing at all when there is nothing open.
-  if (strip) return list.length ? `<section class="needs-strip" aria-labelledby="needs-strip-title"><div class="section-head"><h2 id="needs-strip-title">Needs you</h2>${tag}</div><ol class="inbox-list">${list.map((item, index) => inboxCard(item, { signal, ...contexts[index], ...brief(item), workspace, index })).join('')}</ol></section>` : '';
+  if (strip) return list.length ? `<section class="needs-strip" aria-labelledby="needs-strip-title"><div class="section-head"><h2 id="needs-strip-title">Needs you</h2>${tag}</div><ol class="inbox-list">${cards}</ol></section>` : '';
   return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Needs you</h2>${tag}</div>${body}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
 }
 
@@ -6557,7 +6601,7 @@ if (typeof document !== 'undefined') {
     state.open = true;
     state.error = '';
     render();
-    const box = app.querySelector(`.inbox-item[data-inbox-key="${CSS.escape(`question-${questionId}`)}"] textarea`);
+    const box = app.querySelector(`:is(.inbox-item,.inbox-question)[data-inbox-key="${CSS.escape(`question-${questionId}`)}"] textarea`);
     if (!box) return;
     box.focus({ preventScroll: true });
     box.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -6581,7 +6625,7 @@ if (typeof document !== 'undefined') {
     if (error) {
       state.error = error;
       render();
-      if (text !== null) focusQuietly(`.inbox-item[data-inbox-key="${CSS.escape(`question-${questionId}`)}"] textarea`);
+      if (text !== null) focusQuietly(`:is(.inbox-item,.inbox-question)[data-inbox-key="${CSS.escape(`question-${questionId}`)}"] textarea`);
       return;
     }
     Object.assign(state, { requestId, busy: true, error: '', declined: false, choice: args.text ? null : choice, text: args.text || '', operation: 'answer_question', args });
