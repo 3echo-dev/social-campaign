@@ -26,7 +26,8 @@ brand_files_reviewed: true    # false when onboarding was accepted as drafts
 
 ---
 
-Fill every section from the approved direction in `job.json` (`direction`) first. Research fills only what the direction leaves open and never overrides it. Never change the topic or the message.
+Fill every section from the approved direction in `job.json` (`direction`) first. Research fills only what the direction leaves open. Never change the topic.
+The direction's message is a working line: when research shows a sharper line in the audience's own words, propose it under Core message as "Sharpened", with the reason, and the person approves it at the strategy gate. Never change it silently.
 
 # Angle
 
@@ -43,6 +44,36 @@ The one pain or desire this content rests on, quoted in the audience's own words
 Which segment from `brand/audience.md` (the direction's audience when it is narrower), what they already believe, and what this content changes.
 
 **Tension:** what they want against what stops them, in their words.
+
+# Viewer problem
+
+The one problem the viewer has, in their role and their words, spoken in the content by 10 seconds and before the product is explained.
+Take it from the problem bank in `research/audience.md`, label it FACT, INFERENCE or HYPOTHESIS, and say how a HYPOTHESIS gets tested.
+A happy testimonial is not a problem; when the only quotes are positive, name the cost they imply (time, money, stress, risk).
+
+# Ad style, funnel stage and CTA
+
+- Ad style: {AS-* id} from `playbooks/ad-styles.md`, filtered by the brand's industry.
+- Funnel stage: TOFU | MOFU | BOFU, and why it fits the direction's success measure.
+- CTA: {CTA-* id} from `playbooks/ctas.md`, matching the funnel stage.
+
+# Honest trade-off
+
+One real limit or cost of the product, said plainly, which builds trust. It is never the main benefit restated.
+
+# Proof moment and numbers
+
+- Proof moment: the one thing the viewer sees working (a real screen, a built artefact, a sourced claim shown with its source), and whether it is real or rebuilt.
+- Numbers to use: 2 to 4 concrete numbers from the number bank in `research/product-evidence.md`, each with its source.
+
+# Message budget
+
+How often the core message may be said: once spoken and once on screen by default, carried by the structure the rest of the time.
+
+# Supply questions
+
+Every fact or asset only the person can give (real screens, an example result, a price, an account, an accent colour), each with a likely answer.
+The Director asks these on the board before the concepts are written, not after the script.
 
 # Core message
 

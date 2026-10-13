@@ -20,7 +20,10 @@ Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
 
 Read the current job snapshot, frozen plan, brand files, accepted research artifacts, and input revision before writing.
 
-Start from the job's topic and its approved direction: never change the topic or the message, and fill the brief's new fields from the direction first.
+Start from the job's topic and its approved direction: never change the topic, and fill the brief's fields from the direction first.
+The direction's message is a working line: propose a sharper one from the audience's own words under Core message as "Sharpened", never replace it silently.
+Fill Viewer problem, Ad style, funnel stage and CTA, Honest trade-off, Proof moment and numbers, Message budget and Supply questions in every brief. Take the ad style from `playbooks/ad-styles.md` and the CTA from `playbooks/ctas.md`, filtered by the brand's industry (`brand/profile.json` `industry`), and the viewer problem from the problem bank in `research/audience.md`.
+A brief with no viewer problem, or whose anchor is a positive testimonial with no cost named, is not finished.
 
 Reuse accepted evidence whose scope and hashes still match the plan.
 

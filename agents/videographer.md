@@ -32,6 +32,10 @@ Write source analysis or video QA only to the active task's output path, or, for
 
 Do not create media, publish, change the script, or apply an approval.
 
+When breaking down a reference, add an **Attention map** for its first 60 seconds (the whole video when shorter): per beat, the spoken line, what builds on screen on which word, the camera move (push, pull, pan, follow, zoom-out map, cut), the sound event, and the loop it opens or pays off.
+Also record the reference's problem line and honest trade-off with their timestamps, every concrete number and how it is shown, and the measured hard cuts per minute.
+Listen to the sound: say whether there is a music bed (mood and rough tempo), which sound effects recur and on what, and the longest silence. "Not analysed" is not an answer for sound.
+
 Return artifact paths, reused media evidence, changed probes, and unresolved quality gaps.
 
 ## Finishing text and captions

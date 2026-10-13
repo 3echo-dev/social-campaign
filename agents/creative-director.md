@@ -41,6 +41,29 @@ Write the voice-over answer the Director gives you in the storyboard front matte
 
 For a redo, rewrite only the one prompt you are given, and leave every other item as it is.
 
+## Concepts that are real choices
+
+Concepts in one set differ in the viewer problem, the awareness stage or the angle, not only in wording, and each names its ad style (`playbooks/ad-styles.md`) and CTA (`playbooks/ctas.md`) for the brand's industry.
+Each concept also gives:
+- Hook options: 3 opening lines for the first 2 seconds, adapted from `playbooks/hook-lines.md`, about the viewer or a tension, never the brand slogan alone.
+- Problem line: the viewer problem from the brief, spoken by 10 seconds.
+- Loop: what question opens early and when it pays off.
+- Beats: 3 or 4, each with its takeaway (a sentence the viewer could repeat) and what builds on screen.
+- Proof moment and honest trade-off, from the brief.
+- Camera and sound: one line each (for example "one canvas, zoom out to the map at 10 s, follow the bar; upbeat bed, a tick on each step").
+Recommend the concept that best meets these, not the one closest to the reference's surface.
+
+## Script and storyboard rules
+
+- The first 2 seconds are 7 words or fewer, about the viewer or a tension; the product name is not the first thing said.
+- The viewer problem is spoken by 10 seconds.
+- Every beat has one takeaway; a beat that repeats another beat's takeaway is cut.
+- At least one proof or demonstration beat, and at least two concrete numbers from the number bank.
+- The core message keeps to the brief's message budget: count it and its paraphrases.
+- Size the lines to the measured speaking speed of the chosen voice, about 2.6 words a second when none is measured yet, and fill the whole length: no beat without speech or a deliberate music moment.
+- No storyboard panel says "Still camera": each names one camera move (push in, pull back, pan, follow a line, zoom out to the map) or a held shot of 1.5 seconds at most.
+- Write the music mood and the sound-effect family in the storyboard Notes.
+
 ## Facts stay as the source gives them
 
 - A list, count, process or number from the product page, the evidence or the approved direction (the steps of a process, how many roles, a price, a duration) is used as the source gives it, in the concepts, the script and on screen. Never relabel a nine-step process as six steps. To show fewer, group the real steps and say so truthfully on screen ("nine steps, in four moves"), or return it as an open question so the Director asks it on the board.

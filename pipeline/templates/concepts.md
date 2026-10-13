@@ -38,7 +38,15 @@ Every concept names one value for each idea part (anchor, stage, angle, format, 
 - Narrative pattern: setup, demonstration, proof, verdict
 - Proof pattern: what makes the claim believable on screen
 - Product moment: when the product first appears and how (never in the first shot)
-- CTA:
+- Ad style: {AS-* id} (playbooks/ad-styles.md)
+- Hook options (first 2 seconds, pick one): 1) {line} 2) {line} 3) {line}
+- Problem line (by 10 s):
+- Loop: {what opens} at {s}, paid off at {s}
+- Beats and takeaways: 1) {beat} - {takeaway} 2) ... 3) ...
+- Proof moment:
+- Honest trade-off:
+- Camera and sound:
+- CTA: {CTA-* id} - {the line}
 - Disclosure (UGC only): AI-generated creator, paid partnership, or gifted, and where it sits
 - Target duration:
 - Why this wins:
