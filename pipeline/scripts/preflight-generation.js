@@ -19,7 +19,7 @@
 //   8. the prompts stand on their own: none points at another, none carries a note about a
 //      file, none asks for the product's own label to be hidden
 //   9. one picture style: every image prompt carries the manifest's style preamble word for word,
-//      and the continuity block when there is one
+//      and the continuity block when there is one; a prompt over 400 words is refused, a scene over 150 is noted
 //
 // Exit 0 safe to generate · 1 problems found · 3 no storyboard approval · 2 usage
 const fs = require('fs');
@@ -30,6 +30,10 @@ const { hashFile } = require('./hash-artifact.js');
 const ws = require('./lib-workspace.js');
 const del = require('./lib-deliverable.js');
 const execution = require('./lib-execution-availability.js');
+// make-image Rule 2: an image prompt is about 400 words at most, and its scene (after the style preamble and the
+// continuity block) about 150. GPT image models follow long structured prompts; the shared blocks keep panels alike.
+const PROMPT_MAX_WORDS = 400;
+const SCENE_MAX_WORDS = 150;
 
 // 3echo tool limits. These come from the tool schemas, not from any repo. The clip length
 // lives in lib-deliverable.js so the quote and this gate cannot drift apart.
@@ -211,6 +215,14 @@ for (const D of dels) {
       if (at < 0) fail(where + ': the prompt does not carry the style preamble word for word. Paste it at the start so every image has the same look.');
       else if (at > 0 && !/^(\[Image \d+\][^\[]*)+$/.test(prompt.slice(0, at).trim())) fail(where + ': the style preamble must open the prompt, after the reference legend only.');
       if (continuity && !prompt.includes(squash(continuity))) fail(where + ': the prompt does not carry the continuity block word for word. Paste it so the people, place and product stay the same.');
+      // Rule 2 of make-image: about 400 words in all, and the scene itself (after the preamble and continuity) about 150.
+      const words = text => (squash(text).match(/\S+/g) || []).length;
+      const total = words(prompt);
+      if (total > PROMPT_MAX_WORDS) fail(where + `: the prompt is ${total} words; keep it to ${PROMPT_MAX_WORDS} or fewer. Shorten the scene first, then the shared blocks.`);
+      const end = continuity && prompt.includes(squash(continuity)) ? prompt.indexOf(squash(continuity)) + squash(continuity).length
+        : at >= 0 ? at + squash(preamble).length : 0;
+      const scene = words(prompt.slice(end));
+      if (end > 0 && scene > SCENE_MAX_WORDS) note(where + `: the scene part is ${scene} words; about ${SCENE_MAX_WORDS} keeps every detail in view.`);
     }
   }
 

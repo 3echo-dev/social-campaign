@@ -45,7 +45,8 @@ Slides land as `P1`, `P2` and so on; the post lists them in that order.
 The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 
 1. Prompt order: the reference legend, the style preamble, the continuity block, then subject, setting, lighting, composition, technical; the ratio in the prompt and the parameter.
-2. Prompts under 200 words.
+2. A prompt is about 400 words at most, and the scene itself (after the style preamble and the continuity block) about 150 words; `preflight-generation.js` refuses a longer prompt and notes a longer scene.
+   With a reference picture attached, the person's continuity block shrinks to the few attributes the picture cannot carry, because the picture carries the look.
 3. Never request added text, headlines or UI screenshots; `finish-video.py` draws the text once, after the join. End the prompt with "No text, no captions, no watermark." The product's own label stays as photographed, never hidden.
 4. Every prompt repeats `# Not in frame` verbatim.
 4a. One style per job: every prompt opens with the manifest `style` preamble word for word (after the reference legend), then the continuity block for each recurring person, place and product that appears in it (3 to 6 attributes each), pasted verbatim. Never reword the preamble for one panel.
