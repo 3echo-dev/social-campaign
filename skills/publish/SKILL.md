@@ -1,8 +1,8 @@
 ---
 name: publish
 description: >
-  Runs the active local pipeline publishing or handoff task after final approval.
-  Use only when the frozen plan names publishing.
+  Internal step of social-campaign for "post this to TikTok / Instagram / Facebook": runs the publishing or handoff task after final approval.
+  Use only when the frozen plan names publishing; reached through social-campaign.
 user-invocable: false
 metadata:
   version: 0.3.0

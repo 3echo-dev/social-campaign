@@ -86,8 +86,8 @@ The videographer applies `analyze-video` after extraction.
 |---|---|
 | `ffmpeg` missing | Produce transcript and metadata when possible, then record zero sampled frames |
 | `ffprobe` missing | Record unverified duration and dimensions |
-| `yt-dlp` missing for a URL | Ask for a local file or resume where `yt-dlp` is installed |
+| `yt-dlp` missing for a URL | Record it for that URL and continue; a local file is asked for once at the end of the run |
 | Captions unavailable | Use a supplied transcript or mark speech Not analysed |
-| Download fails | Keep the error, record the URL, ask for the source file |
+| Download fails | Keep the error, record the URL and its status, leave the slot blank and move on without retrying; the source file is asked for once at the end of the run, with any other links that could not be fetched |
 | Requested timestamp outside the range | Report it dropped and correct the range |
 | Report file missing or empty | Do not dispatch analysis; rerun once, then escalate |

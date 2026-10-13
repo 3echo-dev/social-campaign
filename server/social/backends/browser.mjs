@@ -18,7 +18,7 @@
  * interpolated into a shell string.
  */
 
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -33,9 +33,14 @@ import {
   readResearchHelperRecord,
   researchHelperChildEnv,
 } from '../../setup/research-helper-record.mjs';
+import { killTree } from './ytdlp.mjs';
 import { adRecord, pageRecord, parseHumanCount, postRecord, profileRecord, toIso } from '../records.mjs';
 
-/** Longest a single browser call is allowed to run. */
+/**
+ * Longest a single browser render may take, launch included. The Python worker
+ * enforces this itself; Node kills the whole process tree 3 s later, so the
+ * worker's own deadline always lands first.
+ */
 export const BROWSER_TIMEOUT_MS = 25_000;
 
 /** Largest stdout the worker may produce, before it is cut off. */
@@ -100,8 +105,8 @@ export class BrowserBackend {
     this.timeoutMs = options.timeoutMs ?? BROWSER_TIMEOUT_MS;
     this.maxOutputBytes = options.maxOutputBytes ?? BROWSER_MAX_OUTPUT_BYTES;
     // Extra time given to the worker to print its own timeout result before this
-    // side kills the process outright. Small in tests, generous in production.
-    this.killGraceMs = options.killGraceMs ?? 5000;
+    // side kills the process outright. Python's deadline is always this much shorter than the kill.
+    this.killGraceMs = options.killGraceMs ?? 3000;
     this.politeness = options.politeness;
   }
 
@@ -195,26 +200,16 @@ export class BrowserBackend {
     const env = researchHelperChildEnv(entry.environment_path);
     let stdout;
     try {
-      stdout = await new Promise((resolvePromise, rejectPromise) => {
-        const child = execFile(
-          entry.python,
-          [...(Array.isArray(entry.python_args) ? entry.python_args : []), scriptPath],
-          { timeout: timeoutMs + this.killGraceMs, maxBuffer: this.maxOutputBytes, windowsHide: true, ...(env ? { env } : {}) },
-          (error, out) => {
-            if (error) rejectPromise(error);
-            else resolvePromise(out);
-          },
-        );
-        child.stdin?.end(payload);
-      });
+      stdout = await this.run(entry.python, [...(Array.isArray(entry.python_args) ? entry.python_args : []), scriptPath], payload, timeoutMs + this.killGraceMs, env);
     } catch (error) {
-      const killed = /** @type {any} */ (error)?.killed || /** @type {any} */ (error)?.signal === 'SIGTERM';
+      const killed = Boolean(/** @type {any} */ (error)?.timedOut);
       log.warn('browser worker failed', { message: error instanceof Error ? error.message : String(error) });
       return {
         ok: false,
         code: killed ? 'timed_out' : 'blocked',
         reason: killed ? `The browser worker did not answer within ${Math.round(timeoutMs / 1000)} seconds.` : 'The browser worker stopped unexpectedly.',
-        trip: !killed,
+        // A timeout trips too, otherwise every later call pays the full wait again.
+        trip: true,
       };
     }
     let result;
@@ -227,6 +222,51 @@ export class BrowserBackend {
       return { ok: false, code: 'blocked', reason: `The browser worker failed: ${result.error}`, trip: true };
     }
     return { ok: true, result };
+  }
+
+  /**
+   * Run the worker with a hard deadline that kills its whole process tree.
+   * @param {string} command
+   * @param {string[]} args
+   * @param {string} payload
+   * @param {number} killAfterMs
+   * @param {NodeJS.ProcessEnv|undefined} env
+   * @returns {Promise<string>}
+   */
+  run(command, args, payload, killAfterMs, env) {
+    return new Promise((resolvePromise, rejectPromise) => {
+      let out = '';
+      let size = 0;
+      let timedOut = false;
+      let tooLarge = false;
+      const child = spawn(command, args, { windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'], ...(env ? { env } : {}) });
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killTree(child);
+      }, killAfterMs);
+      child.stdout.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > this.maxOutputBytes) {
+          tooLarge = true;
+          killTree(child);
+          return;
+        }
+        out += chunk;
+      });
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        rejectPromise(error);
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (timedOut) rejectPromise(Object.assign(new Error('browser worker timed out'), { timedOut: true }));
+        else if (tooLarge) rejectPromise(new Error('browser worker output too large'));
+        else if (code !== 0) rejectPromise(new Error(`browser worker exited with code ${code}`));
+        else resolvePromise(out);
+      });
+      child.stdin.on('error', () => {});
+      child.stdin.end(payload);
+    });
   }
 
   /**

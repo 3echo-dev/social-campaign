@@ -14,21 +14,68 @@
  * platform again.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { InvalidInputError } from '../lib/errors.mjs';
 import { log } from '../lib/log.mjs';
-import { AdLibraryBackend, EU_LIKE } from './backends/adlibrary.mjs';
+import { AdLibraryBackend, EU_LIKE, metaLibraryUrl, tiktokLibraryUrls } from './backends/adlibrary.mjs';
 import { BrowserBackend } from './backends/browser.mjs';
 import { PublicPageBackend } from './backends/public_page.mjs';
 import { TikTokPublicBackend } from './backends/tiktok_public.mjs';
-import { Politeness, webCrawl } from './backends/web.mjs';
-import { YtDlpBackend } from './backends/ytdlp.mjs';
+import { CRAWL_BUDGET_MS, FETCH_TIMEOUT_MS, Politeness, webCrawl } from './backends/web.mjs';
+import { YTDLP_TIMEOUT_MS, YtDlpBackend } from './backends/ytdlp.mjs';
+import { breaker as sharedBreaker } from './breaker.mjs';
 import { findOutliers } from './outliers.mjs';
 import { adsPlan, commentsPlan, postPlan, profilePlan, searchPlan } from './plans.mjs';
-import { envelope, parseHandle, parseHttpUrl, platformFromUrl, tiktokPostId } from './records.mjs';
+import { envelope, pageRecord, parseHandle, parseHttpUrl, platformFromUrl, postRecord, profileRecord, tiktokPostId } from './records.mjs';
 import { evidenceCountFor, readCache, rememberPlan, savedEvidenceFor, writeCache } from './store.mjs';
 
 /** How long a failed backend is skipped for on one platform. */
 export const TRIP_MS = 10 * 60_000;
+
+/** Total time one public router call may take, across every backend it tries. */
+export const ROUTER_DEADLINE_MS = 45_000;
+
+/** Most time the live probes of social_backends_status may take, all together. */
+export const STATUS_PROBE_CAP_MS = 30_000;
+
+/** The platform host each route family talks to, for the shared circuit breaker. */
+const PLATFORM_HOST = { tiktok: 'tiktok.com', instagram: 'instagram.com', facebook: 'facebook.com', meta: 'facebook.com' };
+
+/**
+ * The per call budget and the breaker state the call started with. It rides along
+ * the async call chain, so backends never have to be handed it by hand.
+ * @type {AsyncLocalStorage<{deadline: number, hosts: Map<string, {open: boolean, code?: string, reason?: string}>}>}
+ */
+const callBudget = new AsyncLocalStorage();
+
+/**
+ * A copy of a backend whose requests are capped at `ms`, leaving the shared one untouched.
+ * @template T
+ * @param {T} backend
+ * @param {number} ms
+ * @param {number} [defaultMs] the backend's own limit when it sets none.
+ * @returns {T}
+ */
+function limited(backend, ms, defaultMs = FETCH_TIMEOUT_MS) {
+  if (!Number.isFinite(ms)) return backend;
+  const copy = /** @type {any} */ (Object.create(/** @type {any} */ (backend)));
+  const b = /** @type {any} */ (backend);
+  if (b.options && typeof b.options === 'object') copy.options = { ...b.options, timeoutMs: Math.max(1000, Math.min(b.options.timeoutMs ?? defaultMs, ms)) };
+  if (typeof b.timeoutMs === 'number') copy.timeoutMs = Math.max(2000, Math.min(b.timeoutMs, ms - (b.killGraceMs ?? 0)));
+  return copy;
+}
+
+/**
+ * The stealth reader reports a few codes the envelope does not know.
+ * @param {string} code
+ * @returns {string}
+ */
+function envelopeCode(code) {
+  if (code === 'empty') return 'empty_page';
+  if (code === 'error') return 'unsupported';
+  return code;
+}
 
 /** How long a social_backends_status answer is reused. */
 export const STATUS_TTL_MS = 15 * 60_000;
@@ -39,7 +86,8 @@ export const STATUS_TTL_MS = 15 * 60_000;
  */
 export const ROUTES = {
   tiktok: {
-    profile: ['tiktok_embed', 'yt-dlp'],
+    // Primary plus one fallback: the stealth reader when it is installed, else yt-dlp.
+    profile: ['tiktok_embed', 'stealth|yt-dlp'],
     post: ['tiktok_embed', 'yt-dlp'],
     comments: ['tiktok_comments'],
     search: ['yt-dlp', 'tiktok_embed'],
@@ -49,8 +97,9 @@ export const ROUTES = {
   // The browser backend runs last, and only for the operations the other backends
   // leave at `none` or `partial`: it is skipped automatically once the earlier
   // backends already answered in full.
-  instagram: { profile: ['yt-dlp', 'instagram_page', 'browser'], post: ['yt-dlp', 'instagram_page', 'browser'], comments: ['yt-dlp'], search: [] },
-  facebook: { profile: ['facebook_page', 'browser'], post: ['yt-dlp', 'facebook_page', 'browser'], comments: [], search: [] },
+  // One primary and ONE fallback per operation: the most proven fallback is kept, longer chains are trimmed.
+  instagram: { profile: ['yt-dlp', 'instagram_page'], post: ['yt-dlp', 'instagram_page'], comments: ['yt-dlp'], search: [] },
+  facebook: { profile: ['facebook_page', 'browser'], post: ['facebook_page', 'browser'], comments: [], search: [] },
   meta: { ads: ['meta_ad_library', 'browser'] },
   web: { crawl: ['web_reader', 'browser'] },
 };
@@ -66,6 +115,7 @@ const REPORTED = {
   meta_ad_library: 'ad_library_page',
   tiktok_creative_center: 'ad_library_page',
   browser: 'browser',
+  stealth: 'browser',
 };
 
 /**
@@ -158,6 +208,9 @@ export class SocialRouter {
    * @param {PublicPageBackend} [options.pages]
    * @param {AdLibraryBackend} [options.ads]
    * @param {() => string|null} [options.brandCountry]
+   * @param {any} [options.stealth] a StealthBackend (or a fake); loaded from backends/stealth.mjs when omitted.
+   * @param {import('./breaker.mjs').Breaker} [options.breaker]
+   * @param {number} [options.deadlineMs] total time per public call, default ROUTER_DEADLINE_MS.
    */
   constructor(options = {}) {
     this.db = options.db ?? (() => null);
@@ -171,10 +224,16 @@ export class SocialRouter {
     this.ytdlp = options.ytdlp ?? new YtDlpBackend();
     this.tiktok = options.tiktok ?? new TikTokPublicBackend(standIn ? { ...shared, baseUrl: standIn } : shared);
     this.pages = options.pages ?? new PublicPageBackend(shared);
+    /** True when the ad reader was built here, so it can be handed the stealth reader on first use. */
+    this.ownsAds = !options.ads;
     this.ads =
       options.ads ??
       new AdLibraryBackend(standIn ? { ...shared, bases: { meta: standIn, tiktokCreativeCenter: standIn, tiktokLibrary: standIn } } : shared);
     this.browser = options.browser ?? new BrowserBackend({ politeness: this.politeness });
+    /** @type {{value: any}} the stealth reader, found on first use unless one is passed in. */
+    this.stealthHolder = { value: options.stealth !== undefined ? options.stealth : undefined };
+    this.breaker = options.breaker ?? sharedBreaker;
+    this.deadlineMs = options.deadlineMs ?? ROUTER_DEADLINE_MS;
     this.crawlOptions = { ...shared, robotsCache: new Map() };
     this.offline = options.offline ?? process.env.SOCIAL_CAMPAIGN_SOCIAL_OFFLINE === '1';
     this.brandCountry = options.brandCountry ?? (() => null);
@@ -255,26 +314,139 @@ export class SocialRouter {
    * @returns {Promise<(T & {ok: true})|null>}
    */
   async attempt(attempts, backend, platform, call) {
+    const left = this.remainingMs();
+    if (left <= 0) {
+      attempts.push({ backend, outcome: 'skipped', code: 'timed_out', reason: 'skipped: budget (this call used its 45 seconds)' });
+      return null;
+    }
     const trip = this.tripped(backend, platform);
     if (trip) {
       attempts.push({ backend, outcome: 'skipped', code: trip.code, reason: `skipped: ${trip.reason}` });
       return null;
     }
+    const host = PLATFORM_HOST[platform.split(':')[0]] ?? null;
+    if (host) {
+      const open = this.breakerState(host);
+      if (open.open) {
+        attempts.push({ backend, outcome: 'skipped', code: open.code ?? 'blocked', reason: `skipped: ${open.reason ?? `${host} refused earlier reads`}` });
+        return null;
+      }
+    }
     let result;
     try {
-      result = await call();
+      result = await call(left);
     } catch (error) {
       log.warn('social backend threw', { backend, platform, message: error instanceof Error ? error.message : String(error) });
       result = { ok: false, code: 'blocked', reason: 'The reader stopped unexpectedly.', trip: true };
     }
     if (result.ok) {
       attempts.push({ backend, outcome: 'ok', code: null, reason: null });
+      if (host) this.breaker.recordSuccess(host);
       return /** @type {any} */ (result);
     }
     const failure = /** @type {any} */ (result).failure ?? result;
     attempts.push({ backend, outcome: 'failed', code: failure.code, reason: failure.reason });
     this.noteFailure(backend, platform, failure);
+    if (host) this.breaker.recordFailure(host, failure.code, failure.reason);
     return null;
+  }
+
+  /**
+   * Map a stealth reader answer onto the router's record shapes and failure codes.
+   * @param {Record<string, any>} out
+   * @param {{handle: string, url: string}} target
+   * @returns {{ok: true, profile: Record<string, any>|null, posts: Array<Record<string, any>>}|{ok: false, code: string, reason: string, trip: boolean}}
+   */
+  fromStealthProfile(out, target) {
+    if (!out || out.ok !== true) {
+      return { ok: false, code: envelopeCode(out?.code ?? 'unsupported'), reason: out?.reason ?? 'The stealth reader failed.', trip: Boolean(out?.trip) };
+    }
+    const observedAt = new Date(this.now()).toISOString();
+    const p = out.profile && typeof out.profile === 'object' ? out.profile : null;
+    const profile = p
+      ? profileRecord({
+          platform: 'tiktok',
+          url: target.url,
+          handle: p.handle ?? p.uniqueId ?? target.handle,
+          display_name: p.display_name ?? p.displayName ?? p.nickname ?? null,
+          bio: p.bio ?? p.signature ?? null,
+          followers: p.followers ?? p.followerCount,
+          following: p.following ?? p.followingCount,
+          post_count: p.post_count ?? p.posts ?? p.videoCount,
+          likes_total: p.likes_total ?? p.likes ?? p.heartCount,
+          verified: p.verified,
+          source_ref: `stealth:${target.url}`,
+          observed_at: observedAt,
+          confidence: 0.85,
+        })
+      : null;
+    const posts = (Array.isArray(out.posts) ? out.posts : [])
+      .filter((post) => post && typeof post === 'object' && (post.url || post.id))
+      .map((post) =>
+        postRecord({
+          platform: 'tiktok',
+          url: post.url ?? `https://www.tiktok.com/@${target.handle}/video/${post.id}`,
+          post_id: post.id != null ? String(post.id) : tiktokPostId(String(post.url ?? '')),
+          author_handle: target.handle,
+          posted_at: post.createdAt,
+          media_kind: 'video',
+          caption: post.caption ?? null,
+          duration_s: typeof post.durationS === 'number' ? post.durationS : null,
+          metrics: { views: post.views, likes: post.likes, comments: post.comments, shares: post.shares },
+          source_ref: `stealth:${target.url}`,
+          observed_at: observedAt,
+          confidence: 0.85,
+        }),
+      );
+    if (!profile && posts.length === 0) return { ok: false, code: 'empty_page', reason: 'The stealth reader found no profile or videos.', trip: false };
+    return { ok: true, profile, posts };
+  }
+
+  /**
+   * Time left in this call's budget; unlimited outside a call.
+   * @returns {number}
+   */
+  remainingMs() {
+    const store = callBudget.getStore();
+    return store ? store.deadline - this.now() : Infinity;
+  }
+
+  /**
+   * Whether the shared breaker was open for a host when this call first asked.
+   * A failure earlier in the same call never blocks that call's own fallback.
+   * @param {string} host
+   * @returns {{open: boolean, code?: string, reason?: string}}
+   */
+  breakerState(host) {
+    const store = callBudget.getStore();
+    if (!store) return this.breaker.isOpen(host);
+    let state = store.hosts.get(host);
+    if (!state) {
+      state = this.breaker.isOpen(host);
+      store.hosts.set(host, state);
+    }
+    return state;
+  }
+
+  /**
+   * The stealth reader when one is installed and ready, else null.
+   * @returns {Promise<any|null>}
+   */
+  async stealthReady() {
+    const holder = this.stealthHolder;
+    if (holder.value === undefined) {
+      try {
+        const mod = await import('./backends/stealth.mjs');
+        holder.value = new mod.StealthBackend();
+      } catch {
+        holder.value = null;
+      }
+    }
+    try {
+      return holder.value && holder.value.isReady() ? holder.value : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -319,7 +491,8 @@ export class SocialRouter {
       const adapted = hit ? reuse(hit) : null;
       if (adapted) return this.withSavedEvidence(db, key, adapted);
     }
-    const fresh = await read();
+    // One 45 second budget per public call; a call made from inside another shares its parent's.
+    const fresh = await (callBudget.getStore() ? read() : callBudget.run({ deadline: this.now() + this.deadlineMs, hosts: new Map() }, read));
     if (typeof fresh.coverage === 'string') this.recordObserved(key.platform, key.kind, fresh.coverage);
     if (db) {
       try {
@@ -428,7 +601,7 @@ export class SocialRouter {
     const plan = () => profilePlan({ platform, handle: target.handle, url: target.url, limit });
 
     if (platform === 'tiktok') {
-      const embed = await this.attempt(attempts, 'tiktok_embed', `${platform}:profile`, () => this.tiktok.profile(target.handle));
+      const embed = await this.attempt(attempts, 'tiktok_embed', `${platform}:profile`, (ms) => limited(this.tiktok, ms).profile(target.handle));
       if (embed) {
         profile = embed.profile;
         posts = embed.posts;
@@ -437,13 +610,25 @@ export class SocialRouter {
       }
       const wantMore = posts.length < limit || posts.some((post) => !hasFullMetrics(post));
       if (wantMore) {
-        const listing = await this.attempt(attempts, 'yt-dlp', `${platform}:profile`, () => this.ytdlp.listing(target.url, platform, limit));
-        if (listing) posts = mergePosts(listing.posts, posts);
+        // The ONE fallback: the stealth reader when it is installed, else a single yt-dlp run.
+        const stealth = await this.stealthReady();
+        if (stealth) {
+          const read = await this.attempt(attempts, 'stealth', `${platform}:profile`, async (ms) =>
+            this.fromStealthProfile(await stealth.tiktokProfile(target.handle, { limit, timeoutMs: Math.min(ms, 40_000) }), target),
+          );
+          if (read) {
+            if (!profile) profile = read.profile;
+            posts = mergePosts(read.posts, posts);
+          }
+        } else {
+          const listing = await this.attempt(attempts, 'yt-dlp', `${platform}:profile`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(target.url, platform, limit));
+          if (listing) posts = mergePosts(listing.posts, posts);
+        }
       }
     } else {
       for (const backend of ROUTES[platform].profile) {
         if (backend === 'yt-dlp') {
-          const listing = await this.attempt(attempts, backend, `${platform}:profile`, () => this.ytdlp.listing(target.url, platform, limit));
+          const listing = await this.attempt(attempts, backend, `${platform}:profile`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(target.url, platform, limit));
           if (listing) {
             posts = listing.posts;
             profile = profile ?? listing.profile;
@@ -452,11 +637,11 @@ export class SocialRouter {
           // Only worth spawning once the cheaper backends have already been tried and
           // still left the profile facts unread.
           if (!profile) {
-            const page = await this.browserAttempt(attempts, `${platform}:profile`, () => this.browser.profile(target, platform));
+            const page = await this.browserAttempt(attempts, `${platform}:profile`, (ms) => limited(this.browser, ms).profile(target, platform));
             if (page) profile = page.profile;
           }
         } else {
-          const page = await this.attempt(attempts, backend, `${platform}:profile`, () => this.pages.profile(target, platform));
+          const page = await this.attempt(attempts, backend, `${platform}:profile`, (ms) => limited(this.pages, ms).profile(target, platform));
           if (page) profile = page.profile;
         }
         if (profile && posts.length > 0) break;
@@ -524,16 +709,16 @@ export class SocialRouter {
     let record = null;
     for (const backend of ROUTES[platform].post) {
       if (backend === 'yt-dlp') {
-        const read = await this.attempt(attempts, backend, `${platform}:post`, () => this.ytdlp.post(url, platform));
+        const read = await this.attempt(attempts, backend, `${platform}:post`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).post(url, platform));
         if (read) record = read.record;
       } else if (backend === 'tiktok_embed') {
-        const read = await this.attempt(attempts, backend, `${platform}:post`, () => this.tiktok.post(/** @type {string} */ (postId)));
+        const read = await this.attempt(attempts, backend, `${platform}:post`, (ms) => limited(this.tiktok, ms).post(/** @type {string} */ (postId)));
         if (read) record = record ? mergePosts([record], [read.record])[0] : read.record;
       } else if (backend === 'browser') {
-        const read = await this.browserAttempt(attempts, `${platform}:post`, () => this.browser.post(url, /** @type {'instagram'|'facebook'} */ (platform)));
+        const read = await this.browserAttempt(attempts, `${platform}:post`, (ms) => limited(this.browser, ms).post(url, /** @type {'instagram'|'facebook'} */ (platform)));
         if (read) record = record ? mergePosts([record], [read.record])[0] : read.record;
       } else {
-        const read = await this.attempt(attempts, backend, `${platform}:post`, () => this.pages.post(url, platform));
+        const read = await this.attempt(attempts, backend, `${platform}:post`, (ms) => limited(this.pages, ms).post(url, platform));
         if (read) record = read.record;
       }
       if (record && hasFullMetrics(record) && record.caption !== null) break;
@@ -590,8 +775,8 @@ export class SocialRouter {
     for (const backend of ROUTES[platform].comments) {
       const read =
         backend === 'tiktok_comments'
-          ? await this.attempt(attempts, backend, `${platform}:comments`, () => this.tiktok.comments(/** @type {string} */ (postId), url, limit))
-          : await this.attempt(attempts, backend, `${platform}:comments`, () => this.ytdlp.comments(url, platform, limit));
+          ? await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.tiktok, ms).comments(/** @type {string} */ (postId), url, limit))
+          : await this.attempt(attempts, backend, `${platform}:comments`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).comments(url, platform, limit));
       if (read) {
         records = read.records;
         total = read.total ?? null;
@@ -669,10 +854,10 @@ export class SocialRouter {
 
     const tag = query.slice(1).replace(/\s+/g, '');
     let records = [];
-    const listing = await this.attempt(attempts, 'yt-dlp', `${platform}:search`, () => this.ytdlp.listing(`https://www.tiktok.com/tag/${encodeURIComponent(tag)}`, platform, limit));
+    const listing = await this.attempt(attempts, 'yt-dlp', `${platform}:search`, (ms) => limited(this.ytdlp, ms, YTDLP_TIMEOUT_MS).listing(`https://www.tiktok.com/tag/${encodeURIComponent(tag)}`, platform, limit));
     if (listing) records = listing.posts.slice(0, limit);
     let hashtag = null;
-    const stats = await this.attempt(attempts, 'tiktok_embed', `${platform}:search`, () => this.tiktok.hashtag(tag));
+    const stats = await this.attempt(attempts, 'tiktok_embed', `${platform}:search`, (ms) => limited(this.tiktok, ms).hashtag(tag));
     if (stats) hashtag = stats.hashtag;
     const coverage = records.length >= Math.min(limit, 1) && records.every(hasFullMetrics) ? 'full' : records.length > 0 || hashtag ? 'partial' : 'none';
     return this.finish({
@@ -756,14 +941,38 @@ export class SocialRouter {
       /** @type {Attempt[]} */
       const attempts = [];
       const backend = platform === 'meta' ? 'meta_ad_library' : 'tiktok_creative_center';
-      const outcome = platform === 'meta' ? await this.ads.meta(query, country) : await this.ads.tiktok(query, country);
+      const adHost = PLATFORM_HOST[platform] ?? null;
+      const adsOpen = adHost ? this.breakerState(adHost) : { open: false };
+      if (adsOpen.open || this.remainingMs() <= 0) {
+        const why = adsOpen.open ? `skipped: ${adsOpen.reason ?? `${adHost} refused earlier reads`}` : 'skipped: budget (this call used its 45 seconds)';
+        attempts.push({ backend, outcome: 'skipped', code: adsOpen.open ? adsOpen.code ?? 'blocked' : 'timed_out', reason: why });
+        return this.finish({
+          platform,
+          backend: 'none',
+          records: [],
+          coverage: 'none',
+          attempts,
+          plan: () => adsPlan({ platform, query, country: /** @type {string} */ (country), eu: EU_LIKE.has(/** @type {string} */ (country)), urls: platform === 'meta' ? { library: metaLibraryUrl(query, /** @type {string} */ (country)) } : { library: tiktokLibraryUrls(query, /** @type {string} */ (country)).creativeCenter } }),
+          extra: { country, country_source: countrySource },
+        });
+      }
+      // The ad reader's one fallback is the stealth reader (Meta Ad Library page, TikTok Top Ads).
+      if (this.ownsAds && this.ads.options && this.ads.options.stealth === undefined) {
+        this.ads.options.stealth = (await this.stealthReady()) ?? null;
+      }
+      const adReader = limited(this.ads, this.remainingMs());
+      const outcome = platform === 'meta' ? await adReader.meta(query, country) : await adReader.tiktok(query, country);
+      if (adHost) {
+        if (outcome.records.length > 0) this.breaker.recordSuccess(adHost);
+        else if (['blocked', 'login_required', 'rate_limited', 'timed_out'].includes(outcome.code)) this.breaker.recordFailure(adHost, outcome.code, outcome.reason);
+      }
       attempts.push({ backend, outcome: outcome.records.length > 0 ? 'ok' : 'failed', code: outcome.records.length > 0 ? null : outcome.code, reason: outcome.reason || null });
       let records = outcome.records;
       let usedBackend = outcome.reached ? 'ad_library_page' : 'none';
       // The library page itself is tried first; the browser backend only runs when
       // that page carried nothing, since it is much slower and heavier to spawn.
       if (records.length === 0) {
-        const browserOutcome = await this.browserAttempt(attempts, `${platform}:ads`, () => this.browser.adLibraryPage(outcome.urls.library, platform));
+        const browserOutcome = await this.browserAttempt(attempts, `${platform}:ads`, (ms) => limited(this.browser, ms).adLibraryPage(outcome.urls.library, platform));
         if (browserOutcome && browserOutcome.records.length > 0) {
           records = browserOutcome.records;
           usedBackend = 'browser';
@@ -809,12 +1018,41 @@ export class SocialRouter {
    * @returns {Promise<Record<string, any>>}
    */
   async readCrawl(url, scope, maxPages) {
-    const first = await webCrawl({ url, scope, max_pages: maxPages }, this.crawlOptions);
-    const jsGap = scope === 'page' && first.coverage !== 'full' && (first.degraded_code === 'empty_page' || first.degraded_code === 'blocked');
+    const first = await webCrawl({ url, scope, max_pages: maxPages }, { ...this.crawlOptions, budgetMs: Math.min(CRAWL_BUDGET_MS, Math.max(1000, this.remainingMs())) });
+    const refused = first.degraded_code === 'blocked';
+    const jsGap = scope === 'page' && first.coverage !== 'full' && (first.degraded_code === 'empty_page' || refused);
     if (!jsGap) return first;
     /** @type {Attempt[]} */
     const attempts = [{ backend: 'web_reader', outcome: 'failed', code: first.degraded_code, reason: first.degraded_reason }];
-    const page = await this.browserAttempt(attempts, 'web:crawl', () => this.browser.page(url));
+    // The ONE fallback: a 403, bot check or Cloudflare answer goes to the stealth reader when it is
+    // installed; everything else (and a JavaScript shell) goes to the browser backend.
+    const stealth = refused ? await this.stealthReady() : null;
+    let page;
+    let backend = 'browser';
+    if (stealth) {
+      backend = 'stealth';
+      const read = await this.attempt(attempts, 'stealth', 'web:crawl', async (ms) => {
+        const out = await stealth.page(url, { timeoutMs: Math.min(ms, 40_000) });
+        if (!out || out.ok !== true) return { ok: false, code: envelopeCode(out?.code ?? 'unsupported'), reason: out?.reason ?? 'The stealth reader failed.', trip: Boolean(out?.trip) };
+        const text = String(out.text ?? '');
+        if (text.trim().length === 0) return { ok: false, code: 'empty_page', reason: 'The stealth reader found nothing readable.', trip: false };
+        const fetchedAt = new Date(this.now()).toISOString();
+        const record = pageRecord({
+          url: out.finalUrl ?? url,
+          title: out.title ?? null,
+          text,
+          links: Array.isArray(out.links) ? out.links.filter((link) => typeof link === 'string') : [],
+          source_ref: out.finalUrl ?? url,
+          observed_at: fetchedAt,
+          source_type: 'web_evidence',
+          confidence: 0.8,
+        });
+        return { ok: true, record, coverage: text.trim().length < 400 ? 'partial' : 'full' };
+      });
+      page = read;
+    } else {
+      page = await this.browserAttempt(attempts, 'web:crawl', (ms) => limited(this.browser, ms).page(url));
+    }
     if (!page) {
       return { ...first, attempts: [...attempts] };
     }
@@ -826,7 +1064,7 @@ export class SocialRouter {
       attempts,
       reason: page.coverage === 'partial' ? 'The rendered page had only a little readable text.' : null,
       plan: () => first.web_evidence_plan,
-      extra: { scope, pages_read: 1, skipped: [], rendered: true },
+      extra: { scope, pages_read: 1, skipped: [], rendered: true, rendered_by: backend },
     });
   }
 
@@ -838,16 +1076,13 @@ export class SocialRouter {
   async status(options = {}) {
     if (!options.force && this.statusCache && this.now() - this.statusCache.at < STATUS_TTL_MS) return this.statusCache.value;
     const checkedAt = new Date(this.now()).toISOString();
-    const ytdlp = await this.ytdlp.health();
-    /** @type {Array<Record<string, any>>} */
-    const backends = [
-      { id: 'yt-dlp', present: ytdlp.present, version: ytdlp.version, healthy: ytdlp.status === 'ok', probe: 'live', detail: ytdlp.detail, impersonation: ytdlp.impersonation },
-      { id: 'web_reader', present: true, version: `node ${process.versions.node}`, healthy: true, probe: 'static', detail: 'Built in page reader: robots.txt honoured, same site only, 2 MB and 15 second caps.' },
-    ];
-    /** @type {Record<string, boolean>} */
-    const healthy = { web_reader: true };
-
     if (this.offline) {
+      const ytdlp = await this.ytdlp.health();
+      /** @type {Array<Record<string, any>>} */
+      const backends = [
+        { id: 'yt-dlp', present: ytdlp.present, version: ytdlp.version, healthy: ytdlp.status === 'ok', probe: 'live', detail: ytdlp.detail, impersonation: ytdlp.impersonation },
+        { id: 'web_reader', present: true, version: `node ${process.versions.node}`, healthy: true, probe: 'static', detail: 'Built in page reader: robots.txt honoured, same site only, 2 MB and 10 second caps.' },
+      ];
       for (const id of ['tiktok_embed', 'tiktok_comments', 'yt-dlp:tiktok', 'instagram_page', 'facebook_page', 'meta_ad_library', 'tiktok_creative_center']) {
         backends.push({ id, present: true, version: null, healthy: null, probe: 'skipped', detail: 'Not probed: offline mode.' });
       }
@@ -856,48 +1091,103 @@ export class SocialRouter {
       return value;
     }
 
-    const tiktokProfile = await this.tiktok.profile('tiktok');
-    healthy.tiktok_embed = tiktokProfile.ok === true;
-    const samplePost = tiktokProfile.ok ? tiktokProfile.posts[0] : null;
-    backends.push({
-      id: 'tiktok_embed',
-      present: true,
-      version: null,
-      healthy: healthy.tiktok_embed,
-      probe: 'live',
-      detail: tiktokProfile.ok ? `TikTok's public profile embed answered with ${tiktokProfile.posts.length} posts.` : `TikTok's public embed did not answer: ${tiktokProfile.reason}`,
+    // Every probe runs at the same time, all of them under one 30 second cap: a probe still
+    // running at the cap is reported as not finished and its answer is left out.
+    /** @type {Map<string, Record<string, any>>} */
+    const found = new Map();
+    /** @type {Record<string, boolean>} */
+    const healthy = { web_reader: true };
+    let capTimer;
+    const capped = new Promise((resolve) => {
+      capTimer = setTimeout(() => resolve('cap'), STATUS_PROBE_CAP_MS);
     });
-    if (samplePost) {
-      const comments = await this.tiktok.comments(samplePost.post_id, samplePost.url, 1);
-      healthy.tiktok_comments = comments.ok === true;
-      backends.push({ id: 'tiktok_comments', present: true, version: null, healthy: healthy.tiktok_comments, probe: 'live', detail: comments.ok ? 'TikTok public comments answered.' : `TikTok public comments did not answer: ${comments.reason}` });
-    } else {
-      healthy.tiktok_comments = false;
-      backends.push({ id: 'tiktok_comments', present: true, version: null, healthy: false, probe: 'skipped', detail: 'Not probed: no sample post.' });
-    }
-    if (ytdlp.status === 'ok' && samplePost) {
-      const read = await this.ytdlp.post(samplePost.url, 'tiktok');
-      healthy['yt-dlp:tiktok'] = read.ok;
-      if (!read.ok) this.noteFailure('yt-dlp', 'tiktok:post', read.failure);
-      backends.push({ id: 'yt-dlp:tiktok', present: true, version: ytdlp.version, healthy: read.ok, probe: 'live', detail: read.ok ? 'yt-dlp read a public TikTok post.' : read.failure.reason });
-    } else {
-      healthy['yt-dlp:tiktok'] = false;
-      backends.push({ id: 'yt-dlp:tiktok', present: ytdlp.present, version: ytdlp.version, healthy: false, probe: 'skipped', detail: ytdlp.present ? 'Not probed: no sample post.' : 'yt-dlp is not installed.' });
-    }
-    for (const [id, platform, url] of /** @type {const} */ ([
+    /** @param {string} id @param {Promise<any>} work */
+    const probe = (id, work) =>
+      Promise.race([work, capped]).then(
+        (value) => value,
+        (error) => {
+          log.warn('social status probe failed', { id, message: error instanceof Error ? error.message : String(error) });
+          return 'failed';
+        },
+      );
+    const missed = (id, note = 'Not finished within 30 seconds.') => {
+      if (!found.has(id)) {
+        healthy[id] = false;
+        found.set(id, { id, present: true, version: null, healthy: false, probe: 'skipped', detail: `Not probed: ${note}` });
+      }
+    };
+
+    const ytdlpWork = this.ytdlp.health();
+    const ytdlpProbe = probe('yt-dlp', ytdlpWork).then((h) => (h && typeof h === 'object' ? h : null));
+    const tiktokChain = (async () => {
+      const profile = await probe('tiktok_embed', this.tiktok.profile('tiktok'));
+      if (!profile || typeof profile !== 'object') return missed('tiktok_embed');
+      healthy.tiktok_embed = profile.ok === true;
+      found.set('tiktok_embed', {
+        id: 'tiktok_embed',
+        present: true,
+        version: null,
+        healthy: healthy.tiktok_embed,
+        probe: 'live',
+        detail: profile.ok ? `TikTok's public profile embed answered with ${profile.posts.length} posts.` : `TikTok's public embed did not answer: ${profile.reason}`,
+      });
+      const samplePost = profile.ok ? profile.posts[0] : null;
+      const comments = (async () => {
+        if (!samplePost) {
+          healthy.tiktok_comments = false;
+          found.set('tiktok_comments', { id: 'tiktok_comments', present: true, version: null, healthy: false, probe: 'skipped', detail: 'Not probed: no sample post.' });
+          return;
+        }
+        const read = await probe('tiktok_comments', this.tiktok.comments(samplePost.post_id, samplePost.url, 1));
+        if (!read || typeof read !== 'object') return missed('tiktok_comments');
+        healthy.tiktok_comments = read.ok === true;
+        found.set('tiktok_comments', { id: 'tiktok_comments', present: true, version: null, healthy: healthy.tiktok_comments, probe: 'live', detail: read.ok ? 'TikTok public comments answered.' : `TikTok public comments did not answer: ${read.reason}` });
+      })();
+      const ytdlpPost = (async () => {
+        const health = await ytdlpProbe;
+        if (!health) return missed('yt-dlp:tiktok');
+        if (health.status === 'ok' && samplePost) {
+          const read = await probe('yt-dlp:tiktok', this.ytdlp.post(samplePost.url, 'tiktok'));
+          if (!read || typeof read !== 'object') return missed('yt-dlp:tiktok');
+          healthy['yt-dlp:tiktok'] = read.ok;
+          if (!read.ok) this.noteFailure('yt-dlp', 'tiktok:post', read.failure);
+          found.set('yt-dlp:tiktok', { id: 'yt-dlp:tiktok', present: true, version: health.version, healthy: read.ok, probe: 'live', detail: read.ok ? 'yt-dlp read a public TikTok post.' : read.failure.reason });
+        } else {
+          healthy['yt-dlp:tiktok'] = false;
+          found.set('yt-dlp:tiktok', { id: 'yt-dlp:tiktok', present: health.present, version: health.version, healthy: false, probe: 'skipped', detail: health.present ? 'Not probed: no sample post.' : 'yt-dlp is not installed.' });
+        }
+      })();
+      await Promise.all([comments, ytdlpPost]);
+    })();
+    const pageProbes = /** @type {const} */ ([
       ['instagram_page', 'instagram', 'https://www.instagram.com/instagram/'],
       ['facebook_page', 'facebook', 'https://www.facebook.com/facebook'],
-    ])) {
-      const page = await this.pages.read(url, platform);
+    ]).map(async ([id, platform, url]) => {
+      const page = await probe(id, this.pages.read(url, platform));
+      if (!page || typeof page !== 'object') return missed(id);
       healthy[id] = page.ok;
-      backends.push({ id, present: true, version: null, healthy: page.ok, probe: 'live', detail: page.ok ? 'Signed out pages carry readable tags.' : page.reason });
-    }
-    const meta = await this.ads.meta('Meta', 'US');
-    healthy.meta_ad_library = meta.records.length > 0;
-    backends.push({ id: 'meta_ad_library', present: true, version: null, healthy: healthy.meta_ad_library, probe: 'live', detail: meta.reason || 'Ads were readable.' });
-    const creative = await this.ads.tiktok('skincare', 'US');
-    healthy.tiktok_creative_center = creative.records.length > 0;
-    backends.push({ id: 'tiktok_creative_center', present: true, version: null, healthy: healthy.tiktok_creative_center, probe: 'live', detail: creative.reason || 'Ads were readable.' });
+      found.set(id, { id, present: true, version: null, healthy: page.ok, probe: 'live', detail: page.ok ? 'Signed out pages carry readable tags.' : page.reason });
+    });
+    const adProbes = [
+      ['meta_ad_library', () => this.ads.meta('Meta', 'US')],
+      ['tiktok_creative_center', () => this.ads.tiktok('skincare', 'US')],
+    ].map(async ([id, run]) => {
+      const read = await probe(/** @type {string} */ (id), /** @type {() => Promise<any>} */ (run)());
+      if (!read || typeof read !== 'object') return missed(/** @type {string} */ (id));
+      healthy[/** @type {string} */ (id)] = read.records.length > 0;
+      found.set(/** @type {string} */ (id), { id, present: true, version: null, healthy: read.records.length > 0, probe: 'live', detail: read.reason || 'Ads were readable.' });
+    });
+    await Promise.all([tiktokChain, ...pageProbes, ...adProbes, ytdlpProbe]);
+    clearTimeout(capTimer);
+    for (const id of ['tiktok_embed', 'tiktok_comments', 'yt-dlp:tiktok', 'instagram_page', 'facebook_page', 'meta_ad_library', 'tiktok_creative_center']) missed(id);
+
+    const ytdlp = (await ytdlpProbe) ?? { present: true, status: 'timed_out', version: null, impersonation: null, detail: 'yt-dlp did not answer within the 30 second probe cap.' };
+    /** @type {Array<Record<string, any>>} */
+    const backends = [
+      { id: 'yt-dlp', present: ytdlp.present, version: ytdlp.version, healthy: ytdlp.status === 'ok', probe: 'live', detail: ytdlp.detail, impersonation: ytdlp.impersonation },
+      { id: 'web_reader', present: true, version: `node ${process.versions.node}`, healthy: true, probe: 'static', detail: 'Built in page reader: robots.txt honoured, same site only, 2 MB and 10 second caps.' },
+    ];
+    for (const id of ['tiktok_embed', 'tiktok_comments', 'yt-dlp:tiktok', 'instagram_page', 'facebook_page', 'meta_ad_library', 'tiktok_creative_center']) backends.push(/** @type {any} */ (found.get(id)));
 
     const value = { checked_at: checkedAt, offline: false, backends, matrix: matrixFromHealth(healthy, this.observedCoverage), matrix_source: 'measured now' };
     this.statusCache = { at: this.now(), value };

@@ -28,11 +28,12 @@ import { copyFileSync, createReadStream, existsSync, linkSync, mkdirSync, readFi
 import { basename, extname, join, resolve } from 'node:path';
 
 import { moveIntoPlace, toolWorkDir } from '../lib/paths.mjs';
-import { runYtDlp, parseInfo } from '../social/backends/ytdlp.mjs';
+import { runYtDlp, mapYtDlpError, parseInfo, killTree, YTDLP_NO_RETRY_ARGS } from '../social/backends/ytdlp.mjs';
 import { assertPublicHost, FetchFailure } from '../social/backends/web.mjs';
 import { parseCaptions } from '../video/watch-transcript.mjs';
 import { isUrl, platformOf } from '../video/watch-source.mjs';
-import { referenceFromUrl, referenceYtdlpBinary } from './url-reference.mjs';
+import { breaker as sharedBreaker } from '../social/breaker.mjs';
+import { referenceFromUrl, referenceYtdlpBinary, breakerSkip, breakerRecord, REFERENCE_DOWNLOAD_TIMEOUT_MS } from './url-reference.mjs';
 import { readReferences, referencesDir, updateReferenceManifest } from './references.mjs';
 
 export const SCENE_THRESHOLD = 0.3;
@@ -42,6 +43,8 @@ export const MAX_ANALYSED_S = 600;
 export const MAX_TOTAL_FRAMES = 48;
 export const SPARSE_SHOT_S = 6;
 export const LONG_PATH_CHARS = 200;
+/** The whole teardown, download included, is over after this long. */
+export const TEARDOWN_TOTAL_MS = 180_000;
 const MIN_SHOT_S = 0.25;
 const FRAME_EDGE = 768;
 const PCM_RATE = 8000;
@@ -336,7 +339,7 @@ export function runProcess(command, args, { timeoutMs = 60_000, maxStdout = 64 *
   return new Promise(resolvePromise => {
     let child;
     try {
-      child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' });
     } catch (error) {
       resolvePromise({ ok: false, code: null, missing: true, stdout: Buffer.alloc(0), stderr: String(error.message) });
       return;
@@ -347,7 +350,7 @@ export function runProcess(command, args, { timeoutMs = 60_000, maxStdout = 64 *
     let missing = false;
     let timedOut = false;
     let done = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
+    const timer = setTimeout(() => { timedOut = true; killTree(child); }, timeoutMs);
     child.stdout.on('data', chunk => { outBytes += chunk.length; if (outBytes <= maxStdout) out.push(chunk); });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', chunk => { if (err.length < maxStderr) err += chunk; });
@@ -373,24 +376,24 @@ async function inPool(items, size, work) {
 
 const stamp = t => t.toFixed(2).padStart(5, '0');
 
-async function grabFrame(ffmpeg, video, t, file, run = runProcess) {
-  const result = await run(ffmpeg, ['-v', 'error', '-y', '-ss', String(t), '-i', video, '-frames:v', '1', '-vf', `scale='min(${FRAME_EDGE},iw)':-2`, '-q:v', '3', file], { timeoutMs: 30_000 });
+async function grabFrame(ffmpeg, video, t, file, run = runProcess, timeoutMs = 30_000) {
+  const result = await run(ffmpeg, ['-v', 'error', '-y', '-ss', String(t), '-i', video, '-frames:v', '1', '-vf', `scale='min(${FRAME_EDGE},iw)':-2`, '-q:v', '3', file], { timeoutMs });
   return result.ok && existsSync(file);
 }
 
 /* ------------------------------------------------------------------ captions */
 
-async function fetchCaptions({ url, dir, binary, cookies, withInfo = false, ytdlp = runYtDlp }) {
+async function fetchCaptions({ url, dir, binary, cookies, withInfo = false, ytdlp = runYtDlp, timeoutMs = 60_000 }) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const args = [
-    '--ignore-config', '--no-update', '--no-progress', '--no-playlist', '--socket-timeout', '20',
+    '--ignore-config', '--no-update', '--no-progress', '--no-playlist', ...YTDLP_NO_RETRY_ARGS,
     ...(cookies ? ['--cookies-from-browser', cookies] : ['--no-cookies', '--no-cookies-from-browser']),
     '--skip-download', ...(withInfo ? ['--write-info-json'] : []), '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*,en,-live_chat', '--sub-format', 'vtt/srt/best',
     ...(platformOf(url) === 'tiktok' ? ['--impersonate', 'chrome'] : []),
     '-o', join(dir, 'captions.%(ext)s'), '--', url,
   ];
-  const run = await ytdlp(args, { binary: referenceYtdlpBinary(binary), timeoutMs: 60_000 });
+  const run = await ytdlp(args, { binary: referenceYtdlpBinary(binary), timeoutMs });
   const files = existsSync(dir) ? readdirSync(dir).filter(f => /\.(vtt|srt)$/i.test(f)) : [];
   const infoFile = existsSync(dir) ? readdirSync(dir).find(f => /\.info\.json$/i.test(f)) : null;
   return { run, files, infoFile: infoFile ? join(dir, infoFile) : null };
@@ -496,6 +499,16 @@ export async function videoTeardown(options) {
   const now = options.now ?? (() => new Date());
   const run = options.run ?? runProcess;
   const ytdlp = options.ytdlp ?? runYtDlp;
+  // One clock for the whole teardown, download included. Every step gets what it needs or what is left, whichever is less.
+  const deadline = Date.now() + (options.totalMs ?? TEARDOWN_TOTAL_MS);
+  const remaining = () => deadline - Date.now();
+  const budget = ms => Math.max(1000, Math.min(ms, remaining()));
+  const outOfTime = (stage) => ({
+    ok: false,
+    status: 'timed_out',
+    message: `The teardown ran out of its ${Math.round((options.totalMs ?? TEARDOWN_TOTAL_MS) / 1000)} second limit ${stage}.`,
+    next: ['Record timed_out for this video, leave the slot blank and continue.'],
+  });
 
   // 1. the file
   let id;
@@ -505,8 +518,9 @@ export async function videoTeardown(options) {
   let sourceUrl = null;
   let localSource = null;
   if (options.url) {
-    const got = await referenceFromUrl({ jobDir: options.jobDir, url: options.url, note: options.note, cookiesFromBrowser: options.cookiesFromBrowser, binary: options.ytdlpBinary, assertHost: options.assertHost, now });
+    const got = await referenceFromUrl({ jobDir: options.jobDir, url: options.url, note: options.note, cookiesFromBrowser: options.cookiesFromBrowser, binary: options.ytdlpBinary, assertHost: options.assertHost, now, breaker: options.breaker, timeoutMs: Math.min(REFERENCE_DOWNLOAD_TIMEOUT_MS, remaining()) });
     if (!got.ok) return got;
+    if (remaining() < 10_000) return outOfTime('while downloading the video');
     entry = got.entry;
     id = entry.id;
     dir = join(referencesDir(options.jobDir), 'video', id);
@@ -543,7 +557,7 @@ export async function videoTeardown(options) {
   if (!options.force && existsSync(jsonPath)) {
     try {
       const cached = JSON.parse(readFileSync(jsonPath, 'utf8'));
-      if (cached.video?.bytes === statSync(file).size && (!sourceUrl || cached.sourceUrl === sourceUrl)) {
+      if (!cached.partial && cached.video?.bytes === statSync(file).size && (!sourceUrl || cached.sourceUrl === sourceUrl)) {
         if (localSource) await saveLocalEntry({ jobDir: options.jobDir, id, dir, file, source: localSource, sourceUrl, details: null, durationS: cached.video.durationS ?? null, note: options.note, now });
         return { ok: true, status: 'already_done', ...packageResult(cached) };
       }
@@ -556,7 +570,8 @@ export async function videoTeardown(options) {
     const video = toolInputFor(file, work, options.longPathChars ?? LONG_PATH_CHARS);
 
     // 2. facts
-    const probeRun = await run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', video], { timeoutMs: 30_000 });
+    const probeRun = await run(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', video], { timeoutMs: budget(30_000) });
+    if (probeRun.timedOut) return outOfTime('while reading the video');
     if (probeRun.missing) return { ok: false, status: 'ffmpeg_missing', message: 'ffmpeg and ffprobe are not installed on this computer, so a video cannot be taken apart.', next: ['Ask the person to install ffmpeg, or use the Chrome fallback to look at the video.'] };
     let probe = null;
     try { probe = summariseProbe(JSON.parse(probeRun.stdout.toString('utf8'))); } catch { probe = null; }
@@ -570,23 +585,28 @@ export async function videoTeardown(options) {
     mkdirSync(framesWork, { recursive: true });
 
     // 3. cuts, audio and captions run side by side
-    const sceneJob = run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeoutMs: 120_000 });
+    const sceneJob = run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeoutMs: budget(60_000) });
     const audioWork = join(work, 'audio.wav');
     const audioJob = probe.hasAudio
-      ? run(ffmpeg, ['-v', 'error', '-y', '-t', String(analysedS), '-i', video, '-vn', '-ac', '1', '-ar', '16000', audioWork, '-vn', '-ac', '1', '-ar', String(PCM_RATE), '-f', 's16le', 'pipe:1'], { timeoutMs: 120_000 })
+      ? run(ffmpeg, ['-v', 'error', '-y', '-t', String(analysedS), '-i', video, '-vn', '-ac', '1', '-ar', '16000', audioWork, '-vn', '-ac', '1', '-ar', String(PCM_RATE), '-f', 's16le', 'pipe:1'], { timeoutMs: budget(60_000) })
       : Promise.resolve(null);
     const captionsWork = join(work, 'captions');
-    const captionJob = sourceUrl
-      ? fetchCaptions({ url: sourceUrl, dir: captionsWork, binary: options.ytdlpBinary, cookies: options.cookiesFromBrowser ? String(options.cookiesFromBrowser).toLowerCase() : null, withInfo: Boolean(localSource), ytdlp })
+    const captionBrk = options.breaker ?? sharedBreaker;
+    const captionJob = sourceUrl && !breakerSkip(captionBrk, sourceUrl)
+      ? fetchCaptions({ url: sourceUrl, dir: captionsWork, binary: options.ytdlpBinary, cookies: options.cookiesFromBrowser ? String(options.cookiesFromBrowser).toLowerCase() : null, withInfo: Boolean(localSource), ytdlp, timeoutMs: budget(45_000) })
       : Promise.resolve(null);
     const [sceneRun, audioRun, captionRes] = await Promise.all([sceneJob, audioJob, captionJob]);
+    if (captionRes && sourceUrl) {
+      const failure = captionRes.run.ok || captionRes.files.length ? 'ok' : captionRes.run.timedOut ? 'timed_out' : ({ blocked: 'blocked', login_required: 'needs_sign_in', rate_limited: 'rate_limited' }[mapYtDlpError(captionRes.run, platformOf(sourceUrl)).code] ?? 'other');
+      breakerRecord(captionBrk, sourceUrl, failure);
+    }
 
     const cuts = sceneRun.ok ? parseSceneTimes(sceneRun.stderr) : [];
     const shots = buildShots(cuts, analysedS);
     const pacing = pacingStats(shots);
     // With few hard cuts, count the gentle changes too, so pacing is not read from a cut count of 1.
     const changeJob = pacingNote(pacing.averageShotS)
-      ? run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${CHANGE_THRESHOLD})',showinfo`, '-f', 'null', '-'], { timeoutMs: 120_000 })
+      ? run(ffmpeg, ['-v', 'info', '-t', String(analysedS), '-i', video, '-an', '-vf', `select='gt(scene,${CHANGE_THRESHOLD})',showinfo`, '-f', 'null', '-'], { timeoutMs: budget(30_000) })
       : null;
 
     // 4. frames: the hook, one per shot, and evenly spaced samples when the cuts are too few to cover the video
@@ -597,7 +617,10 @@ export async function videoTeardown(options) {
     const sampleFrames = sampleTimes(durationS, { averageShotS: pacing.averageShotS, taken: taken.map(f => f.timeS), room: MAX_TOTAL_FRAMES - taken.length })
       .map(t => ({ kind: 'sample', timeS: t, file: join(framesWork, `sample-${stamp(t)}s.jpg`) }));
     const wanted = [...taken, ...sampleFrames].sort((a, b) => a.timeS - b.timeS);
-    const okFlags = await inPool(wanted, 4, f => grabFrame(ffmpeg, video, f.timeS, f.file, run));
+    // Frames use what is left of the clock, spread over the four at a time; once it runs out the rest are skipped.
+    const frameBudget = budget(Math.max(5_000, Math.floor(remaining() / Math.max(1, Math.ceil(wanted.length / 4)))));
+    const okFlags = await inPool(wanted, 4, f => (remaining() <= 0 ? false : grabFrame(ffmpeg, video, f.timeS, f.file, run, Math.min(30_000, frameBudget))));
+    const partial = remaining() <= 0 || sceneRun.timedOut || (audioRun?.timedOut ?? false);
     moveIntoPlace(framesWork, join(out, 'frames'));
     const changeRun = changeJob ? await changeJob : null;
     if (changeRun?.ok) pacing.visualChangesPerMinute = visualChangesPerMinute(changeRun.stderr, analysedS);
@@ -655,6 +678,7 @@ export async function videoTeardown(options) {
 
     const teardown = {
       schemaVersion: 1,
+      ...(partial ? { partial: true } : {}),
       id,
       sourceUrl,
       title: entry?.title ?? details?.title ?? null,
@@ -671,6 +695,7 @@ export async function videoTeardown(options) {
       framesNote: [
         shots.length > MAX_SHOT_FRAMES ? `More than ${MAX_SHOT_FRAMES} shots; frames cover an even spread of them.` : null,
         sampleFrames.length ? `Cuts are sparse (average shot ${pacing.averageShotS}s), so ${sampleFrames.length} evenly spaced sample frames cover the whole ${round(durationS, 1)}s. Slow or animated changes show in the samples, not as cuts.` : null,
+        partial ? 'Partial: the time limit ran out, so some cuts, frames or sound are missing. Treat what is missing as not observed.' : null,
         durationS > MAX_ANALYSED_S ? `Cuts and sound were measured on the first ${MAX_ANALYSED_S}s only; sample frames cover the full length.` : null,
       ].filter(Boolean).join(' ') || null,
       transcript,
@@ -679,7 +704,7 @@ export async function videoTeardown(options) {
     };
     writeFileSync(`${jsonPath}.tmp`, `${JSON.stringify(teardown, null, 2)}\n`, 'utf8');
     renameSync(`${jsonPath}.tmp`, jsonPath);
-    return { ok: true, status: 'done', ...packageResult(teardown) };
+    return { ok: true, status: partial ? 'partial' : 'done', ...packageResult(teardown) };
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

@@ -16,6 +16,12 @@
  * So each search really asks, reports exactly what came back, and hands Claude a
  * precise plan: the exact library addresses for the user to open, and the searches
  * that find quoted ads on the open web.
+ *
+ * When the stealth reader (Scrapling, installed with the research helper) is ready it
+ * makes ONE attempt at the library page first. For Meta, Claude is told to use the
+ * Meta Ads connector's `ads_library_search` before anything else; this reader is the
+ * single fallback for when that connector is not connected. If it also gets nothing,
+ * the slot stays blank with its status and the plan below is handed back. No retries.
  */
 
 import { boundedFetch, FetchFailure } from './web.mjs';
@@ -104,7 +110,8 @@ export function parseCreativeCenter(html) {
  */
 export class AdLibraryBackend {
   /**
-   * @param {{bases?: typeof AD_LIBRARY_URLS, allowPrivate?: boolean, timeoutMs?: number, politeness?: import('./web.mjs').Politeness}} [options]
+   * @param {{bases?: typeof AD_LIBRARY_URLS, allowPrivate?: boolean, timeoutMs?: number, politeness?: import('./web.mjs').Politeness, stealth?: {isReady: () => boolean, topAds: Function, metaAdLibrary: Function}}} [options]
+   * `stealth` is the optional StealthBackend; it is used only when it reports ready.
    */
   constructor(options = {}) {
     this.bases = { ...AD_LIBRARY_URLS, ...(options.bases ?? {}) };
@@ -133,6 +140,38 @@ export class AdLibraryBackend {
   async meta(query, country) {
     const library = metaLibraryUrl(query, country, this.bases.meta);
     const publicUrl = metaLibraryUrl(query, country);
+    const stealth = this.options.stealth;
+    if (stealth && stealth.isReady()) {
+      const read = await stealth.metaAdLibrary({ query, country, limit: 30 });
+      if (read.ok && Array.isArray(read.ads) && read.ads.length > 0) {
+        const observedAt = new Date().toISOString();
+        const records = read.ads.map((/** @type {Record<string, any>} */ ad) =>
+          adRecord({
+            platform: 'meta',
+            url: ad.snapshotUrl ?? publicUrl,
+            advertiser: ad.pageName ?? null,
+            ad_id: ad.id != null ? String(ad.id) : null,
+            library_url: ad.snapshotUrl ?? publicUrl,
+            started_at: ad.startDate ?? null,
+            active: true,
+            countries: [country],
+            primary_text: ad.text ?? null,
+            source_ref: publicUrl,
+            observed_at: observedAt,
+            confidence: 0.75,
+          }),
+        );
+        return { reached: true, records, code: 'unsupported', reason: '', urls: { library: publicUrl } };
+      }
+      // One attempt only: blank with the reason, and the plan for a person with a browser.
+      return {
+        reached: true,
+        records: [],
+        code: read.ok ? 'empty' : read.code,
+        reason: read.ok ? 'The Meta Ad Library page loaded but no ads were found in it.' : read.reason,
+        urls: { library: publicUrl },
+      };
+    }
     const result = await this.get(library);
     const eu = EU_LIKE.has(country);
     if (!result) {
@@ -171,6 +210,39 @@ export class AdLibraryBackend {
     const local = tiktokLibraryUrls(query, country, this.bases);
     const pub = tiktokLibraryUrls(query, country);
     const urls = { library: pub.creativeCenter, alternate: pub.library };
+    const stealth = this.options.stealth;
+    if (stealth && stealth.isReady()) {
+      const read = await stealth.topAds({ country, keyword: query, period: 30, limit: 20 });
+      if (read.ok && Array.isArray(read.ads) && read.ads.length > 0) {
+        const observedAt = new Date().toISOString();
+        const records = read.ads.map((/** @type {Record<string, any>} */ ad) =>
+          adRecord({
+            platform: 'tiktok',
+            url: pub.creativeCenter,
+            advertiser: ad.brand ?? null,
+            ad_id: ad.id != null ? String(ad.id) : null,
+            library_url: ad.url ?? pub.creativeCenter,
+            countries: [country],
+            format: ad.videoUrl || ad.cover ? 'video' : null,
+            primary_text: ad.title ?? ad.caption ?? null,
+            landing_url: ad.landing ?? null,
+            media_urls: [ad.videoUrl, ad.cover].filter(Boolean),
+            metrics: { likes: ad.likes ?? null, ctr: ad.ctr ?? null },
+            source_ref: pub.creativeCenter,
+            observed_at: observedAt,
+            confidence: 0.8,
+          }),
+        );
+        return { reached: true, records, code: 'unsupported', reason: '', urls };
+      }
+      return {
+        reached: true,
+        records: [],
+        code: read.ok ? 'empty' : read.code,
+        reason: read.ok ? 'TikTok Creative Center loaded but its top ads list was empty.' : read.reason,
+        urls,
+      };
+    }
     const result = await this.get(local.creativeCenter);
     if (!result) {
       return { reached: false, records: [], code: 'timed_out', reason: 'TikTok Creative Center could not be reached.', urls };

@@ -1,6 +1,9 @@
 ---
 name: setup
-description: Set up or recover the selected Social Campaign workspace and its private artifact board.
+description: >
+  Set up or recover the Social Campaign workspace and its private board, and install the research helpers.
+  Use for "set up social campaign", "get started", "install social campaign", "connect my tools", "my board is missing or broken", or /social-campaign:setup.
+  For everyday requests once set up (make a post, open the board, continue a job) use social-campaign instead.
 user-invocable: true
 argument-hint: "[--new]"
 metadata:
@@ -72,8 +75,9 @@ Never narrate rule names, file paths, hashes, or any other internal detail in th
 
 ## Normal artifact setup
 
-`workspace_initialize` starts the optional research helper on its own, in the background, and reuses a copy already on this computer.
-Never ask the person about it, never wait for it, and say nothing about it in setup's chat or summary: its install state is not news to them.
+`workspace_initialize` installs all the research helpers on its own, in the background: the research helper (including Scrapling), yt-dlp, and a check that ffmpeg is present. It reuses copies already on this computer.
+Setup is the only place these are installed; research never installs anything while it runs.
+Never ask the person about it, never wait for it, and say nothing about it in setup's chat or summary: its install state is not news to them. Later sessions keep the helpers current through `research_tools_check` (see the main entry), which also runs in the background and never holds anything up.
 
 For normal setup, call `pipeline_board_open` once after the selected workspace is ready and the Permissions step above is done.
 If the main entry already has a board result for this selected workspace from this same turn, reuse that result and do not repeat status, source, or open calls.

@@ -1,8 +1,10 @@
 ---
 name: social-campaign
 description: >
-  Entry point for the local Social Campaign workspace.
-  Use when the user opens Social Campaign, invokes setup, starts a campaign, asks for a brand profile, or asks to see the board.
+  The one front door for Social Campaign: use it for any everyday request about making, planning, researching, posting or measuring social content, even when the person does not say "social campaign" or type a slash command.
+  Triggers: "make a TikTok / Reel / Instagram or Facebook post / ad for my brand", "create content for Instagram, TikTok or Facebook", "start a social campaign", "plan my social posts", "write a caption or script", "set up my brand", "open the board", "continue my job", "what's waiting on me", "post this to TikTok", "post a video I already have", "check how my ads or posts did", "find competitor videos or ads", "research my audience or competitors", "break down this video".
+  Opens the board, sets up the workspace when there is none, and routes to the right job, brand setup, research or posting step itself; the other Social Campaign skills are internal steps it calls.
+  Use setup only for installing or repairing the workspace; use doctor only when asked for a health check.
 metadata:
   version: 0.3.3
 ---
@@ -13,6 +15,7 @@ metadata:
 
 - Talking to the person
 - Start every session
+  - Check the research tools first
   - Check for a finished update before anything else
 - Local workspace rules
 - What does the person want to get done
@@ -64,6 +67,14 @@ Use board-setup for first artifact publication and board-sync for later projecti
 The root entry tools own board setup and synchronization.
 
 ## Start every session
+
+### Check the research tools first
+
+The very first step of every session, before the update check below, is one call to the MCP tool `research_tools_check`.
+It returns quickly and starts any missing or outdated research helper in the background by itself.
+Never wait for it, never poll it, and never hold up anything on it.
+Say one plain line only if its result shows something is being updated: "Updating research tools in the background; this won't hold anything up." Otherwise say nothing about it.
+If the call fails or is not available, ignore it and carry on.
 
 ### Check for a finished update before anything else
 
@@ -213,8 +224,8 @@ It saves the link into the job's references and lists it in the references manif
 Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
 
 - Reference use only: learn from it, describe it, borrow the idea. Never repost it or use the downloaded file in a finished post, and say so if the person asks to.
-- If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
-- For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, tell the person in one sentence and offer the board upload button.
+- If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. This is for a link the person pasted themselves, one look and no repeat. If the Chrome tools are not available or the extension isn't connected, record that link as not fetched and carry on; the link goes into the one end-of-run question about links that could not be fetched, where the person can upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
+- For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, record the status for that link, leave the slot blank and carry on without retrying it. Mention it in one plain sentence, and offer the board upload button once, together with any other links that could not be fetched, never one question per link.
 - For `save_failed`, `download_failed`, `impersonation_missing` or `ffmpeg_missing`, say the real cause from the result in one sentence, with its fix when it gives one; these are problems on this computer, not the platform refusing.
 - A link the tool refuses as `private_address` or `invalid_url` is not retried.
 - When the content of the saved file matters, a fresh helper watches it (the researcher, or the videographer for a teardown) and hands back a few lines and the path of its notes; the Director never watches the video or reads its frames itself.
@@ -304,14 +315,14 @@ A decision that is still open is normal and expected; it is not a signal to stop
 
 The only chat line allowed while a gate is open is the one short summary this file already describes, said once; do not repeat it while the decision stays open.
 
-## Reference evidence that falls short is asked before the brief
+## Reference evidence that falls short is asked once, never waited for
 
 When the person asked for N reference videos (for example "the top 5 Reels in my niche"; N is 3 when they gave no number), or the job needs style references, read `research/competitors.md` before writing the brief and count only references that were verified, popular and in the job's niche. Off-niche results never count.
-If fewer than N were verified, first check the file shows the public sources step (the discovery ladder: single video URLs found by web search and the competitors' own pages, each checked with `pipeline_reference_search` `urls`, then the public routes, then a niche web search, then Chrome if connected, then teardowns) was run, and that the file's count line reads "found X public video links, Y downloaded, Z blocked individually". If a rung was skipped, or the file blames a walled search, hashtag or profile page, send the researcher back to run the ladder; do not ask the person yet.
-Only then ask ONE `pipeline_board_ask` question on the Director card before the brief, and say the same line in chat. Say in plain words how many were verified and give the counts, then list the exact single video links that were tried and what each returned (for example "I could check 1 of the 5. I found 9 public video links, 1 downloaded and 8 were blocked individually: this link returned a bot check, that one was removed"), never "Instagram and TikTok need a login" or any platform-wide login reason, with the options "I'll paste links" (TikTok, Instagram and YouTube links are downloaded with `pipeline_reference_from_url`) and "Continue with what you found" (its description says plainly that the brief will be written without watched references), and `allowText` true.
-If the person answers without links (for example "you can look at any popular TikTok reels"), send that to the researcher as permission to widen the public search (broader niche terms, nearby markets) and run the ladder again; do not write the brief on that answer. Only "Continue with what you found" proceeds without watched references.
-Never proceed to the brief silently. Wait for the answer; pasted links go back to the researcher before the brief is written.
-The brief's "What you're deciding" section then states plainly that the reference evidence fell short, how many were verified, and what the person chose.
+A rung of the discovery ladder that the file logs as `skipped: <reason>` counts as done. Never send the researcher back to run a skipped rung, and never send it back because the file blames a walled search, hashtag or profile page: the brief goes ahead with what was found.
+If fewer than N were verified, the brief proceeds anyway. Its research line reads `References: n of N verified`, with the status of each link that was tried, and the blank slots stay blank.
+Ask the person ONCE, without blocking the brief: one `pipeline_board_ask` question on the Director card, and the same line in chat. Say in plain words how many were verified and give the counts, then list every single video link that could not be fetched and what each returned (for example "I could check 1 of the 5. I found 9 public video links, 1 downloaded and 8 could not be opened: this link returned a bot check, that one was removed"), never "Instagram and TikTok need a login" or any platform-wide login reason. Offer "I'll paste links" (TikTok, Instagram and YouTube links are downloaded with `pipeline_reference_from_url`) and "Continue with what you found" (its description says plainly that the brief is written without watched references), with `allowText` true. Collect every link that needed a sign-in or an upload into this one question; do not ask per video.
+Do not wait for the answer before writing the brief. Any answer without links, including "continue" or "you can look at any popular TikTok reels", means continue: it never re-runs the ladder or sends the researcher back to search again. Pasted links are downloaded and watched (`pipeline_reference_from_url`, then the teardown) and added to the brief's references when they arrive; nothing else is re-run.
+The brief's "What you're deciding" section states plainly how many references were verified and that the rest were left blank.
 
 ## Facts the copy depends on are asked early
 

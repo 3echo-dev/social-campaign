@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.6.
+Current version: 0.17.7.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -109,7 +109,7 @@ Three are for you to type.
 
 | Skill | You type it | Runs when |
 |---|---|---|
-| `/social-campaign` | Yes | The entry point. Opens the board, sets up a workspace if there is none, and asks "What do you want to get done?" in a box on the board |
+| `/social-campaign` | Yes, or just ask | The entry point. Opens the board, sets up a workspace if there is none, and asks "What do you want to get done?" in a box on the board. You do not need the slash: plain requests such as "make a TikTok for my brand", "plan my social posts", "open the board", "continue my job", "check how my ads did" or "find competitor videos" start it too |
 | `/social-campaign:setup` | Yes | Set up or recover the workspace and its private board. `--new` publishes a replacement board for the same workspace |
 | `/social-campaign:doctor` | Yes, only you | A health check and repair. Claude never starts it on its own |
 | `board-setup` | No | The first publication of the board as a private claude.ai artifact |
@@ -143,6 +143,9 @@ If the site does not say who the brand is for, research suggests an audience fro
 Audience, competitors and product evidence, each claim traced to where it came from.
 Competitor work covers at most three competitors.
 Brand research uses the target market you name, and Singapore when you leave it blank.
+Research never stalls: each source gets one attempt and at most one fallback, and anything that cannot be fetched is left blank and listed once at the end.
+Reference videos that are found are downloaded and watched (3 by default). If fewer than you asked for can be opened, the brief goes ahead with `References: n of N verified` and Claude asks once for links, without waiting.
+Competitor ads come from the Meta Ads connector's ad library search when it is connected, and from the public ad libraries otherwise.
 
 **An idea you pick.**
 Ranked concepts with a hook, the proof pattern and the credit price of making them.
@@ -320,7 +323,7 @@ Text-only jobs and all research jobs need none of them.
 
 ### 5. Pick a working folder
 
-Type `/social-campaign` in the folder of your project.
+Type `/social-campaign` in the folder of your project, or just say what you want, for example "start a social campaign".
 If it has no workspace, setup suggests one folder for it and offers a choose-another option.
 Your brands, jobs, inputs and results live there.
 The folder can be moved or renamed and it keeps working.

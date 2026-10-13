@@ -30,15 +30,19 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, extname } from 'node:path';
 
-import { runYtDlp, mapYtDlpError, parseInfo } from '../social/backends/ytdlp.mjs';
+import { runYtDlp, mapYtDlpError, parseInfo, YTDLP_NO_RETRY_ARGS } from '../social/backends/ytdlp.mjs';
 import { assertPublicHost, boundedFetch, extractMeta, extractTitle, FetchFailure, htmlToText, parseRobots, robotsAllows, statusFailure } from '../social/backends/web.mjs';
 import { isUrl, platformOf } from '../video/watch-source.mjs';
 import { imageInfo } from '../brand-kit/image-info.mjs';
 import { moveIntoPlace, toolWorkDir } from '../lib/paths.mjs';
 import { addReference, REFERENCES_PER_JOB, REFERENCE_LIMITS, REFERENCE_TYPES, updateReferenceManifest } from './references.mjs';
-import { managedEnvironmentRoot } from '../setup/research-helper-record.mjs';
+import { referenceYtdlpBinary } from '../lib/ytdlp-binary.mjs';
+import { breaker as sharedBreaker } from '../social/breaker.mjs';
 
-export const REFERENCE_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
+export { referenceYtdlpBinary };
+
+/** One download attempt, then the whole yt-dlp process tree is stopped. */
+export const REFERENCE_DOWNLOAD_TIMEOUT_MS = 120_000;
 export const REFERENCE_MAX_FILESIZE = '300M';
 const VIDEO_EXT = ['.mp4', '.mkv', '.webm', '.mov', '.m4v'];
 const THUMB_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -53,66 +57,108 @@ const PAGE_TEXT_MAX = 20_000;
 const NO_VIDEO = /unsupported url|no video formats|no video in this post|there is no video|no video could be found/i;
 const PIP_FIX = 'pip install "yt-dlp[default,curl-cffi]"';
 
-/** Status to a one-line plain explanation and the next steps for the Director. */
-const NEXT = {
-  needs_sign_in: {
-    message: 'That post is only shown to signed in visitors, so it could not be downloaded without a login.',
-    next: [
-      "Do not ask in chat. View the post in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own permission prompt; that is the person's to answer.",
-      "If the Chrome tools are not available or the extension isn't connected, say so in one line and ask the person to upload the video file with the board's \"Add a reference\" button (upload button on the board).",
-      'Call this tool again with cookiesFromBrowser (chrome, firefox, edge, safari or brave) only if the person asks for it and says yes. Never read browser cookies without their yes.',
-    ],
-  },
-  blocked: {
-    message: 'The platform answered the downloader with a bot check, so the video could not be downloaded.',
-    next: ['Ask the person to upload the video file with the board upload button, or try again later.'],
-  },
-  rate_limited: { message: 'The platform asked automated readers to slow down.', next: ['Wait a few minutes and try again, or ask the person to upload the file.'] },
-  not_found: { message: 'The platform says that video does not exist or is no longer public.', next: ['Ask the person to check the address.'] },
-  region_restricted: { message: 'The platform does not show that video in this region.', next: ['Ask the person to upload the file.'] },
-  unsupported: { message: 'That address is not a video page the downloader can read.', next: ['Ask for the address of the post itself, or an uploaded file.'] },
-  yt_dlp_missing: { message: 'yt-dlp is not installed on this computer, so a video address cannot be downloaded.', next: ['Ask the person to upload the file with the board upload button, or install yt-dlp.'] },
-  timed_out: { message: 'The download took too long and was stopped.', next: ['Try again, or ask the person to upload the file.'] },
-  too_large: { message: `That video is larger than the ${REFERENCE_MAX_FILESIZE} limit.`, next: ['Ask the person to upload a shorter cut.'] },
-  invalid_url: { message: 'That is not a web address that can be downloaded.', next: ['Ask for the full https:// address.'] },
-  private_address: { message: 'That address points at a private network, which is never downloaded.', next: ['Ask for a public post address.'] },
-  save_failed: {
-    message: 'The video downloaded but could not be saved on this computer.',
-    next: ['Say in one line that the problem is on this computer (disk space or folder access), not the link. Try again once, or ask the person to upload the file with the board upload button.'],
-  },
-  impersonation_missing: {
-    message: "TikTok needs yt-dlp's browser mode, which is not installed, so the video could not be downloaded.",
-    next: [`Ask the person if you may add it by running: ${PIP_FIX}. After it finishes, call this tool again. Otherwise ask them to upload the video file with the board upload button.`],
-  },
-  ffmpeg_missing: {
-    message: 'ffmpeg is not installed, so the video and its sound could not be joined.',
-    next: ['Ask the person to install ffmpeg, or to upload the video file with the board upload button.'],
-  },
-  download_failed: { message: 'The video could not be downloaded.', next: ['Ask the person to upload the file with the board upload button.'] },
-  limit_reached: { message: `This job already has ${REFERENCES_PER_JOB} references, the most it can hold.`, next: ['Ask the person which references to remove, then try again.'] },
-  page_blocked: { message: 'That site asks automated readers not to open the page, so it was not saved.', next: ['Ask the person to paste the text they want used, or upload a screenshot.'] },
-  page_failed: { message: 'That page could not be opened.', next: ['Ask the person to check the address, or to paste the text or upload a screenshot instead.'] },
-  empty_page: { message: 'That page has no readable text. It may need a login, or build itself in the browser.', next: ['Ask the person to paste the text or upload a screenshot instead.'] },
-  file_rejected: { message: 'That link did not hold a picture or video that can be saved.', next: ['Ask the person to upload the file with the board upload button.'] },
-};
-
-function fail(status, extra = {}) {
-  const info = NEXT[status] ?? NEXT.download_failed;
-  return { ok: false, status, message: info.message, next: info.next, ...extra };
+/**
+ * The one line every failure carries as its next step. No retry, no waiting, no asking mid-run: the slot stays
+ * blank and the run carries on. A sign-in wall may also go on the single end-of-run list of links to ask about.
+ */
+function nextLine(status) {
+  const base = `Record ${status} for this link, leave the slot blank and continue.`;
+  return [status === 'needs_sign_in' ? `${base} Add it to the single list of links to ask the person about at the end.` : base];
 }
 
-/** The yt-dlp to use: an explicit override, SOCIAL_CAMPAIGN_YTDLP, the research helper venv's, then PATH. */
-export function referenceYtdlpBinary(override) {
-  if (override) return override;
-  if (process.env.SOCIAL_CAMPAIGN_YTDLP) return undefined; // runYtDlp reads the env itself
-  try {
-    const env = managedEnvironmentRoot();
-    const candidate = process.platform === 'win32' ? join(env, 'Scripts', 'yt-dlp.exe') : join(env, 'bin', 'yt-dlp');
-    if (existsSync(candidate)) return candidate;
-  } catch {
-    // no research helper environment; fall through to PATH
+/** Status to a one-line plain explanation; `next` is filled in below from nextLine. */
+const NEXT = {
+  needs_sign_in: { message: 'That post is only shown to signed in visitors, so it could not be downloaded without a login.' },
+  blocked: { message: 'The platform answered the downloader with a bot check, so the video could not be downloaded.' },
+  rate_limited: { message: 'The platform asked automated readers to slow down.' },
+  not_found: { message: 'The platform says that video does not exist or is no longer public.' },
+  region_restricted: { message: 'The platform does not show that video in this region.' },
+  unsupported: { message: 'That address is not a video page the downloader can read.' },
+  yt_dlp_missing: { message: 'yt-dlp is not installed on this computer, so a video address cannot be downloaded.' },
+  timed_out: { message: 'The download took too long and was stopped.' },
+  too_large: { message: `That video is larger than the ${REFERENCE_MAX_FILESIZE} limit.` },
+  invalid_url: { message: 'That is not a web address that can be downloaded.' },
+  private_address: { message: 'That address points at a private network, which is never downloaded.' },
+  save_failed: { message: 'The video downloaded but could not be saved on this computer (disk space or folder access), not because of the link.' },
+  impersonation_missing: { message: "TikTok needs yt-dlp's browser mode, which is not installed, so the video could not be downloaded." },
+  ffmpeg_missing: { message: 'ffmpeg is not installed, so the video and its sound could not be joined.' },
+  download_failed: { message: 'The video could not be downloaded.' },
+  limit_reached: { message: `This job already has ${REFERENCES_PER_JOB} references, the most it can hold.` },
+  page_blocked: { message: 'That site asks automated readers not to open the page, so it was not saved.' },
+  page_failed: { message: 'That page could not be opened.' },
+  empty_page: { message: 'That page has no readable text. It may need a login, or build itself in the browser.' },
+  skipped: { message: 'That platform refused automated readers a moment ago, so it is skipped for now.' },
+  file_rejected: { message: 'That link did not hold a picture or video that can be saved.' },
+};
+for (const [status, info] of Object.entries(NEXT)) info.next = nextLine(status);
+
+function fail(status, extra = {}) {
+  const known = Object.hasOwn(NEXT, status);
+  const key = known ? status : 'download_failed';
+  return { ok: false, status: key, message: NEXT[key].message, ...extra, next: NEXT[key].next };
+}
+
+/** Statuses that count against a host in the shared breaker, by breaker class. */
+const BREAKER_CLASS = { needs_sign_in: 'login_required', blocked: 'blocked', rate_limited: 'rate_limited', timed_out: 'timed_out' };
+
+/**
+ * The skipped result when the shared breaker says this platform host refused us recently, else null.
+ * Only the big platforms are guarded; ordinary sites are not.
+ */
+export function breakerSkip(brk, url) {
+  if (platformOf(url) === 'other') return null;
+  const state = brk.isOpen(url);
+  return state.open ? fail('skipped', { message: state.reason || NEXT.skipped.message, platform: platformOf(url), breaker: state.code }) : null;
+}
+
+/** Tell the breaker how a download went (a success clears the host, a refusal counts toward opening it). */
+export function breakerRecord(brk, url, status) {
+  if (platformOf(url) === 'other') return;
+  if (status === 'ok') brk.recordSuccess(url);
+  else if (BREAKER_CLASS[status]) brk.recordFailure(url, BREAKER_CLASS[status]);
+}
+
+/** Whether this yt-dlp can present itself as a browser (curl_cffi), looked up once per process and binary. */
+const impersonationCache = new Map();
+
+/**
+ * True when yt-dlp lists a usable curl_cffi browser target, false when it does not, null when it could not be asked.
+ * Asked once per process; the answer picks the arguments up front so a download is never run twice.
+ * @param {string|undefined} binary
+ * @returns {Promise<boolean|null>}
+ */
+export function impersonationAvailable(binary) {
+  const key = binary ?? process.env.SOCIAL_CAMPAIGN_YTDLP ?? '';
+  if (!impersonationCache.has(key)) {
+    impersonationCache.set(
+      key,
+      runYtDlp(['--ignore-config', '--list-impersonate-targets'], { binary, timeoutMs: 15_000, maxBytes: 1024 * 1024 }).then((run) => {
+        if (!run.ok) return null;
+        const rows = `${run.stdout}\n${run.stderr}`.split(/\r?\n/).filter((line) => /curl_cffi/i.test(line));
+        return rows.some((line) => !/unavailable/i.test(line));
+      }),
+    );
   }
-  return undefined;
+  return impersonationCache.get(key);
+}
+
+/** Forget what was learned about impersonation (after yt-dlp was upgraded, and in tests). */
+export function resetImpersonationCache() {
+  impersonationCache.clear();
+}
+
+/** Downloads in progress, so two calls for the same link share one download instead of racing in the same folder. */
+const inFlight = new Map();
+
+/** Run `work` once per key at a time; a second caller waits for the first and gets its own copy of the answer. */
+async function dedupe(key, work) {
+  let pending = inFlight.get(key);
+  if (!pending) {
+    pending = work().finally(() => inFlight.delete(key));
+    inFlight.set(key, pending);
+  }
+  const result = await pending;
+  return { ...result };
 }
 
 /** The exact command that adds yt-dlp's browser mode: through the Python next to yt-dlp when it is there, else plain pip. */
@@ -198,6 +244,13 @@ export async function referenceFromUrl(options) {
   if (manifest.entries.length >= REFERENCES_PER_JOB) return fail('limit_reached');
 
   const ctx = { options, url, parsed, refsDir, id, cookies, checkHost, now: options.now ?? (() => new Date()), fetchUrl: options.fetchUrl ?? boundedFetch };
+  // Two calls for the same link in the same job share one download.
+  return dedupe(`${options.jobDir}\n${url}\n${mode}\n${cookies ?? ''}`, () => referenceFromCheckedUrl(ctx, mode, type));
+}
+
+/** The download itself, after the address checks and the already-saved check. */
+async function referenceFromCheckedUrl(ctx, mode, type) {
+  const { url, parsed } = ctx;
   if (mode !== 'auto') {
     const got = await downloadWithYtDlp(ctx, type);
     delete got.noVideo;
@@ -218,65 +271,106 @@ export async function referenceFromUrl(options) {
   return fromLink(ctx, hint);
 }
 
+/** Whether a saved reference folder already holds what was asked for (the video, or for a caption only the details). */
+function folderComplete(dir, type) {
+  if (!existsSync(dir)) return false;
+  const names = readdirSync(dir);
+  if (type === 'caption') return names.includes('info.json');
+  return names.some((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()));
+}
+
+/**
+ * Put a finished temporary folder in place without ever deleting a folder another call may be reading: an existing
+ * complete folder is kept and ours is dropped; an incomplete or replaced one is moved aside first, then removed.
+ * @returns {boolean} true when our folder was moved in, false when an existing one was kept.
+ */
+function placeFolder(work, finalDir, isComplete) {
+  if (existsSync(finalDir)) {
+    if (isComplete(finalDir)) return false;
+    const aside = `${finalDir}.old-${process.pid}-${Date.now()}`;
+    try {
+      renameSync(finalDir, aside);
+    } catch {
+      return false; // in use by someone else: keep what is there
+    }
+    moveIntoPlace(work, finalDir);
+    rmSync(aside, { recursive: true, force: true });
+    return true;
+  }
+  moveIntoPlace(work, finalDir);
+  return true;
+}
+
 /** Download a video-site address with yt-dlp into a short temporary folder, then move the finished folder into the job. */
 async function downloadWithYtDlp(ctx, type) {
   const { options, url, refsDir, id, cookies } = ctx;
+  const finalDir = join(refsDir, 'video', id);
   const work = toolWorkDir('ref');
   try {
-    const args = [
-      '--ignore-config', '--no-update', '--no-progress', '--no-playlist', '--socket-timeout', '20',
-      ...(cookies ? ['--cookies-from-browser', cookies] : ['--no-cookies', '--no-cookies-from-browser']),
-      '--max-filesize', REFERENCE_MAX_FILESIZE, '--write-info-json', '--write-thumbnail',
-      '-o', join(work, 'video.%(ext)s'),
-    ];
-    if (type === 'caption') args.push('--skip-download');
-    else args.push('-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4');
     const platform = platformOf(url);
     const binary = referenceYtdlpBinary(options.binary);
-    const runOptions = { binary, timeoutMs: options.timeoutMs ?? REFERENCE_DOWNLOAD_TIMEOUT_MS, maxBytes: 4 * 1024 * 1024 };
-    // TikTok answers a plain downloader with a bot check; with curl_cffi installed yt-dlp can present itself as Chrome.
-    // When this yt-dlp has no impersonation support it says so, and the plain run is tried instead.
-    let run = await runYtDlp(platform === 'tiktok' ? [...args, '--impersonate', 'chrome', '--', url] : [...args, '--', url], runOptions);
-    let impersonationMissing = false;
-    if (platform === 'tiktok' && !run.ok) {
-      const text = `${run.stderr}${run.stdout}`;
-      if (mapYtDlpError(run, platform).code === 'impersonation_missing' || (/impersonat/i.test(text) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(run.stderr))) {
-        impersonationMissing = true;
-        run = await runYtDlp([...args, '--', url], runOptions);
+    let videoName = null;
+    let infoName = null;
+    let info = null;
+    if (folderComplete(finalDir, type)) {
+      // Another call (or an earlier run that was never recorded) already saved it: reuse it, download nothing.
+      infoName = existsSync(join(finalDir, 'info.json')) ? 'info.json' : null;
+    } else {
+      const skipped = breakerSkip(options.breaker ?? sharedBreaker, url);
+      if (skipped) return skipped;
+      const args = [
+        '--ignore-config', '--no-update', '--no-progress', '--no-playlist', ...YTDLP_NO_RETRY_ARGS,
+        ...(cookies ? ['--cookies-from-browser', cookies] : ['--no-cookies', '--no-cookies-from-browser']),
+        '--max-filesize', REFERENCE_MAX_FILESIZE, '--write-info-json', '--write-thumbnail',
+        '-o', join(work, 'video.%(ext)s'),
+      ];
+      if (type === 'caption') args.push('--skip-download');
+      else args.push('-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4');
+      const runOptions = { binary, timeoutMs: options.timeoutMs ?? REFERENCE_DOWNLOAD_TIMEOUT_MS, maxBytes: 4 * 1024 * 1024 };
+      // TikTok answers a plain downloader with a bot check; with curl_cffi installed yt-dlp can present itself as Chrome.
+      // Whether it can is asked once per process, so the arguments are chosen up front and the download runs once.
+      const canImpersonate = platform === 'tiktok' ? await impersonationAvailable(binary) : null;
+      const impersonate = platform === 'tiktok' && canImpersonate !== false;
+      const run = await runYtDlp(impersonate ? [...args, '--impersonate', 'chrome', '--', url] : [...args, '--', url], runOptions);
+      const names = readdirSync(work);
+      const brk = options.breaker ?? sharedBreaker;
+      videoName = names.find((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()) && !n.includes('.part')) ?? null;
+      infoName = names.find((n) => n === 'video.info.json') ?? null;
+      const gotWhatWasAsked = type === 'caption' ? Boolean(infoName) : Boolean(videoName);
+      if (!gotWhatWasAsked) {
+        const text = run.stderr + run.stdout;
+        if (/larger than max-filesize|File is larger/i.test(text)) return fail('too_large');
+        const mapped = mapYtDlpError(run, platform);
+        const finalStatus = { login_required: 'needs_sign_in', backend_missing: 'yt_dlp_missing', blocked: platform === 'instagram' ? 'needs_sign_in' : 'blocked' }[mapped.code] ?? mapped.code;
+        breakerRecord(brk, url, finalStatus);
+        const noVideo = NO_VIDEO.test(text);
+        // TikTok with no browser mode: say what is missing instead of guessing at a bot check.
+        const needsBrowserMode = platform === 'tiktok' && (canImpersonate === false || mapped.code === 'impersonation_missing') && (mapped.code === 'impersonation_missing' || mapped.code === 'blocked' || mapped.code === 'download_failed');
+        if (needsBrowserMode) return fail('impersonation_missing', { fix: impersonationFix(binary), platform, noVideo });
+        const status = { login_required: 'needs_sign_in', backend_missing: 'yt_dlp_missing', blocked: platform === 'instagram' ? 'needs_sign_in' : 'blocked' }[mapped.code] ?? mapped.code;
+        const detail = status === 'save_failed' || status === 'ffmpeg_missing' ? lastErrorLine(run) || mapped.reason : mapped.reason;
+        return fail(Object.hasOwn(NEXT, status) ? status : 'download_failed', { detail, platform, noVideo });
       }
-    }
-    const names = readdirSync(work);
-    const videoName = names.find((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()) && !n.includes('.part'));
-    const infoName = names.find((n) => n === 'video.info.json');
-    const gotWhatWasAsked = type === 'caption' ? Boolean(infoName) : Boolean(videoName);
-    if (!gotWhatWasAsked) {
-      const text = run.stderr + run.stdout;
-      if (/larger than max-filesize|File is larger/i.test(text)) return fail('too_large');
-      const mapped = mapYtDlpError(run, platform);
-      const noVideo = NO_VIDEO.test(text);
-      // The plain retry only fails the way the first run did when TikTok wants the browser mode: say so.
-      if (impersonationMissing && (mapped.code === 'blocked' || mapped.code === 'download_failed')) {
-        return fail('impersonation_missing', { next: [NEXT.impersonation_missing.next[0].replace(PIP_FIX, () => impersonationFix(binary))], platform, noVideo });
-      }
-      const status = { login_required: 'needs_sign_in', backend_missing: 'yt_dlp_missing', blocked: platform === 'instagram' ? 'needs_sign_in' : 'blocked' }[mapped.code] ?? mapped.code;
-      const detail = status === 'save_failed' || status === 'ffmpeg_missing' ? lastErrorLine(run) || mapped.reason : mapped.reason;
-      return fail(NEXT[status] ? status : 'download_failed', { detail, platform, noVideo });
+
+      breakerRecord(brk, url, 'ok');
+      if (infoName) info = parseInfo(readFileSync(join(work, infoName), 'utf8'));
+      const title = info?.title ? String(info.title).trim() : null;
+      const caption = info?.description ? String(info.description).trim() : title;
+      if (caption) writeFileSync(join(work, 'caption.txt'), `${caption}\n`, 'utf8');
+      const thumbName = names.find((n) => n.startsWith('video.') && THUMB_EXT.includes(extname(n).toLowerCase()));
+      if (thumbName) renameSync(join(work, thumbName), join(work, `thumbnail${extname(thumbName).toLowerCase()}`));
+      if (infoName) renameSync(join(work, infoName), join(work, 'info.json'));
+      if (videoName) renameSync(join(work, videoName), join(work, `video${extname(videoName).toLowerCase()}`));
+      mkdirSync(join(refsDir, 'video'), { recursive: true });
+      placeFolder(work, finalDir, (dir) => folderComplete(dir, type));
     }
 
-    let info = null;
-    if (infoName) info = parseInfo(readFileSync(join(work, infoName), 'utf8'));
+    // What is in the final folder is the truth, whichever call put it there.
+    const savedVideo = readdirSync(finalDir).find((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()));
+    videoName = savedVideo ?? null;
+    info = existsSync(join(finalDir, 'info.json')) ? parseInfo(readFileSync(join(finalDir, 'info.json'), 'utf8')) : info;
     const title = info?.title ? String(info.title).trim() : null;
     const caption = info?.description ? String(info.description).trim() : title;
-    if (caption) writeFileSync(join(work, 'caption.txt'), `${caption}\n`, 'utf8');
-    const thumbName = names.find((n) => n.startsWith('video.') && THUMB_EXT.includes(extname(n).toLowerCase()));
-    if (thumbName) renameSync(join(work, thumbName), join(work, `thumbnail${extname(thumbName).toLowerCase()}`));
-    if (infoName) renameSync(join(work, infoName), join(work, 'info.json'));
-    if (videoName) renameSync(join(work, videoName), join(work, `video${extname(videoName).toLowerCase()}`));
-
-    const finalDir = join(refsDir, 'video', id);
-    mkdirSync(join(refsDir, 'video'), { recursive: true });
-    rmSync(finalDir, { recursive: true, force: true });
-    moveIntoPlace(work, finalDir);
     const videoExt = videoName ? extname(videoName).toLowerCase() : null;
     const mediaFile = videoExt ? `video${videoExt}` : 'info.json';
     const mediaPath = join(finalDir, mediaFile);
@@ -351,8 +445,8 @@ async function fromLink(ctx, hint) {
   }
   if (!got.ok) {
     const why = statusFailure(got.status);
-    if (why.code === 'not_found') return fail('not_found', { message: 'That address does not exist any more (the site answered not found).', next: ['Ask the person to check the address.'] });
-    if (why.code === 'login_required') return fail('needs_sign_in', { next: ['Ask the person to upload the file, or paste the text they want used.'] });
+    if (why.code === 'not_found') return fail('not_found', { message: 'That address does not exist any more (the site answered not found).' });
+    if (why.code === 'login_required') return fail('needs_sign_in');
     return fail('page_failed', { detail: why.reason });
   }
 
@@ -378,7 +472,7 @@ async function fromLink(ctx, hint) {
   }
   if (got.truncated || got.buffer.length > limit) {
     const what = kind === 'image' ? 'picture' : 'video';
-    return fail('too_large', { message: `That ${what} is larger than ${Math.round(limit / (1024 * 1024))} MB, the most a reference can be.`, next: [`Ask the person to upload a smaller ${what}.`] });
+    return fail('too_large', { message: `That ${what} is larger than ${Math.round(limit / (1024 * 1024))} MB, the most a reference can be.` });
   }
   return saveFile(ctx, kind, got.buffer, contentType, got.final_url, parsed);
 }
@@ -454,8 +548,8 @@ async function savePage(ctx, got) {
 
     const finalDir = join(refsDir, 'page', id);
     mkdirSync(join(refsDir, 'page'), { recursive: true });
-    rmSync(finalDir, { recursive: true, force: true });
-    moveIntoPlace(work, finalDir);
+    // A saved page is replaced by moving the old folder aside, never by deleting one another call may be reading.
+    placeFolder(work, finalDir, () => false);
     const mediaPath = join(finalDir, 'page.md');
     const files = readdirSync(finalDir).sort();
     const entry = {

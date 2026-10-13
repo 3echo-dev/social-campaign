@@ -1,6 +1,6 @@
 ---
 name: resume-job
-description: Local adapter for the vendored resume-job contract.
+description: Internal step of social-campaign for "continue my job" or "what's waiting on me": picks an existing job back up from where it stopped. Reached through social-campaign.
 user-invocable: false
 metadata:
   version: 0.3.1

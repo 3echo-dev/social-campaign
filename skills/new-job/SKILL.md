@@ -1,8 +1,8 @@
 ---
 name: new-job
 description: >
-  Creates and resumes a local Social Campaign job from the person's own words, after picking the pipeline that fits them.
-  Use when the user starts a new job, describes what they want done, or sends the board's "What do you want to get done?" box.
+  Internal step of social-campaign: creates or resumes a job from the person's own words ("make me a Reel", "plan this week's posts", "find competitor videos") after picking the pipeline that fits.
+  Normally reached through social-campaign, which handles the first words; use this once the workspace is open and the person describes what they want done.
 user-invocable: false
 metadata:
   version: 0.3.4

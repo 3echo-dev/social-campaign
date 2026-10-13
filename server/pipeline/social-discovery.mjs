@@ -6,7 +6,8 @@
  * They only LIST candidates (url, owner, views, likes, date, duration); downloading and teardown stay with yt-dlp
  * through pipeline_video_teardown and pipeline_reference_from_url.
  *
- * Every outcome is a route status, never a throw: ok / empty / blocked / login_required / not_installed / error.
+ * Every outcome is a route status, never a throw: ok / empty / blocked / login_required / not_installed / timed_out / error.
+ * A run lasts at most 40 s; on timeout the whole worker process tree is killed.
  *
  * Credentials (optional, never required)
  * --------------------------------------
@@ -28,12 +29,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { globalConfigDir } from '../lib/paths.mjs';
+import { killTree } from '../social/backends/ytdlp.mjs';
 import { managedEnvironmentRoot, managedPythonPath, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
 
 export const DISCOVER_SCRIPT_PATH = fileURLToPath(new URL('../../python/social_discover.py', import.meta.url));
-export const DISCOVER_TIMEOUT_MS = 75_000;
+export const DISCOVER_TIMEOUT_MS = 40_000;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-const STATUSES = new Set(['ok', 'empty', 'blocked', 'login_required', 'not_installed', 'error']);
+const STATUSES = new Set(['ok', 'empty', 'blocked', 'login_required', 'not_installed', 'timed_out', 'error']);
 export const DISCOVER_ROUTES = ['instagram_hashtag', 'instagram_profile', 'tiktok_hashtag', 'tiktok_trending', 'tiktok_user'];
 
 export const DISCOVERY_INSTALL_HINT =
@@ -63,9 +65,10 @@ export async function runDiscovery(request, options = {}) {
   const fail = (status, detail) => ({ status, detail, authenticated: false, items: [] });
   try {
     if (!DISCOVER_ROUTES.includes(request.route)) return fail('error', 'Unknown discovery route.');
-    const timeoutMs = options.timeoutMs ?? DISCOVER_TIMEOUT_MS;
+    // One route gets at most 40 s; the caller may pass less (what is left of its own budget).
+    const timeoutMs = Math.min(options.timeoutMs ?? request.timeoutMs ?? DISCOVER_TIMEOUT_MS, DISCOVER_TIMEOUT_MS);
     const credentialsFile = options.credentials !== undefined ? options.credentials : (existsSync(credentialsPath()) ? credentialsPath() : null);
-    const payload = { route: request.route, target: request.target ?? '', limit: request.limit ?? 20, timeout_ms: Math.max(timeoutMs - 10_000, 5_000), ...(credentialsFile ? { credentials_path: credentialsFile } : {}) };
+    const payload = { route: request.route, target: request.target ?? '', limit: request.limit ?? 20, timeout_ms: Math.max(timeoutMs, 4_000), ...(credentialsFile ? { credentials_path: credentialsFile } : {}) };
     if (options.runner) return normalize(await options.runner(payload));
     const python = options.python ?? helperPython();
     const script = options.script ?? DISCOVER_SCRIPT_PATH;
@@ -74,7 +77,7 @@ export async function runDiscovery(request, options = {}) {
     const env = researchHelperChildEnv(join(python, '..', '..')) ?? undefined;
     const out = await spawnWorker(python, [script], JSON.stringify(payload), timeoutMs, env);
     if (out.spawnFailed) return fail('not_installed', `The research helper Python could not start. ${DISCOVERY_INSTALL_HINT}`);
-    if (out.timedOut) return fail('blocked', 'The discovery run timed out.');
+    if (out.timedOut) return fail('timed_out', 'The discovery run timed out and was stopped.');
     let parsed = null;
     try {
       parsed = JSON.parse(out.stdout);
@@ -102,7 +105,7 @@ function spawnWorker(python, args, input, timeoutMs, env) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(python, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'], ...(env ? { env } : {}) });
+      child = spawn(python, args, { windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'], ...(env ? { env } : {}) });
     } catch {
       resolve({ stdout: '', spawnFailed: true, timedOut: false });
       return;
@@ -112,7 +115,7 @@ function spawnWorker(python, args, input, timeoutMs, env) {
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killTree(child);
     }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       bytes += chunk.length;

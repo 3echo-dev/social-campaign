@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 TEXT_CAP = 20_000
 LINKS_CAP = 200
 JSON_LD_CAP = 10
-DEFAULT_TIMEOUT_MS = 20_000
+DEFAULT_TIMEOUT_MS = 25_000
 MAX_SCROLL = 20
 
 # Signals that a rendered page is a sign-in wall rather than the content asked for.
@@ -126,7 +126,7 @@ async def run(request: dict) -> dict:
     browser_config = BrowserConfig(headless=True, verbose=False, java_script_enabled=True)
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
-        page_timeout=timeout_ms,
+        page_timeout=max(3000, timeout_ms - 4000),
         wait_for=f"css:{wait_for}" if wait_for else None,
         js_code=js_code,
         scan_full_page=scroll > 0,
@@ -214,7 +214,7 @@ def main() -> int:
 
     timeout_ms = int(request.get("timeout_ms") or DEFAULT_TIMEOUT_MS)
     try:
-        result = asyncio.run(asyncio.wait_for(run(request), timeout=timeout_ms / 1000 + 5))
+        result = asyncio.run(asyncio.wait_for(run(request), timeout=timeout_ms / 1000))
     except asyncio.TimeoutError:
         json.dump(
             {

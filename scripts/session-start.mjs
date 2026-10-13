@@ -8,6 +8,9 @@
  * both are missing they share one line. yt-dlp is mentioned only when it is missing;
  * an old or limited yt-dlp is doctor's business, not the session start line's.
  *
+ * It also starts a quiet background update of the research tools (the page readers, browsers and yt-dlp)
+ * when something is missing or out of date, at most once a day; it prints nothing about it.
+ *
  * Two rules govern everything in this file. It must never fail a session, so every
  * path ends in exit code 0 and anything unexpected is swallowed. And it must never
  * print an internal: no paths the user did not choose, no version strings beyond the
@@ -25,6 +28,7 @@ import { ytdlpCommand } from '../server/social/backends/ytdlp.mjs';
 import { referenceYtdlpBinary } from '../server/pipeline/url-reference.mjs';
 import { resolveActiveWorkspace } from '../server/workspace/index.mjs';
 import { boardSessionLines } from '../server/pipeline/board-freshness.mjs';
+import { startToolsUpdateInBackground } from '../server/setup/research-helper.mjs';
 
 /** The oldest Node this plugin runs on, because it uses the built in SQLite. */
 const MINIMUM_NODE = [22, 13];
@@ -147,6 +151,20 @@ function checkCached(name, command, run) {
   return ok;
 }
 
+/**
+ * Whether the research tools are due a check: at most once in 24 hours, on the same cache file as the FFmpeg check.
+ * Marks the check as done when it is due, so a second session in the same day does not repeat it.
+ * @returns {boolean}
+ */
+function researchToolsCheckDue() {
+  const cache = readToolCache();
+  const entry = cache.research_tools;
+  const checkedAt = entry ? Date.parse(entry.checkedAt || '') : NaN;
+  if (Number.isFinite(checkedAt) && Date.now() - checkedAt >= 0 && Date.now() - checkedAt < TOOL_CACHE_TTL_MS) return false;
+  writeToolCache({ ...cache, research_tools: { checkedAt: new Date().toISOString() } });
+  return true;
+}
+
 async function readHookEvent() {
   let raw = '';
   try {
@@ -222,6 +240,14 @@ try {
       'Social Campaign: an old publishing key from an earlier version is still stored on this computer. ' +
         'Run /social-campaign:doctor to remove it.',
     );
+  }
+
+  // Bring the research tools up to date in the background (detached, at most once a day). It never
+  // prints and never fails the hook; the tools check at the start of /social-campaign does the same on demand.
+  try {
+    if (root && existsSync(root) && researchToolsCheckDue()) startToolsUpdateInBackground(root);
+  } catch {
+    // never fail a session over an update
   }
 
   const needsFfmpeg = !checkCached('ffmpeg', 'ffmpeg', () => hasCommand('ffmpeg'))

@@ -232,7 +232,7 @@ export const socialTools = [
       properties: {
         url: { type: 'string' },
         scope: { type: 'string', enum: ['page', 'section', 'site'], description: 'Default page.' },
-        max_pages: { type: 'integer', minimum: 1, maximum: 25, description: 'Default 5. Ignored for scope page.' },
+        max_pages: { type: 'integer', minimum: 1, maximum: 5, description: 'Default 5, at most 5 (a crawl also stops after 45 seconds). Ignored for scope page.' },
       },
       required: ['url'],
       additionalProperties: false,
@@ -241,7 +241,7 @@ export const socialTools = [
       routerFor(context).crawl({
         url: String(args.url),
         scope: /** @type {any} */ (oneOf(args.scope, ['page', 'section', 'site'], 'scope', 'page')),
-        max_pages: integerIn(args.max_pages, 'max_pages', 1, 25, 5),
+        max_pages: integerIn(args.max_pages, 'max_pages', 1, 5, 5),
       }),
   }),
   defineTool({

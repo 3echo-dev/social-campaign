@@ -14,24 +14,25 @@
  *
  */
 
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 
-import { InvalidInputError, UserFacingError } from '../lib/errors.mjs';
+import { InvalidInputError } from '../lib/errors.mjs';
 import { isId } from '../lib/ids.mjs';
 import { assetFromRow } from '../media/ingest.mjs';
+import { referenceYtdlpBinary } from '../lib/ytdlp-binary.mjs';
+import { runYtDlp } from '../social/backends/ytdlp.mjs';
+import { breaker as sharedBreaker } from '../social/breaker.mjs';
 
 /** Environment variable naming a yt-dlp to use instead of the one on PATH. */
 export const YTDLP_ENV = 'SOCIAL_CAMPAIGN_YTDLP';
 
-/** How long one yt-dlp run may take before it is stopped. */
-const YTDLP_TIMEOUT_MS = 10 * 60_000;
+/** How long one yt-dlp run may take before its whole process tree is stopped. One attempt, no retry. */
+export const YTDLP_TIMEOUT_MS = 120_000;
 
-/** How many times an unrecognised yt-dlp failure is tried, and the pause between tries. */
-const YTDLP_ATTEMPTS = 3;
-const RETRY_WAIT_MS = 1500;
+/** Flags that stop yt-dlp's own retry loops. */
+const NO_RETRY_ARGS = ['--retries', '1', '--fragment-retries', '1', '--extractor-retries', '0', '--socket-timeout', '10'];
 
 /**
  * The shortest side a download is capped at. Frames are at most 768 pixels on the
@@ -162,43 +163,20 @@ export function ytdlpCommand() {
 }
 
 /**
- * Run yt-dlp and hand back its exit code and output, never throwing on a non zero
- * exit: a failed subtitle variant exits non zero even when the video arrived, so the
- * caller decides from what is on disk.
+ * Run yt-dlp through the shared tree-killing runner and hand back its exit code and output, never throwing: a failed
+ * subtitle variant exits non zero even when the video arrived, so the caller decides from what is on disk. A missing
+ * binary and a run that hit the time limit are reported as flags.
  * @param {string[]} args
- * @returns {Promise<{code: number, stdout: string, stderr: string}>}
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<{code: number, stdout: string, stderr: string, missing: boolean, timedOut: boolean}>}
  */
-export function runYtdlp(args) {
-  const { command, prefix } = ytdlpCommand();
-  return new Promise((resolvePromise, rejectPromise) => {
-    execFile(
-      command,
-      [...prefix, ...args],
-      { timeout: YTDLP_TIMEOUT_MS, windowsHide: true, maxBuffer: 32 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const code = /** @type {any} */ (error)?.code;
-        if (code === 'ENOENT') {
-          rejectPromise(
-            new UserFacingError('yt-dlp is not installed on this computer, so a video address cannot be opened.', {
-              code: 'backend_missing',
-              fix: 'Install yt-dlp (on Windows: winget install yt-dlp), or save the video and give its file path instead.',
-            }),
-          );
-          return;
-        }
-        if (/** @type {any} */ (error)?.killed) {
-          rejectPromise(
-            new UserFacingError('Fetching that video took too long and was stopped.', {
-              code: 'download_failed',
-              fix: 'Try again in a few minutes, or save the video and give its file path instead.',
-            }),
-          );
-          return;
-        }
-        resolvePromise({ code: typeof code === 'number' ? code : error ? 1 : 0, stdout: String(stdout), stderr: String(stderr) });
-      },
-    );
+export async function runYtdlp(args, options = {}) {
+  const run = await runYtDlp(args, {
+    binary: referenceYtdlpBinary(),
+    timeoutMs: options.timeoutMs ?? YTDLP_TIMEOUT_MS,
+    maxBytes: 32 * 1024 * 1024,
   });
+  return { code: typeof run.exitCode === 'number' ? run.exitCode : run.ok ? 0 : 1, stdout: run.stdout, stderr: run.stderr, missing: run.missing, timedOut: run.timedOut };
 }
 
 /**
@@ -211,7 +189,7 @@ const YTDLP_ERRORS = [
     code: 'save_failed',
     pattern: /unable to open for writing|no such file or directory|errno (?:2|22|13)\b|permission denied|path too long|filename too long|no space left/i,
     message: 'The video downloaded but could not be saved on this computer.',
-    fix: 'Free some disk space or use a shorter folder path, then try again.',
+    fix: 'Free some disk space or use a shorter folder path.',
   },
   {
     code: 'unsupported',
@@ -235,7 +213,7 @@ const YTDLP_ERRORS = [
     code: 'rate_limited',
     pattern: /http error 429|too many requests|rate[- ]limit|temporarily blocked|try again later/i,
     message: 'The platform is refusing requests for a moment.',
-    fix: 'Wait a few minutes and try again.',
+    fix: 'Record it and carry on without this video.',
   },
   {
     code: 'not_found',
@@ -286,6 +264,9 @@ export function subtitleLanguages(url, language) {
  */
 export function ytdlpArgs(options) {
   const args = [
+    '--ignore-config',
+    '--no-update',
+    ...NO_RETRY_ARGS,
     '--no-playlist',
     '--no-progress',
     '--no-overwrites',
@@ -376,10 +357,11 @@ export function captionLanguageTag(trackLanguage) {
 /**
  * What the platform page says about the video, from yt-dlp's info.json.
  * @param {string} dir
+ * @param {string} [fileName]
  * @returns {{metadata: Record<string, any>|null, durationS: number|null}}
  */
-export function readInfoJson(dir) {
-  const path = join(dir, 'video.info.json');
+export function readInfoJson(dir, fileName = 'video.info.json') {
+  const path = join(dir, fileName);
   if (!existsSync(path)) return { metadata: null, durationS: null };
   let raw;
   try {
@@ -420,11 +402,39 @@ export function readInfoJson(dir) {
  */
 
 /**
+ * @typedef {object} FetchFailed
+ * @property {false} ok
+ * @property {string} status a degraded code: backend_missing, timed_out, login_required, not_found, rate_limited, ...
+ * @property {string} message one plain sentence.
+ * @property {string} next what the caller does: record the status, leave the slot blank, carry on.
+ * @property {Record<string, unknown>} details
+ */
+
+/** The reference id a pasted address gets in a job's inputs/references folder (same as pipeline/url-reference.mjs). */
+function referenceIdOf(url) {
+  return `ref-${createHash('sha256').update(url.trim()).digest('hex').slice(0, 12)}`;
+}
+
+/** What a failed fetch tells the caller to do. */
+function failedFetch(status, message, details = {}) {
+  return /** @type {FetchFailed} */ ({
+    ok: false,
+    status,
+    message,
+    next: `Record ${status} for this video, leave the slot blank and continue.`,
+    details,
+  });
+}
+
+/**
  * Fetch an address into its cache folder. With skipDownload only info.json and the
  * captions are fetched; a later call without it downloads the video into the same
- * folder. A folder that already holds what was asked for is reused as it is.
- * @param {{url: string, workspaceRoot: string, language?: string|null, skipDownload?: boolean}} options
- * @returns {Promise<FetchedUrl>}
+ * folder. A folder that already holds what was asked for is reused as it is, and so is a
+ * video already saved in the job's reference store (inputs/references/video/<id>) when a job folder is given.
+ *
+ * One attempt with a 120 second limit; an ordinary failure comes back as {ok: false, status} and is never thrown.
+ * @param {{url: string, workspaceRoot: string, language?: string|null, skipDownload?: boolean, jobDir?: string|null, breaker?: import('../social/breaker.mjs').Breaker}} options
+ * @returns {Promise<(FetchedUrl & {ok: true})|FetchFailed>}
  */
 export async function fetchUrl(options) {
   const dir = join(watchRoot(options.workspaceRoot), urlKey(options.url));
@@ -434,31 +444,57 @@ export async function fetchUrl(options) {
 
   let videoPath = findVideo(dir);
   const haveInfo = existsSync(join(dir, 'video.info.json'));
-  const cached = haveInfo && (skipDownload || videoPath !== null);
 
-  if (!cached) {
-    // TikTok in particular answers some page requests with a challenge that a later
-    // request passes, so an unrecognised failure is tried up to three times.
-    for (let attempt = 1; ; attempt += 1) {
-      const result = await runYtdlp(ytdlpArgs({ url: options.url, dir, language, skipDownload }));
-      videoPath = findVideo(dir);
-      const gotWhatWasAsked = skipDownload ? existsSync(join(dir, 'video.info.json')) : videoPath !== null;
-      if (gotWhatWasAsked) break;
-      const mapped = mapYtdlpError(result.stderr);
-      if (mapped.code === 'download_failed' && attempt < YTDLP_ATTEMPTS) {
-        await new Promise((resolveWait) => setTimeout(resolveWait, RETRY_WAIT_MS));
-        continue;
-      }
-      throw new UserFacingError(mapped.message, {
-        code: mapped.code,
-        fix: mapped.fix,
-        details: { stderr: result.stderr.slice(-2000), exit_code: result.code, attempts: attempt },
-      });
+  // The job's reference store may already hold this video: link it in instead of downloading it again.
+  if (videoPath === null && !skipDownload && options.jobDir) {
+    const refDir = join(options.jobDir, 'inputs', 'references', 'video', referenceIdOf(options.url));
+    const stored = findStoredVideo(refDir);
+    if (stored) {
+      const info = join(refDir, 'info.json');
+      return {
+        ok: true,
+        dir: refDir,
+        videoPath: stored,
+        captions: null,
+        metadata: existsSync(info) ? readInfoJson(refDir, 'info.json').metadata : null,
+        durationS: existsSync(info) ? readInfoJson(refDir, 'info.json').durationS : null,
+        cached: true,
+      };
     }
   }
 
+  const cached = haveInfo && (skipDownload || videoPath !== null);
+
+  if (!cached) {
+    const brk = options.breaker ?? sharedBreaker;
+    const guarded = platformOf(options.url) !== 'other';
+    if (guarded) {
+      const state = brk.isOpen(options.url);
+      if (state.open) return failedFetch('skipped', state.reason || 'That platform refused automated readers a moment ago, so it is skipped for now.', { breaker: state.code });
+    }
+    const result = await runYtdlp(ytdlpArgs({ url: options.url, dir, language, skipDownload }));
+    videoPath = findVideo(dir);
+    const gotWhatWasAsked = skipDownload ? existsSync(join(dir, 'video.info.json')) : videoPath !== null;
+    if (!gotWhatWasAsked) {
+      const details = { stderr: result.stderr.slice(-2000), exit_code: result.code };
+      if (result.missing) return failedFetch('backend_missing', 'yt-dlp is not installed on this computer, so a video address cannot be opened.', details);
+      if (result.timedOut) {
+        if (guarded) brk.recordFailure(options.url, 'timed_out');
+        return failedFetch('timed_out', 'Fetching that video took too long and was stopped.', details);
+      }
+      const mapped = mapYtdlpError(result.stderr);
+      if (guarded) {
+        const cls = { login_required: 'login_required', rate_limited: 'rate_limited' }[mapped.code];
+        if (cls) brk.recordFailure(options.url, cls);
+      }
+      return failedFetch(mapped.code, mapped.message, details);
+    }
+  }
+
+  if (!cached && platformOf(options.url) !== 'other') (options.breaker ?? sharedBreaker).recordSuccess(options.url);
   const { metadata, durationS } = readInfoJson(dir);
   return {
+    ok: true,
     dir,
     videoPath: skipDownload && !videoPath ? null : videoPath,
     captions: pickCaptionTrack(listCaptionTracks(dir), language),
@@ -466,4 +502,9 @@ export async function fetchUrl(options) {
     durationS,
     cached,
   };
+}
+
+/** The video file a reference folder holds (video.<ext>), or null. */
+function findStoredVideo(dir) {
+  return findVideo(dir);
 }

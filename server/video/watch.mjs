@@ -246,8 +246,10 @@ function describe(facts) {
  *   end?: number,
  *   campaignId?: string|null,
  *   language?: string|null,
- * }} options
- * @returns {Promise<{package: Record<string, any>, package_path: string, artifact: {id: string, version: number}|null}>}
+ *   jobDir?: string|null,
+ *   breaker?: import('../social/breaker.mjs').Breaker,
+ * }} options jobDir (optional) is a job folder whose inputs/references/video already holds the video, so it is not downloaded twice.
+ * @returns {Promise<{package: Record<string, any>, package_path: string, artifact: {id: string, version: number}|null}|{ok: false, status: string, message: string, next: string, details: Record<string, unknown>, package: null, package_path: null, artifact: null}>}
  */
 export async function watchVideo(options) {
   const { workspace } = options;
@@ -265,7 +267,10 @@ export async function watchVideo(options) {
   /** @type {import('./watch-source.mjs').FetchedUrl|null} */
   let fetched = null;
   if (source.kind === 'url') {
-    fetched = await fetchUrl({ url: /** @type {string} */ (source.url), workspaceRoot: root, language: options.language ?? null });
+    const got = await fetchUrl({ url: /** @type {string} */ (source.url), workspaceRoot: root, language: options.language ?? null, jobDir: options.jobDir ?? null, breaker: options.breaker });
+    // An ordinary download failure is a result, not an error: the caller records the status and leaves the slot blank.
+    if (!got.ok) return { ok: false, status: got.status, message: got.message, next: got.next, details: got.details, package: null, package_path: null, artifact: null };
+    fetched = got;
     source.path = fetched.videoPath;
   }
   const mediaPath = /** @type {string} */ (source.path);
@@ -493,7 +498,7 @@ function noProviderAnswer(facts) {
 
 /**
  * Find or fetch a transcript. Never sends anything anywhere.
- * @param {{workspace: import('../workspace/index.mjs').Workspace, assetId?: unknown, path?: unknown, url?: unknown, language?: unknown}} options
+ * @param {{workspace: import('../workspace/index.mjs').Workspace, assetId?: unknown, path?: unknown, url?: unknown, language?: unknown, breaker?: import('../social/breaker.mjs').Breaker}} options
  */
 export async function transcribeMedia(options) {
   const { workspace } = options;
@@ -505,7 +510,8 @@ export async function transcribeMedia(options) {
   const url = optionalString(options.url);
   if (url) {
     if (!isUrl(url)) throw new InvalidInputError('url must be an address that starts with http:// or https://.');
-    const fetched = await fetchUrl({ url, workspaceRoot: root, language, skipDownload: true });
+    const fetched = await fetchUrl({ url, workspaceRoot: root, language, skipDownload: true, breaker: options.breaker });
+    if (!fetched.ok) return { ok: false, status: fetched.status, message: fetched.message, next: fetched.next, details: fetched.details };
     const sha256 = fetched.videoPath ? await sha256File(fetched.videoPath) : null;
     const key = sha256 ?? urlKey(url);
     const existing = readTranscript(root, key);

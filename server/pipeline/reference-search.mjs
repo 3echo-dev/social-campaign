@@ -27,14 +27,92 @@ import { runYtDlp, mapYtDlpError } from '../social/backends/ytdlp.mjs';
 import { referenceYtdlpBinary } from './url-reference.mjs';
 import { runDiscovery } from './social-discovery.mjs';
 import { assertPublicHost } from '../social/backends/web.mjs';
+import { breaker as sharedBreaker } from '../social/breaker.mjs';
 
 export const SEARCH_MAX_DURATION_S = 90;
 export const SEARCH_DEFAULT_LIMIT = 10;
 export const SEARCH_MAX_LIMIT = 25;
 const ENRICH_MAX = 6;
-const SEARCH_TIMEOUT_MS = 90_000;
+const SEARCH_TIMEOUT_MS = 30_000;
 const ENRICH_TIMEOUT_MS = 30_000;
-const BASE = ['--ignore-config', '--no-cookies', '--no-cookies-from-browser', '--no-update', '--no-progress', '--socket-timeout', '20'];
+/** The whole pipeline_reference_search call, whatever it does, is over by this. */
+export const SEARCH_BUDGET_MS = 90_000;
+/** One discovery route (a tag, a profile, trending). */
+export const DISCOVERY_ROUTE_TIMEOUT_MS = 40_000;
+/** Below this there is no point starting another step. */
+const MIN_STEP_MS = 2_000;
+const BASE = ['--ignore-config', '--no-cookies', '--no-cookies-from-browser', '--no-update', '--no-progress', '--retries', '1', '--fragment-retries', '1', '--extractor-retries', '0', '--socket-timeout', '10'];
+
+/** Breaker key for each platform this tool can touch. */
+const HOST_OF_PLATFORM = { youtube: 'youtube.com', tiktok: 'tiktok.com', tiktok_api: 'tiktok.com', instagram: 'instagram.com' };
+/** Failure codes that mean the platform is refusing us: skip the rest of that platform for this call. */
+const WALL_CODES = new Set(['blocked', 'login_required', 'rate_limited', 'impersonation_unavailable']);
+const BREAKER_CODES = new Set(['blocked', 'login_required', 'rate_limited']);
+
+/**
+ * A time budget for one call. Every step asks for min(its own limit, what is left).
+ * @param {number} totalMs
+ * @param {() => number} [now]
+ */
+export function createDeadline(totalMs, now = () => Date.now()) {
+  const end = now() + totalMs;
+  return {
+    remaining: () => Math.max(end - now(), 0),
+    expired: () => end - now() < MIN_STEP_MS,
+    slice: (limitMs) => Math.max(Math.min(limitMs, end - now()), 1),
+  };
+}
+
+/**
+ * Remembers which platforms refused us during this call (and tells the shared breaker), so the rest of that
+ * platform is skipped for the call and, via the breaker, for other tools for a while.
+ * @param {{isOpen: Function, recordFailure: Function, recordSuccess: Function}} breaker
+ */
+function createGate(breaker) {
+  /** @type {Map<string, {status: string, detail: string}>} */
+  const walls = new Map();
+  return {
+    /** null when the platform may be tried; otherwise the route status to report instead. */
+    check(platform) {
+      const hit = walls.get(platform);
+      if (hit) return { status: 'skipped', detail: `Skipped: ${hit.detail}` };
+      const host = HOST_OF_PLATFORM[platform];
+      const state = host ? breaker.isOpen(host) : { open: false };
+      if (state.open) {
+        const detail = state.reason || `${host} refused recent reads (${state.code ?? 'blocked'}).`;
+        walls.set(platform, { status: 'skipped', detail });
+        return { status: 'skipped', detail: `Skipped: ${detail}` };
+      }
+      return null;
+    },
+    fail(platform, code, detail) {
+      if (WALL_CODES.has(code)) walls.set(platform, { status: code, detail: `${platform} answered ${code} earlier in this call.` });
+      const host = HOST_OF_PLATFORM[platform];
+      if (host && BREAKER_CODES.has(code)) breaker.recordFailure(host, code, detail);
+    },
+    ok(platform) {
+      const host = HOST_OF_PLATFORM[platform];
+      if (host) breaker.recordSuccess(host);
+    },
+  };
+}
+
+const IMPERSONATION_NOTE = 'This yt-dlp has no browser impersonation (curl_cffi is not installed), so TikTok answers with a bot check.';
+/** @type {Map<string, Promise<boolean>>} */
+const impersonationChecks = new Map();
+
+/** Once per process and binary: can this yt-dlp impersonate Chrome? Unknown counts as yes. */
+function canImpersonate(binary) {
+  const key = String(binary ?? '');
+  if (!impersonationChecks.has(key)) {
+    impersonationChecks.set(key, runYtDlp(['--list-impersonate-targets'], { binary, timeoutMs: 10_000, maxBytes: 256 * 1024 }).then((r) => {
+      if (!r.ok) return true;
+      const chrome = `${r.stdout}`.split(/\r?\n/).filter((l) => /chrome/i.test(l));
+      return !(chrome.length && chrome.every((l) => /unavailable/i.test(l)));
+    }).catch(() => true));
+  }
+  return impersonationChecks.get(key);
+}
 
 function num(value) {
   const n = Number(value);
@@ -104,18 +182,38 @@ function fromDiscovery(item, platform, route) {
   };
 }
 
-/** One discovery route per tag / profile / user, in order, stopping early once there is enough. */
-async function discoveryRoutes(kind, jobs, limit, discover, routes, found) {
+/** One discovery route per tag / profile / user, in order, stopping early once there is enough or the platform refuses. */
+async function discoveryRoutes(kind, jobs, limit, discover, routes, found, deadline, gate) {
   const platform = kind === 'tiktok_api' ? 'tiktok' : 'instagram';
+  const gateKey = kind;
+  let stopped = null;
   for (const job of jobs) {
     const route = `${job.route}`;
     const label = job.target ? `${route}:${job.target}` : route;
-    const result = await discover({ route: job.route, target: job.target, limit: Math.min(limit * 2, 40) });
+    if (stopped) {
+      routes.push({ route: label, status: 'skipped', detail: stopped, count: 0 });
+      continue;
+    }
+    const walled = gate.check(gateKey);
+    if (walled) {
+      routes.push({ route: label, status: walled.status, detail: walled.detail, count: 0 });
+      stopped = walled.detail;
+      continue;
+    }
+    if (deadline.expired()) {
+      routes.push({ route: label, status: 'skipped', detail: 'Skipped: the 90 second budget for this search was used.', count: 0 });
+      stopped = 'Skipped: the 90 second budget for this search was used.';
+      continue;
+    }
+    const result = await discover({ route: job.route, target: job.target, limit: Math.min(limit * 2, 40), timeoutMs: deadline.slice(DISCOVERY_ROUTE_TIMEOUT_MS) });
     const items = (result.items ?? []).map((i) => fromDiscovery(i, platform, route));
     found.push(...items);
     routes.push({ route: label, status: result.status, ...(result.detail ? { detail: result.detail } : {}), ...(result.authenticated ? { loggedIn: true } : {}), count: items.length });
+    if (result.status === 'ok') gate.ok(gateKey);
+    else gate.fail(gateKey, result.status, result.detail ?? '');
     // The library is not there at all: no point trying the next target on the same platform.
-    if (result.status === 'not_installed') break;
+    if (result.status === 'not_installed') stopped = 'Skipped: the library is not installed.';
+    else if (WALL_CODES.has(result.status) || result.status === 'timed_out') stopped = `Skipped: ${platform} answered ${result.status} on ${label}.`;
   }
 }
 
@@ -128,7 +226,7 @@ function tagOf(value) {
 }
 
 const VERIFY_MAX_URLS = 12;
-const VERIFY_TIMEOUT_MS = 45_000;
+const VERIFY_TIMEOUT_MS = 30_000;
 const VERIFY_CONCURRENCY = 3;
 
 /** Which platform a URL is on, and whether it names ONE video (a listing, tag, search or profile page does not). */
@@ -181,7 +279,7 @@ function infoToRow(url, platform, info, impersonated) {
   };
 }
 
-async function verifyOne(rawUrl, runOptions, run, assertHost) {
+async function verifyOne(rawUrl, runOptions, run, assertHost, ctx) {
   const url = String(rawUrl ?? '').trim();
   const kind = classifyVideoUrl(url);
   if (!kind.valid) return { url, platform: kind.platform, status: 'invalid_url', reason: kind.reason };
@@ -191,26 +289,29 @@ async function verifyOne(rawUrl, runOptions, run, assertHost) {
   } catch (error) {
     return { url, platform: kind.platform, status: 'invalid_url', reason: error?.message ?? 'address could not be checked' };
   }
-  const args = (impersonate) => [...BASE, ...(impersonate ? ['--impersonate', 'chrome'] : []), '--no-playlist', '--skip-download', '--dump-json', '--', url];
-  const tiktok = kind.platform === 'tiktok';
-  let result = await run(args(tiktok), { ...runOptions, timeoutMs: VERIFY_TIMEOUT_MS });
-  let impersonated = tiktok;
-  // No curl_cffi: try once more without impersonation instead of calling the video blocked.
-  if (tiktok && !result.ok && /impersonat/i.test(`${result.stderr}`) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(result.stderr)) {
-    result = await run(args(false), { ...runOptions, timeoutMs: VERIFY_TIMEOUT_MS });
-    impersonated = false;
-  }
+  const walled = ctx.gate.check(kind.platform);
+  if (walled) return { url, platform: kind.platform, status: 'skipped', reason: walled.detail };
+  if (ctx.deadline.expired()) return { url, platform: kind.platform, status: 'skipped', reason: 'Skipped: the 90 second budget for this search was used.' };
+  // Decided once up front: TikTok is opened with impersonation only when this yt-dlp has it. No second run.
+  const impersonate = kind.platform === 'tiktok' && ctx.impersonation;
+  const args = [...BASE, ...(impersonate ? ['--impersonate', 'chrome'] : []), '--no-playlist', '--skip-download', '--dump-json', '--', url];
+  const result = await run(args, { ...runOptions, timeoutMs: ctx.deadline.slice(VERIFY_TIMEOUT_MS) });
   const info = jsonLines(result.stdout)[0];
-  if (info) return infoToRow(url, kind.platform, info, impersonated);
+  if (info) {
+    ctx.gate.ok(kind.platform);
+    return infoToRow(url, kind.platform, info, impersonate);
+  }
   const mapped = mapYtDlpError(result, kind.platform);
-  return { url, platform: kind.platform, status: statusOf(mapped.code), code: mapped.code, reason: mapped.reason };
+  const status = result.timedOut ? 'timed_out' : statusOf(mapped.code);
+  ctx.gate.fail(kind.platform, status, mapped.reason);
+  return { url, platform: kind.platform, status, code: mapped.code, reason: mapped.reason };
 }
 
 /**
  * Open each single public video URL on its own and report what yt-dlp saw. A URL is only ever called blocked,
  * login_required or not_found here, from its own page, never because a search, hashtag or profile page was walled.
  * @param {string[]} urls
- * @param {{binary?: string, run?: typeof runYtDlp, assertHost?: (u: URL) => Promise<void>}} [options]
+ * @param {{binary?: string, run?: typeof runYtDlp, assertHost?: (u: URL) => Promise<void>, budgetMs?: number, breaker?: any, impersonation?: boolean}} [options]
  */
 export async function verifyReferenceUrls(urls, options = {}) {
   const seen = new Set();
@@ -219,15 +320,35 @@ export async function verifyReferenceUrls(urls, options = {}) {
   const run = options.run ?? runYtDlp;
   const assertHost = options.assertHost ?? ((u) => assertPublicHost(u, false));
   const runOptions = { binary: referenceYtdlpBinary(options.binary), timeoutMs: VERIFY_TIMEOUT_MS, maxBytes: 8 * 1024 * 1024 };
+  const deadline = options.deadline ?? createDeadline(options.budgetMs ?? SEARCH_BUDGET_MS);
+  const gate = createGate(options.breaker ?? sharedBreaker);
+  const wantsTiktok = list.some((u) => classifyVideoUrl(u).platform === 'tiktok');
+  // A custom runner (tests) is assumed to cope; the real yt-dlp is asked once per process.
+  const impersonation = options.impersonation ?? (wantsTiktok && !options.run ? await canImpersonate(runOptions.binary) : true);
+  const ctx = { deadline, gate, impersonation };
   const results = new Array(list.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < list.length) {
-      const i = next++;
-      results[i] = await verifyOne(list[i], runOptions, run, assertHost);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(VERIFY_CONCURRENCY, list.length) }, worker));
+  // TikTok and Instagram are read one at a time (a bot check on the first says the same about the rest); everything
+  // else runs three at a time. The lanes run side by side.
+  const lanes = [];
+  const sequential = { tiktok: [], instagram: [] };
+  const pool = [];
+  list.forEach((u, i) => {
+    const platform = classifyVideoUrl(u).platform;
+    (sequential[platform] ?? pool).push(i);
+  });
+  for (const indexes of Object.values(sequential)) if (indexes.length) lanes.push(runLane(indexes, 1));
+  if (pool.length) lanes.push(runLane(pool, VERIFY_CONCURRENCY));
+  function runLane(indexes, width) {
+    let next = 0;
+    const worker = async () => {
+      while (next < indexes.length) {
+        const i = indexes[next++];
+        results[i] = await verifyOne(list[i], runOptions, run, assertHost, ctx);
+      }
+    };
+    return Promise.all(Array.from({ length: Math.min(width, indexes.length) }, worker));
+  }
+  await Promise.all(lanes);
   const count = (s) => results.filter((r) => r.status === s).length;
   const counts = {
     given: list.length,
@@ -235,10 +356,12 @@ export async function verifyReferenceUrls(urls, options = {}) {
     blocked: count('blocked'),
     not_found: count('not_found'),
     login_required: count('login_required'),
-    other: results.filter((r) => !['ok', 'blocked', 'not_found', 'login_required'].includes(r.status)).length,
+    timed_out: count('timed_out'),
+    skipped: count('skipped'),
+    other: results.filter((r) => !['ok', 'blocked', 'not_found', 'login_required', 'timed_out', 'skipped'].includes(r.status)).length,
   };
   const videoLinks = list.length - count('not_a_video_url') - count('invalid_url');
-  const summary = `found ${videoLinks} public video links, ${counts.ok} downloaded, ${counts.blocked + counts.login_required + counts.not_found} blocked individually`;
+  const summary = `found ${videoLinks} public video links, ${counts.ok} downloaded, ${counts.blocked + counts.login_required + counts.not_found} blocked individually${counts.timed_out || counts.skipped ? `, ${counts.timed_out} timed out, ${counts.skipped} skipped` : ''}`;
   return {
     ok: counts.ok > 0,
     status: counts.ok ? 'ok' : 'none_verified',
@@ -246,18 +369,21 @@ export async function verifyReferenceUrls(urls, options = {}) {
     counts,
     results,
     next: counts.ok
-      ? ['Keep the ok results that are in the brand\'s niche and run pipeline_video_teardown on each until N are watched. Record this summary line and each blocked URL with its own status in research/competitors.md.']
-      : ['No URL verified. Record each URL with its own status, then go on down the ladder (public routes, niche web search for more single video URLs, Chrome). Do not report a login wall for the platform from this.'],
+      ? ['Keep the ok results that are in the brand\'s niche and run pipeline_video_teardown on each until N are watched. Record this summary line and each other URL with its own status in research/competitors.md, leave the missing slots blank and continue.']
+      : ['Record what was found with each URL\'s own status, leave the missing slots blank and continue.'],
   };
 }
 
 /**
  * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both'|'tiktok_api'|'instagram', tiktokTags?: string[],
  *   instagramTags?: string[], instagramProfiles?: string[], tiktokUsers?: string[], tiktokTrending?: boolean, limit?: number,
- *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, discover?: typeof runDiscovery}} options
+ *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, discover?: typeof runDiscovery, budgetMs?: number, breaker?: any}} options
  */
 export async function searchReferences(options = {}) {
-  if (Array.isArray(options.urls) && options.urls.length) return verifyReferenceUrls(options.urls, { binary: options.binary, run: options.run, assertHost: options.assertHost });
+  // One budget for the whole call; every step below asks for min(its own limit, what is left).
+  const deadline = createDeadline(options.budgetMs ?? SEARCH_BUDGET_MS);
+  const gate = createGate(options.breaker ?? sharedBreaker);
+  if (Array.isArray(options.urls) && options.urls.length) return verifyReferenceUrls(options.urls, { binary: options.binary, run: options.run, assertHost: options.assertHost, deadline, breaker: options.breaker, impersonation: options.impersonation });
   const query = String(options.query ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const platform = ['youtube', 'tiktok', 'both', 'tiktok_api', 'instagram'].includes(options.platform) ? options.platform : 'both';
   const limit = Math.min(Math.max(Math.floor(Number(options.limit) || SEARCH_DEFAULT_LIMIT), 1), SEARCH_MAX_LIMIT);
@@ -275,12 +401,14 @@ export async function searchReferences(options = {}) {
       ? [...(tags.length ? tags : queryTag ? [queryTag] : []).map((t) => ({ route: 'tiktok_hashtag', target: t })), ...ttUsers.map((u) => ({ route: 'tiktok_user', target: u })), ...(trending ? [{ route: 'tiktok_trending', target: '' }] : [])]
       : [...(igTags.length ? igTags : queryTag ? [queryTag] : []).map((t) => ({ route: 'instagram_hashtag', target: t })), ...igProfiles.map((u) => ({ route: 'instagram_profile', target: u }))];
     if (!jobs.length) return { ok: false, status: 'invalid_query', message: api ? 'TikTok-Api needs tiktokTags, tiktokUsers, tiktokTrending or query keywords.' : 'Instagram needs instagramTags, instagramProfiles or query keywords.', candidates: [], routes: [] };
-    return finish({ query, maxDurationS, limit, jobs, kind: platform, discover: options.discover ?? runDiscovery });
+    return finish({ query, maxDurationS, limit, jobs, kind: platform, discover: options.discover ?? runDiscovery, deadline, gate });
   }
   if (!query && platform !== 'tiktok') return { ok: false, status: 'invalid_query', message: 'Give niche keywords to search for.', candidates: [], routes: [] };
   if (platform === 'tiktok' && !tags.length) return { ok: false, status: 'invalid_query', message: 'TikTok search needs tiktokTags (hashtags without #).', candidates: [], routes: [] };
 
-  const run = options.run ?? runYtDlp;
+  const baseRun = options.run ?? runYtDlp;
+  // Every yt-dlp run is capped by what is left of the call's budget.
+  const run = (args, opts) => baseRun(args, { ...opts, timeoutMs: deadline.slice(opts?.timeoutMs ?? SEARCH_TIMEOUT_MS) });
   const runOptions = { binary: referenceYtdlpBinary(options.binary), timeoutMs: SEARCH_TIMEOUT_MS, maxBytes: 8 * 1024 * 1024 };
   /** @type {Array<Record<string, any>>} */
   const routes = [];
@@ -289,54 +417,78 @@ export async function searchReferences(options = {}) {
 
   if (platform === 'youtube' || platform === 'both') {
     const route = 'youtube_shorts_search';
-    // Ask for more than limit: long videos are dropped after the search.
-    const k = Math.min(limit * 3, 40);
-    const result = await run([...BASE, '--flat-playlist', '--dump-json', `ytsearch${k}:${query} shorts`], runOptions);
-    const entries = jsonLines(result.stdout);
-    if (entries.length) {
-      routes.push({ route, status: 'ok', count: entries.length });
-      found.push(...entries.map((e) => toCandidate(e, 'youtube', route)).filter(Boolean));
+    const walled = gate.check('youtube');
+    if (walled) {
+      routes.push({ route, ...walled, count: 0 });
+    } else if (deadline.expired()) {
+      routes.push({ route, status: 'skipped', detail: 'Skipped: the 90 second budget for this search was used.', count: 0 });
     } else {
-      const mapped = mapYtDlpError(result, 'youtube');
-      routes.push({ route, status: mapped.code, detail: mapped.reason, count: 0 });
+      // Ask for more than limit: long videos are dropped after the search.
+      const k = Math.min(limit * 3, 40);
+      const result = await run([...BASE, '--flat-playlist', '--dump-json', `ytsearch${k}:${query} shorts`], runOptions);
+      const entries = jsonLines(result.stdout);
+      if (entries.length) {
+        routes.push({ route, status: 'ok', count: entries.length });
+        found.push(...entries.map((e) => toCandidate(e, 'youtube', route)).filter(Boolean));
+        gate.ok('youtube');
+      } else {
+        const mapped = mapYtDlpError(result, 'youtube');
+        const status = result.timedOut ? 'timed_out' : mapped.code;
+        routes.push({ route, status, detail: mapped.reason, count: 0 });
+        gate.fail('youtube', status, mapped.reason);
+      }
     }
   }
 
   if (platform === 'tiktok' || platform === 'both') {
     const route = 'tiktok_hashtag_impersonate';
+    const walled = tags.length ? gate.check('tiktok') : null;
     if (!tags.length) {
       routes.push({ route, status: 'skipped', detail: 'No tiktokTags given.', count: 0 });
+    } else if (walled) {
+      routes.push({ route, ...walled, count: 0 });
     } else {
       let got = 0;
       let failure = null;
       for (const tag of tags) {
+        if (deadline.expired()) {
+          failure ??= { status: 'skipped', detail: 'Skipped: the 90 second budget for this search was used.' };
+          break;
+        }
         const result = await run([...BASE, '--impersonate', 'chrome', '--flat-playlist', '--dump-json', '--playlist-end', String(limit * 2), `https://www.tiktok.com/tag/${encodeURIComponent(tag)}`], runOptions);
         const entries = jsonLines(result.stdout);
         if (entries.length) {
           got += entries.length;
           found.push(...entries.map((e) => toCandidate(e, 'tiktok', route)).filter(Boolean));
+          gate.ok('tiktok');
         } else if (/impersonat/i.test(`${result.stderr}`) && /not available|no impersonate|missing dependencies|unsupported|unknown/i.test(result.stderr)) {
-          failure = { status: 'impersonation_unavailable', detail: 'This yt-dlp has no browser impersonation (curl_cffi is not installed), so TikTok answers with a bot check.' };
+          failure = { status: 'impersonation_unavailable', detail: IMPERSONATION_NOTE };
+          gate.fail('tiktok', 'impersonation_unavailable', IMPERSONATION_NOTE);
           break;
         } else {
           const mapped = mapYtDlpError(result, 'tiktok');
-          failure = { status: mapped.code, detail: mapped.reason };
+          const status = result.timedOut ? 'timed_out' : mapped.code;
+          failure = { status, detail: mapped.reason };
+          gate.fail('tiktok', status, mapped.reason);
+          // A bot check on one tag says the same about the next: stop here.
+          if (WALL_CODES.has(status)) break;
         }
       }
       routes.push(got ? { route, status: 'ok', count: got } : { route, ...(failure ?? { status: 'empty' }), count: 0 });
     }
   }
 
-  return finish({ query, maxDurationS, limit, routes, found, runOptions, run });
+  return finish({ query, maxDurationS, limit, routes, found, runOptions, run, deadline });
 }
 
 /** Rank, filter and describe. `jobs` means library routes still have to run first. */
-async function finish({ query, maxDurationS, limit, jobs, kind, discover, routes = [], found = [], runOptions = null, run = null }) {
-  if (jobs) await discoveryRoutes(kind, jobs, limit, discover, routes, found);
+async function finish({ query, maxDurationS, limit, jobs, kind, discover, routes = [], found = [], runOptions = null, run = null, deadline, gate }) {
+  if (jobs) await discoveryRoutes(kind, jobs, limit, discover, routes, found, deadline, gate);
   const seen = new Set();
   found = found.filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
-  // Library routes return their own numbers (runOptions is null for them); only yt-dlp routes are opened to fill gaps.
-  if (runOptions) await enrich(found, runOptions, run);
+  // Library routes return their own numbers (runOptions is null for them); only yt-dlp routes are opened to fill gaps,
+  // and only while there is budget left.
+  if (runOptions && !deadline.expired()) await enrich(found, runOptions, run);
 
   const candidates = found
     .filter((c) => c.durationS !== null && c.durationS <= maxDurationS)
@@ -355,7 +507,7 @@ async function finish({ query, maxDurationS, limit, jobs, kind, discover, routes
     droppedOverLengthOrUnknown: Math.max(dropped, 0),
     routes,
     next: candidates.length
-      ? ['Keep only candidates in the brand\'s niche (check title and channel), then run pipeline_video_teardown on the best ones until N are watched. Views are as displayed by the platform at search time.']
-      : ['Record each route status in research/competitors.md. Try broader niche keywords or nearby markets, then ask the Director to ask the person for links only after that.'],
+      ? ['Keep only candidates in the brand\'s niche (check title and channel), then run pipeline_video_teardown on the best ones until N are watched. Views are as displayed by the platform at search time. Record the route statuses, leave the missing slots blank and continue.']
+      : ['Record what was found, leave the missing slots blank and continue.'],
   };
 }

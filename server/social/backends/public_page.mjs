@@ -85,7 +85,7 @@ export class PublicPageBackend {
     let result;
     try {
       if (this.options.politeness) await this.options.politeness.wait(new URL(url).host);
-      result = await boundedFetch(url, { allowPrivate: this.options.allowPrivate, timeoutMs: this.options.timeoutMs ?? 20_000 });
+      result = await boundedFetch(url, { allowPrivate: this.options.allowPrivate, timeoutMs: Math.min(this.options.timeoutMs ?? 10_000, 10_000) });
     } catch (error) {
       const failure = error instanceof FetchFailure ? error : new FetchFailure(String(error), 'network');
       return { ok: false, code: failure.code === 'timed_out' ? 'timed_out' : 'blocked', reason: `${name} could not be reached: ${failure.message}`, trip: true };

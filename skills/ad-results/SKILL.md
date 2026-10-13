@@ -1,8 +1,8 @@
 ---
 name: ad-results
 description: >
-  Reads how a job's ads did from the person's Meta or TikTok ad account, read-only, and saves the numbers into the job.
-  Use when the person asks how their ads are doing or what an ad job got, and a Meta ads or TikTok ads connection is connected.
+  Internal step of social-campaign for "check how my ads did": reads how a job's ads did from the person's Meta or TikTok ad account, read-only, and saves the numbers into the job.
+  Use when a Meta ads or TikTok ads connection is connected; reached through social-campaign.
 user-invocable: false
 metadata:
   version: 0.1.0

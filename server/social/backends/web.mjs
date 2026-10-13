@@ -22,7 +22,13 @@ import { pagePlan } from '../plans.mjs';
 export const FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Longest wait for one response, from the prototype. */
-export const FETCH_TIMEOUT_MS = 15_000;
+export const FETCH_TIMEOUT_MS = 10_000;
+
+/** Most pages one section or site crawl reads. */
+export const CRAWL_MAX_PAGES = 5;
+
+/** Total time one crawl may take, robots.txt, crawl delays and every page included. */
+export const CRAWL_BUDGET_MS = 45_000;
 
 /** Largest generated image, video or voice file downloaded from a provider link. */
 export const GENERATED_MEDIA_MAX_BYTES = 500 * 1024 * 1024;
@@ -470,6 +476,18 @@ export class Politeness {
   }
 
   /**
+   * How long a request to this host would have to wait right now, without claiming the slot.
+   * @param {string} host
+   * @param {number} [gapMs]
+   * @returns {number}
+   */
+  peek(host, gapMs = this.gapMs) {
+    const previous = this.last.get(host);
+    if (previous === undefined) return 0;
+    return Math.max(0, previous + gapMs - this.now());
+  }
+
+  /**
    * Wait until the host may be asked again, then claim the slot.
    * @param {string} host
    * @param {number} [gapMs] a larger gap, for example a robots.txt crawl delay.
@@ -491,6 +509,8 @@ const MAX_CRAWL_DELAY_S = 10;
  * @property {Politeness} [politeness]
  * @property {boolean} [allowPrivate]
  * @property {number} [timeoutMs]
+ * @property {number} [budgetMs] total time for the whole crawl, default CRAWL_BUDGET_MS.
+ * @property {() => number} [clock] replaceable for tests.
  * @property {number} [maxBytes]
  * @property {Map<string, RobotsRules>} [robotsCache]
  */
@@ -566,8 +586,12 @@ export async function webCrawl(input, options = {}) {
   if (!start) throw new FetchFailure(`"${input.url}" is not a web address.`, 'invalid_url');
   start.hash = '';
   const scope = input.scope ?? 'page';
-  const maxPages = scope === 'page' ? 1 : Math.max(1, Math.min(25, input.max_pages ?? 5));
+  const maxPages = scope === 'page' ? 1 : Math.max(1, Math.min(CRAWL_MAX_PAGES, input.max_pages ?? CRAWL_MAX_PAGES));
   const politeness = options.politeness ?? new Politeness(1000);
+  const budgetMs = options.budgetMs ?? CRAWL_BUDGET_MS;
+  const clock = options.clock ?? (() => Date.now());
+  const startedAt = clock();
+  const remaining = () => budgetMs - (clock() - startedAt);
   const origin = start.origin;
   const sectionPrefix = start.pathname.endsWith('/') ? start.pathname : start.pathname.replace(/[^/]*$/, '');
 
@@ -588,6 +612,13 @@ export async function webCrawl(input, options = {}) {
   while (queue.length > 0 && records.length < maxPages) {
     const next = /** @type {string} */ (queue.shift());
     const url = new URL(next);
+    // The crawl has one clock. A page is only started when its polite wait and a
+    // useful fetch both still fit; otherwise the rest is left unread, not waited for.
+    if (remaining() <= 1000 || (records.length > 0 && politeness.peek(url.host, gapMs) + 1000 > remaining())) {
+      skipped.push({ url: next, reason: 'skipped: budget (the crawl used its 45 seconds)', lost: true, code: 'timed_out' });
+      if (next === start.href && records.length === 0) firstFailure = { code: 'timed_out', reason: 'The crawl ran out of time before the first page was read.', plan: 'full' };
+      break;
+    }
     if (!robotsAllows(robots, url.pathname + url.search)) {
       skipped.push({ url: next, reason: 'robots.txt asks automated readers not to open it', lost: true, code: 'unsupported' });
       if (next === start.href) firstFailure = { code: 'unsupported', reason: robotsNote ?? 'The site asks automated readers not to open this page.', plan: 'search_only' };
@@ -596,7 +627,7 @@ export async function webCrawl(input, options = {}) {
     await politeness.wait(url.host, gapMs);
     let result;
     try {
-      result = await boundedFetch(next, { allowPrivate: options.allowPrivate, timeoutMs: options.timeoutMs, maxBytes: options.maxBytes });
+      result = await boundedFetch(next, { allowPrivate: options.allowPrivate, timeoutMs: Math.max(1000, Math.min(options.timeoutMs ?? FETCH_TIMEOUT_MS, remaining())), maxBytes: options.maxBytes });
     } catch (error) {
       const failure = error instanceof FetchFailure ? error : new FetchFailure(String(error), 'network');
       skipped.push({ url: next, reason: failure.message, lost: true, code: failure.code === 'timed_out' ? 'timed_out' : 'blocked' });

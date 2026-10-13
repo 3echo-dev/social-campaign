@@ -1,7 +1,7 @@
 /** Optional research helper setup. */
 
 import { defineTool } from '../mcp/registry.mjs';
-import { CRAWL4AI_VERSION, detect, installPlan, installProgress, readRecord, startInstall, writeRecord } from '../setup/research-helper.mjs';
+import { CRAWL4AI_VERSION, SCRAPLING_VERSION, checkResearchTools, detect, installPlan, installProgress, readRecord, startInstall, writeRecord } from '../setup/research-helper.mjs';
 import { hasUsableResearchHelperRecord, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[]} */
@@ -44,7 +44,46 @@ export const setupTools = [
         },
         page_reader: { found: found.crawl4ai.found, version: found.crawl4ai.version, pinned: CRAWL4AI_VERSION },
         browser: { found: found.chromium.found },
+        stealth_reader: {
+          installed: Boolean(existing?.scrapling_version),
+          version: existing?.scrapling_version ?? null,
+          pinned: SCRAPLING_VERSION,
+        },
         install: installProgress(workspace),
+      };
+    },
+  }),
+
+  defineTool({
+    name: 'research_tools_check',
+    description:
+      'Quick check of the research tools on this computer (the Python environment, the page reader, the stealth ' +
+      'reader, the browsers, yt-dlp and FFmpeg) against the versions Social Campaign expects. If anything is missing ' +
+      'or out of date it starts the normal background install or update by itself and returns at once with ' +
+      '{ok, missing, outdated, updating}; it never waits for the install and never asks the person anything. ' +
+      'Call it once at the start of /social-campaign, tell the person in one plain line if it is updating, and carry on. ' +
+      'Pass force: true only to start again straight after an attempt that just ended.',
+    inputSchema: {
+      type: 'object',
+      properties: { force: { type: 'boolean', description: 'true to start an update even if one was attempted in the last half hour.' } },
+      additionalProperties: false,
+    },
+    handler: async (args, { workspace }) => {
+      const check = checkResearchTools(workspace, { force: args?.force === true });
+      return {
+        ok: check.ok,
+        missing: check.missing,
+        outdated: check.outdated,
+        updating: check.updating,
+        started: check.started,
+        manual: check.manual,
+        note: check.note,
+        install: installProgress(workspace),
+        next: check.updating
+          ? 'Say in one short line that the research tools are being updated in the background, then continue. Do not wait for it and do not ask the user to do anything.'
+          : check.ok
+            ? 'Nothing to do. Continue.'
+            : 'Continue. Research works with the tools that are ready; leave the rest blank.',
       };
     },
   }),

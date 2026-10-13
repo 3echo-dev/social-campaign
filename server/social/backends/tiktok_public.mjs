@@ -94,6 +94,12 @@ export function postFromEmbed(videoData, observedAt, sourceRef) {
   });
 }
 
+/** Most comment pages read for one post; a fourth page is never worth the wait. */
+export const COMMENT_PAGES_MAX = 3;
+
+/** Longest any single TikTok request may take. */
+export const REQUEST_TIMEOUT_MS = 10_000;
+
 /**
  * The signed out TikTok reader.
  */
@@ -117,7 +123,7 @@ export class TikTokPublicBackend {
       if (this.options.politeness) await this.options.politeness.wait(new URL(url).host);
       return await boundedFetch(url, {
         allowPrivate: this.options.allowPrivate,
-        timeoutMs: this.options.timeoutMs,
+        timeoutMs: Math.min(this.options.timeoutMs ?? REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MS),
         headers: { Referer: `${TIKTOK_BASE_URL}/`, ...headers },
       });
     } catch (error) {
@@ -228,7 +234,7 @@ export class TikTokPublicBackend {
     let cursor = 0;
     let total = null;
     let complete = false;
-    for (let page = 0; page < 20 && records.length < limit; page += 1) {
+    for (let page = 0; page < COMMENT_PAGES_MAX && records.length < limit; page += 1) {
       const count = Math.min(50, limit - records.length);
       const result = await this.get(`/api/comment/list/?aweme_id=${encodeURIComponent(postId)}&count=${count}&cursor=${cursor}&aid=1988`, {
         Accept: 'application/json,text/plain,*/*',
@@ -321,7 +327,7 @@ export class TikTokPublicBackend {
    */
   async resolveShortLink(url) {
     try {
-      const result = await boundedFetch(url, { allowPrivate: this.options.allowPrivate, timeoutMs: this.options.timeoutMs, maxBytes: 64 * 1024 });
+      const result = await boundedFetch(url, { allowPrivate: this.options.allowPrivate, timeoutMs: Math.min(this.options.timeoutMs ?? REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MS), maxBytes: 64 * 1024 });
       return result.final_url;
     } catch {
       return null;

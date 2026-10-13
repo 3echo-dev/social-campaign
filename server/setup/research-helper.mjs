@@ -35,8 +35,9 @@
  * writes the state, and the capability resolver reads it.
  */
 
-import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -58,6 +59,8 @@ import {
   RESEARCH_HELPER_RECORD_VERSION,
 } from './research-helper-record.mjs';
 import { globalConfigDir } from '../lib/paths.mjs';
+import { killTree } from '../social/backends/ytdlp.mjs';
+import { YTDLP_STALE_DAYS, findOnPath, ytdlpAgeDays } from '../lib/install-hints.mjs';
 
 /** The capability this helper backs. The resolver reads the recorded state under this name. */
 export const RESEARCH_CAPABILITY = 'research.browser';
@@ -74,6 +77,38 @@ export const DEFAULT_WORKER_PATH = fileURLToPath(new URL('../../python/social_fe
  * same thing on two people's machines.
  */
 export const CRAWL4AI_VERSION = '0.9.3';
+
+/**
+ * The one pin set. These versions fit together (checked with pip): Scrapling 0.4.15 needs
+ * playwright >= 1.62, patchright >= 1.62.1 and curl_cffi >= 0.16.1; Crawl4AI 0.9.3, TikTok-Api and
+ * yt-dlp[curl-cffi] accept them. Every pip run in this file passes them as a constraints file, so no
+ * install or upgrade can move these packages, and an update changes them here, in one place.
+ */
+export const SCRAPLING_VERSION = '0.4.15';
+export const PLAYWRIGHT_VERSION = '1.63.0';
+export const PATCHRIGHT_VERSION = '1.63.0';
+export const CURL_CFFI_VERSION = '0.16.3';
+
+/** Pinned packages by their normalised distribution name. */
+export const PINNED_VERSIONS = {
+  scrapling: SCRAPLING_VERSION,
+  playwright: PLAYWRIGHT_VERSION,
+  patchright: PATCHRIGHT_VERSION,
+  'curl-cffi': CURL_CFFI_VERSION,
+  crawl4ai: CRAWL4AI_VERSION,
+};
+
+/** What pip is asked to install for the pinned set. */
+export const PINNED_REQUIREMENTS = [
+  `scrapling[fetchers]==${SCRAPLING_VERSION}`,
+  `playwright==${PLAYWRIGHT_VERSION}`,
+  `patchright==${PATCHRIGHT_VERSION}`,
+  `curl_cffi==${CURL_CFFI_VERSION}`,
+  `crawl4ai==${CRAWL4AI_VERSION}`,
+];
+
+/** The constraints file written inside the environment folder; pip reads it with -c. */
+export const CONSTRAINTS_FILE_NAME = 'social-campaign-pins.txt';
 
 /** yt-dlp with curl_cffi, so TikTok's bot check can be answered with browser impersonation (--impersonate chrome). */
 export const VIDEO_TOOLS_REQUIREMENT = 'yt-dlp[default,curl-cffi]';
@@ -187,25 +222,45 @@ const VERSION_SCRIPT = 'import sys;print("SCPY",sys.version_info[0],sys.version_
 export function run(command, args, timeoutMs, env) {
   const [program, ...fixed] = command;
   return new Promise((resolvePromise) => {
-    execFile(
-      program,
-      [...fixed, ...args],
-      { timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...(env ? { env } : {}) },
-      (error, stdout, stderr) => {
-        const rawCode = error ? /** @type {any} */ (error).code : 0;
-        const code = error && (typeof rawCode === 'number' || typeof rawCode === 'string') ? rawCode : error ? null : 0;
-        resolvePromise({
-          ok: !error,
-          code,
-          stdout: String(stdout ?? ''),
-          stderr: String(stderr ?? ''),
-          // ENOENT means there is no such program, which is a different answer from
-          // a program that ran and said no.
-          spawnFailed: Boolean(error && rawCode === 'ENOENT'),
-          timedOut: Boolean(error && (rawCode === 'ETIMEDOUT' || /** @type {any} */ (error).killed)),
-        });
-      },
-    );
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let timedOut = false;
+    /** @type {import('node:child_process').ChildProcess|undefined} */
+    let child;
+    const keep = (/** @type {string} */ text, /** @type {Buffer|string} */ chunk) => (text + chunk).slice(-8 * 1024 * 1024);
+    const finish = (/** @type {{ok: boolean, code: number|string|null, spawnFailed?: boolean}} */ outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise({ stdout, stderr, spawnFailed: false, timedOut, ...outcome });
+    };
+    // The deadline stops the whole tree: on Windows a pip or browser download runs as a child of
+    // the launcher, and killing only the launcher would leave it running.
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child) killTree(child);
+      finish({ ok: false, code: 'ETIMEDOUT' });
+    }, timeoutMs);
+    try {
+      child = spawn(program, [...fixed, ...args], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: process.platform !== 'win32',
+        ...(env ? { env } : {}),
+      });
+    } catch (error) {
+      const code = /** @type {any} */ (error)?.code;
+      finish({ ok: false, code: typeof code === 'string' ? code : null, spawnFailed: code === 'ENOENT' });
+      return;
+    }
+    child.stdout?.on('data', (chunk) => { stdout = keep(stdout, chunk); });
+    child.stderr?.on('data', (chunk) => { stderr = keep(stderr, chunk); });
+    child.on('error', (error) => {
+      const code = /** @type {any} */ (error)?.code;
+      finish({ ok: false, code: typeof code === 'string' ? code : null, spawnFailed: code === 'ENOENT' });
+    });
+    child.on('close', (code) => finish({ ok: code === 0, code }));
   });
 }
 
@@ -452,6 +507,194 @@ async function detectUncached(candidates, env) {
   const chromium = crawl4ai.found ? await detectChromium(python.command, env) : { found: false };
   const state = crawl4ai.compatible && chromium.found ? 'connected' : crawl4ai.found ? 'degraded' : 'not_connected';
   return { python, crawl4ai, chromium, state };
+}
+
+// --- the pinned set: what is installed against what is expected ---
+
+/**
+ * Normalise a distribution name the way pip does (case, dashes, dots and underscores).
+ * @param {string} name
+ * @returns {string}
+ */
+function normalizeDistName(name) {
+  return String(name).toLowerCase().replace(/[-_.]+/g, '-');
+}
+
+/**
+ * The site-packages folder of a virtual environment, or null.
+ * @param {string} environmentRoot
+ * @returns {string|null}
+ */
+export function sitePackagesOf(environmentRoot) {
+  try {
+    const windows = join(environmentRoot, 'Lib', 'site-packages');
+    if (existsSync(windows)) return windows;
+    const lib = join(environmentRoot, 'lib');
+    for (const entry of readdirSync(lib)) {
+      const candidate = join(lib, entry, 'site-packages');
+      if (/^python3/.test(entry) && existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // no such environment
+  }
+  return null;
+}
+
+/**
+ * Installed package versions read from the *.dist-info folder names: no process is started,
+ * so this answers in milliseconds.
+ * @param {string} environmentRoot
+ * @returns {Map<string, string>|null} null when the environment has no site-packages.
+ */
+export function installedVersions(environmentRoot) {
+  const site = sitePackagesOf(environmentRoot);
+  if (!site) return null;
+  /** @type {Map<string, string>} */
+  const versions = new Map();
+  try {
+    for (const entry of readdirSync(site)) {
+      const match = entry.match(/^(.+?)-(\d[^-]*)\.dist-info$/);
+      if (match) versions.set(normalizeDistName(match[1]), match[2]);
+    }
+  } catch {
+    return null;
+  }
+  return versions;
+}
+
+/**
+ * Where Playwright keeps its browsers for this environment.
+ * @param {string} environmentRoot
+ * @returns {string}
+ */
+function browsersFolder(environmentRoot) {
+  const managed = managedBrowsersPath(environmentRoot);
+  if (managed) return managed;
+  const fromEnv = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  if (fromEnv && fromEnv !== '0') return fromEnv;
+  if (process.platform === 'win32') return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'ms-playwright');
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Caches', 'ms-playwright');
+  return join(homedir(), '.cache', 'ms-playwright');
+}
+
+/**
+ * Whether the Chromium that a package version expects is on disk. Each Playwright release
+ * names the browser build it wants in its own browsers.json, so a package upgrade that
+ * wants a newer build shows up here as missing.
+ * @param {string} environmentRoot
+ * @param {'playwright'|'patchright'} pkg
+ * @returns {boolean}
+ */
+export function chromiumPresentFor(environmentRoot, pkg) {
+  const site = sitePackagesOf(environmentRoot);
+  if (!site) return false;
+  try {
+    const listing = JSON.parse(readFileSync(join(site, pkg, 'driver', 'package', 'browsers.json'), 'utf8'));
+    const entry = (Array.isArray(listing?.browsers) ? listing.browsers : []).find((/** @type {any} */ item) => item?.name === 'chromium');
+    const revision = entry?.revision;
+    if (!revision) return false;
+    return existsSync(join(browsersFolder(environmentRoot), `chromium-${revision}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write the constraints file that every pip run uses, so nothing can move the pinned set.
+ * @param {string} environmentRoot
+ * @returns {string|null} the file path, or null when it could not be written.
+ */
+export function writeConstraintsFile(environmentRoot) {
+  try {
+    mkdirSync(environmentRoot, { recursive: true });
+    const file = join(environmentRoot, CONSTRAINTS_FILE_NAME);
+    const lines = [
+      `scrapling==${SCRAPLING_VERSION}`,
+      `playwright==${PLAYWRIGHT_VERSION}`,
+      `patchright==${PATCHRIGHT_VERSION}`,
+      `curl_cffi==${CURL_CFFI_VERSION}`,
+      `crawl4ai==${CRAWL4AI_VERSION}`,
+    ];
+    const text = `${lines.join('\n')}\n`;
+    let current = '';
+    try {
+      current = readFileSync(file, 'utf8');
+    } catch {
+      current = '';
+    }
+    if (current !== text) writeFileSync(file, text);
+    return file;
+  } catch {
+    return null;
+  }
+}
+
+/** The pip arguments that apply the constraints file, when there is one. */
+function constraintArgs(file) {
+  return file ? ['-c', file] : [];
+}
+
+/**
+ * @typedef {object} ResearchToolsState
+ * @property {boolean} venv the managed Python environment exists.
+ * @property {string[]} missing plain names of what is not installed.
+ * @property {string[]} outdated plain names of what is installed at the wrong version.
+ * @property {string[]} manual missing system tools only the person can install (FFmpeg).
+ * @property {boolean} needsUpdate something the installer can fix is missing or outdated.
+ * @property {Record<string, string|null>} versions what is installed, by package.
+ */
+
+/**
+ * Compare what is installed against the pin set. File reads only, so it is safe to call
+ * from the session start hook and from a tool that must answer in a few seconds.
+ * @param {string} [environmentRoot]
+ * @param {{now?: number, ffmpeg?: boolean}} [options] `ffmpeg` overrides the PATH lookup, for tests.
+ * @returns {ResearchToolsState}
+ */
+export function researchToolsState(environmentRoot = managedEnvironmentRoot(), options = {}) {
+  /** @type {string[]} */
+  const missing = [];
+  /** @type {string[]} */
+  const outdated = [];
+  /** @type {string[]} */
+  const manual = [];
+  /** @type {Record<string, string|null>} */
+  const versions = {};
+  const venv = existsSync(managedPythonPath(environmentRoot));
+  const installed = venv ? installedVersions(environmentRoot) : null;
+  if (!venv || !installed) {
+    missing.push('Python environment');
+  } else {
+    const names = { scrapling: 'Scrapling', playwright: 'Playwright', patchright: 'Patchright', 'curl-cffi': 'curl_cffi', crawl4ai: 'Crawl4AI' };
+    for (const [pkg, expected] of Object.entries(PINNED_VERSIONS)) {
+      const have = installed.get(pkg) ?? null;
+      versions[pkg] = have;
+      const label = /** @type {Record<string, string>} */ (names)[pkg];
+      if (!have) missing.push(label);
+      else if (have !== expected) outdated.push(label);
+    }
+    for (const pkg of ['playwright', 'patchright']) {
+      if (installed.get(pkg) && !chromiumPresentFor(environmentRoot, /** @type {'playwright'|'patchright'} */ (pkg))) {
+        missing.push(`${pkg === 'playwright' ? 'Playwright' : 'Patchright'} browser`);
+      }
+    }
+    const ytdlp = installed.get('yt-dlp') ?? null;
+    versions['yt-dlp'] = ytdlp;
+    if (!ytdlp) missing.push('yt-dlp');
+    else {
+      // pip writes 2026.09.29 as 2026.9.29; the age helper wants the padded date.
+      const padded = ytdlp.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`);
+      const age = ytdlpAgeDays(padded, options.now);
+      if (age !== null && age > YTDLP_STALE_DAYS) outdated.push('yt-dlp');
+    }
+    for (const [pkg, label] of [['instaloader', 'Instaloader'], ['tiktokapi', 'TikTok-Api']]) {
+      versions[pkg] = installed.get(pkg) ?? null;
+      if (!installed.get(pkg)) missing.push(label);
+    }
+  }
+  const hasFfmpeg = options.ffmpeg ?? (findOnPath('ffmpeg') !== null && findOnPath('ffprobe') !== null);
+  if (!hasFfmpeg) manual.push('FFmpeg');
+  return { venv, missing, outdated, manual, needsUpdate: missing.length > 0 || outdated.length > 0, versions };
 }
 
 // --- what is remembered between sessions ---
@@ -801,8 +1044,9 @@ async function ensurePipReady(python, options = {}) {
  * Returns immediately. The result is watched through `installProgress()` and recorded
  * in integrations.json when it ends, either way.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[]}} [options]
- * `runtimeCommand` is a test fixture hook and is never supplied by a product tool.
+ * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], update?: boolean}} [options]
+ * `runtimeCommand` is a test fixture hook and is never supplied by a product tool. `update: true` runs the
+ * install again over a healthy install to add or refresh the pinned tools; without it a healthy install is left alone.
  * @returns {InstallProgress} the state as of this call, always `installing` unless one was already finished.
  */
 export function startInstall(workspace, options = {}) {
@@ -821,7 +1065,7 @@ export function startInstall(workspace, options = {}) {
   // A completed record is reusable only when the current versioned contract and
   // every path it names are still usable. This check stays at the record level so
   // an older reader cannot make an incomplete `installed` flag suppress repair.
-  if (persisted?.state === 'installed' && healthyResearchHelperRecord(persistedRecord)) {
+  if (persisted?.state === 'installed' && healthyResearchHelperRecord(persistedRecord) && !options.update) {
     lastJobRoot = root;
     fallbackProgress = persisted;
     return { ...persisted };
@@ -894,6 +1138,116 @@ export function researchHelperSummary(workspace) {
   return { installed, state, offer: installed || state === 'installing' ? null : installPlan() };
 }
 
+/** How long a failed or finished update is left alone before the next check may start another. */
+const TOOLS_UPDATE_PAUSE_MS = 30 * 60_000;
+
+/**
+ * @typedef {object} ResearchToolsCheck
+ * @property {boolean} ok nothing the installer can fix is missing or outdated.
+ * @property {string[]} missing
+ * @property {string[]} outdated
+ * @property {string[]} manual system tools the person has to install (FFmpeg).
+ * @property {boolean} updating a background install or update is running now.
+ * @property {boolean} started this call started it.
+ * @property {string|null} note one plain sentence, or null.
+ */
+
+/**
+ * The quick startup check: what is installed against the pin set. When something is missing or
+ * outdated it STARTS the normal background install (same lease, same progress record) and returns
+ * straight away. Only file reads happen here, so it never blocks for more than a moment, and it
+ * never waits for the install.
+ * @param {import('../workspace/index.mjs').Workspace|string} workspace
+ * @param {{force?: boolean, environmentRoot?: string, ffmpeg?: boolean, now?: number, install?: Record<string, any>}} [options]
+ * `install` is passed to startInstall (test fixtures use it); `force` ignores the short pause after an earlier attempt.
+ * @returns {ResearchToolsCheck}
+ */
+export function checkResearchTools(workspace, options = {}) {
+  const root = workspaceRootOf(workspace);
+  const record = root ? readResearchHelperRecord(root) : null;
+  const environmentRoot = options.environmentRoot ?? (typeof record?.environment_path === 'string' && record.environment_path ? record.environment_path : managedEnvironmentRoot());
+  const state = researchToolsState(environmentRoot, { ffmpeg: options.ffmpeg, now: options.now });
+  /** @type {ResearchToolsCheck} */
+  const result = { ok: !state.needsUpdate, missing: state.missing, outdated: state.outdated, manual: state.manual, updating: false, started: false, note: null };
+  if (!state.needsUpdate) {
+    if (state.manual.length > 0) result.note = `${state.manual.join(' and ')} is not installed. Video and audio features need it; research works without it.`;
+    return result;
+  }
+  const progress = installProgress(workspace);
+  if (progress.state === 'installing') {
+    result.updating = true;
+    result.note = 'The research tools are being installed in the background. Carry on; research uses what is ready.';
+    return result;
+  }
+  if (!root) {
+    result.note = 'No workspace is set up yet, so the research tools are not installed. They install when the workspace is set up.';
+    return result;
+  }
+  // Under the test runner only fixtures that stand a fake Python in may start an install.
+  if (isNodeTestProcess() && !process.env.SOCIAL_CAMPAIGN_TEST_PYTHON && !options.install && !realInstallAllowed()) {
+    result.note = 'Installs are disabled in this process.';
+    return result;
+  }
+  const attemptedAt = Date.parse(String(record?.tools_update_attempted_at ?? ''));
+  const now = options.now ?? Date.now();
+  if (!options.force && Number.isFinite(attemptedAt) && now - attemptedAt >= 0 && now - attemptedAt < TOOLS_UPDATE_PAUSE_MS) {
+    result.note = progress.error
+      ? `The last update did not finish: ${progress.error}`
+      : 'The research tools were updated a few minutes ago. They are checked again later.';
+    return result;
+  }
+  try {
+    updateResearchHelperRecord(root, (previous) => ({ ...(previous ?? {}), tools_update_attempted_at: new Date(now).toISOString() }));
+  } catch {
+    // an unwritable record is a doctor problem; the update can still run
+  }
+  const started = startInstall(workspace, { ...(options.install ?? {}), update: true });
+  result.updating = started.state === 'installing';
+  result.started = result.updating;
+  result.note = result.updating
+    ? `Installing or updating ${[...state.missing, ...state.outdated].join(', ')} in the background. Carry on; research uses what is ready.`
+    : started.error ?? null;
+  return result;
+}
+
+/** The code the detached updater runs: check, start the update, wait for it, exit. */
+const BACKGROUND_UPDATE_SCRIPT =
+  'const [moduleUrl, root] = process.argv.slice(1);' +
+  'try { const m = await import(moduleUrl); m.checkResearchTools(root); await m.whenInstallSettles(root); } catch {}' +
+  'process.exit(0);';
+
+/**
+ * For the session start hook: when the research tools are missing or out of date, run the
+ * normal update in a detached background process and return at once. It never throws, never
+ * blocks, and does nothing at all unless a research helper was set up before (a record or a
+ * managed environment exists), so a fresh computer is left to workspace setup. The caller
+ * limits how often this runs.
+ * @param {string} workspaceRoot
+ * @param {{env?: NodeJS.ProcessEnv, environmentRoot?: string, spawnFn?: typeof spawn, ffmpeg?: boolean}} [options]
+ * @returns {'started'|'up_to_date'|'not_set_up'|'disabled'|'failed'}
+ */
+export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
+  try {
+    const env = options.env ?? process.env;
+    if (env.SOCIAL_CAMPAIGN_NO_AUTO_UPDATE || env.NODE_TEST_CONTEXT) return 'disabled';
+    const record = readResearchHelperRecord(workspaceRoot);
+    const environmentRoot = options.environmentRoot ?? (typeof record?.environment_path === 'string' && record.environment_path ? record.environment_path : managedEnvironmentRoot());
+    if (!record && !existsSync(managedPythonPath(environmentRoot))) return 'not_set_up';
+    const state = researchToolsState(environmentRoot, { ffmpeg: options.ffmpeg ?? true });
+    if (!state.needsUpdate) return 'up_to_date';
+    const child = (options.spawnFn ?? spawn)(
+      process.execPath,
+      ['--input-type=module', '-e', BACKGROUND_UPDATE_SCRIPT, import.meta.url, workspaceRoot],
+      { detached: true, stdio: 'ignore', windowsHide: true, env },
+    );
+    child.on?.('error', () => {});
+    child.unref?.();
+    return 'started';
+  } catch {
+    return 'failed';
+  }
+}
+
 /**
  * Setup installs the helper on its own, so the person is never asked. The helper
  * lives once per computer, so a copy an earlier workspace installed is found and
@@ -916,7 +1270,7 @@ export function ensureResearchHelper(workspace) {
 /**
  * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
  * @param {'connected'|'not_connected'|'degraded'|'installing'} state
- * @param {{pythonPath?: string|null, pythonArgs?: string[], environmentRoot?: string|null, workerPath?: string|null, workerSha256?: string|null}} [extra]
+ * @param {{pythonPath?: string|null, pythonArgs?: string[], environmentRoot?: string|null, workerPath?: string|null, workerSha256?: string|null, packageVersions?: Record<string, string|null>}} [extra]
  */
 function persist(job, state, extra = {}) {
   try {
@@ -935,6 +1289,15 @@ function persist(job, state, extra = {}) {
       worker_sha256: extra.workerSha256 ?? previous?.worker_sha256 ?? null,
       python_version: job.progress.pythonVersion,
       crawl4ai_version: job.progress.crawl4aiVersion,
+      ...(extra.packageVersions
+        ? {
+            scrapling_version: extra.packageVersions.scrapling ?? null,
+            playwright_version: extra.packageVersions.playwright ?? null,
+            patchright_version: extra.packageVersions.patchright ?? null,
+            curl_cffi_version: extra.packageVersions['curl-cffi'] ?? null,
+            yt_dlp_version: extra.packageVersions['yt-dlp'] ?? null,
+          }
+        : {}),
       last_error: job.progress.error,
       install: {
         job_id: job.jobId,
@@ -1119,7 +1482,7 @@ async function runInstallWithLease(job, options) {
     if (!pipReady.ok) return fail(job, /** @type {string} */ (pipReady.reason));
     const installed = await runInstallCommand(
       python,
-      ['-m', 'pip', 'install', `crawl4ai==${CRAWL4AI_VERSION}`],
+      ['-m', 'pip', 'install', ...constraintArgs(writeConstraintsFile(environmentRoot)), `crawl4ai==${CRAWL4AI_VERSION}`],
       STEP_TIMEOUT_MS.crawl4ai,
       installOptions,
     );
@@ -1145,39 +1508,74 @@ async function runInstallWithLease(job, options) {
   }
   updateProgress(job, { pythonVersion: runtimeProbe.python.version, crawl4aiVersion: runtimeProbe.crawl4ai.version });
 
-  // Video downloads for reference teardowns. Never fatal: without it the research helper still reads pages,
-  // and a missing downloader is reported plainly when a video is asked for.
+  // The rest of the tool set, all under the one constraints file so nothing can move the pinned
+  // packages. Every step here is best effort: a failure leaves the page reader working and is
+  // reported by the tools check, never by failing the install.
+  const constraints = writeConstraintsFile(environmentRoot);
+  const pinArgs = constraintArgs(constraints);
+  const chromiumWasThere = Boolean(runtimeProbe?.chromium.found);
+  const before = installedVersions(environmentRoot);
+  const needPin = (/** @type {string} */ pkg, /** @type {string} */ expected) => !before || before.get(pkg) !== expected;
+  /** @type {string[]} */
+  const pins = [];
+  if (needPin('scrapling', SCRAPLING_VERSION)) pins.push(`scrapling[fetchers]==${SCRAPLING_VERSION}`);
+  if (needPin('playwright', PLAYWRIGHT_VERSION)) pins.push(`playwright==${PLAYWRIGHT_VERSION}`);
+  if (needPin('patchright', PATCHRIGHT_VERSION)) pins.push(`patchright==${PATCHRIGHT_VERSION}`);
+  if (needPin('curl-cffi', CURL_CFFI_VERSION)) pins.push(`curl_cffi==${CURL_CFFI_VERSION}`);
+  let pinnedChanged = false;
   try {
-    const have = await runInstallCommand(python, ['-c', 'import yt_dlp, curl_cffi'], STEP_TIMEOUT_MS.probe, installOptions);
-    if (!have.ok) await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', VIDEO_TOOLS_REQUIREMENT], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+    if (pins.length > 0) {
+      const done = await runInstallCommand(python, ['-m', 'pip', 'install', ...pinArgs, ...pins], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+      pinnedChanged = done.ok && (!before || pins.some((entry) => entry.startsWith('playwright==') || entry.startsWith('patchright==')));
+    }
+  } catch {
+    // keep going
+  }
+
+  // Video downloads for reference teardowns. Never fatal: without it the research helper still reads pages,
+  // and a missing downloader is reported plainly when a video is asked for. yt-dlp is the one package that is
+  // kept current (upgrade when it is missing or old); the constraints stop the upgrade moving curl_cffi.
+  try {
+    const ytdlpVersion = before?.get('yt-dlp') ?? null;
+    const padded = ytdlpVersion ? ytdlpVersion.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`) : null;
+    const age = padded ? ytdlpAgeDays(padded) : null;
+    if (!before || !ytdlpVersion || (age !== null && age > YTDLP_STALE_DAYS)) {
+      await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', ...pinArgs, VIDEO_TOOLS_REQUIREMENT], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+    }
   } catch {
     // keep going
   }
 
   // Discovery libraries (Instaloader, TikTok-Api). Best effort and never fatal: without them the discovery routes
-  // report not_installed and research goes on with the other routes.
+  // report not_installed and research goes on with the other routes. Added only when missing; they are not upgraded
+  // on a schedule, so a working version is never replaced by a newer one that breaks.
   try {
-    const haveDiscovery = await runInstallCommand(python, ['-c', 'import instaloader, TikTokApi'], STEP_TIMEOUT_MS.probe, installOptions);
-    if (!haveDiscovery.ok) await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', ...DISCOVERY_TOOLS_REQUIREMENTS], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+    if (!before || !before.get('instaloader') || !before.get('tiktokapi')) {
+      await runInstallCommand(python, ['-m', 'pip', 'install', ...pinArgs, ...DISCOVERY_TOOLS_REQUIREMENTS], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+    }
   } catch {
     // keep going
   }
 
-  if (!runtimeProbe?.chromium.found) {
+  // Playwright's own Chromium is what the page reader and TikTok-Api drive; it is required on a fresh install.
+  // `scrapling install` is never run: Chromium for both Playwright and Patchright comes from these two commands.
+  if (!chromiumWasThere || (pinnedChanged && !chromiumPresentFor(environmentRoot, 'playwright'))) {
     step(job, 'browser');
     const installed = await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
-    if (!installed.ok) return fail(job, reasonFor('browser', installed));
+    if (!installed.ok && !chromiumWasThere) return fail(job, reasonFor('browser', installed));
     clearDetectCache();
     runtimeProbe = await detect([python], env);
-    if (!runtimeProbe.crawl4ai.compatible || !runtimeProbe.chromium.found) {
+    if (!chromiumWasThere && (!runtimeProbe.crawl4ai.compatible || !runtimeProbe.chromium.found)) {
       return fail(job, 'The browser install finished, but the managed environment still cannot load the pinned page reader and Chromium. Try the install again.');
     }
   }
 
-  // TikTok-Api drives the same Playwright Chromium. Normally already there from the step above; this is a cheap,
-  // best effort top-up that never fails the install.
+  // Patchright (the stealth reader's driver) keeps its own Chromium build list. Best effort, and skipped when it is already there.
   try {
-    await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
+    const after = installedVersions(environmentRoot);
+    if (!after || !chromiumPresentFor(environmentRoot, 'patchright')) {
+      await runInstallCommand(python, ['-m', 'patchright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
+    }
   } catch {
     // keep going
   }
@@ -1198,6 +1596,7 @@ async function runInstallWithLease(job, options) {
       environmentRoot: runtimeEnvironment,
       workerPath,
       workerSha256,
+      packageVersions: Object.fromEntries(installedVersions(environmentRoot) ?? []),
     });
     return { ...job.progress };
   }
@@ -1217,6 +1616,7 @@ async function runInstallWithLease(job, options) {
     environmentRoot: runtimeEnvironment,
     workerPath,
     workerSha256: verifiedWorkerSha256,
+    packageVersions: Object.fromEntries(installedVersions(environmentRoot) ?? []),
   });
   log.info('research helper installed', { python: found.python.version, crawl4ai: job.progress.crawl4aiVersion, workspace_root: job.root });
   return { ...job.progress };

@@ -4,7 +4,7 @@ description: >
   Local pipeline evidence worker.
   Use for one active research workstream named by the route.
 model: claude-sonnet-5-5
-tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe
+tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe
 disallowedTools: Agent
 skills: research, source-validation, write-report
 maxTurns: 40
@@ -32,13 +32,15 @@ For job research, competitor and market work uses the market from the spawn prom
 The draft file at `draftPath` already holds the right keys, so fill it in place and never add, rename or remove a key.
 When the spawn prompt passes `problems`, fix exactly those in the draft file and finish.
 
-social_post_get, social_comments_get, social_search, social_profile_get, social_outliers_find, and web_crawl are read-only: use them only to gather evidence for a Sources, Research, or Read the posts task, never to generate or publish anything.
+social_post_get, social_comments_get, social_search, social_profile_get, social_outliers_find, social_ad_search, and web_crawl are read-only: use them only to gather evidence for a Sources, Research, or Read the posts task, never to generate or publish anything.
 
 Reuse an accepted artifact when its scope, source, date, and evidence-specific freshness still cover the question.
 
 Search only the gap named by the active task when the accepted artifact does not cover it.
 
 Do not redo a research workstream because another stage asks for its result again.
+
+Never wait on or retry a source. Make one attempt, use at most one proven fallback, and when a source or search step used its budget or failed, log `skipped: <reason>`, leave that slot blank and move on. A `skipped:` step counts as done and you are not sent back for it. Reference videos you do find are still downloaded and watched through `pipeline_video_teardown` (3 by default).
 
 Do not perform provider probes as research.
 

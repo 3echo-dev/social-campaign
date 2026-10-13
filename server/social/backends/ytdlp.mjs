@@ -16,16 +16,20 @@
 
 import { execFile, spawn } from 'node:child_process';
 
+import { referenceYtdlpBinary } from '../../lib/ytdlp-binary.mjs';
 import { postRecord, profileRecord, commentRecord, toCount, toIso } from '../records.mjs';
 
-/** Longest a single yt-dlp read may take. */
-export const YTDLP_TIMEOUT_MS = 60_000;
+/** Longest a single yt-dlp metadata read may take. */
+export const YTDLP_TIMEOUT_MS = 30_000;
 
 /** Most output read from one yt-dlp run. A 50 post listing is well under 1 MB. */
 export const YTDLP_MAX_BYTES = 16 * 1024 * 1024;
 
 /** Flags every read carries: no config, no cookies, no update check, no progress. */
-const BASE_ARGS = ['--ignore-config', '--no-cookies', '--no-cookies-from-browser', '--no-update', '--no-progress', '--socket-timeout', '20'];
+const BASE_ARGS = ['--ignore-config', '--no-cookies', '--no-cookies-from-browser', '--no-update', '--no-progress', '--retries', '1', '--fragment-retries', '1', '--extractor-retries', '0', '--socket-timeout', '10'];
+
+/** The flags that stop yt-dlp's own retry loops (its defaults are 10, 10 and 3), for runners that build their own argument list. */
+export const YTDLP_NO_RETRY_ARGS = ['--retries', '1', '--fragment-retries', '1', '--extractor-retries', '0', '--socket-timeout', '10'];
 
 /**
  * The yt-dlp command. SOCIAL_CAMPAIGN_YTDLP points at another yt-dlp, and when it
@@ -56,7 +60,7 @@ export function ytdlpCommand(override) {
  * launcher that starts Python, so killing only the launcher would leave Python running.
  * @param {import('node:child_process').ChildProcess} child
  */
-function killTree(child) {
+export function killTree(child) {
   if (child.exitCode !== null || child.pid === undefined) return;
   if (process.platform === 'win32') {
     execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => {});
@@ -285,27 +289,23 @@ export function postFromInfo(info, platform, observedAt, sourceRef) {
  */
 export class YtDlpBackend {
   /**
-   * @param {{binary?: string, timeoutMs?: number, maxBytes?: number, retryDelayMs?: number}} [options]
+   * @param {{binary?: string, timeoutMs?: number, maxBytes?: number, retryDelayMs?: number}} [options] retryDelayMs is ignored
    */
   constructor(options = {}) {
     this.options = options;
-    this.retryDelayMs = options.retryDelayMs ?? 2500;
   }
 
   /**
-   * Run a read. TikTok's bot check on 2026-09-12 was intermittent: the same read
-   * failed and then worked a few seconds later about half the time, so a bot check
-   * answer is retried once after a short pause before it counts as a failure.
+   * Run a read: one attempt, no pause and no second run. A bot check answer is reported as a failure and the router
+   * moves on to the next source; waiting for a second try only delays the research.
    * @param {string[]} args
-   * @param {string} [platform]
+   * @param {string} [_platform]
    * @returns {Promise<RunResult>}
    */
-  async run(args, platform) {
+  async run(args, _platform) {
+    // retryDelayMs is accepted for older callers and ignored.
     const { retryDelayMs: _delay, ...runOptions } = this.options;
-    const first = await runYtDlp([...BASE_ARGS, ...args], runOptions);
-    if (first.ok || platform !== 'tiktok' || mapYtDlpErrorForRouter(first, platform).code !== 'blocked') return first;
-    await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
-    return runYtDlp([...BASE_ARGS, ...args], runOptions);
+    return runYtDlp([...BASE_ARGS, ...args], { ...runOptions, binary: referenceYtdlpBinary(runOptions.binary) });
   }
 
   /**
@@ -315,14 +315,15 @@ export class YtDlpBackend {
    * @returns {Promise<{present: boolean, status: 'ok'|'missing'|'broken'|'timed_out', version: string|null, impersonation: boolean|null, detail: string}>}
    */
   async health() {
-    const version = await runYtDlp(['--version'], { ...this.options, timeoutMs: 15_000 });
+    const probeOptions = { ...this.options, binary: referenceYtdlpBinary(this.options.binary), timeoutMs: 15_000 };
+    const version = await runYtDlp(['--version'], probeOptions);
     if (version.missing) return { present: false, status: 'missing', version: null, impersonation: null, detail: 'yt-dlp is not installed.' };
     if (version.timedOut) return { present: true, status: 'timed_out', version: null, impersonation: null, detail: 'yt-dlp did not answer within 15 seconds.' };
     if (!version.ok) {
       return { present: true, status: 'broken', version: null, impersonation: null, detail: `yt-dlp is installed but does not run: ${version.stderr.trim().split(/\r?\n/).at(-1) ?? 'no output'}` };
     }
     const number = version.stdout.trim().split(/\r?\n/)[0] || null;
-    const targets = await runYtDlp(['--ignore-config', '--list-impersonate-targets'], { ...this.options, timeoutMs: 15_000 });
+    const targets = await runYtDlp(['--ignore-config', '--list-impersonate-targets'], probeOptions);
     const listing = `${targets.stdout}\n${targets.stderr}`;
     const rows = listing.split(/\r?\n/).filter((line) => /curl_cffi/i.test(line));
     const impersonation = targets.ok ? rows.some((line) => !/unavailable/i.test(line)) : null;

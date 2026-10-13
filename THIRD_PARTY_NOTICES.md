@@ -266,6 +266,41 @@ The nested partner-built/brand-voice folder is MIT licensed and is listed above.
    limitations under the License.
 ```
 
+## BSD-3-Clause licensed software installed on the user's computer
+
+Scrapling (https://github.com/D4Vinci/Scrapling), by Karim Shoair, is not shipped inside this plugin. The research helper installs it from PyPI into its own Python environment, pinned to one version, and the plugin's python/social_stealth.py worker calls it. Its licence is reproduced here.
+
+```text
+BSD 3-Clause License
+
+Copyright (c) 2024, Karim shoair
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## Creative Commons Attribution 4.0 licensed work
 
 The compliance trigger words and their compliant substitutions in the policy-check skill are adapted from the compliance-checker material by Rob Palmer (https://github.com/robpalmer99/claude-code-copywriting-skills), licensed under Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/).

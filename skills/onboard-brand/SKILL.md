@@ -1,8 +1,8 @@
 ---
 name: onboard-brand
 description: >
-  Creates or completes a local Social Campaign brand profile.
-  Use when no onboarded brand exists, when a user chooses Brand onboarding, or when a ready brand needs profile updates.
+  Internal step of social-campaign: builds or updates a brand profile ("set up my brand", "add my website and competitors", "update my brand voice").
+  Use when no onboarded brand exists, when Brand onboarding is chosen, or when a ready brand needs profile updates. Reached through social-campaign.
 user-invocable: false
 metadata:
   version: 0.3.3

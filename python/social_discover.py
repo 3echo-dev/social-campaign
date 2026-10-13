@@ -22,9 +22,12 @@ import asyncio
 import json
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 
-DEFAULT_TIMEOUT_MS = 60_000
+DEFAULT_TIMEOUT_MS = 40_000
+# Python stops this much before Node's kill, so a result is printed instead of the process being killed.
+DEADLINE_MARGIN_S = 3.0
 
 
 def load_credentials(path):
@@ -79,13 +82,40 @@ def classify(error):
 # ---------------------------------------------------------------- Instaloader
 
 
+class RateLimited(Exception):
+    """Instagram answered 429 (or asked us to wait). Raised instead of sleeping so the run ends as blocked."""
+
+
+def make_rate_controller():
+    """An Instaloader RateController that never sleeps: any wait or 429 becomes RateLimited."""
+    from instaloader import RateController
+
+    class NoSleepRateController(RateController):
+        def sleep(self, secs):  # noqa: D401 - Instaloader hook
+            raise RateLimited("rate limited")
+
+        def handle_429(self, query_type):
+            raise RateLimited("429")
+
+        def wait_before_query(self, query_type):
+            # Never wait for a quota slot; the next request just goes (or the platform answers 429).
+            return None
+
+    return NoSleepRateController
+
+
 def run_instagram(route, target, limit, creds):
     try:
         import instaloader
     except ImportError:
         return {"status": "not_installed", "detail": "instaloader is not installed in the research helper environment.", "items": []}
 
+    try:
+        rate_controller = make_rate_controller()
+    except Exception:  # noqa: BLE001 - an older Instaloader without the hook keeps the default
+        rate_controller = None
     loader = instaloader.Instaloader(
+        rate_controller=rate_controller,
         quiet=True,
         download_pictures=False,
         download_videos=False,
@@ -119,7 +149,7 @@ def run_instagram(route, target, limit, creds):
         scanned = 0
         for post in posts:
             scanned += 1
-            if scanned > limit * 6:
+            if scanned > limit * 2:
                 break
             if not getattr(post, "is_video", False):
                 continue
@@ -138,7 +168,7 @@ def run_instagram(route, target, limit, creds):
             if len(items) >= limit:
                 break
     except Exception as error:  # noqa: BLE001
-        status, detail = classify(error)
+        status, detail = ("blocked", "Instagram rate limited an anonymous read.") if isinstance(error, RateLimited) else classify(error)
         if items:
             return {"status": "ok", "detail": "Partial: the read stopped early.", "authenticated": authenticated, "items": items}
         return {"status": status, "detail": detail, "authenticated": authenticated, "items": []}
@@ -163,7 +193,7 @@ async def run_tiktok(route, target, limit, creds):
                 await api.create_sessions(
                     ms_tokens=[ms_token] if ms_token else None,
                     num_sessions=1,
-                    sleep_after=3,
+                    sleep_after=1,
                     browser=os.environ.get("TIKTOK_BROWSER", "chromium"),
                     headless=True,
                 )
@@ -207,6 +237,26 @@ async def run_tiktok(route, target, limit, creds):
     return {"status": "blocked" if not ms_token else "empty", "detail": "TikTok returned no videos" + ("; an ms_token in the credentials file usually fixes this." if not ms_token else "."), "authenticated": bool(ms_token), "items": []}
 
 
+def run_with_deadline(work, timeout_s):
+    """Run blocking work in a daemon thread; give up (status blocked) when it overruns."""
+    box = {}
+
+    def target():
+        try:
+            box["result"] = work()
+        except BaseException as error:  # noqa: BLE001
+            box["error"] = error
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if thread.is_alive():
+        return {"status": "timed_out", "detail": "timed out", "items": []}
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -218,7 +268,8 @@ def main():
     route = request.get("route")
     target = str(request.get("target") or "").strip().lstrip("#@")
     limit = max(1, min(int(request.get("limit") or 20), 50))
-    timeout_s = int(request.get("timeout_ms") or DEFAULT_TIMEOUT_MS) / 1000
+    # Node kills the whole worker at timeout_ms; finish and print 3 s earlier.
+    timeout_s = max(int(request.get("timeout_ms") or DEFAULT_TIMEOUT_MS) / 1000 - DEADLINE_MARGIN_S, 1.0)
     cred_path = request.get("credentials_path")
     creds = load_credentials(cred_path)
     if cred_path:
@@ -229,13 +280,13 @@ def main():
 
     try:
         if route in ("instagram_hashtag", "instagram_profile"):
-            result = run_instagram(route, target, limit, creds)
+            result = run_with_deadline(lambda: run_instagram(route, target, limit, creds), timeout_s)
         elif route in ("tiktok_hashtag", "tiktok_trending", "tiktok_user"):
             result = asyncio.run(asyncio.wait_for(run_tiktok(route, target, limit, creds), timeout=timeout_s))
         else:
             result = {"status": "error", "detail": "unknown route", "items": []}
     except asyncio.TimeoutError:
-        result = {"status": "blocked", "detail": "timed out", "items": []}
+        result = {"status": "timed_out", "detail": "timed out", "items": []}
     except Exception as error:  # noqa: BLE001
         status, detail = classify(error)
         result = {"status": status, "detail": detail, "items": []}
@@ -244,4 +295,7 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    sys.stdout.flush()
+    # The Instagram thread may still be blocked in a request; do not wait for it at interpreter shutdown.
+    os._exit(code)

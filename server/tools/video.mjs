@@ -44,6 +44,8 @@ export const videoTools = [
         end: /** @type {number|undefined} */ (args.end),
         campaignId: typeof args.campaign_id === 'string' ? args.campaign_id : null,
       });
+      // A download that failed comes back as a plain status: record it, leave the slot blank and move on.
+      if (result.ok === false) return result;
       return {
         ok: true,
         package: result.package,
