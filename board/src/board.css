@@ -107,7 +107,7 @@ small,.muted{color:var(--faint)}
 .pill:is(.running,.working)::before{animation:pill-blink 1.2s ease-in-out infinite}
 @keyframes pill-blink{50%{opacity:.25}}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--radius);color:var(--dim);flex-wrap:wrap}
-.notice>span:first-child{overflow-wrap:anywhere}
+.notice>span:first-child{flex:1 1 16em;min-width:0;overflow-wrap:anywhere}
 .notice-actions{display:flex;align-items:center;gap:8px;flex:none}
 .notice-actions button.quiet{border-color:var(--line2);color:var(--paper)}
 .notice-actions button.quiet:hover{border-color:var(--dim)}
@@ -254,12 +254,14 @@ small,.muted{color:var(--faint)}
 .connectors-grid{display:flex;flex-direction:column;gap:var(--gap)}
 .connectors-next{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:var(--gap);flex-wrap:wrap}
 .connectors-next p{margin:0}
-.connector-card{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:space-between;gap:var(--gap);flex-wrap:wrap;width:100%;min-width:0;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05);transition:background-color 150ms ease}
+.connector-card{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:space-between;gap:var(--gap);width:100%;min-width:0;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05);transition:background-color 150ms ease}
 @media (hover:hover){.connector-card:hover{background:var(--surface-hi)}}
-.connector-card-main{display:flex;align-items:flex-start;gap:12px;min-width:0}
+/* The copy column takes the room and wraps; the actions keep their size on the right, so a long help line (the
+   Meta ads URL) never pushes Connect and Skip under the text. Below 720px the card stacks on purpose. */
+.connector-card-main{display:flex;align-items:flex-start;gap:12px;flex:1 1 auto;min-width:0}
 .connector-card-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
 .connector-card-copy h3{margin:0}
-.connector-guidance{font-size:12px}
+.connector-guidance{font-size:12px;overflow-wrap:anywhere}
 .connector-card-copy h3{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .pill.connector-optional{color:var(--faint);font-weight:600}
 .connector-card-actions{display:flex;align-items:center;gap:8px;flex:none}
