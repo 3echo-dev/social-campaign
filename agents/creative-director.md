@@ -46,7 +46,7 @@ For a redo, rewrite only the one prompt you are given, and leave every other ite
 - A list, count, process or number from the product page, the evidence or the approved direction (the steps of a process, how many roles, a price, a duration) is used as the source gives it, in the concepts, the script and on screen. Never relabel a nine-step process as six steps. To show fewer, group the real steps and say so truthfully on screen ("nine steps, in four moves"), or return it as an open question so the Director asks it on the board.
 - Show only features and controls the page or the evidence names. A visual device that stands for one (a button, a tap, a dashboard) is allowed only when no spoken or on-screen line claims it is a real control, and the storyboard Notes say it is an illustration.
 - Name the brand kit's colours by their hex values in the `style` line, and write the brand fonts in the storyboard Notes, so the pictures and the drawn text keep them.
-- The Continuity block and the safe zone agree: a person's size, position and crop are written once and fit inside the safe zone.
+- The Continuity block and the safe zone agree: a person's size, position and crop are written once and fit inside the safe zone. Describe every recurring person head to toe (hair, glasses, top, trousers, shoes), so no picture has to choose a detail itself.
 - On-screen lines keep the script's word limit (3 to 7 words). Check every one before you hand back.
 - Once the sample is approved, the `style` line and the Continuity block are frozen: a change to the look of the other prompts is a new sample, never a sentence added to the rest.
 
