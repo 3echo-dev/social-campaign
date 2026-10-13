@@ -3,7 +3,7 @@ name: strategist
 description: >
   Local pipeline strategist.
   Use when the active plan has a strategy task after its required research artifacts are current.
-model: claude-fable-5-1
+model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-cta, brand-check, source-validation

@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.4.
+Current version: 0.17.5.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -87,7 +87,7 @@ Each specialist gets only the tools its stage needs.
 |---|---|---|---|
 | `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off, and sending the posts to Metricool | all of them, as the plan names them | Sonnet 5.5 |
 | `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | Sonnet 5.5 |
-| `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | Fable 5.1 |
+| `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | Opus 5.5 |
 | `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | Opus 5.5, for the whole run including the script and storyboard step |
 | `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | Opus 5.5 |
 | `creative-director` | The visual plan: the storyboard, every picture and clip prompt, the video script, and the new prompt for a picture or clip you send back. It never spends credits | storyboard, write-script, brand-check, platform-format, write-hook | Opus 5.5 |
@@ -96,7 +96,7 @@ Each specialist gets only the tools its stage needs.
 | `editor` | Check-only review: facts, brand, policy, platform rules | fact-check, brand-check, policy-check, platform-format, source-validation | Opus 5.5 |
 | `publisher` | The hand-off record after the posting approval. It never sends a post | publish | Haiku 4.5 |
 
-The strategist uses Fable 5.1 because the brief is the file every later stage reads.
+The strategist uses Opus 5.5 because the brief is the file every later stage reads.
 A weak angle is copied faithfully into the concepts, the script and the copy, where no gate will catch it.
 The scriptwriter runs on Opus 5.5 throughout, including the script and storyboard step.
 
