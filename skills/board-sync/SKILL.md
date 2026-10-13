@@ -275,6 +275,9 @@ When a person answers the "Which Meta ad account belongs to ..." or "Which TikTo
 
 For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions on the board below.
 
+A `bank_remove` request is the person removing one of their own items from the Brand library on the board: land it, remove the item it names with `brand_bank_save`, apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection.
+If the removal fails, decline the request with `pipeline_board_request_decline` and one plain reason.
+
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.
 Keep the original request envelope and `args` unchanged for idempotent retries.
 For navigation, a job result contains only `{ jobId }`, and a brand result contains only `{ brand: { id, slug, name, onboardingStatus } }`.

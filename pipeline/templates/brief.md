@@ -53,7 +53,7 @@ A happy testimonial is not a problem; when the only quotes are positive, name th
 
 # Ad style, funnel stage and CTA
 
-- Industry: {tag} from the tag list in `playbooks/ad-styles.md`, from `brand/profile.json` `industry` when set, else inferred from the brand files and marked inferred, so the person can correct it at the strategy gate.
+- Industry: {tag} from the tag list in `playbooks/ad-styles.md`, from the person's pick (the `industry` item in `library/bank/yours.jsonl`), else `brand/profile.json` `industry` when set, else inferred from the brand files and marked inferred, so the person can correct it at the strategy gate.
 - Ad style: {AS-* id} from `playbooks/ad-styles.md`, filtered by the brand's industry.
 - Funnel stage: TOFU | MOFU | BOFU, and why it fits the direction's success measure.
 - CTA: {CTA-* id} from `playbooks/ctas.md`, matching the funnel stage.

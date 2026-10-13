@@ -4,7 +4,7 @@ description: >
   Local pipeline evidence worker.
   Use for one active research workstream named by the route.
 model: claude-sonnet-5-5
-tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe
+tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__brand_library_get
 disallowedTools: Agent
 skills: research, source-validation, write-report
 maxTurns: 40
@@ -52,6 +52,10 @@ Write only the artifact path named by the active task and its permitted raw capt
 
 Research finds what the audience struggles with, not evidence for a message chosen in advance: search for their problems first, then check the direction's message against what you found.
 For a job that makes content, also gather the evidence for the three concepts: the brand's own best posts (posts that beat its own average, `social_outliers_find` on its accounts), its top competitors' best posts (the same, per competitor), and what is trending now on the platform in the brand's industry (`social_search` for recent high-performing posts), each with link, views and date, in `research/concept-sources.md`. Keep to the research budget; a source with nothing usable is written as a gap.
+
+Before you search, check what the brand library already holds: the research list in the library block at the end of your spawn prompt (each filed file with its topic and age in days), or `brand_library_get`.
+Reuse brand and competitor research that is under 30 days old and trend research that is under 7 days old, the same ages for the posts in `research/concept-sources.md`: read the filed file, keep each line's own source and date, and search only what is older or missing.
+Say in the research file which parts you reused, from which earlier job and how many days old, and which you refreshed.
 
 End `research/audience.md` with a **Problem bank**: 3 to 5 problem lines in the viewer's role and words, each with its source and date, labelled FACT, INFERENCE or HYPOTHESIS, and the one you recommend.
 End `research/product-evidence.md` with a **Number and proof bank**: every concrete number on the brand's own pages and files (counts, durations, prices, steps), every artefact that can be shown working, and what the person must supply to make proof real.

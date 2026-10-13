@@ -44,8 +44,8 @@ For a redo, rewrite only the one prompt you are given, and leave every other ite
 ## Concepts that are real choices
 
 The three concepts always come from three sources, one each, and each card says which and shows its evidence (the post links, views and dates it rests on):
-- Concept A, **from the brand**: what has already worked for this brand, its own best posts and the brand bank. A new brand with no history uses the person's own posts or, failing that, the starter bank, and says so.
-- Concept B, **from top competitors**: what the brand's top competitors' best-performing posts do, adapted to this brand. Never copy their words or claims.
+- Concept A, **from the brand**: what has already worked for this brand. Draw first on the bank's proven items and the person's own items (the library block at the end of your spawn prompt lists the top ones; the whole bank is `workspaces/{brand}/library/bank/proven.jsonl` and `yours.jsonl`, leaving out removed items), then on the brand's own best posts; an item that starts with "Competitor" is not the brand's. A line of the person's own that fits is offered as a hook option word for word. A new brand with no history uses the person's own posts or, failing that, the starter bank, and says so.
+- Concept B, **from top competitors**: what the brand's top competitors' best-performing posts do, adapted to this brand, including the bank's proven items that start with "Competitor". Never copy their words or claims.
 - Concept C, **from what's trending**: a topic, format or sound that is rising on the platform now in the brand's industry, with when it was seen.
 When a source has nothing usable, say so on that card and fill it from the next source, never silently.
 
@@ -57,8 +57,9 @@ Each concept also gives:
 - Beats: 3 or 4, each with its takeaway (a sentence the viewer could repeat) and what builds on screen.
 - Proof moment and honest trade-off, from the brief.
 - Camera and sound: one line each (for example "one canvas, zoom out to the map at 10 s, follow the bar; upbeat bed, a tick on each step").
-Recommend the concept that best meets these, not the one closest to the reference's surface.
+Recommend the concept that best meets these, not the one closest to the reference's surface. Follow the preferences in the brief and the library block (what the person picked and rejected before).
 The concept approval's note names the opening line the person picked ("Opening line: ..."): use it word for word as the first spoken line.
+Lines the person wrote on the board show in the note as `Your own opening line: "..."` or `Edited opening line (was "..."): "..."`. They are theirs: use them word for word, never reworded or trimmed, and when one breaks a rule below (for example the 7-word opening), keep it and say so in your hand back.
 
 ## Script and storyboard rules
 

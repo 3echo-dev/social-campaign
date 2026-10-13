@@ -23,7 +23,7 @@ created: YYYY-MM-DD HH:MM {tz}
 
 Open the card with the strategy the person approves here, from the brief, one line each: industry, viewer problem, awareness stage, ad style, funnel stage, CTA, proof moment, honest trade-off, and any sharpened message. The person can change any of them with the concept pick.
 
-Concept A comes from the brand (its own best posts and bank), Concept B from top competitors, Concept C from what is trending, each with its evidence.
+Concept A comes from the brand (the bank's proven items, the person's own items and its own best posts), Concept B from top competitors, Concept C from what is trending, each with its evidence.
 
 Each concept comes from a different insight. Ranked, with a recommendation. No script and no media exist yet.
 Every concept names one value for each idea part (anchor, stage, angle, format, hook family, mechanic). Concepts in one set differ in at least one part, and the "Why this differs" line in the brief's deliverable map says which.

@@ -17,6 +17,7 @@ metadata:
 - 2. Collect declared brand context
 - 3. Complete the profile
 - 4. Brand research pass
+- 4b. Industry and the brand library
 - 5. Verify and show the board
 - 6. Return to a pending job
 - Local boundaries
@@ -188,6 +189,8 @@ Publish the board so the colours and fonts `web_brand_kit` proposed are visible.
 
 Tell the person in one sentence to check the colours and fonts on the board, add their logo by uploading it if they have one, add a few real photos of their place, people or product if they have them, and click Save and continue.
 
+While they do that, follow 4b below.
+
 If something about the profile or the research is worth flagging, for example the TikTok account reading as the US market while the website reads as Singapore, say so in chat in one plain sentence once research starts; do not block starting it, and do not turn it into a confirmation question.
 
 Save and continue arrives as an `onboard_brand` request with `kit`.
@@ -195,6 +198,25 @@ Apply it immediately: a board click is the approval, so there is no chat confirm
 When that kit carries a logo, follow the same Handling a board request procedure in `skills/board-sync/SKILL.md` before landing and applying it.
 
 For chat intake, show the proposed kit in chat, take any changes the person wants, and call `pipeline_brand_kit_save` with the resulting kit.
+
+## 4b. Industry and the brand library
+
+Once research has saved, ask what kind of business the brand is, once, with `pipeline_board_ask` for the brand.
+Offer the closest industries from `pipeline/playbooks/ad-styles.md` as buttons in plain words, at most 6, the best fit from the brand's pages first, and let the person type another, for example "Which of these is closest to what SK-II does?". Show no tags or ids.
+Do not wait for the answer: until it comes, the strategist infers the industry and marks it inferred.
+When the answer arrives (see Questions on the board in `skills/board-sync/SKILL.md`), save it with `brand_bank_save` as the brand's industry item (kind `industry`, the tag as its text, and for `other` the tag then one line on what it is).
+On an update of a ready brand, edit its existing industry item rather than adding a second.
+
+Then start the brand library with what already worked, so the first concepts do not start blank.
+Call `brand_library_get` first and skip this when it already holds proven items.
+Call `social_outliers_find` once, with no retry, for each of the brand's TikTok and Instagram accounts and for each competitor account the research found (never a guessed handle).
+A source that comes back with no posts, no outliers or coverage `none` is skipped.
+Save with `brand_bank_save`, as proven items of kind `hook`, at most 3 posts per own account and 2 per competitor.
+The text is the post's opening words exactly as its caption has them, and the evidence is the post's url, its views and its posting date (YYYY-MM-DD).
+Start a competitor item's text with "Competitor <name>: ", so it is never taken for the brand's own.
+Skip a post that has no caption, views or date; never fill in or round a figure.
+When nothing could be read, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
+When items were saved, say so in one line, for example "Saved 5 top posts to your brand library."
 
 ## 5. Verify and show the board
 

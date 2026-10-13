@@ -115,3 +115,10 @@ Use these exact calls and nothing else for this job.
 Return a short summary with the job ID, active stage, artifacts written, reused artifacts, blockers, and next action.
 
 Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting. Each entry may carry a `role` (what the person said it is for): logo = put the brand logo in exactly as it is, never redraw it; product = keep the product exact; person = keep this person or character consistent; style = match the colours, lighting and mood; motion = copy the movement and pacing; sound = match the music or voice.
+
+## Brand library
+
+At the start of a job, call `brand_library_get` for the brand and keep what it returns in mind: the person's own lines, the proven items, the recent research with its age, and what they picked and rejected on the last jobs. The block `pipeline_agent_brief` returns for each agent carries the library too: keep adding it unchanged, and never write library lines into a prompt yourself.
+Once the final media is approved (the finished video for a video, the pictures for a picture post), call `brand_library_file_job` with the brand and the job ID. Call it again at completion; a repeat changes nothing.
+When the board sends a `bank_remove` request, remove the item it names with `brand_bank_save`, then land and apply the request like any other and write the board documents again. Remove only that item.
+To the person it is always "your brand library", never a bank, a file, an id or a path.

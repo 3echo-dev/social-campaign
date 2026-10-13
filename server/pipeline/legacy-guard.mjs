@@ -18,8 +18,11 @@ const LEGACY_BRAND_TOOL_REPLACEMENTS = {
   brand_wiki_write: 'pipeline_brand_research_start',
 };
 
+// The brand library tools are new, not legacy: they keep the brand_ prefix and work in every workspace.
+const BRAND_LIBRARY_TOOLS = new Set(['brand_library_get','brand_bank_save','brand_library_file_job']);
+
 export function assertLegacyExecutionAllowed(root,toolName,args = {}) {
-  if(root && /^brand_/.test(toolName) && existsSync(join(root,'.social-pipeline','config.json'))) {
+  if(root && /^brand_/.test(toolName) && !BRAND_LIBRARY_TOOLS.has(toolName) && existsSync(join(root,'.social-pipeline','config.json'))) {
     const replacement=LEGACY_BRAND_TOOL_REPLACEMENTS[toolName] ?? 'pipeline_status';
     throw new UserFacingError(
       `\`${toolName}\` is retired in this workspace: brands live in the local pipeline now. Use \`${replacement}\` instead.`,

@@ -137,6 +137,27 @@ small,.muted{color:var(--faint)}
 .metricool-error{color:var(--hold);flex-basis:100%}
 .brand-chip button{min-height:0;border:0;padding:0;color:var(--dim);font-size:11px}
 .brand-chip button:hover{background:transparent;color:var(--paper)}
+.brand-libraries{display:flex;flex-direction:column;gap:8px;width:100%}
+.brand-library .library-head{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.brand-library .doc-summary-title{font-size:var(--t4)}
+.library-counts{color:var(--faint);font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.brand-library .doc-body{gap:var(--gap)}
+.library-intro{font-size:12px;line-height:1.45}
+.library-group{display:flex;flex-direction:column;gap:8px}
+.library-group h3{display:flex;align-items:center;gap:8px;margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.library-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.library-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r2)}
+.library-item.is-removing{opacity:.6}
+.library-main{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.library-kind{color:var(--faint);font-size:11px;font-weight:700}
+.library-text{color:var(--paper);overflow-wrap:anywhere}
+.library-meta,.library-hook{color:var(--dim);font-size:12px;overflow-wrap:anywhere}
+.library-meta a.post-link{font-size:12px}
+button.library-remove{flex:none;min-height:30px;padding:3px 10px;border-color:var(--line2);color:var(--dim);font-size:12px}
+@media (hover:hover){button.library-remove:hover{border-color:var(--hold);color:var(--hold)}}
+.library-pending{flex:none;max-width:9em;color:var(--faint);font-size:11px;font-weight:700;text-align:right}
+.library-more{font-size:12px}
+@media(pointer:coarse){.hook-form button,.hook-add,button.library-remove{min-height:40px}.hook-edit{width:40px}}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(245,200,75,.14);color:var(--tape);font-size:13px;font-weight:800}
 .start-card{position:relative;isolation:isolate;display:flex;flex-direction:column;gap:15px;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05)}
@@ -431,9 +452,30 @@ button.sb-cell-body:active{transform:none}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
 .hook-picks{display:flex;flex-direction:column;gap:6px}
-.hook-pick{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
+.hook-picks:empty{display:none}
+.hook-pick{display:flex;flex:1 1 auto;gap:8px;align-items:flex-start;min-width:0;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
 .hook-pick:has(input:checked){border-color:var(--tape);background:var(--panel3)}
-.hook-pick input{margin-top:3px;accent-color:var(--tape)}
+.hook-pick input{flex:none;width:auto;min-height:0;margin:3px 0 0;padding:0;accent-color:var(--tape)}
+.hook-text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.hook-line{display:flex;align-items:stretch;gap:4px;min-width:0}
+.hook-edit{flex:none;width:34px;min-height:0;padding:0;border-color:transparent;color:var(--faint)}
+.hook-tag{flex:none;align-self:flex-start;margin-top:1px;padding:2px 7px;border:1px solid var(--go-dim);border-radius:999px;color:var(--go);font-size:10px;font-weight:700;line-height:1.3}
+.hook-add{align-self:flex-start;min-height:32px;margin-top:6px;padding:4px 10px;border-style:dashed;color:var(--dim);font-size:12px;text-align:left}
+.hook-picks:empty+.hook-add{margin-top:0}
+.hook-form{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px;border:1px solid var(--tape);border-radius:var(--r2);background:var(--panel3)}
+.hook-picks+.hook-form{margin-top:6px}
+.hook-input{flex:1 1 180px;min-width:0;min-height:34px}
+.hook-form-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.hook-form button{min-height:32px;padding:4px 12px;font-size:13px}
+.hook-form .hook-save{border-color:var(--tape);background:var(--tape);color:var(--tape-ink);font-weight:800}
+.hook-form .field-error{flex-basis:100%}
+.concept-strategy{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
+.concept-strategy h3{margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.strategy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--gap) * .75) var(--gap);margin:0}
+.strategy-fact{min-width:0}
+.strategy-fact dt{color:var(--faint);font-size:11px;font-weight:700}
+.strategy-fact dd{margin:2px 0 0;color:var(--dim);overflow-wrap:anywhere}
+.strategy-fact dd.lines{white-space:pre-line}
 .q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
 .q-still{margin:0}
 .q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}
@@ -2430,6 +2472,60 @@ const action=researching
 const pillars=researching?'':brandPillarsPill(brand);
 return`<div class="brand-chip"><span class="avatar">${esc((brand.name||'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready?'Ready for jobs':'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}${brandMetricoolLine(brand,metricool)}${brandAdAccountsLine(brand)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
 }
+const LIBRARY_KIND_WORDS=Object.freeze({hook:'Opening line',angle:'Angle',style:'Ad style',cta:'Call to action',caption:'Caption',format:'Format',industry:'Industry',funnel:'Funnel stage'});
+const LIBRARY_GROUP_LIMIT=50;
+export const libraryKey=(slug,id)=>`${slug}:${id}`;
+const libraryDay=value=>(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}/.test(value)?value.slice(0,10):'');
+const libraryItems=list=>(Array.isArray(list)?list:[]).filter(item=>item&&typeof item==='object'&&!item.removed&&trimmed(item.text));
+const plural=(count,one,many=`${one}s`)=>`${count} ${count===1?one:many}`;
+function libraryCounts(library){
+const given=library.counts&&typeof library.counts==='object'?library.counts:{};
+const count=(key,fallback)=>(Number.isFinite(given[key])&&given[key]>=0?Math.floor(given[key]):fallback);
+return{yours:count('yours',libraryItems(library.yours).length),proven:count('proven',libraryItems(library.proven).length),jobs:count('jobs',Array.isArray(library.recentJobs)?library.recentJobs.length:0),research:count('research',null)};
+}
+export function libraryCountsLine(library){
+const counts=libraryCounts(library||{});
+return[`${counts.yours} yours`,`${counts.proven} proven`,plural(counts.jobs,'job')+' filed',counts.research===null?'':plural(counts.research,'research file')].filter(Boolean).join(' · ');
+}
+function libraryItem(item,brand,{removing,errors}){
+const key=libraryKey(brand.slug,item.id);
+const kind=LIBRARY_KIND_WORDS[item.kind]||humanize(item.kind||'item');
+const evidence=item.evidence&&typeof item.evidence==='object'?item.evidence:null;
+const link=evidence?safeHttpsLink(evidence.url):null;
+const views=Number.isFinite(evidence?.views)?`${Math.round(evidence.views).toLocaleString('en-US')} views`:'';
+const where=item.source==='competitor'?'From a competitor':'';
+const meta=[item.concept?`Concept ${item.concept}`:'',item.edited?'edited':'',where,views,libraryDay(evidence?.date)||libraryDay(item.at)].filter(Boolean).map(esc).join(' &middot; ');
+const proof=link?`<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the post behind: ${item.text}`)}">See the post</a>`:'';
+const pending=removing.has(key);
+const problem=errors.get(key);
+const action=!item.id?'':pending
+?'<span class="library-pending" role="status">Removal sent to Claude</span>'
+:item.proven?'':`<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
+return`<li class="library-item${pending?' is-removing':''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${meta||proof?`<span class="library-meta">${meta}${meta&&proof?' &middot; ':''}${proof}</span>`:''}${item.edited&&trimmed(item.was)?`<span class="library-meta">Was: ${esc(item.was)}</span>`:''}${problem?`<span class="field-error" role="alert">${esc(problem)}</span>`:''}</div>${action}</li>`;
+}
+function libraryJob(job){
+const concept=job.concept&&typeof job.concept==='object'?job.concept:{};
+const source=trimmed(concept.source)?conceptSourceOf({fields:[{label:'Source',value:concept.source}]}):null;
+const meta=[concept.id?`Concept ${concept.id}${trimmed(concept.title)?`: ${concept.title}`:''}`:'',source?.label||'',libraryDay(job.filedAt)?`filed ${libraryDay(job.filedAt)}`:''].filter(Boolean).map(esc).join(' &middot; ');
+return`<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title)||'Finished job')}</span>${meta?`<span class="library-meta">${meta}</span>`:''}${trimmed(concept.hook)?`<span class="library-hook">Opening line: ${esc(concept.hook)}</span>`:''}</div></li>`;
+}
+export function brandLibrarySection(brand,{open=false,removing=new Set(),errors=new Map()}={}){
+const library=brand?.library;
+if(!library||typeof library!=='object'||Array.isArray(library)||!brand.slug)return'';
+const group=(title,id,list,row)=>{
+if(!list.length)return'';
+const more=list.length>LIBRARY_GROUP_LIMIT?`<p class="muted library-more">${plural(list.length-LIBRARY_GROUP_LIMIT,'more item')} on this computer.</p>`:'';
+return`<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-${id}"><h3 id="library-${esc(brand.slug)}-${id}">${esc(title)} <span class="count">${list.length}</span></h3><ul class="library-list">${list.slice(0,LIBRARY_GROUP_LIMIT).map(row).join('')}</ul>${more}</section>`;
+};
+const state={removing,errors};
+const yours=libraryItems(library.yours);
+const proven=libraryItems(library.proven).map(item=>({...item,proven:true}));
+const jobs=(Array.isArray(library.recentJobs)?library.recentJobs:[]).filter(job=>job&&typeof job==='object');
+const body=group('Yours','yours',yours,item=>libraryItem(item,brand,state))+group('Proven','proven',proven,item=>libraryItem(item,brand,state))+group('Recent jobs filed','jobs',jobs,libraryJob);
+const key=`brand-library:${brand.slug}`;
+const empty=body?'':'<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
+return`<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open?' open':''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name||brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
+}
 const COVERAGE_PLATFORMS=Object.freeze([['facebook','Facebook'],['instagram','Instagram'],['tiktok','TikTok']]);
 const COVERAGE_WORDS=Object.freeze({
 linked:['ready',name=>`${name} linked`,name=>`${name} in Metricool matches the channel on this brand card.`],
@@ -3270,27 +3366,179 @@ const numbered=text.split(/(?:^|\s|\n)\d[).]\s+/).map(part=>part.trim().replace(
 const lines=numbered.length>1?numbered:text.split(/\n+/).map(part=>part.replace(/^[-*\d).\s]+/,'').trim()).filter(Boolean);
 return lines.slice(0,6);
 }
-export function conceptCards(concepts,choice=null,{disabled=false,hooks={}}={}){
+const CONCEPT_SOURCE_WORDS=Object.freeze({brand:'From the brand',competitors:'From top competitors',trending:"From what's trending"});
+function conceptSourceKind(text){
+if(/competitor/i.test(text))return'competitors';
+if(/trend|rising|viral/i.test(text))return'trending';
+if(/\b(brand|own|bank|proven|yours?)\b/i.test(text))return'brand';
+return null;
+}
+export function conceptSourceOf(concept){
+const field=(concept?.fields||[]).find(item=>/^sources?$/i.test(String(item?.label||'').trim()));
+const text=String(field?.value||'').trim();
+if(!text)return null;
+const cut=/\s*(?:[,;:\n]|\s[-\u2013\u2014]\s|\s\(|\swith\b)/.exec(text);
+const head=(cut?text.slice(0,cut.index):text).trim();
+let detail=text.slice(head.length).replace(/^[\s,;:\u2013\u2014-]+/,'').replace(/^with\s+/i,'').trim();
+if(detail.startsWith('(')&&detail.endsWith(')')&&!detail.slice(1,-1).includes('('))detail=detail.slice(1,-1).trim();
+const kind=conceptSourceKind(head)||(head.length>40?conceptSourceKind(text):null);
+if(kind)return{kind,label:CONCEPT_SOURCE_WORDS[kind],detail};
+return head&&head.length<=32?{kind:'other',label:head[0].toUpperCase()+head.slice(1),detail}:null;
+}
+const SUMMARY_LIMIT=12;
+export function strategySummaryOf(text){
+const out=[];
+let inSummary=false;
+for(const raw of String(text??'').replace(/\r\n?/g,'\n').split('\n')){
+const line=raw.trim();
+const heading=/^#{1,6}\s+(.*)$/.exec(line);
+if(heading){
+const title=heading[1].trim();
+if(/^Concept\s+[A-Za-z0-9]{1,8}\b/i.test(title))break;
+inSummary=/^(?:concepts\b|(?:the\s+)?strategy\b)/i.test(title);
+continue;
+}
+if(!inSummary||!line||/^[-*_]{3,}$/.test(line))continue;
+const bullet=line.replace(/^[-*+]\s+/,'');
+const match=/^\*\*(.{1,60}?)\*\*\s*:\s*(.+)$/.exec(bullet)||/^\*\*(.{1,60}?):\*\*\s*(.+)$/.exec(bullet)||/^([A-Za-z][^:*`|]{0,58}?):\s+(.+)$/.exec(bullet);
+const label=match?match[1].replace(/[*`]/g,'').trim():'';
+if(match&&label&&label.split(/\s+/).length<=6){
+if(out.length<SUMMARY_LIMIT)out.push({label,value:match[2].trim().slice(0,400)});
+}else if(/^\s+\S/.test(raw)&&out.length){
+const last=out[out.length-1];
+last.value=`${last.value}${/^\s*[-*+]\s/.test(raw)?'\n':' '}${bullet}`.slice(0,400);
+}
+}
+return out;
+}
+export function conceptSummaryOf(concepts,doc=null){
+const given=concepts?.summary;
+const entries=Array.isArray(given)?given:typeof given==='string'?given.split('\n'):null;
+if(entries){
+const rows=entries.map(item=>{
+if(typeof item==='string')return strategySummaryOf(`# Strategy\n${item}`)[0]||null;
+const label=trimmed(item?.label);
+const value=trimmed(item?.value??item?.text);
+return label&&value?{label,value}:null;
+}).filter(Boolean);
+if(rows.length)return rows.slice(0,SUMMARY_LIMIT);
+}
+const file=(doc?.files||[]).find(item=>item?.path&&item.path===concepts?.path);
+return typeof file?.text==='string'?strategySummaryOf(file.text):[];
+}
+export function conceptStrategy(summary){
+const rows=(Array.isArray(summary)?summary:[]).filter(item=>item?.label&&item?.value);
+if(!rows.length)return'';
+const facts=rows.map(item=>`<div class="strategy-fact"><dt>${esc(item.label)}</dt><dd${/\n/.test(item.value)?' class="lines"':''}>${inlineMarkdown(item.value)}</dd></div>`).join('');
+return`<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl></section>`;
+}
+export const HOOK_LINE_LIMIT=120;
+export const HOOK_OWN_LIMIT=5;
+const PENCIL='<svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+export const cleanHookLine=value=>String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim();
+const noteLine=value=>cleanHookLine(value).replace(/"/g,'\u201d');
+export function hookLinesOf(concept,{own={},edited={}}={}){
+const field=(concept?.fields||[]).find(item=>/^hook options/i.test(item?.label||''));
+const base=hookOptionsOf(field?.value);
+const edits=edited?.[concept?.id]&&typeof edited[concept.id]==='object'?edited[concept.id]:{};
+const mine=Array.isArray(own?.[concept?.id])?own[concept.id]:[];
+const lines=base.map((text,at)=>{
+const now=typeof edits[at]==='string'?cleanHookLine(edits[at]):'';
+return now&&now!==text?{text:now,was:text,edited:true,base:at}:{text,base:at};
+});
+mine.forEach((text,at)=>lines.push({text:cleanHookLine(text),own:true,mine:at}));
+return{field,lines};
+}
+export function applyHookEdit(state,concept){
+const edit=state?.hookEdit;
+if(!edit||!concept||concept.id!==edit.id)return{error:'Nothing to save.'};
+const text=cleanHookLine(edit.text);
+if(!text)return{error:'Type your opening line first.'};
+if(text.length>HOOK_LINE_LIMIT)return{error:`Keep it to ${HOOK_LINE_LIMIT} characters or fewer.`};
+const{lines}=hookLinesOf(concept,{own:state.ownLines,edited:state.editedLines});
+if(edit.at==='new'&&(state.ownLines?.[edit.id]||[]).length>=HOOK_OWN_LIMIT)return{error:`That is the most you can add here (${HOOK_OWN_LIMIT}).`};
+if(edit.at!=='new'&&!lines[edit.at])return{error:'That line is no longer here.'};
+const same=lines.findIndex((line,at)=>at!==edit.at&&line.text.toLowerCase()===text.toLowerCase());
+let pick=same;
+if(same<0&&edit.at==='new'){
+state.ownLines={...(state.ownLines||{}),[edit.id]:[...(state.ownLines?.[edit.id]||[]),text]};
+pick=lines.length;
+}else if(same<0){
+const line=lines[edit.at];
+if(line.own){
+state.ownLines={...(state.ownLines||{}),[edit.id]:state.ownLines[edit.id].map((item,at)=>(at===line.mine?text:item))};
+}else{
+const original=line.edited?line.was:line.text;
+const edits={...(state.editedLines?.[edit.id]||{})};
+if(text===original)delete edits[line.base];else edits[line.base]=text;
+state.editedLines={...(state.editedLines||{}),[edit.id]:edits};
+}
+pick=edit.at;
+}
+state.hooks={...(state.hooks||{}),[edit.id]:pick};
+state.choice=edit.id;
+state.error='';
+state.hookEdit=null;
+return{pick};
+}
+export function dropHookEdit(state,concept){
+const edit=state?.hookEdit;
+if(!edit||!concept||concept.id!==edit.id||edit.at==='new')return false;
+const line=hookLinesOf(concept,{own:state.ownLines,edited:state.editedLines}).lines[edit.at];
+if(line?.own){
+state.ownLines={...state.ownLines,[edit.id]:state.ownLines[edit.id].filter((_,at)=>at!==line.mine)};
+const picked=state.hooks?.[edit.id];
+if(Number.isInteger(picked)&&picked>=edit.at)state.hooks={...state.hooks,[edit.id]:picked===edit.at?0:picked-1};
+}else if(line?.edited){
+state.editedLines={...state.editedLines,[edit.id]:Object.fromEntries(Object.entries(state.editedLines?.[edit.id]||{}).filter(([at])=>Number(at)!==line.base))};
+}
+state.hookEdit=null;
+return true;
+}
+function hookEditForm(id,at,edit,label,drop=''){
+const key=`${id}:${at}`;
+const errorId=`hook-error-${id}`;
+const problem=edit.error?`<span class="field-error" id="${errorId}" role="alert">${esc(edit.error)}</span>`:'';
+return`<span class="hook-form"><input type="text" class="hook-input" name="hook_edit_${esc(id)}" data-hook-input="${esc(key)}" value="${esc(edit.text||'')}" maxlength="${HOOK_LINE_LIMIT}" autocomplete="off" enterkeyhint="done" aria-label="${esc(label)}"${edit.error?` aria-invalid="true" aria-describedby="${errorId}"`:''}><span class="hook-form-actions"><button type="button" class="hook-save" data-hook-save="${esc(key)}">Save</button><button type="button" class="quiet" data-hook-cancel="${esc(key)}">Cancel</button>${drop?`<button type="button" class="quiet hook-drop" data-hook-drop="${esc(key)}">${esc(drop)}</button>`:''}</span>${problem}</span>`;
+}
+function hookPicks(concept,field,{hooks,own,edited,edit,disabled}){
+const{lines}=hookLinesOf(concept,{own,edited});
+const id=concept.id;
+const picked=Number.isInteger(hooks?.[id])&&lines[hooks[id]]?hooks[id]:0;
+const editing=edit&&edit.id===id?edit:null;
+const rows=lines.map((line,at)=>{
+if(editing&&editing.at===at)return hookEditForm(id,at,editing,`Edit opening line ${at+1} for concept ${id}`,line.own?'Remove this line':line.edited?'Use the original':'');
+const tag=line.own?'<span class="hook-tag">yours</span>':line.edited?'<span class="hook-tag" title="You edited this line">yours<span class="visually-hidden"> (edited)</span></span>':'';
+const radio=`<label class="hook-pick"><input type="radio" name="hook_choice_${esc(id)}" value="${at}" ${picked===at?'checked':''} ${disabled?'disabled':''}><span class="hook-text">${esc(line.text)}</span>${tag}</label>`;
+return`<span class="hook-line">${radio}<button type="button" class="hook-edit" data-hook-edit="${esc(`${id}:${at}`)}" aria-label="${esc(`Edit this opening line: ${line.text}`)}" title="Edit this line" ${disabled?'disabled':''}>${PENCIL}</button></span>`;
+}).join('');
+const room=(Array.isArray(own?.[id])?own[id].length:0)<HOOK_OWN_LIMIT;
+const adder=editing&&editing.at==='new'
+?hookEditForm(id,'new',editing,`Your own opening line for concept ${id}`)
+:room?`<button type="button" class="hook-add" data-hook-add="${esc(id)}" aria-label="${esc(`Add your own opening line for concept ${id}`)}" ${disabled?'disabled':''}>+ Add your own opening line</button>`:'';
+return`<div><dt>${esc(field?.label||'Opening lines')}</dt><dd><span class="hook-picks" role="group" aria-label="${esc(`Opening lines for concept ${id}`)}">${rows}</span>${adder}</dd></div>`;
+}
+export function conceptCards(concepts,choice=null,{disabled=false,hooks={},own={},edited={},edit=null}={}){
 const list=concepts?.concepts||[];
 if(!list.length)return'<p class="muted">No concepts were found in this file.</p>';
 return`<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept=>{
 const credits=Number.isInteger(concept.credits)?`${concept.credits.toLocaleString()} credits for media`:'';
+const source=conceptSourceOf(concept);
 const fields=(concept.fields||[]).filter(field=>String(field.value||'').trim());
+const hookField=fields.find(field=>/^hook options/i.test(field.label||''))||null;
+const picks=hookPicks(concept,hookField,{hooks,own,edited,edit,disabled});
 const fieldRows=fields.map(field=>{
-if(/^hook options/i.test(field.label||'')){
-const options=hookOptionsOf(field.value);
-if(options.length>1){
-const picked=Number.isInteger(hooks?.[concept.id])?hooks[concept.id]:0;
-const radios=options.map((line,at)=>`<label class="hook-pick"><input type="radio" name="hook_choice_${esc(concept.id)}" value="${at}" ${picked===at?'checked':''} ${disabled?'disabled':''}><span>${esc(line)}</span></label>`).join('');
-return`<div><dt>${esc(field.label)}</dt><dd><span class="hook-picks" role="radiogroup" aria-label="${esc(`Opening line for concept ${concept.id}`)}">${radios}</span></dd></div>`;
-}
+if(field===hookField)return picks;
+if(source&&/^sources?$/i.test(String(field.label||'').trim())){
+return source.detail?`<div><dt>Evidence</dt><dd${/\n/.test(source.detail)?' class="lines"':''}>${inlineMarkdown(source.detail)}</dd></div>`:'';
 }
 const isSourceRef=/^insight it rests on$/i.test(field.label||'');
 const humanized=isSourceRef?humanizeSourceRef(field.value):null;
 const value=humanized?esc(humanized):inlineMarkdown(field.value);
 return`<div>${field.label?`<dt>${esc(field.label)}</dt>`:''}<dd${/\n/.test(field.value)?' class="lines"':''}>${value}</dd></div>`;
-}).join('');
-return`<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice===concept.id?'checked':''} ${disabled?'disabled':''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended?'<span class="pill ready">Recommended</span>':''}</span><span class="concept-radio" aria-hidden="true"></span></span>${fields.length?`<dl class="review-fields">${fieldRows}</dl>`:''}${credits?`<span class="concept-foot">${esc(credits)}</span>`:''}</span></label>`;
+}).join('')+(hookField?'':picks);
+const badge=source?`<span class="pill concept-source source-${esc(source.kind)}"><span class="visually-hidden">Source: </span>${esc(source.label)}</span>`:'';
+return`<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice===concept.id?'checked':''} ${disabled?'disabled':''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended?'<span class="pill ready">Recommended</span>':''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${credits?`<span class="concept-foot">${esc(credits)}</span>`:''}</span></label>`;
 }).join('')}</div>`;
 }
 const RECIPE_FIELDS=Object.freeze(['pillar','angle','hookFamily','cta','hashtags']);
@@ -4236,7 +4484,10 @@ const rest=(review.paths||[]).filter(path=>!covered.has(path)&&!/^report\/stills
 if(rest.length)parts.push(reviewFilesHtml(doc,rest));
 return parts.join('');
 }
-if(gate==='concept'&&review.concepts)parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted,hooks:state.hooks||{}}));
+if(gate==='concept'&&review.concepts){
+parts.push(conceptStrategy(conceptSummaryOf(review.concepts,doc)));
+parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{},edit:state.hookEdit||null}));
+}
 if(gate==='concept')parts.push(recipeReviewSection(doc,recipeState,{disabled:state.busy||state.submitted}));
 if(review.storyboards?.length&&gate==='storyboard'){
 const current=currentPanelKey(review.storyboards,state);
@@ -4452,7 +4703,7 @@ export const FINISHING_PICKS=Object.freeze([
 {id:'skip',label:'Approve as is'},
 ]);
 const CHANGE_PLACEHOLDERS=Object.freeze({findings:'For example: compare prices too, and add one more competitor.'});
-export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null,hooks={}}){
+export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null,hooks={},own={},edited={}}){
 const review=pendingReview(project);
 if(!review?.artifacts?.length)return{error:REVIEW_WAITING.preparing};
 if(!['approve','request_changes'].includes(verdict))return{error:'Unsupported decision.'};
@@ -4508,9 +4759,15 @@ if(pending.length)args.recipe=Object.fromEntries(pending.map(([id])=>[id,recipeP
 args.chosen=concept.id;
 args.credits=conceptCredits(concepts,concept);
 args.note=`Concept ${concept.id}: ${concept.title}`;
-const hookField=(concept.fields||[]).find(field=>/^hook options/i.test(field.label||''));
-const options=hookOptionsOf(hookField?.value);
-if(options.length>1)args.note+=` · Opening line: "${options[Number.isInteger(hooks?.[concept.id])&&options[hooks[concept.id]]?hooks[concept.id]:0]}"`;
+const{lines}=hookLinesOf(concept,{own,edited});
+const made=lines.filter(line=>line.own||line.edited);
+const at=Number.isInteger(hooks?.[concept.id])&&lines[hooks[concept.id]]?hooks[concept.id]:0;
+if(lines.length>1||made.length){
+const picked=lines[at];
+args.note+=` · Opening line: "${picked.own||picked.edited?noteLine(picked.text).slice(0,HOOK_LINE_LIMIT):picked.text}"`;
+}
+for(const line of made.filter(item=>item.own))args.note+=`\nYour own opening line: "${noteLine(line.text).slice(0,HOOK_LINE_LIMIT)}"`;
+for(const line of made.filter(item=>item.edited))args.note+=`\nEdited opening line (was "${noteLine(line.was)}"): "${noteLine(line.text).slice(0,HOOK_LINE_LIMIT)}"`;
 }else{
 if(concept)args.chosen=concept.id;
 args.note=concept?`Concept ${concept.id}: ${note}`:note;
@@ -5962,7 +6219,7 @@ const text=String(note||'').trim();
 const match=/^([A-Za-z]\d{1,3}):\s*([\s\S]*)$/.exec(text);
 return match?{ref:match[1],note:match[2].trim()}:{ref:null,note:text};
 }
-function requestComment(operation,args={}){
+export function requestComment(operation,args={}){
 switch(operation){
 case'onboard_brand':{
 const name=args?.name||'the new brand';
@@ -5997,6 +6254,8 @@ case'choose_recipe':
 return`Copy choices saved${quotedTitle(args?.title)} (${args?.deliverable||'this post'}).`;
 case'choose_metricool_brand':
 return`Metricool brand for ${args?.brandName||'this brand'} set to ${args?.label||'a different brand'}.`;
+case'bank_remove':
+return'Remove an item from the brand library.';
 case'choose_publish_route':
 return`Posts will go out this way: ${PUBLISH_ROUTE_WORDS[args?.route]||'a different route'}.`;
 case'choose_post_type':
@@ -6315,6 +6574,7 @@ const gateSeen=new Set();
 function gateOpen(key,open){if(!gateSeen.has(key)){gateSeen.add(key);if(open)openKeys.add(key);}return openKeys.has(key);}
 const connectorPending=new Set();
 const metricoolUi={open:new Set(),busy:new Set(),picks:new Map(),errors:new Map()};
+const libraryUi={removing:new Set(),errors:new Map()};
 const jobUi=new Map();
 const jobDocs=new Map();
 const jobDocStates=new Map();
@@ -6533,7 +6793,7 @@ if(ui.revision!==project.revision){
 ui.revision=project.revision;
 ui.intake={values:ui.intake.values||{}};
 if(!((ui.review.submitted&&ui.review.requestId&&ui.review.args)||(ui.review.settled&&ui.review.args))){
-ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||'',draftKey:ui.review.draftKey};
+ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||'',draftKey:ui.review.draftKey,...(ui.review.ownLines?{ownLines:ui.review.ownLines}:{}),...(ui.review.editedLines?{editedLines:ui.review.editedLines}:{}),...(ui.review.hookEdit?{hookEdit:ui.review.hookEdit}:{})};
 stopJobRequestWatch(project.jobId+':review');
 }
 ui.recipe={};
@@ -6897,7 +7157,31 @@ render();
 function brandStrip(){
 const brands=data.brands||[];
 if(!brands.length)return'';
-return`<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand,metricoolFor(brand))).join('')}</div></section>`;
+for(const key of[...libraryUi.removing]){
+const at=key.indexOf(':');
+const library=brands.find(brand=>brand.slug===key.slice(0,at))?.library;
+const listed=[...(Array.isArray(library?.yours)?library.yours:[])].some(item=>item?.id===key.slice(at+1));
+if(!listed)libraryUi.removing.delete(key);
+}
+const libraries=brands.map(brand=>brandLibrarySection(brand,{open:openKeys.has(`brand-library:${brand.slug}`),removing:libraryUi.removing,errors:libraryUi.errors})).join('');
+return`<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand,metricoolFor(brand))).join('')}</div>${libraries?`<div class="brand-libraries">${libraries}</div>`:''}</section>`;
+}
+async function submitBankRemove(slug,id){
+const key=libraryKey(slug,id);
+if(!transport||!slug||!id||libraryUi.removing.has(key))return;
+libraryUi.removing.add(key);
+libraryUi.errors.delete(key);
+render();
+try{
+const result=await transport.call('bank_remove',{requestId:randomId(globalThis),brand:slug,id});
+notify(result?.message||'Request saved. Claude will validate it and update this board.');
+await refresh();
+}catch(e){
+libraryUi.removing.delete(key);
+libraryUi.errors.set(key,e.message||'Could not send that.');
+}finally{
+render();
+}
 }
 function overview(){
 if(data.setupStep==='connectors'&&!connectorsContinued&&Array.isArray(data.connectors)&&data.connectors.length)return connectorsPanel(true);
@@ -7761,6 +8045,7 @@ if(target.dataset.inboxJump!==undefined){leaveChatForJump();jumpFromInbox(target
 if(target.dataset.metricoolChange!==undefined){metricoolUi.open.add(target.dataset.metricoolChange);metricoolUi.errors.delete(target.dataset.metricoolChange);render();app.querySelector(`[data-metricool-brand="${CSS.escape(target.dataset.metricoolChange)}"]`)?.focus();return;}
 if(target.dataset.metricoolCancel!==undefined){metricoolUi.open.delete(target.dataset.metricoolCancel);metricoolUi.picks.delete(target.dataset.metricoolCancel);metricoolUi.errors.delete(target.dataset.metricoolCancel);render();return;}
 if(target.dataset.metricoolSave!==undefined){void submitMetricoolBrand(target.dataset.metricoolSave);return;}
+if(target.dataset.bankRemove!==undefined){void submitBankRemove(target.dataset.bankBrand,target.dataset.bankRemove);return;}
 if(target.dataset.connect){void submitConnectorAction('connect_provider',target.dataset.connect);return;}
 if(target.dataset.skip){void submitConnectorAction('skip_provider',target.dataset.skip);return;}
 if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
@@ -7774,6 +8059,11 @@ if(target.dataset.sbPanel!==undefined){panelAction('select',target.dataset.sbPan
 if(target.dataset.sbAction){panelAction(target.dataset.sbAction);return;}
 if(target.dataset.mrAction){mediaPanelAction(target.dataset.mrAction,target.dataset.mrKey);return;}
 if(target.dataset.flagAccept||target.dataset.flagUndo){flagAction(target.dataset.flagAccept||target.dataset.flagUndo,Boolean(target.dataset.flagAccept));return;}
+if(target.dataset.hookAdd!==undefined){startHookEdit(target.dataset.hookAdd,'new');return;}
+if(target.dataset.hookEdit!==undefined){const cut=target.dataset.hookEdit.lastIndexOf(':');startHookEdit(target.dataset.hookEdit.slice(0,cut),Number(target.dataset.hookEdit.slice(cut+1)));return;}
+if(target.dataset.hookSave!==undefined){saveHookEdit();return;}
+if(target.dataset.hookCancel!==undefined){cancelHookEdit();return;}
+if(target.dataset.hookDrop!==undefined){dropHookLine();return;}
 if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction,target.dataset.ref,target.dataset.finishing);return;}
 if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project,target.dataset.recipeSave);return;}
 if(target.dataset.workspaceAction){workspaceAction(target.dataset.workspaceAction);return;}
@@ -8096,13 +8386,68 @@ Object.assign(state,{busy:false,requestId:null,error:e.message});
 render();
 }
 }
+const hookKey=(id,at)=>`${id}:${at}`;
+function hookTarget(){
+const project=current();
+if(!project)return null;
+const state=uiFor(project).review;
+if(state.busy||state.submitted||state.needsReconciliation||state.settled)return null;
+return{project,state};
+}
+function hookConcept(project,id){
+return docFor(project)?.review?.concepts?.concepts?.find(item=>item.id===id)||null;
+}
+function focusHook(selector){
+const element=app.querySelector(selector);
+if(!element)return;
+element.focus({preventScroll:true});
+if(element.matches('input[type="text"]')){try{element.setSelectionRange(element.value.length,element.value.length);}catch{}}
+}
+function startHookEdit(id,at){
+const found=hookTarget();
+const concept=found&&hookConcept(found.project,id);
+if(!concept)return;
+const{lines}=hookLinesOf(concept,{own:found.state.ownLines,edited:found.state.editedLines});
+if(at!=='new'&&!lines[at])return;
+found.state.hookEdit={id,at,text:at==='new'?'':lines[at].text};
+render();
+focusHook(`[data-hook-input="${CSS.escape(hookKey(id,at))}"]`);
+}
+function cancelHookEdit(){
+const found=hookTarget();
+const edit=found?.state.hookEdit;
+if(!edit)return;
+found.state.hookEdit=null;
+render();
+focusHook(edit.at==='new'?`[data-hook-add="${CSS.escape(edit.id)}"]`:`[data-hook-edit="${CSS.escape(hookKey(edit.id,edit.at))}"]`);
+}
+function saveHookEdit(){
+const found=hookTarget();
+const edit=found?.state.hookEdit;
+if(!edit)return;
+const concept=hookConcept(found.project,edit.id);
+if(!concept){found.state.hookEdit=null;render();return;}
+const done=applyHookEdit(found.state,concept);
+if(done.error){edit.error=done.error;render();focusHook(`[data-hook-input="${CSS.escape(hookKey(edit.id,edit.at))}"]`);return;}
+render();
+focusHook(`input[name="hook_choice_${CSS.escape(edit.id)}"][value="${done.pick}"]`);
+}
+function dropHookLine(){
+const found=hookTarget();
+const edit=found?.state.hookEdit;
+const concept=edit&&hookConcept(found.project,edit.id);
+if(!concept||!dropHookEdit(found.state,concept))return;
+render();
+focusHook(`[data-hook-add="${CSS.escape(edit.id)}"]`);
+}
 async function submitDecision(project,verdict,finishing=null){
 const state=uiFor(project).review;
 if(!transport||state.busy||state.submitted||state.needsReconciliation||state.settled)return;
 const comment=app.querySelector('#review-comment')?.value??state.comment??'';
 state.comment=comment;
+if(verdict==='approve'&&state.hookEdit&&cleanHookLine(state.hookEdit.text)){state.error='Save or cancel the opening line you are typing first.';render();return;}
 const requestId=state.requestId||randomId(globalThis);
-const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null,hooks:state.hooks||{}});
+const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{}});
 if(error){state.error=error;render();return;}
 Object.assign(state,{requestId,busy:true,verdict,error:'',declined:false,operation:'submit_decision',args});
 render();
@@ -8715,6 +9060,14 @@ if(state.timeError){state.timeError='';field.removeAttribute('aria-invalid');fie
 return;
 }
 if(field.dataset?.kitLink!==undefined){const state=postStateOf(project,field.dataset.kitLink);state.link=field.value;if(state.linkError){state.linkError='';field.removeAttribute('aria-invalid');field.removeAttribute('aria-describedby');field.closest('.kit-mark')?.querySelector('.field-error')?.remove();}return;}
+if(field.dataset?.hookInput!==undefined){
+const edit=uiFor(project).review.hookEdit;
+if(edit){
+edit.text=field.value;
+if(edit.error){edit.error='';field.removeAttribute('aria-invalid');field.removeAttribute('aria-describedby');field.closest('.hook-form')?.querySelector('.field-error')?.remove();}
+}
+return;
+}
 if(field.id==='review-comment'){uiFor(project).review.comment=field.value;return;}
 if(field.id==='sb-note'){uiFor(project).review.panelDraft=field.value;return;}
 if(field.id==='mr-note'){uiFor(project).review.mediaDraft=field.value;return;}
@@ -8723,6 +9076,12 @@ if(recipeName?.own)recipeFieldState(uiFor(project).recipe,recipeName.deliverable
 });
 app.addEventListener('keydown',event=>{
 const field=event.target;
+if(field instanceof HTMLInputElement&&field.dataset.hookInput!==undefined){
+if(event.isComposing)return;
+if(event.key==='Enter'){event.preventDefault();saveHookEdit();}
+else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();cancelHookEdit();}
+return;
+}
 if(field instanceof HTMLInputElement&&field.dataset.kitLink!==undefined&&event.key==='Enter'){
 event.preventDefault();
 const shown=current();

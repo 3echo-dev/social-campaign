@@ -145,6 +145,28 @@ small,.muted{color:var(--faint)}
 .metricool-error{color:var(--hold);flex-basis:100%}
 .brand-chip button{min-height:0;border:0;padding:0;color:var(--dim);font-size:11px}
 .brand-chip button:hover{background:transparent;color:var(--paper)}
+/* The Brand library under the brand chips: one folded panel per brand; its counts show before it opens. */
+.brand-libraries{display:flex;flex-direction:column;gap:8px;width:100%}
+.brand-library .library-head{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.brand-library .doc-summary-title{font-size:var(--t4)}
+.library-counts{color:var(--faint);font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.brand-library .doc-body{gap:var(--gap)}
+.library-intro{font-size:12px;line-height:1.45}
+.library-group{display:flex;flex-direction:column;gap:8px}
+.library-group h3{display:flex;align-items:center;gap:8px;margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.library-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.library-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r2)}
+.library-item.is-removing{opacity:.6}
+.library-main{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.library-kind{color:var(--faint);font-size:11px;font-weight:700}
+.library-text{color:var(--paper);overflow-wrap:anywhere}
+.library-meta,.library-hook{color:var(--dim);font-size:12px;overflow-wrap:anywhere}
+.library-meta a.post-link{font-size:12px}
+button.library-remove{flex:none;min-height:30px;padding:3px 10px;border-color:var(--line2);color:var(--dim);font-size:12px}
+@media (hover:hover){button.library-remove:hover{border-color:var(--hold);color:var(--hold)}}
+.library-pending{flex:none;max-width:9em;color:var(--faint);font-size:11px;font-weight:700;text-align:right}
+.library-more{font-size:12px}
+@media(pointer:coarse){.hook-form button,.hook-add,button.library-remove{min-height:40px}.hook-edit{width:40px}}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(245,200,75,.14);color:var(--tape);font-size:13px;font-weight:800}
 .start-card{position:relative;isolation:isolate;display:flex;flex-direction:column;gap:15px;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05)}
@@ -488,9 +510,32 @@ button.sb-cell-body:active{transform:none}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
 .hook-picks{display:flex;flex-direction:column;gap:6px}
-.hook-pick{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
+.hook-picks:empty{display:none}
+.hook-pick{display:flex;flex:1 1 auto;gap:8px;align-items:flex-start;min-width:0;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
 .hook-pick:has(input:checked){border-color:var(--tape);background:var(--panel3)}
-.hook-pick input{margin-top:3px;accent-color:var(--tape)}
+.hook-pick input{flex:none;width:auto;min-height:0;margin:3px 0 0;padding:0;accent-color:var(--tape)}
+.hook-text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+/* Opening lines the person edits or adds: a pencil beside each line, a "yours" mark, and the one inline box (Enter saves, Escape drops). */
+.hook-line{display:flex;align-items:stretch;gap:4px;min-width:0}
+.hook-edit{flex:none;width:34px;min-height:0;padding:0;border-color:transparent;color:var(--faint)}
+.hook-tag{flex:none;align-self:flex-start;margin-top:1px;padding:2px 7px;border:1px solid var(--go-dim);border-radius:999px;color:var(--go);font-size:10px;font-weight:700;line-height:1.3}
+.hook-add{align-self:flex-start;min-height:32px;margin-top:6px;padding:4px 10px;border-style:dashed;color:var(--dim);font-size:12px;text-align:left}
+.hook-picks:empty+.hook-add{margin-top:0}
+.hook-form{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px;border:1px solid var(--tape);border-radius:var(--r2);background:var(--panel3)}
+.hook-picks+.hook-form{margin-top:6px}
+.hook-input{flex:1 1 180px;min-width:0;min-height:34px}
+.hook-form-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.hook-form button{min-height:32px;padding:4px 12px;font-size:13px}
+.hook-form .hook-save{border-color:var(--tape);background:var(--tape);color:var(--tape-ink);font-weight:800}
+.hook-form .field-error{flex-basis:100%}
+/* The strategy summary above the concept cards. */
+.concept-strategy{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
+.concept-strategy h3{margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.strategy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--gap) * .75) var(--gap);margin:0}
+.strategy-fact{min-width:0}
+.strategy-fact dt{color:var(--faint);font-size:11px;font-weight:700}
+.strategy-fact dd{margin:2px 0 0;color:var(--dim);overflow-wrap:anywhere}
+.strategy-fact dd.lines{white-space:pre-line}
 .q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
 .q-still{margin:0}
 .q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}

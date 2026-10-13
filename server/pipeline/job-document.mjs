@@ -525,14 +525,34 @@ function conceptField(label, value) {
   return { label: family[1].trim(), lines: [`Family: ${family[2].trim()}`, value.trim()] };
 }
 
+// One line of the strategy summary at the top of concepts.md: `Label: value`, bulleted or bold or plain; a wrapped line joins the one above.
+const SUMMARY_LIMIT = 12;
+function addSummaryLine(summary, raw) {
+  const line = raw.trim();
+  if (!line || /^[-*_]{3,}$/.test(line)) return;
+  const bullet = line.replace(/^[-*+]\s+/, '');
+  const match = /^\*\*(.{1,60}?)\*\*\s*:\s*(.+)$/.exec(bullet) || /^\*\*(.{1,60}?):\*\*\s*(.+)$/.exec(bullet) || /^([A-Za-z][^:*`|]{0,58}?):\s+(.+)$/.exec(bullet);
+  const label = match ? match[1].replace(/[*`]/g, '').trim() : '';
+  if (match && label && label.split(/\s+/).length <= 6) {
+    if (summary.length < SUMMARY_LIMIT) summary.push({ label, value: match[2].trim().slice(0, 400) });
+  } else if (/^\s+\S/.test(raw) && summary.length) {
+    // A wrapped or nested line belongs to the line above it.
+    const last = summary[summary.length - 1];
+    last.value = `${last.value}${/^\s*[-*+]\s/.test(raw) ? '\n' : ' '}${bullet}`.slice(0, 400);
+  }
+}
+
 /**
  * concepts.md: `## Concept A: title (recommended)` sections, each a bullet list
  * of `- Label: value` fields (nested sub-bullets fold into their field's value, one per line), plus the Media quote table's total credits per
- * concept and the front matter credits.
+ * concept and the front matter credits. `summary` is the strategy at the top, above the first concept: the `Label: value` lines under the
+ * `# Concepts for ...` (or `# Strategy`) heading, as [{ label, value }], [] when there are none.
  */
 export function parseConcepts(text) {
   const { meta, body } = splitFrontMatter(text);
   const concepts = [];
+  const summary = [];
+  let inSummary = false;
   let current = null;
   let open = null;
   let baseIndent = 0;
@@ -540,7 +560,8 @@ export function parseConcepts(text) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
     if (heading) {
       open = null;
-      const concept = /^Concept\s+([A-Za-z0-9]{1,8})\s*(?:[:.\-\u2013\u2014]\s*(.*))?$/i.exec(heading[1].trim());
+      inSummary = !concepts.length && /^(?:concepts\b|(?:the\s+)?strategy\b)/i.test(heading[1].trim());
+      const concept =/^Concept\s+([A-Za-z0-9]{1,8})\s*(?:[:.\-\u2013\u2014]\s*(.*))?$/i.exec(heading[1].trim());
       if (concept) {
         const rawTitle = concept[2] || '';
         const id = concept[1].toUpperCase();
@@ -555,7 +576,10 @@ export function parseConcepts(text) {
       } else current = null;
       continue;
     }
-    if (!current) continue;
+    if (!current) {
+      if (inSummary) addSummaryLine(summary, line);
+      continue;
+    }
     const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
     if (bullet) {
       const indent = bullet[1].replace(/\t/g, '    ').length;
@@ -593,6 +617,7 @@ export function parseConcepts(text) {
     use: typeof meta.use === 'string' ? meta.use : null,
     creditsQuoted: wholeNumber(meta.credits_quoted),
     creditsCeiling: wholeNumber(meta.credits_ceiling),
+    summary,
     concepts: concepts.slice(0, MAX_CONCEPTS),
   };
 }

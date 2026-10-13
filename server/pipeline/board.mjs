@@ -33,6 +33,7 @@ import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowS
 import { readyChecks } from './ready-checks.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
 import { normaliseCombine, recordCombine } from './combine.mjs';
+import { boardLibrary, fileJobQuietly, readBank, recordConceptDecision, removeBankItem } from './brand-library.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
@@ -1612,7 +1613,9 @@ export function boardSnapshot({ root } = {}) {
     const agents = !readyForJobs || usage.status === 'running' ? onboardingAgents({ brandDir: brand.path, brandName: brand.name, usage, onboardingStatus: brand.onboardingStatus, readyForJobs }) : null;
     const referencePhotos = referenceAssets(raw?.assets).length;
     const brandFiles = brandFileList(brandFilesOf(brand.path, raw), referencePreview(root), brandFileState);
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
+    // The brand library: counts, the person's own items, the proven ones and the last jobs filed (brand-library.mjs).
+    const library = boardLibrary({ root, brand: brand.slug });
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,library,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -1688,7 +1691,8 @@ export function boardSnapshot({ root } = {}) {
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   // Reference pictures are the first thing to go when the board is near its size limit.
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) { projection.projects = withoutReferenceThumbs(projection.projects); projection.brands = projection.brands.map(brand => (brand.brandFiles ? { ...brand, brandFiles: brand.brandFiles.map(({ thumb, ...rest }) => rest) } : brand)); }
-  // Then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
+  // Then the brand library's lists (the counts stay), then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
+  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.library ? { ...brand, library: { ...brand.library, yours: [], proven: [], recentJobs: [] } } : brand));
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
   return applyProjectionBudget(projection);
 }
@@ -1756,7 +1760,7 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
@@ -1767,6 +1771,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (operation === 'mark_posted') checkMarkPosted(root, args);
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
+  if (operation === 'bank_remove') checkBankRemove(root, args);
   if (operation === 'add_reference') validateAddReference(root, args);
   if (operation === 'remove_reference') validateRemoveReference(root, args);
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
@@ -2004,6 +2009,24 @@ export function stuckJobs(root, jobs, { questions = null } = {}) {
   return out;
 }
 
+// A brand library item the person removes on the board: { requestId, brand?, id, bank?, workspaceId? }. The brand is the one the panel belongs to; when
+// a request carries only the id, the brand whose bank holds that item is used. bank is yours (the default) or proven.
+const BANK_REMOVE_FIELDS = new Set(['requestId', 'brand', 'id', 'bank', 'workspaceId']);
+function checkBankRemove(root, args) {
+  if (!plainObject(args) || Object.keys(args).some(key => !BANK_REMOVE_FIELDS.has(key))) throw new Error('A removal names only the item, its brand and its bank.');
+  if (typeof args.id !== 'string' || !/^[A-Za-z0-9_-]{1,60}$/.test(args.id)) throw new Error('Say which item to remove.');
+  if (args.bank !== undefined && !['yours', 'proven'].includes(args.bank)) throw new Error('The bank is yours or proven.');
+  const brands = runtime.listBrands({ root }).map(item => item.slug);
+  const holds = (brand, bank) => readBank({ root, brand, bank, includeRemoved: true }).some(item => item.id === args.id);
+  if (typeof args.brand === 'string' && args.brand.trim()) {
+    const brand = args.brand.trim();
+    if (!brands.includes(brand)) throw new Error('That brand could not be found.');
+    return { brand, bank: args.bank || (holds(brand, 'yours') || !holds(brand, 'proven') ? 'yours' : 'proven') };
+  }
+  for (const brand of brands) for (const bank of args.bank ? [args.bank] : ['yours', 'proven']) if (holds(brand, bank)) return { brand, bank };
+  throw new Error('That item could not be found in any brand library.');
+}
+
 /**
  * "Try again" checked as it is now, before anything is claimed or saved: the job is stuck for a reason on our side, the retry has not
  * been used yet, and no other retry for this job is waiting. Returns the job and what is stuck.
@@ -2175,7 +2198,7 @@ export function closePublishedJob({ root, brand, jobId }) {
       entered = true;
       const first = look();
       if (first.reason) return report({ reason: first.reason });
-      if (stateNow() === 'COMPLETE') return report({ closed: true, already: true });
+      if (stateNow() === 'COMPLETE') { fileJobQuietly({ root, brand: job.brand, jobId: job.jobId }); return report({ closed: true, already: true }); }
       if (!['PUBLISH_APPROVED', 'HANDOFF_READY'].includes(stateNow())) return report({ reason: 'This job is not at the step where it can be closed.' });
       try {
         const valid = () => handoffRules.validateHandoff(dir, { brand: job.brand, jobId: job.jobId }).ok;
@@ -2192,7 +2215,10 @@ export function closePublishedJob({ root, brand, jobId }) {
         const done = run('complete-job.js', ['--delivery-ref', last.reference, '--by', SELF_BY]);
         // A completion that reported a failure but did finish (the state moved) is a close.
         if (done.status !== 0 && stateNow() !== 'COMPLETE') return report({ reason: 'The job could not be completed.', reference: last.reference });
-        return report({ closed: stateNow() === 'COMPLETE', reference: last.reference });
+        const closed = stateNow() === 'COMPLETE';
+        // A finished job goes in the brand library (never part of whether it closed).
+        if (closed) fileJobQuietly({ root, brand: job.brand, jobId: job.jobId });
+        return report({ closed, reference: last.reference });
       } catch (error) {
         return report({ reason: String(error.message || 'The job could not be closed.').slice(0, 300) });
       }
@@ -2644,6 +2670,12 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const said = args.text.replace(/\s+/g,' ').trim().slice(0,MESSAGE_COMMENT_CHARS);
     return {jobId:saved.jobId,agent:saved.agent,messageId:saved.messageId,message:`Message for the ${agentLabel(saved.agent)}: "${said}".`};
   }
+  if(operation==='bank_remove') {
+    // The Brand library panel's remove button: one item out of the brand's bank. An item that is already gone is not an error.
+    const { brand, bank } = checkBankRemove(root,args);
+    const done = removeBankItem({ root, brand, bank, id: args.id, missingOk: true });
+    return { brand, id: args.id, removed: done.removed, message: done.removed ? 'Removed from your brand library.' : 'That item was already gone from your brand library.' };
+  }
   if(operation==='retry_step') {
     const { job, stuck } = checkRetryStep(root,args);
     recordRetry(root,job);
@@ -2700,6 +2732,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'mark_posted') return result.postId ? { jobId: result.jobId, postId: result.postId, allMarked: result.allMarked, closed: result.closed } : null;
   if (operation === 'agent_message') return result.messageId ? { jobId: result.jobId, agent: result.agent, messageId: result.messageId } : null;
   if (operation === 'retry_step') return result.jobId ? { jobId: result.jobId } : null;
+  if (operation === 'bank_remove') return result.id ? { brand: result.brand, id: result.id } : null;
   if (HANDOFF_OPERATIONS.includes(operation)) return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
@@ -3275,6 +3308,7 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='mark_posted') checkMarkPosted(root,record.args);
   if(record.operation==='agent_message') checkAgentMessage(root,record.args);
   if(record.operation==='retry_step') checkRetryStep(root,record.args);
+  if(record.operation==='bank_remove') checkBankRemove(root,record.args);
   if(record.operation==='remove_reference') validateRemoveReference(root,record.args);
   if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);
@@ -3370,7 +3404,7 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   const validated = validateDecision({...args,root});
   if(args.reviewId===PRICE_GATE) return applyPriceDecision({root,file,record,args,validated,confirmedBy});
   if(args.reviewId===SAMPLE_GATE) return applySampleDecision({file,record,args,validated,confirmedBy});
-  if(MEDIA_GATES.includes(args.reviewId)) return applyMediaDecision({root,file,record,args,validated,confirmedBy});
+  if(MEDIA_GATES.includes(args.reviewId)) return libraryAfterDecision({root,args,brand:validated.snapshot.brand?.slug || args.brand,applied:applyMediaDecision({root,file,record,args,validated,confirmedBy})});
   if(args.reviewId==='concept' && args.decision==='approve' && (!Number.isInteger(maxCredits) || maxCredits<0)) throw new Error('Concept approval needs the spending limit the user selected.');
   // A board approval is at the amount the board showed, never another figure.
   if(args.reviewId==='concept' && args.decision==='approve' && Number.isInteger(args.credits) && maxCredits!==args.credits) throw new Error(`Approve this concept at the ${args.credits} credits the board showed.`);
@@ -3406,7 +3440,25 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp,JSON.stringify(next,null,2));renameSync(temp,file);
   if(result.status!==0) throw new Error('The decision needs reconciliation. Inspect the request and local approval before retrying.');
-  return next;
+  return libraryAfterDecision({root,args,brand:validated.snapshot.brand.slug,applied:next});
+}
+
+// The brand library learns from a decision once it is applied (brand-library.mjs): the concept pick and the opening lines the person
+// wrote or edited, and a finished job once its final media or final post is approved. It never makes an approval fail: a problem is
+// logged and the approval stands.
+const FILING_GATES = new Set([...MEDIA_GATES,'content','publish']);
+function libraryAfterDecision({root,args,brand,applied}) {
+  if(applied?.status!=='applied') return applied;
+  try {
+    if((applied.decision?.decision ?? args.decision)!=='approve') return applied;
+    if(args.reviewId==='concept') recordConceptDecision({root,brand,jobId:args.jobId,note:args.note,chosen:args.chosen});
+    else if(FILING_GATES.has(args.reviewId)) {
+      // A media review files the job only when it was the last one: the pictures, clips and joined video approved earlier do not.
+      const job=facts.jobAt(root,brand,args.jobId);
+      if(job && (!MEDIA_GATES.includes(args.reviewId) || facts.mediaBlocker(job)===null)) fileJobQuietly({root,brand,jobId:args.jobId});
+    }
+  } catch(error) { process.stderr.write(`brand library: ${String(error?.message || error).slice(0,300)}\n`); }
+  return applied;
 }
 
 function reopenReport(root, brand, jobId) {

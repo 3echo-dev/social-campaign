@@ -45,6 +45,7 @@ import { agentTools } from './agents.mjs';
 import { musicTools } from './music.mjs';
 import { combineTools } from './combine.mjs';
 import { handoffTools } from './handoff.mjs';
+import { brandLibraryTools } from './brand-library.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -83,6 +84,7 @@ export const ALL_TOOL_MODULES = [
   musicTools,
   combineTools,
   handoffTools,
+  brandLibraryTools,
 ];
 
 /**
