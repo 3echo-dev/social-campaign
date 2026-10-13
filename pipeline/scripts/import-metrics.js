@@ -210,6 +210,14 @@ async function main() {
   const postOut = metricoolRows ? results.postObservations({ brand, sourceJobId, sourceDir, rows: metricoolRows, readAt: now.toISOString(), variants }) : { observations: [], unmatched: [] };
   const observations = adOut.observations.concat(postOut.observations);
   const written = results.writeObservations(dir, observations);
+  // The numbers also go into the brand's library (library/results.jsonl), tied to the lines the earlier job used, so winners rank first
+  // in the bank. The Metricool posts and the CSV ads are filed here; the connector's ads were filed when they were saved. This never
+  // stops a review: the library is a bonus, not part of the findings.
+  try {
+    process.removeAllListeners('warning');
+    const library = await import(require('url').pathToFileURL(path.join(__dirname, '..', '..', 'server', 'pipeline', 'brand-results.mjs')).href);
+    library.recordObservationsQuietly({ root: path.resolve(dir, '..', '..', '..', '..'), brand, observations });
+  } catch { /* nothing to file */ }
   const summary = results.summarize({ sourceJobId, variants, pairs, observations });
   fs.mkdirSync(path.join(dir, 'results'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'results', 'summary.json'), JSON.stringify(summary, null, 2) + '\n');

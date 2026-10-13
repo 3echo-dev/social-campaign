@@ -1408,7 +1408,68 @@ function libraryCounts(library) {
 }
 export function libraryCountsLine(library) {
   const counts = libraryCounts(library || {});
-  return [`${counts.yours} yours`, `${counts.proven} proven`, plural(counts.jobs, 'job') + ' filed', counts.research === null ? '' : plural(counts.research, 'research file')].filter(Boolean).join(' · ');
+  const footage = libraryFootage(library || {});
+  return [`${counts.yours} yours`, `${counts.proven} proven`, plural(counts.jobs, 'job') + ' filed', counts.research === null ? '' : plural(counts.research, 'research file'), footage ? plural(footage.files, 'footage file') : ''].filter(Boolean).join(' · ');
+}
+// The Footage line of the Brand library: the brand's archive of past videos, pictures and audio, from `library.footage` ({folders, files,
+// analysedQuick, analysedFull, missing, list: [{id, name, rights, files, missing, state, processed?, total?}]}, which the server adds when
+// the brand has imported footage). The counts, then each folder with whose footage it is. Nothing is drawn for a brand with none.
+const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours to use', client_ask: 'Ask before posting', never: 'Never use' });
+const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
+const footageCount = value => (Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0);
+function libraryFootage(library) {
+  const footage = library && typeof library === 'object' ? library.footage : null;
+  if (!footage || typeof footage !== 'object' || Array.isArray(footage)) return null;
+  const files = footageCount(footage.files);
+  const folders = footageCount(footage.folders);
+  if (!files && !folders) return null;
+  return {
+    folders, files, described: footageCount(footage.analysedQuick) + footageCount(footage.analysedFull), full: footageCount(footage.analysedFull), missing: footageCount(footage.missing),
+    list: (Array.isArray(footage.list) ? footage.list : []).filter(item => item && typeof item === 'object'),
+  };
+}
+export function footageCountsLine(footage) {
+  const info = footage && footage.described !== undefined ? footage : libraryFootage({ footage });
+  if (!info) return '';
+  return [plural(info.files, 'file'), `${info.described} described`, info.full ? `${info.full} in full` : '', info.missing ? `${info.missing} missing` : ''].filter(Boolean).join(' · ');
+}
+function libraryFootageGroup(brand, footage) {
+  const rows = footage.list.slice(0, LIBRARY_GROUP_LIMIT).map(folder => {
+    const progress = folder.state === 'indexing' && footageCount(folder.total) > 0 ? `${footageCount(folder.processed)} of ${footageCount(folder.total)}` : '';
+    const meta = [FOOTAGE_RIGHTS_WORDS[folder.rights] || '', plural(footageCount(folder.files), 'file'), footageCount(folder.missing) ? `${footageCount(folder.missing)} missing` : '', FOOTAGE_STATE_WORDS[folder.state] || '', progress].filter(Boolean).map(esc).join(' &middot; ');
+    return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(folder.name) || 'Folder')}</span><span class="library-meta">${meta}</span></div></li>`;
+  }).join('');
+  const lost = footage.missing > 0 || footage.list.some(folder => folder.state === 'moved');
+  const note = lost ? '<p class="muted library-more">Some footage is not where it was. Tell Claude where the folder moved to and it will find the files again.</p>' : '';
+  return `<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-footage"><h3 id="library-${esc(brand.slug)}-footage">Footage <span class="count">${footage.files}</span></h3><p class="muted library-intro library-footage-counts">${esc(footageCountsLine(footage))}</p><ul class="library-list">${rows}</ul>${note}</section>`;
+}
+// Posted results on a bank item (`score`, `uses`, `label`, `views` from the server's ranking) and on a filed job (`results`): a pill that
+// says winner, weak or early, and the number it rests on. An average item shows the number without a pill. The score is "x your usual":
+// 1.0x is how this brand's posts usually do on that platform. An item with no results shows nothing.
+const RESULT_PILLS = Object.freeze({
+  winner: { word: 'Winner', hint: 'One of the best results of your posts so far' },
+  weak: { word: 'Weak', hint: 'One of the weakest results of your posts so far' },
+  early: { word: 'Early', hint: 'Too early to call: the post is new, has few views, or there are too few posts to compare with' },
+});
+const resultNumber = value => (Number.isFinite(value) ? `${value.toFixed(1)}x` : '');
+const resultViews = value => (Number.isFinite(value) && value >= 0 ? `${Math.round(value).toLocaleString('en-US')} views` : '');
+const resultPill = label => (Object.prototype.hasOwnProperty.call(RESULT_PILLS, label) ? `<span class="pill library-pill result-${label}" title="${esc(RESULT_PILLS[label].hint)}">${RESULT_PILLS[label].word}</span>` : '');
+function libraryResult(item) {
+  const uses = Number.isFinite(item.uses) && item.uses > 0 ? Math.floor(item.uses) : 0;
+  if (!uses) return '';
+  const early = item.label === 'early' || !Number.isFinite(item.score);
+  const score = Number.isFinite(item.score) ? `${resultNumber(item.score)} your usual${early ? ' so far' : ''}` : '';
+  const numbers = [score, plural(uses, 'post'), resultViews(item.views)].filter(Boolean).map(esc).join(' &middot; ');
+  return `<span class="library-result">${resultPill(item.label)}<span class="library-result-numbers">${numbers}</span></span>`;
+}
+function libraryJobResults(results) {
+  if (!results || typeof results !== 'object' || Array.isArray(results)) return '';
+  const early = results.label === 'early' || results.early === true || !Number.isFinite(results.score);
+  const views = resultViews(results.views);
+  const score = Number.isFinite(results.score) ? `${resultNumber(results.score)} your usual${early ? ' so far' : ''}` : '';
+  const numbers = [views, score, Number.isFinite(results.posts) ? plural(Math.floor(results.posts), 'post') : ''].filter(Boolean);
+  if (!numbers.length) return '';
+  return `<span class="library-hook library-job-results">Results: ${numbers.map(esc).join(' &middot; ')}${resultPill(results.label) ? ` ${resultPill(results.label)}` : ''}</span>`;
 }
 function libraryItem(item, brand, { removing, errors }) {
   const key = libraryKey(brand.slug, item.id);
@@ -1424,13 +1485,13 @@ function libraryItem(item, brand, { removing, errors }) {
   const action = !item.id ? '' : pending
     ? '<span class="library-pending" role="status">Removal sent to Claude</span>'
     : item.proven ? '' : `<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
-  return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
+  return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
 }
 function libraryJob(job) {
   const concept = job.concept && typeof job.concept === 'object' ? job.concept : {};
   const source = trimmed(concept.source) ? conceptSourceOf({ fields: [{ label: 'Source', value: concept.source }] }) : null;
   const meta = [concept.id ? `Concept ${concept.id}${trimmed(concept.title) ? `: ${concept.title}` : ''}` : '', source?.label || '', libraryDay(job.filedAt) ? `filed ${libraryDay(job.filedAt)}` : ''].filter(Boolean).map(esc).join(' &middot; ');
-  return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title) || 'Finished job')}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${trimmed(concept.hook) ? `<span class="library-hook">Opening line: ${esc(concept.hook)}</span>` : ''}</div></li>`;
+  return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title) || 'Finished job')}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${trimmed(concept.hook) ? `<span class="library-hook">Opening line: ${esc(concept.hook)}</span>` : ''}${libraryJobResults(job.results)}</div></li>`;
 }
 export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map() } = {}) {
   const library = brand?.library;
@@ -1444,7 +1505,8 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   const yours = libraryItems(library.yours);
   const proven = libraryItems(library.proven).map(item => ({ ...item, proven: true }));
   const jobs = (Array.isArray(library.recentJobs) ? library.recentJobs : []).filter(job => job && typeof job === 'object');
-  const body = group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state)) + group('Recent jobs filed', 'jobs', jobs, libraryJob);
+  const footage = libraryFootage(library);
+  const body = group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state)) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
   const key = `brand-library:${brand.slug}`;
   const empty = body ? '' : '<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
   return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;

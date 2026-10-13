@@ -7,14 +7,19 @@
  *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own)
  *     research/<jobId>.json  {jobId, at, files:[{path, sha256, topic, at}], industry?}   the research a job left, by path
  *     jobs/<jobId>.json      the filed job record (below)
+ *     footage/               the brand's imported archive of past videos, pictures and audio: links to the originals with rights, plus
+ *                            thumbnails and what was seen in each file (brand-footage.mjs documents the files)
  *     preferences.jsonl      {at, jobId, stage, picked, rejected[], note?}   what the person chose, and what they passed on
+ *     results.jsonl          what a posted video earned, by job (brand-results.mjs scores it against the brand's own usual): bank items
+ *                            read ranked, each with { score, uses, label }, and a job that becomes a winner has its opening line
+ *                            promoted to bank/proven (promotedFrom: the job id)
  *
  * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel.
  * A bank file is only ever appended to: an edit appends the item again with the same id and `edited: true, was: <old text>`, a removal
  * appends it again with `removed: true`, and a read keeps the last line of each id. Two writers never overwrite each other.
  * Every write is idempotent: the same item added twice is one item, and filing the same job twice changes nothing.
  *
- * The filed job record: {jobId, title, filedAt, concept:{id, title, source, hook}|null, research:[path], script:[{path, sha256}],
+ * The filed job record: {jobId, title, filedAt, concept:{id, title, source, hook, angle?, format?, style?, cta?}|null, research:[path], script:[{path, sha256}],
  * voiceOver:{path, sha256}|null, captions:[{path, sha256}], music:{id, title}|null, voice:{id}|null, styleKit?:{path, sha256},
  * media:[{path, sha256, kind, approved:true}], rubric?}. Paths are relative to the workspace root. Nothing is copied: the job's own
  * files stay where they are, and the record points at them (script = drafts/D<n>/script.md, else storyboard.md; captions = the post
@@ -43,6 +48,9 @@ import * as facts from './facts.mjs';
 import * as runtime from './runtime.mjs';
 import { parseConcepts } from './job-document.mjs';
 import { readAll as readSharedLibrary } from './library.mjs';
+import { SUMMARY_CACHE_MS as FOOTAGE_CACHE_MS, boardFootage, footageLine, footageSummary } from './brand-footage.mjs';
+// brand-results.mjs imports this file too; each use below is inside a function, never at load time.
+import { applyRanking, describeStat, jobResults } from './brand-results.mjs';
 
 export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel']);
 export const BANKS = Object.freeze(['yours', 'proven']);
@@ -60,7 +68,7 @@ const clip = (value, limit) => {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim();
   return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}\u2026` : text;
 };
-const sameText = (a, b) => String(a ?? '').toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '').replace(/\s+/g, ' ').trim() === String(b ?? '').toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '').replace(/\s+/g, ' ').trim();
+export const sameText = (a, b) => String(a ?? '').toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '').replace(/\s+/g, ' ').trim() === String(b ?? '').toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '').replace(/\s+/g, ' ').trim();
 const isoOf = now => {
   const date = now instanceof Date ? now : new Date(now ?? Date.now());
   return Number.isFinite(date.getTime()) ? date.toISOString() : new Date().toISOString();
@@ -143,13 +151,18 @@ function foldBank(file) {
   return [...byId.values()];
 }
 
-/** The items of a bank, newest first. Removed items are left out unless asked for. */
-export function readBank({ root, brand, bank = 'yours', kind = null, includeRemoved = false, limit = null } = {}) {
+/**
+ * The items of a bank. Removed items are left out unless asked for. With posted results behind them (brand-results.mjs) the items
+ * come ranked, best score first, each with { score, uses, label } (label is winner, average, weak, early or null) and the items with
+ * no results after the scored ones, newest first; pass ranked: false for the plain list, newest first, with nothing added.
+ */
+export function readBank({ root, brand, bank = 'yours', kind = null, includeRemoved = false, limit = null, ranked = true } = {}) {
   checkBank(bank);
   if (kind) checkKind(kind);
-  const items = foldBank(bankFile(root, brand, bank))
+  let items = foldBank(bankFile(root, brand, bank))
     .filter(item => (includeRemoved || !item.removed) && (!kind || item.kind === kind) && typeof item.text === 'string')
     .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? '')));
+  if (ranked) items = applyRanking({ root, brand, items });
   return Number.isInteger(limit) && limit > 0 ? items.slice(0, limit) : items;
 }
 
@@ -167,13 +180,13 @@ function evidenceOf(value) {
  * `yours` keeps the person's own lines; an item the person edited from an agent's line carries edited: true and was.
  * `proven` needs the https link of the post it comes from, with its views and date when known.
  */
-export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, now } = {}) {
+export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, now } = {}) {
   checkBank(bank);
   checkKind(kind);
   const words = clip(text, TEXT_LIMIT);
   if (!words) throw new InvalidInputError('Say the words to save.');
   requireBrand(root, brand);
-  const same = readBank({ root, brand, bank, kind }).find(item => sameText(item.text, words));
+  const same = readBank({ root, brand, bank, kind, ranked: false }).find(item => sameText(item.text, words));
   if (same) return { item: same, saved: false };
   const at = isoOf(now);
   const id = `${bank === 'yours' ? 'y' : 'p'}-${randomUUID().replace(/-/g, '').slice(0, 10)}`;
@@ -183,7 +196,7 @@ export function addToBank({ root, brand, bank = 'yours', kind, text, concept = n
     if (!proof.url) throw new InvalidInputError('A proven item needs the link to the post it comes from.', { fix: 'Pass evidence with an https url, and its views and date when you know them.' });
     if (source !== null && source !== undefined && !PROVEN_SOURCES.includes(source)) throw new InvalidInputError('The source is brand (one of the brand\'s own posts) or competitor.');
     const who = source === 'competitor' && typeof competitor === 'string' && competitor.trim() ? clip(competitor, 80) : null;
-    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), at };
+    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), at };
   } else {
     item = {
       id, kind, text: words,
@@ -211,7 +224,7 @@ export function editBankItem({ root, brand, bank = 'yours', id, text, now } = {}
   const words = clip(text, TEXT_LIMIT);
   if (!words) throw new InvalidInputError('Say the new words.');
   if (sameText(current.text, words)) return { item: current, changed: false };
-  if (readBank({ root, brand, bank, kind: current.kind }).some(item => item.id !== id && sameText(item.text, words))) throw new InvalidInputError('Another item in the bank already says that.');
+  if (readBank({ root, brand, bank, kind: current.kind, ranked: false }).some(item => item.id !== id && sameText(item.text, words))) throw new InvalidInputError('Another item in the bank already says that.');
   const item = { ...current, text: words, edited: true, was: current.text, at: isoOf(now) };
   appendLine(bankFile(root, brand, bank), item);
   return { item, changed: true };
@@ -464,8 +477,11 @@ function conceptRecord(job) {
   const concept = conceptsOf(job.dir).find(item => item.id === id) || null;
   const hook = parsed.line || hookOptions(fieldOf(concept, /^hook options/i))[0] || fieldOf(concept, /^hook\b/i) || null;
   const rubric = fieldOf(concept, /^rubric/i);
+  // The parts the concept named, kept so posted results can be tied to them (brand-results.mjs). Left out when the concept does not name one.
+  const parts = Object.entries({ angle: /^angle\b/i, format: /^(?:visual )?format\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
+    .map(([name, pattern]) => [name, fieldOf(concept, pattern)]).filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
   return {
-    concept: { id, title: concept?.title ?? parsed.title ?? null, source: sourceKind(fieldOf(concept, /^source/i)), hook: hook ? clip(hook, TEXT_LIMIT) : null },
+    concept: { id, title: concept?.title ?? parsed.title ?? null, source: sourceKind(fieldOf(concept, /^source/i)), hook: hook ? clip(hook, TEXT_LIMIT) : null, ...Object.fromEntries(parts) },
     rubric: rubric ? clip(rubric, 300) : null,
   };
 }
@@ -545,37 +561,50 @@ export function librarySummary({ root, brand, now } = {}) {
   return {
     brand,
     counts: {
-      yours: readBank({ root, brand, bank: 'yours' }).length,
-      proven: readBank({ root, brand, bank: 'proven' }).length,
+      yours: readBank({ root, brand, bank: 'yours', ranked: false }).length,
+      proven: readBank({ root, brand, bank: 'proven', ranked: false }).length,
       research: researchIndex({ root, brand, now }).length,
       jobs: readFiledJobs({ root, brand }).length,
       preferences: readPreferences({ root, brand }).length,
     },
+    footage: footageSummary({ root, brand, cacheMs: FOOTAGE_CACHE_MS }),
   };
 }
 
-const jobLine = record => ({
+const jobLine = (record, results) => ({
   jobId: record.jobId, title: record.title, filedAt: record.filedAt,
   concept: record.concept ? { id: record.concept.id, title: record.concept.title, source: record.concept.source, hook: record.concept.hook } : null,
   mediaCount: Array.isArray(record.media) ? record.media.length : 0,
+  ...(results ? { results } : {}),
 });
 
+/** The proven items, ranked by their posted results, then the ones with the most views (evidence), then the newest. */
+export function readProven({ root, brand, kind = null, limit = null } = {}) {
+  const byViews = readBank({ root, brand, bank: 'proven', kind, ranked: false }).sort((a, b) => (b.evidence?.views ?? -1) - (a.evidence?.views ?? -1) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
+  const items = applyRanking({ root, brand, items: byViews });
+  return Number.isInteger(limit) && limit > 0 ? items.slice(0, limit) : items;
+}
+
 /**
- * The brand page's library: { counts, yours, proven, recentJobs }, small enough to ride in the board document (the person's newest
- * items, the proven items with the most views, the last jobs filed). Never throws: a library that cannot be read is an empty one.
+ * The brand page's library: { counts, yours, proven, recentJobs }, small enough to ride in the board document (the person's items,
+ * the proven items, the last jobs filed). Items with posted results come first, best score first, each with { score, uses, label };
+ * after them the person's newest and the proven items with the most views. A filed job that has results carries them as
+ * results: { score, label, early, posts, views, at }. Never throws: a library that cannot be read is an empty one.
  */
 export function boardLibrary({ root, brand, now } = {}) {
   const empty = { counts: { yours: 0, proven: 0, research: 0, jobs: 0, preferences: 0 }, industry: null, yours: [], proven: [], recentJobs: [] };
   try {
     const yours = readBank({ root, brand, bank: 'yours' });
-    const proven = readBank({ root, brand, bank: 'proven' }).sort((a, b) => (b.evidence?.views ?? -1) - (a.evidence?.views ?? -1) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
+    const proven = readProven({ root, brand });
     const jobs = readFiledJobs({ root, brand });
+    const results = jobResults({ root, brand });
     return {
       counts: { ...librarySummary({ root, brand, now }).counts },
+      ...footageForBoard({ root, brand }),
       industry: yours.find(item => item.kind === 'industry') || null,
       yours: yours.slice(0, BOARD_LIMITS.yours).map(item => ({ ...item, text: clip(item.text, BOARD_LIMITS.text), ...(item.was ? { was: clip(item.was, BOARD_LIMITS.text) } : {}) })),
       proven: proven.slice(0, BOARD_LIMITS.proven).map(item => ({ ...item, source: item.source || 'brand', text: clip(item.text, BOARD_LIMITS.text) })),
-      recentJobs: jobs.slice(0, BOARD_LIMITS.jobs).map(jobLine),
+      recentJobs: jobs.slice(0, BOARD_LIMITS.jobs).map(record => jobLine(record, results.get(record.jobId))),
     };
   } catch { return empty; }
 }
@@ -584,22 +613,38 @@ const quoted = text => `"${clip(text, 160)}"`;
 const viewsText = views => (Number.isFinite(views) ? `${views.toLocaleString('en-US')} views` : null);
 
 /**
- * A short block for an agent's brief: the person's own lines, the proven items, the research already on file with its age, and the
- * last choices the person made. null when the library is empty. Kept to a few hundred words.
+ * A short block for an agent's brief: what the brand's posted results say (winners first with their numbers, weak lines to avoid),
+ * the person's own lines, the proven items, the research already on file with its age, and the last choices the person made.
+ * null when the library is empty. Kept to a few hundred words.
  */
-export function libraryBlock({ root, brand, now } = {}) {
-  let industry = null; let yours = []; let proven = []; let research = []; let choices = [];
+function libraryBlockWithoutFootage({ root, brand, now } = {}) {
+  let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = [];
   try {
     const own = readBank({ root, brand, bank: 'yours' });
+    const all = readProven({ root, brand });
     industry = own.find(item => item.kind === 'industry') || null;
-    yours = own.filter(item => item.kind !== 'industry').slice(0, 6);
-    proven = readBank({ root, brand, bank: 'proven' }).sort((a, b) => (b.evidence?.views ?? -1) - (a.evidence?.views ?? -1)).slice(0, 5);
+    const scored = [...own.filter(item => item.kind !== 'industry').map(item => ({ ...item, own: true })), ...all];
+    // The same words can sit in both banks (a winner promoted to proven keeps its place in the person's own lines): list them once.
+    const once = list => list.filter((item, index) => list.findIndex(other => other.kind === item.kind && sameText(other.text, item.text)) === index);
+    winners = once(scored.filter(item => item.label === 'winner').sort((a, b) => b.score - a.score)).slice(0, 5);
+    weak = once(scored.filter(item => item.label === 'weak').sort((a, b) => a.score - b.score)).slice(0, 4);
+    const shown = item => [...winners, ...weak].some(other => other.kind === item.kind && sameText(other.text, item.text));
+    yours = own.filter(item => item.kind !== 'industry' && !shown(item)).slice(0, 6);
+    proven = all.filter(item => !shown(item)).slice(0, 5);
     research = researchIndex({ root, brand, now }).slice(0, 6);
     choices = readPreferences({ root, brand, limit: 3 });
   } catch { return null; }
-  if (!industry && !yours.length && !proven.length && !research.length && !choices.length) return null;
+  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !research.length && !choices.length) return null;
   const lines = ['Brand library (what this brand already has; ask brand_library_get for more):'];
   if (industry) lines.push(`Industry (the person's pick): ${clip(industry.text, 120)}`);
+  if (winners.length) {
+    lines.push("Winners, from this brand's own posted results (1.0x is its usual). Prefer these, and say the numbers when you use one:");
+    for (const item of winners) lines.push(`- ${item.kind}: ${quoted(item.text)} - ${describeStat(item)}${item.own ? ", the person's own line, use it word for word" : ''}`);
+  }
+  if (weak.length) {
+    lines.push('Weak lines, from the same results. Avoid unless the person asks:');
+    for (const item of weak) lines.push(`- ${item.kind}: ${quoted(item.text)} - ${describeStat(item)}`);
+  }
   if (yours.length) {
     lines.push('The person\'s own lines. Use them word for word, never reword them:');
     for (const item of yours) lines.push(`- ${item.kind}: ${quoted(item.text)}${item.concept ? ` (concept ${item.concept})` : ''}${item.edited ? ', edited by the person' : ''}`);
@@ -621,4 +666,22 @@ export function libraryBlock({ root, brand, now } = {}) {
     }
   }
   return lines.join('\n');
+}
+
+/** The board's footage entry ({ folders, files, analysedQuick, analysedFull, missing, list }): only for a brand that has imported footage. */
+function footageForBoard({ root, brand }) {
+  const footage = boardFootage({ root, brand, cacheMs: FOOTAGE_CACHE_MS });
+  return footage.folders ? { footage } : {};
+}
+
+/**
+ * The block above plus, when the brand has imported footage, one line saying so and how to search it (brand_footage_search) for a
+ * repurpose job, with the rights rule. A brand with only footage gets the line under the block's heading. null when there is nothing.
+ */
+export function libraryBlock(options = {}) {
+  const block = libraryBlockWithoutFootage(options);
+  let line = null;
+  try { line = footageLine({ root: options.root, brand: options.brand }); } catch { line = null; }
+  if (!line) return block;
+  return [block || 'Brand library (what this brand already has; ask brand_library_get for more):', line].join('\n');
 }

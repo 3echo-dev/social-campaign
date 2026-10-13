@@ -342,7 +342,9 @@ export const assetTools = [
     description:
       'Start indexing a media folder into the creative library: find supported files, hash and dedupe them, ' +
       'read their facts and make thumbnails. Returns a job id at once; poll library_status for progress. ' +
-      'The folder is only read. Pointing at the same folder again only picks up new files.',
+      'The folder is only read. Pointing at the same folder again only picks up new files. ' +
+      'This fills the older creative library, which jobs do not read. For a brand\'s archive of past footage use brand_footage_import instead: it keeps the footage in the brand\'s library with rights, ' +
+      'and brand_footage_search finds it again for repurpose jobs.',
     inputSchema: {
       type: 'object',
       properties: {

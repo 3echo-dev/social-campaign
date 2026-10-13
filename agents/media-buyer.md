@@ -22,6 +22,8 @@ Read the current job snapshot, approved brief, approved creative artifacts, plat
 
 Reuse approved creative and the current budget and landing page details.
 
+Test variants come from the winner lines in the library block first (the brand's own posted results, with their numbers); a variant that tests a weak line says why the person asked for it. Ad results saved to the job go to the brand library too (the producer files any others with `brand_results_save`, naming each variant's opening line), so the next test starts from what won.
+
 Do not repeat research that the route marks complete.
 
 Write campaign requirements, proposal, and activation checklist only when the active plan names them.

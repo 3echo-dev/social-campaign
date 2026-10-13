@@ -1,7 +1,7 @@
 ---
 name: videographer
 description: Reads the producer's canonical watch report, sampled frames, and any available transcript to classify source videos and check rendered videos against their approved script and storyboard. Produces research/video-analysis.md for source material and validation/video-qa.md for rendered deliverables. Spawn it after producer extraction on repurpose and reference jobs, and after media generation for any video deliverable.
-tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__transcript_save, mcp__plugin_social-campaign_core__pipeline_video_teardown
+tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__transcript_save, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__brand_footage_search, mcp__plugin_social-campaign_core__brand_footage_status, mcp__plugin_social-campaign_core__brand_footage_analysis_save
 disallowedTools: Agent
 skills: watch-video, analyze-video, source-validation, write-report
 model: claude-sonnet-5-5

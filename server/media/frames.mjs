@@ -8,7 +8,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { workspaceDir } from '../lib/paths.mjs';
 import { run } from './probe.mjs';
@@ -36,8 +36,11 @@ export function thumbsDir(root, assetId) {
   return join(thumbsRoot(root), assetId);
 }
 
-/** ffmpeg filter that fits the frame inside FRAME_MAX_EDGE without upscaling. */
-const SCALE_FILTER = `scale='min(${FRAME_MAX_EDGE},iw)':'min(${FRAME_MAX_EDGE},ih)':force_original_aspect_ratio=decrease`;
+/** ffmpeg filter that fits the frame inside a square of the given edge without upscaling. */
+const scaleFilter = (edge) => `scale='min(${edge},iw)':'min(${edge},ih)':force_original_aspect_ratio=decrease`;
+
+/** The filter for a representative frame: it fits inside FRAME_MAX_EDGE. */
+const SCALE_FILTER = scaleFilter(FRAME_MAX_EDGE);
 
 /**
  * @param {number} index
@@ -130,6 +133,46 @@ export async function extractImageThumbnail(options) {
   ]);
   const frames = existsSync(target) ? [target] : [];
   return { dir, thumbnail: frames[0] ?? '', frames };
+}
+
+/** Longest edge of a footage thumbnail, in pixels. */
+export const THUMBNAIL_MAX_EDGE = 320;
+
+/**
+ * One small jpg of a video or an image, written to the file the caller names (the brand footage thumbnails).
+ * A video is sampled a little way in (a third of the way, at most 1 s, or 1 s when its length is not known), so a fade from black is
+ * not the thumbnail; when that is past the end of a very short clip the first frame is used.
+ * @param {{filePath: string, kind: 'video'|'image', outFile: string, duration?: number|null, maxEdge?: number}} options
+ * @returns {Promise<string|null>} the written file, or null when ffmpeg wrote nothing
+ */
+export async function extractThumbnail(options) {
+  mkdirSync(dirname(options.outFile), { recursive: true });
+  const duration = Number(options.duration);
+  const known = Number.isFinite(duration) && duration > 0;
+  const at = options.kind === 'video' ? (known ? Math.round(Math.min(1, duration / 3) * 1000) / 1000 : 1) : 0;
+  const grab = async (seconds) => {
+    await run('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      ...(seconds > 0 ? ['-ss', String(seconds)] : []),
+      '-i',
+      options.filePath,
+      '-frames:v',
+      '1',
+      '-vf',
+      scaleFilter(options.maxEdge ?? THUMBNAIL_MAX_EDGE),
+      '-q:v',
+      '4',
+      options.outFile,
+    ]);
+    return existsSync(options.outFile);
+  };
+  if (at > 0) {
+    try { if (await grab(at)) return options.outFile; } catch { /* a clip shorter than that: take its first frame */ }
+  }
+  return (await grab(0)) ? options.outFile : null;
 }
 
 /**

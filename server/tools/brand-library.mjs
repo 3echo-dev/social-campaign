@@ -10,8 +10,9 @@ import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import {
-  BANKS, BANK_KINDS, PROVEN_SOURCES, addToBank, boardLibrary, editBankItem, fileJob, readBank, readFiledJobs, readPreferences, removeBankItem, researchIndex,
+  BANKS, BANK_KINDS, PROVEN_SOURCES, addToBank, boardLibrary, editBankItem, fileJob, readBank, readFiledJobs, readPreferences, readProven, removeBankItem, researchIndex,
 } from '../pipeline/brand-library.mjs';
+import { jobResults } from '../pipeline/brand-results.mjs';
 
 const string = { type: 'string' };
 
@@ -36,7 +37,8 @@ export const brandLibraryTools = [
       'Read one brand\'s library: what the brand already has, so a job starts from it instead of from nothing. Changes nothing.',
       'Returns counts, industry (the person\'s industry pick, or null), yours (the person\'s own lines, to use word for word), proven (what worked, each with its evidence: link, views, date, and whether it came from the brand or a competitor),',
       'research (the research files already done, newest per topic, each with its age in days and whether it is young enough to reuse: brand and competitor research under 30 days, trends under 7),',
-      'recentJobs (the last jobs filed, with their concept, opening line and how many approved media files), and preferences (what the person chose lately and what they passed on).',
+      'recentJobs (the last jobs filed, with their concept, opening line, how many approved media files and, once posted, their results: score, label and views), and preferences (what the person chose lately and what they passed on).',
+      'Once posts have results, yours and proven come best first, each item with score (1.0 is the brand\'s usual), uses (how many jobs it rests on) and label (winner, average, weak or early; null when there are no results). Prefer winners, say their numbers, and avoid weak ones unless the person asks.',
       'Pass kind to see only one kind of item (hook, angle, style, cta, caption, format, industry or funnel).',
     ].join(' '),
     inputSchema: {
@@ -54,7 +56,8 @@ export const brandLibraryTools = [
       const brand = knownBrand(root, args.brand);
       const limit = Number.isInteger(args.limit) ? args.limit : 50;
       const kind = args.kind || null;
-      const proven = readBank({ root, brand, bank: 'proven', kind }).sort((a, b) => (b.evidence?.views ?? -1) - (a.evidence?.views ?? -1) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
+      const proven = readProven({ root, brand, kind });
+      const results = jobResults({ root, brand });
       return {
         brand,
         counts: boardLibrary({ root, brand }).counts,
@@ -62,7 +65,7 @@ export const brandLibraryTools = [
         yours: readBank({ root, brand, bank: 'yours', kind, limit }),
         proven: proven.slice(0, limit).map(item => ({ ...item, source: item.source || 'brand' })),
         research: researchIndex({ root, brand }),
-        recentJobs: readFiledJobs({ root, brand, limit: 10 }).map(record => ({ jobId: record.jobId, title: record.title, filedAt: record.filedAt, concept: record.concept, music: record.music, mediaCount: (record.media || []).length })),
+        recentJobs: readFiledJobs({ root, brand, limit: 10 }).map(record => ({ jobId: record.jobId, title: record.title, filedAt: record.filedAt, concept: record.concept, music: record.music, mediaCount: (record.media || []).length, ...(results.has(record.jobId) ? { results: results.get(record.jobId) } : {}) })),
         preferences: readPreferences({ root, brand, limit: 5 }),
       };
     },

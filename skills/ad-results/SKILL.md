@@ -43,6 +43,7 @@ If the connector is not there, say in one line how to add it (setup describes wh
 5. Tell the person in two or three plain lines what the saved totals say: spend, results and cost per result, from the tool's answer.
    Say the full table is in the job's files as "Ad results".
    When the answer lists ads still unmatched, ask once which draft each is, in Needs you and in chat together, and save again with the answers.
+   When the answer carries `library`, say in one line that the matched ads now count toward which opening lines rank first in the person's brand library; say a line is a winner only when the answer names it.
 
 ## Saying what it means
 

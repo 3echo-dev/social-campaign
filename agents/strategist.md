@@ -26,6 +26,7 @@ Fill Viewer problem, Ad style, funnel stage and CTA, Honest trade-off, Proof mom
 A brief with no viewer problem, or whose anchor is a positive testimonial with no cost named, is not finished.
 The brief feeds Concept A, the one from the brand: where the direction leaves the angle, anchor or hook family open, take them first from the bank's proven items and the person's own items (the library block at the end of your spawn prompt lists the top ones; the whole bank is `workspaces/{brand}/library/bank/`, leaving out removed items), then from the brand's own best posts in `research/concept-sources.md`, and name the item each came from. A proven item that starts with "Competitor" belongs to Concept B, not A.
 Follow the preferences in the library block (what the person picked and rejected before). A line the person wrote on the board is kept word for word, never replaced by a "Sharpened" line.
+Prefer the winner items the library block lists from the brand's own posted results, avoid the weak ones unless the person asks, and say the numbers when you use one.
 
 Reuse accepted evidence whose scope and hashes still match the plan.
 

@@ -20,6 +20,10 @@ const LEGACY_BRAND_TOOL_REPLACEMENTS = {
 
 // The brand library tools are new, not legacy: they keep the brand_ prefix and work in every workspace.
 const BRAND_LIBRARY_TOOLS = new Set(['brand_library_get','brand_bank_save','brand_library_file_job']);
+// So are the brand footage tools (server/tools/brand-footage.mjs), a brand's archive kept in its library.
+for(const name of ['brand_footage_import','brand_footage_status','brand_footage_search','brand_footage_analysis_save','brand_footage_mark','brand_footage_folder'])BRAND_LIBRARY_TOOLS.add(name);
+// And the brand results tools (server/tools/brand-results.mjs): what a posted video earned, ranking the bank.
+for(const name of ['brand_results_save','brand_results_get'])BRAND_LIBRARY_TOOLS.add(name);
 
 export function assertLegacyExecutionAllowed(root,toolName,args = {}) {
   if(root && /^brand_/.test(toolName) && !BRAND_LIBRARY_TOOLS.has(toolName) && existsSync(join(root,'.social-pipeline','config.json'))) {

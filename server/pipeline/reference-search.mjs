@@ -16,7 +16,7 @@
  *
  * - `urls: [...]` is the verify step: each single public video URL (found by a web search, a competitor's site or a press
  *   page, never from a listing page) is opened on its own with `--dump-json --skip-download --no-cookies`, with
- *   `--impersonate chrome` first for TikTok and a retry without it when curl_cffi is missing. Each URL gets its own status
+ *   `--impersonate chrome` for TikTok when this yt-dlp can (asked once per process, so there is no second run). Each URL gets its own status
  *   (ok / blocked / not_found / login_required), so a walled search or profile page never says anything about a video.
  *
  * It only lists candidates. The researcher still checks each one is in the niche, then downloads and takes it apart

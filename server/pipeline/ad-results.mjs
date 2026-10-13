@@ -19,6 +19,7 @@ import { join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
 import { AD_PROVIDERS, readBrandAdAccount } from './ad-accounts.mjs';
+import { recordAdResultsQuietly } from './brand-results.mjs';
 
 export const AD_RESULTS_DIR = 'results/ad-results';
 export const AD_RESULTS_SUMMARY = 'results/ad-results.md';
@@ -193,8 +194,11 @@ export function saveAdResults({ root, brand, jobId, provider, accountId, dateSta
   const body = `${JSON.stringify(record, null, 2)}\n`;
   writeAtomic(join(folder, name), body);
   const summaryText = writeAdResultsSummary(job.dir);
+  // The ads matched to a draft of this job go into the brand library too, so the lines they used can be ranked by how they did.
+  const library = recordAdResultsQuietly({ root: job.root, brand: job.brand, jobId: job.jobId, record, now });
   return {
     ok: true,
+    ...(library?.recorded ? { library: { recorded: library.recorded, winners: library.promoted.map(item => item.item.text) } } : {}),
     file: `${AD_RESULTS_DIR}/${name}`,
     summaryFile: AD_RESULTS_SUMMARY,
     sha256: createHash('sha256').update(body).digest('hex'),

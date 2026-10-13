@@ -58,8 +58,16 @@ Each concept also gives:
 - Proof moment and honest trade-off, from the brief.
 - Camera and sound: one line each (for example "one canvas, zoom out to the map at 10 s, follow the bar; upbeat bed, a tick on each step").
 Recommend the concept that best meets these, not the one closest to the reference's surface. Follow the preferences in the brief and the library block (what the person picked and rejected before).
+Prefer the winner lines and styles the library block lists from the brand's own posted results, avoid the weak ones unless the person asks, and say the numbers when you use one (for example "a winner: 2.3x this brand's usual over 3 posts").
 The concept approval's note names the opening line the person picked ("Opening line: ..."): use it word for word as the first spoken line.
 Lines the person wrote on the board show in the note as `Your own opening line: "..."` or `Edited opening line (was "..."): "..."`. They are theirs: use them word for word, never reworded or trimmed, and when one breaks a rule below (for example the 7-word opening), keep it and say so in your hand back.
+
+## Footage from the brand's archive
+
+When the library block at the end of your spawn prompt has a "Footage: " line, the brand has past videos, pictures or audio, and the producer gives you the matching files from `brand_footage_search` with the brief.
+For a repurpose or cut-down job, plan the shots from those clips first: name each file and the start and end of the moment you use, in seconds, and ask for new pictures or clips only where the archive has nothing that fits.
+Every file carries its rights. Never plan a file marked never. Plan a `client_ask` file only with a line in the storyboard Notes saying the person is asked before it is posted.
+You cannot search the archive yourself: when the job needs footage and none was given, return an open question asking the producer to search, and never invent a file.
 
 ## Script and storyboard rules
 

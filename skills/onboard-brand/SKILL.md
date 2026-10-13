@@ -18,6 +18,7 @@ metadata:
 - 3. Complete the profile
 - 4. Brand research pass
 - 4b. Industry and the brand library
+- 4c. Your archive (optional)
 - 5. Verify and show the board
 - 6. Return to a pending job
 - Local boundaries
@@ -217,6 +218,21 @@ Start a competitor item's text with "Competitor <name>: ", so it is never taken 
 Skip a post that has no caption, views or date; never fill in or round a figure.
 When nothing could be read, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
 When items were saved, say so in one line, for example "Saved 5 top posts to your brand library."
+
+## 4c. Your archive (optional)
+
+Once the industry question is asked, offer the brand's archive, once: a folder of past videos, pictures or audio on this computer (a Drive folder pulled to this computer works too).
+It is optional. A brand with no archive skips this step and onboards exactly as before; say nothing about it when the person has none.
+
+Ask with `pipeline_board_ask` for the brand, for example "Do you have a folder of past videos or photos I can learn from? Paste its full path, or choose Not now.", with "Not now" as the one button and a typed answer allowed. Do not wait for the answer; carry on with the steps around this one.
+When a path arrives, ask who the footage belongs to with `pipeline_board_ask`, in plain words, with three buttons: "Ours, free to use" (rights ours), "Ask me each time before posting" (client_ask) and "Never use it" (never). Never guess the rights and never default them.
+Then call `brand_footage_import` with the brand, the folder, the rights and a short label in the person's words. It reads the folder in the background, skips copies, makes small thumbnails and costs nothing; the files are never copied, moved or changed. Say so in one line, for example "Reading your folder now. It is free and runs in the background."
+A bigger folder takes a while. `brand_footage_status` shows how far it got, and calling `brand_footage_import` again with the same folder carries on after a stop. A folder that moved shows its files as missing: ask the person for the new place and use `brand_footage_folder` with `relink`.
+
+Describing the footage is what costs model usage, so keep the first pass small: at most 20 files, and only when the person agrees.
+List them with `brand_footage_search` (`analysed` none, `kind` video). For each, call `media_extract_frames` on its `path` with a count of 3, Read the frames, and get the first spoken words with `media_transcribe` only when it answers with a transcript at no cost; when it says it needs a paid transcription provider, leave the spoken words out and do not run it. Then call `brand_footage_analysis_save` with stage `quick`: what the opening seconds show, the first spoken words if any, and the products, mood and shot types you can see. Never describe a file marked never. Describe more only when the person asks.
+When the first pass is done, tell the person in plain words how many files there are and how many you looked at, and offer a full breakdown of the clips they care about: ask with `pipeline_board_ask` ("Want me to break down your best clips in full? It reads each one closely and uses model usage."). Mark the files they pick with `brand_footage_mark`. Its answer says how many files are marked and that a full pass uses model usage: tell the person that number and ask again before you start. Then watch each marked file (`media_extract_frames` with a count of 12 and the transcript) and save stage `full` with `brand_footage_analysis_save`: scenes, shot types, products, mood, on-screen text and usable moments, with start and end times in seconds.
+When the first pass is saved, say what the person now has in one line, for example "Your archive has 128 files, and I have looked at 20 of them."
 
 ## 5. Verify and show the board
 
