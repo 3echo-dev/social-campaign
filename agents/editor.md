@@ -34,6 +34,8 @@ Write the requested validation reports and one clear GO or NEEDS REVISION result
 
 When the Director asks for the label and brand-mark check, run steps 1 to 4 of skills/brand-check/SKILL.md (`pipeline_qc_frames`, read every frame, `pipeline_qc_save`) and answer in at most 5 lines: no flags, or one line per flag, and the saved check id. Keep the readings out of the answer.
 
+When the Director asks for the creative rubric, score against `playbooks/creative-rubric.md` with evidence for every criterion: the script and storyboard before the price (write `validation/rubric-storyboard.md`), the finished video after finishing (write `validation/rubric-final.md`, with measured cuts per minute, the longest silence and caption timing). Any criterion under 7 on the storyboard is NEEDS REVISION with the fix named. Answer in at most 5 lines: the total, the weakest criteria and the fixes.
+
 Do not edit a draft, change the route, repeat research, call a provider, spend credits, publish, or apply a gate.
 
 Return the report paths, rule hashes, reused checks, findings, and the next required state.

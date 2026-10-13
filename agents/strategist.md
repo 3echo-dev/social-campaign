@@ -22,7 +22,7 @@ Read the current job snapshot, frozen plan, brand files, accepted research artif
 
 Start from the job's topic and its approved direction: never change the topic, and fill the brief's fields from the direction first.
 The direction's message is a working line: propose a sharper one from the audience's own words under Core message as "Sharpened", never replace it silently.
-Fill Viewer problem, Ad style, funnel stage and CTA, Honest trade-off, Proof moment and numbers, Message budget and Supply questions in every brief. Take the ad style from `playbooks/ad-styles.md` and the CTA from `playbooks/ctas.md`, filtered by the brand's industry (`brand/profile.json` `industry`), and the viewer problem from the problem bank in `research/audience.md`.
+Fill Viewer problem, Ad style, funnel stage and CTA, Honest trade-off, Proof moment and numbers, Message budget and Supply questions in every brief. Take the ad style from `playbooks/ad-styles.md` and the CTA from `playbooks/ctas.md`, filtered by the brand's industry (`brand/profile.json` `industry`, else inferred from the brand files and marked inferred), and the viewer problem from the problem bank in `research/audience.md`. The industry steers the competitors, the angle and the format: for example beauty and skincare lean emotional or before-after, and influencer-style UGC only when the brand has a creator.
 A brief with no viewer problem, or whose anchor is a positive testimonial with no cost named, is not finished.
 
 Reuse accepted evidence whose scope and hashes still match the plan.

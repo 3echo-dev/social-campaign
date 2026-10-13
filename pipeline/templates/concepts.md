@@ -21,6 +21,8 @@ created: YYYY-MM-DD HH:MM {tz}
 
 # Concepts for {job-id}
 
+Open the card with the strategy the person approves here, from the brief, one line each: industry, viewer problem, awareness stage, ad style, funnel stage, CTA, proof moment, honest trade-off, and any sharpened message. The person can change any of them with the concept pick.
+
 Each concept comes from a different insight. Ranked, with a recommendation. No script and no media exist yet.
 Every concept names one value for each idea part (anchor, stage, angle, format, hook family, mechanic). Concepts in one set differ in at least one part, and the "Why this differs" line in the brief's deliverable map says which.
 
@@ -50,6 +52,7 @@ Every concept names one value for each idea part (anchor, stage, angle, format, 
 - Disclosure (UGC only): AI-generated creator, paid partnership, or gifted, and where it sits
 - Target duration:
 - Why this wins:
+- Rubric pre-score: hook {n}/10, problem {n}/10, takeaways {n}/10, proof {n}/10, loop {n}/10, trade-off {n}/10 (playbooks/creative-rubric.md)
 - Ranking: written by `rank-concepts.js`, never by hand
 
 ## Concept B: {title}
