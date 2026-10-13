@@ -989,8 +989,8 @@ function scaledThumbnail(file, sha256, cacheDir, { video = false, edge = THUMB_E
  * A small JPEG thumbnail of an image, or of a video's first frame, as a data URI, or null. The Needs-you cards use it so a review
  * card shows what it is about. Cached by path, size and time so a large video is never hashed; never throws.
  */
-const PREVIEW_EDGE = 144;
-const PREVIEW_BYTES = 12 * 1024;
+const PREVIEW_EDGE = 288;
+const PREVIEW_BYTES = 20 * 1024;
 export function previewThumb(file, cacheDir, { video = false } = {}) {
   try {
     const info = statSync(file);

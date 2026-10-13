@@ -1082,7 +1082,6 @@ function sampleRestWords(rest) {
 
 // The reviews whose Needs-you card shows small pictures of what is waiting: the storyboard, the media checks and the post.
 const PREVIEW_GATES = new Set(['storyboard', PICTURES_GATE, CLIPS_GATE, CUT_GATE, FINISH_GATE, 'content', 'publish']);
-const PREVIEW_MANY = new Set(['storyboard', PICTURES_GATE, CLIPS_GATE]);
 const PREVIEW_VIDEO = /\.(mp4|mov|m4v|webm)$/i;
 const PREVIEW_IMAGE = /\.(png|jpe?g|webp|gif)$/i;
 
@@ -1113,7 +1112,8 @@ function previewPaths(dir, artifacts) {
 function decisionPreviews(root, dir, gate, review) {
   if (!dir || !PREVIEW_GATES.has(gate)) return [];
   const artifacts = (Array.isArray(review?.artifacts) ? review.artifacts : []).map(item => item?.path).filter(path => typeof path === 'string');
-  const limit = PREVIEW_MANY.has(gate) ? 3 : 1;
+  // One picture per card, shown large.
+  const limit = 1;
   const shown = [];
   for (const path of [...new Set(previewPaths(dir, artifacts))]) {
     if (shown.length >= limit) break;
@@ -1314,7 +1314,7 @@ export function personWaiting(root, job, { questions = null } = {}) {
 }
 
 // The pictures on the Needs-you cards share a small part of the board's size budget; cards past it show none.
-const INBOX_PREVIEW_BUDGET = 64 * 1024;
+const INBOX_PREVIEW_BUDGET = 112 * 1024;
 function withinPreviewBudget(items) {
   let used = 0;
   return items.map(item => {

@@ -4485,7 +4485,9 @@ export function inboxCard(item, ctx = {}) {
     : item.kind === 'question' ? questionCard(item, ctx.question || {}, ctx.signal || {}, index)
       : item.kind === 'decision' ? decisionCard(item, ctx)
         : briefCard(item, ctx, index);
-  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}" data-inbox-key="${esc(inboxKey(item))}">${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}</li>`;
+  const more = Number.isInteger(ctx.more) && ctx.more > 0 ? `<p class="inbox-more">${esc(`${ctx.more} more ${ctx.more === 1 ? 'thing waits' : 'things wait'} in this job.`)}</p>` : '';
+  const opens = ctx.opensJob && item.jobId ? ` data-card-job="${esc(item.jobId)}"` : '';
+  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}${more}</li>`;
 }
 
 // Several questions from one job on one card: the job line once, then each question with its own answers.
@@ -4530,6 +4532,36 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
     const same = briefs.filter(other => (other.jobId || null) === (item.jobId || null));
     return { briefKeys: same.map(other => other.field), briefLead: !same.length || same[0] === item };
   };
+  // On the workspace pages, one card per job: only the job's most pressing step (a review first, then its oldest question, then the
+  // rest), with a line saying how many more wait in the job. The card opens the job. Items with no job (a brand question) keep their own card.
+  if (workspace) {
+    const order = item => ({ decision: 0, question: 1, brief: 2, post: 3, handoff_return: 4, handoff_offer: 5, stuck: 6 }[item.kind] ?? 7);
+    const jobs = new Map();
+    const loose = [];
+    list.forEach((item, index) => {
+      if (!item.jobId) { loose.push([index]); return; }
+      if (!jobs.has(item.jobId)) jobs.set(item.jobId, []);
+      jobs.get(item.jobId).push(index);
+    });
+    // Within a kind the list is newest first, so the oldest question (the one asked first) is the last of its kind.
+    const open = at => !isAnswered(at) && ((list[at].kind !== 'onboarding' && !list[at].closing) || list[at].needsYou);
+    // An answered question steps aside so the next one shows straight away.
+    const lead = indexes => [...indexes].sort((a, b) => Number(isAnswered(a)) - Number(isAnswered(b)) || order(list[a]) - order(list[b]) || (list[a].kind === 'question' ? b - a : a - b))[0];
+    const groups = [...[...jobs.values()].map(indexes => ({ indexes, at: lead(indexes) })), ...loose.map(([index]) => ({ indexes: [index], at: index }))]
+      .sort((a, b) => Math.min(...a.indexes) - Math.min(...b.indexes));
+    const jobCards = groups.map(({ indexes, at }) => {
+      const item = list[at];
+      const more = indexes.filter(index => index !== at && open(index)).length;
+      const card = inboxCard(item, { signal, ...contexts[at], ...brief(item), workspace, index: at, more, opensJob: Boolean(item.jobId) });
+      return card;
+    }).join('');
+    const waiting = groups.filter(({ indexes }) => indexes.some(open)).length;
+    const jobTag = waiting ? `<span class="pill needed">${waiting} ${waiting === 1 ? 'needs' : 'need'} you</span>` : '';
+    if (strip) return list.length ? `<section class="needs-strip" aria-labelledby="needs-strip-title"><div class="section-head"><h2 id="needs-strip-title">Needs you</h2>${jobTag}</div><ol class="inbox-list">${jobCards}</ol></section>` : '';
+    const jobBody = list.length ? `<ol class="inbox-list">${jobCards}</ol>` : empty ? `<p class="inbox-announce">${esc(empty)}</p>` : '';
+    if (bare) return jobBody ? `<div class="director-inbox">${jobBody}</div>` : '';
+    return `<aside class="inbox" aria-labelledby="inbox-title"><section class="panel inbox-panel"><div class="section-head"><h2 id="inbox-title">Needs you</h2>${jobTag}</div>${jobBody}${starter ? `<div class="inbox-starter">${starter}</div>` : ''}</section></aside>`;
+  }
   // One card per job for its questions: the job's open questions sit together on the first one's card, one after the other.
   const groups = [];
   const byJob = new Map();
@@ -7444,6 +7476,9 @@ if (typeof document !== 'undefined') {
   });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
+    // A Needs-you card opens its job when the click lands on the card itself, not on a button, link or answer box inside it.
+    const card=event.target.closest('[data-card-job]');
+    if(card&&!event.target.closest('a,button,input,textarea,select,label,form,video,[data-view-media]')){location.hash='#/project/'+encodeURIComponent(card.dataset.cardJob);return;}
     const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-ref-role],[data-ref-brand],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send],[data-ref-open],[data-ref-remove],[data-ref-keep],[data-ref-confirm],[data-ref-unqueue]');if(!target)return;
     if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
     if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
