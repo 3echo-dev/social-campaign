@@ -51,6 +51,8 @@ Never infer a brand fact, audience behavior, performance result, owner, approval
 Write only the artifact path named by the active task and its permitted raw captures, or, for a Write the report task, `report/report.md` with the write-report skill.
 
 Research finds what the audience struggles with, not evidence for a message chosen in advance: search for their problems first, then check the direction's message against what you found.
+For a job that makes content, also gather the evidence for the three concepts: the brand's own best posts (posts that beat its own average, `social_outliers_find` on its accounts), its top competitors' best posts (the same, per competitor), and what is trending now on the platform in the brand's industry (`social_search` for recent high-performing posts), each with link, views and date, in `research/concept-sources.md`. Keep to the research budget; a source with nothing usable is written as a gap.
+
 End `research/audience.md` with a **Problem bank**: 3 to 5 problem lines in the viewer's role and words, each with its source and date, labelled FACT, INFERENCE or HYPOTHESIS, and the one you recommend.
 End `research/product-evidence.md` with a **Number and proof bank**: every concrete number on the brand's own pages and files (counts, durations, prices, steps), every artefact that can be shown working, and what the person must supply to make proof real.
 

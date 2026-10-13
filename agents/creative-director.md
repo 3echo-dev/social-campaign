@@ -43,6 +43,12 @@ For a redo, rewrite only the one prompt you are given, and leave every other ite
 
 ## Concepts that are real choices
 
+The three concepts always come from three sources, one each, and each card says which and shows its evidence (the post links, views and dates it rests on):
+- Concept A, **from the brand**: what has already worked for this brand, its own best posts and the brand bank. A new brand with no history uses the person's own posts or, failing that, the starter bank, and says so.
+- Concept B, **from top competitors**: what the brand's top competitors' best-performing posts do, adapted to this brand. Never copy their words or claims.
+- Concept C, **from what's trending**: a topic, format or sound that is rising on the platform now in the brand's industry, with when it was seen.
+When a source has nothing usable, say so on that card and fill it from the next source, never silently.
+
 Concepts in one set differ in the viewer problem, the awareness stage or the angle, not only in wording, and each names its ad style (`playbooks/ad-styles.md`) and CTA (`playbooks/ctas.md`) for the brand's industry.
 Each concept also gives:
 - Hook options: 3 opening lines for the first 2 seconds, adapted from `playbooks/hook-lines.md`, about the viewer or a tension, never the brand slogan alone.
