@@ -4298,8 +4298,9 @@ function decisionCard(item, ctx = {}) {
   if (trimmed(item.summary) === REVIEW_NOT_READY) return summaryLine(summary);
   const inline = Boolean(item.inline) && !inboxDecisionArgs(item).error;
   const reviewButton = `<button type="button"${inline ? '' : ' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
-  const offer = ctx.offer ? `<p class="inbox-summary">Or send it to Post-production for a full edit.</p>${handoffButtons(ctx.offer, ctx.offerState || {}, { sendOnly: true })}` : '';
-  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${reviewButton}</div>${offer}`;
+  // The Post-production offer sits beside Review: two ways to finish the same joined video.
+  const offer = ctx.offer ? handoffButtons(ctx.offer, ctx.offerState || {}, { sendOnly: true, bare: true }) : '';
+  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${offer}${reviewButton}</div>${ctx.offer ? inboxError(ctx.offerState || {}) : ''}`;
   const shown = doc && doc.revision === item.revision && doc.review?.gate === gate ? doc : null;
   const status = shown && project && project.detailsLoaded !== false ? reviewStatus(project, shown, docState) : null;
   const plan = status === 'ready' ? approval(gate, shown, state, {}) : { label: gate === 'price' ? 'Approve price' : 'Approve sample', line: '' };
@@ -4455,12 +4456,13 @@ export const handoffArgs = ({ project, requestId }) => ({ requestId, brand: proj
 // The one small line on a job saying which platforms research could read, or ''. The server words it.
 export const researchLine = project => (typeof project?.research?.line === 'string' ? project.research.line.trim() : '');
 export const handoffStatusLine = project => (project?.handoff?.status === 'sent' ? trimmed(project.handoff.line) : '');
-export function handoffButtons(item, state = {}, { sendOnly = false } = {}) {
+export function handoffButtons(item, state = {}, { sendOnly = false, bare = false } = {}) {
   const buttons = (HANDOFF_BUTTONS[item?.kind] || []).filter(([operation]) => !sendOnly || operation === 'handoff_send');
   if (!buttons.length || !item.jobId) return '';
   const locked = Boolean(state.busy || state.sent);
   const row = buttons.map(([operation, label, tone]) => `<button type="button" class="${tone}" data-handoff="${operation}" data-handoff-job="${esc(item.jobId)}"${locked ? ' disabled' : ''}>${esc(label)}</button>`).join('');
   const note = state.sent ? '<p class="inbox-note" role="status">Saved. Claude will carry on.</p>' : '';
+  if (bare) return `${row}${note}`;
   return `<div class="inbox-actions">${row}</div>${note}${inboxError(state)}`;
 }
 
