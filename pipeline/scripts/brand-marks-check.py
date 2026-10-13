@@ -24,6 +24,14 @@ Exit 0 nothing found - 1 findings - 2 called wrongly - 3 no media, or no brand m
 """
 import argparse, glob, json, math, os, subprocess, sys, tempfile
 
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
+
 try:
     from PIL import Image
 except ImportError:

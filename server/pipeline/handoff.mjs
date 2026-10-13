@@ -41,6 +41,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { fileURLToPath } from 'node:url';
 
 import { UserFacingError } from '../lib/errors.mjs';
+import { pythonChildEnv } from '../lib/python-env.mjs';
 import { appendRecord, jobAt, moveJobTo, readJobState } from './facts.mjs';
 import { readAll as readLibrary } from './library.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
@@ -369,7 +370,7 @@ const TRANSCODE_TIMEOUT_MS = 300 * 1000;
 const spoken = ms => (ms >= 120000 ? `${Math.round(ms / 60000)} minutes` : `${Math.round(ms / 1000)} seconds`);
 
 export function run(binary, args, { what = `The ${binary} program`, timeoutMs = STEP_TIMEOUT_MS, fix = 'Try again. If it keeps happening, close other heavy programs first.' } = {}) {
-  const done = spawnSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout: timeoutMs });
+  const done = spawnSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout: timeoutMs, env: pythonChildEnv() });
   if (done.error?.code === 'ETIMEDOUT') throw new UserFacingError(`${what} took longer than ${spoken(timeoutMs)} and was stopped, so this step did not finish.`, { code: 'process_timed_out', fix });
   return done;
 }

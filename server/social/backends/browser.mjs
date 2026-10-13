@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { log } from '../../lib/log.mjs';
+import { pythonChildEnv } from '../../lib/python-env.mjs';
 import { readJsonFile } from '../../lib/json.mjs';
 import {
   hasUsableResearchHelperRecord,
@@ -239,7 +240,7 @@ export class BrowserBackend {
       let size = 0;
       let timedOut = false;
       let tooLarge = false;
-      const child = spawn(command, args, { windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'], ...(env ? { env } : {}) });
+      const child = spawn(command, args, { windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'], env: pythonChildEnv(env) });
       const timer = setTimeout(() => {
         timedOut = true;
         killTree(child);

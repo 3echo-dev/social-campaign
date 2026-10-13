@@ -9,7 +9,7 @@
 import { nowIso } from '../lib/ids.mjs';
 
 /** The social platforms in scope. */
-export const SOCIAL_PLATFORMS = ['tiktok', 'instagram', 'facebook'];
+export const SOCIAL_PLATFORMS = ['tiktok', 'instagram', 'facebook', 'youtube'];
 
 /** Coverage values, best first. */
 export const COVERAGE_ORDER = ['full', 'partial', 'none'];
@@ -31,11 +31,25 @@ export const DEGRADED_CODES = [
   'empty_page',
 ];
 
+/**
+ * The stealth reader (and the ad readers that use it) report a few codes the envelope does not know: `empty` for a
+ * page that held nothing and `error` for a failure nobody could classify. This is the one place that folds them
+ * into the envelope's own list, so an unknown code can never reach `envelope()` and throw.
+ * @param {string|null|undefined} code
+ * @returns {string}
+ */
+export function envelopeCode(code) {
+  if (code === 'empty') return 'empty_page';
+  if (!code || !DEGRADED_CODES.includes(code)) return 'unsupported';
+  return code;
+}
+
 /** Host names that belong to each platform. */
 const PLATFORM_HOSTS = {
   tiktok: ['tiktok.com'],
   instagram: ['instagram.com', 'instagr.am'],
   facebook: ['facebook.com', 'fb.com', 'fb.watch'],
+  youtube: ['youtube.com', 'youtu.be'],
 };
 
 /**
@@ -66,7 +80,7 @@ export function parseHttpUrl(value) {
 /**
  * Which social platform an address belongs to, or null.
  * @param {string} value
- * @returns {'tiktok'|'instagram'|'facebook'|null}
+ * @returns {'tiktok'|'instagram'|'facebook'|'youtube'|null}
  */
 export function platformFromUrl(value) {
   const url = parseHttpUrl(value);
@@ -88,7 +102,8 @@ export function urlBelongsTo(value, platform) {
 
 /**
  * Turn a handle or a profile address into a clean handle and the canonical profile address.
- * @param {'tiktok'|'instagram'|'facebook'} platform
+ * On YouTube the canonical address is the channel's Shorts tab, the listing the research tools read.
+ * @param {'tiktok'|'instagram'|'facebook'|'youtube'} platform
  * @param {string} handleOrUrl
  * @returns {{handle: string, url: string}|null}
  */
@@ -104,6 +119,12 @@ export function parseHandle(platform, handleOrUrl) {
       const at = segments.find((segment) => segment.startsWith('@'));
       if (!at) return null;
       handle = at;
+    } else if (platform === 'youtube') {
+      // @name, /@name/shorts, /channel/UCxxxxxxxxxxxxxxxxxxxxxx. The older /c/ and /user/ forms are not resolved.
+      const at = segments.find((segment) => segment.startsWith('@'));
+      const channel = segments[0] === 'channel' ? segments[1] : null;
+      if (!at && !channel) return null;
+      handle = at ?? channel;
     } else if (platform === 'facebook' && segments[0] === 'profile.php') {
       const id = url.searchParams.get('id');
       if (!id) return null;
@@ -119,6 +140,7 @@ export function parseHandle(platform, handleOrUrl) {
     tiktok: `https://www.tiktok.com/@${handle}`,
     instagram: `https://www.instagram.com/${handle}/`,
     facebook: `https://www.facebook.com/${handle}`,
+    youtube: /^UC[\w-]{22}$/.test(handle) ? `https://www.youtube.com/channel/${handle}/shorts` : `https://www.youtube.com/@${handle}/shorts`,
   }[platform];
   return { handle, url: canonical };
 }

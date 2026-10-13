@@ -17,6 +17,14 @@ exits 0 once it has written the file. Exit 2 means the manifest could not be rea
 """
 import argparse, json, os, re, shutil, subprocess, sys
 
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
+
 SAFE = {"top": 220, "bottom": 500, "left": 180, "right": 180}
 NO_SPEECH = ("", "-", "(silent)", "silent", "none")
 BAND_TOP, BAND_BOTTOM, FONT_SIZE = 220, 1420, 56          # the stitch's on-screen text band (stitch-clips.py)

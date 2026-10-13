@@ -4,9 +4,13 @@
  * It does four narrow jobs the other routes cannot do without a login: a public
  * TikTok profile's latest videos, TikTok Creative Center top ads, Meta Ad Library
  * search (only when the Meta Ads connector is not connected), and a page that
- * answers 403 or a Cloudflare check to the plain readers. It never logs in, never
- * uses cookies and never rotates proxies. One call is one request, with one hard
- * deadline; there are no retries here and nothing waits for another try.
+ * answers 403 or a Cloudflare check to the plain readers, which is also how
+ * Instagram profiles, posts and /popular/ topic pages are read (see instagram.mjs).
+ * It never logs in, never uses cookies and never rotates proxies. One call is one
+ * request, with one hard deadline; there are no retries here and nothing waits for
+ * another try. The single exception is inside the worker: a TikTok profile whose
+ * video list comes back empty is loaded one more time before it is reported as
+ * empty (python/social_stealth.py, op_tiktok_profile).
  *
  * Every call spawns the worker with an argument array (no shell), writes one JSON
  * request on stdin, reads one JSON result from stdout, and kills the WHOLE process
@@ -21,6 +25,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { log } from '../../lib/log.mjs';
+import { pythonChildEnv } from '../../lib/python-env.mjs';
 import {
   hasUsableResearchHelperRecord,
   normalizeResearchHelperRecord,
@@ -29,8 +34,11 @@ import {
 import { readResearchHelperState } from './browser.mjs';
 import { killTree } from './ytdlp.mjs';
 
-/** Longest a profile, page or Meta Ad Library call may run. */
-export const STEALTH_TIMEOUT_MS = 45_000;
+/**
+ * Longest a profile, page or Meta Ad Library call may run. Measured live on 2026-10-13: a warm TikTok profile read
+ * takes 8 to 31 seconds and a cold one up to 77, so 45 seconds cut off about one read in five.
+ */
+export const STEALTH_TIMEOUT_MS = 75_000;
 
 /** Longest a Creative Center call may run. */
 export const STEALTH_TOP_ADS_TIMEOUT_MS = 40_000;
@@ -71,7 +79,8 @@ export function spawnRunner(command, payload, timeoutMs) {
         windowsHide: true,
         // A new process group on POSIX lets killTree stop the browser children too.
         detached: process.platform !== 'win32',
-        ...(command.env ? { env: command.env } : {}),
+        // UTF-8 for the worker's stdout: a caption with an emoji must not turn the answer into a Python traceback.
+        env: pythonChildEnv(command.env),
       });
     } catch {
       finish({ spawnFailed: true });
@@ -204,6 +213,8 @@ export class StealthBackend {
     const outcome = await this.call({ op: 'page', url }, options.timeoutMs ?? STEALTH_TIMEOUT_MS);
     if (!outcome.ok) return outcome;
     const { httpStatus, ...rest } = outcome.result;
+    // A worker older than this release marked a JavaScript shell (TikTok tag and search pages: 22 characters) as ok.
+    if (isEmptyShell(rest)) return { ok: false, code: 'empty', reason: SHELL_REASON, trip: false };
     return { ok: true, ...rest, status: httpStatus ?? null };
   }
 
@@ -232,6 +243,18 @@ export class StealthBackend {
   }
 }
 
+const SHELL_REASON = 'The page is only a JavaScript shell: its content is drawn in the browser, so there was nothing to read.';
+
+/**
+ * Whether a page result has no readable text and no links at all.
+ * @param {Record<string, any>} page
+ * @returns {boolean}
+ */
+export function isEmptyShell(page) {
+  const hasLinks = Array.isArray(page.links) && page.links.length > 0;
+  return String(page.text ?? '').trim().length < 60 && !hasLinks && !page.instagram;
+}
+
 /**
  * Turn the worker's status into the success or failure shape the router uses.
  * @param {Record<string, any>} result
@@ -252,6 +275,12 @@ export function mapStatus(result) {
   }
   if (status === 'login_required') {
     return { ok: false, code: 'login_required', reason: detail || 'The site asked for a sign in.', trip: false };
+  }
+  if (status === 'rate_limited') {
+    return { ok: false, code: 'rate_limited', reason: detail || 'The site asked automated readers to slow down.', trip: true };
+  }
+  if (status === 'not_found') {
+    return { ok: false, code: 'not_found', reason: detail || 'The site says that page does not exist.', trip: false };
   }
   if (status === 'timed_out') {
     return { ok: false, code: 'timed_out', reason: detail || 'The stealth reader ran out of time.', trip: true };

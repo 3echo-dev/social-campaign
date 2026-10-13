@@ -51,7 +51,7 @@
       "description": "How far in the product is named. Null when there is no timing."
     },
     "word_count": { "type": ["integer", "null"], "minimum": 0 },
-    "transcript_source": { "enum": ["platform_captions", "elevenlabs", "manual", "written", null] },
+    "transcript_source": { "enum": ["platform_captions", "elevenlabs", "manual", "local_whisper", "written", null] },
     "transcript_id": { "type": ["string", "null"] },
     "hook_analysis_ref": { "type": ["string", "null"], "description": "HookAnalysis artifact kind:version." },
     "summary": { "type": "string" }

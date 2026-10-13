@@ -85,6 +85,8 @@ function find(relativePath, roots, maxDepth = 6) {
 
 const ARCHIVE = /\.(tgz|tar|tar\.gz|zip)$/i;
 const PY = spawnSync('python3', ['--version']).status === 0 ? 'python3' : 'python';
+// Python prints archive member names in UTF-8, not the console code page (an emoji in a file name would otherwise break the listing).
+const PY_ENV = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
 
 // Archives sitting inside the job folder. A subagent that could not write directly
 // sometimes leaves one behind with the real output inside it.
@@ -107,7 +109,7 @@ function listArchive(archive) {
   const abs = path.resolve(archive);
   const zip = /\.zip$/i.test(abs);
   const r = zip
-    ? spawnSync(PY, ['-c', 'import sys,zipfile;print(chr(10).join(zipfile.ZipFile(sys.argv[1]).namelist()))', abs], { encoding: 'utf8' })
+    ? spawnSync(PY, ['-c', 'import sys,zipfile;print(chr(10).join(zipfile.ZipFile(sys.argv[1]).namelist()))', abs], { encoding: 'utf8', env: PY_ENV })
     : spawnSync('tar', ['-tzf', path.basename(abs)], { cwd: path.dirname(abs), encoding: 'utf8' });
   if (r.status !== 0) return [];
   return (r.stdout || '').split(/\r?\n/).filter(Boolean);

@@ -25,7 +25,7 @@
  */
 
 import { boundedFetch, FetchFailure } from './web.mjs';
-import { adRecord } from '../records.mjs';
+import { adRecord, envelopeCode } from '../records.mjs';
 
 /** EU member states, plus the EEA and the UK where the libraries publish the same detail. */
 export const EU_LIKE = new Set([
@@ -167,7 +167,8 @@ export class AdLibraryBackend {
       return {
         reached: true,
         records: [],
-        code: read.ok ? 'empty' : read.code,
+        // The stealth reader's own codes (`empty`, `error`) are not envelope codes: fold them, or the envelope throws.
+        code: envelopeCode(read.ok ? 'empty' : read.code),
         reason: read.ok ? 'The Meta Ad Library page loaded but no ads were found in it.' : read.reason,
         urls: { library: publicUrl },
       };
@@ -238,7 +239,7 @@ export class AdLibraryBackend {
       return {
         reached: true,
         records: [],
-        code: read.ok ? 'empty' : read.code,
+        code: envelopeCode(read.ok ? 'empty' : read.code),
         reason: read.ok ? 'TikTok Creative Center loaded but its top ads list was empty.' : read.reason,
         urls,
       };

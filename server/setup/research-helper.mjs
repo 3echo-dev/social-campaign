@@ -44,6 +44,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { newId, nowIso } from '../lib/ids.mjs';
 import { log } from '../lib/log.mjs';
+import { pythonChildEnv } from '../lib/python-env.mjs';
 import {
   managedBrowsersPath,
   managedEnvironmentRoot,
@@ -80,7 +81,7 @@ export const CRAWL4AI_VERSION = '0.9.3';
 
 /**
  * The one pin set. These versions fit together (checked with pip): Scrapling 0.4.15 needs
- * playwright >= 1.62, patchright >= 1.62.1 and curl_cffi >= 0.16.1; Crawl4AI 0.9.3, TikTok-Api and
+ * playwright >= 1.62, patchright >= 1.62.1 and curl_cffi >= 0.16.1; Crawl4AI 0.9.3 and
  * yt-dlp[curl-cffi] accept them. Every pip run in this file passes them as a constraints file, so no
  * install or upgrade can move these packages, and an update changes them here, in one place.
  */
@@ -112,12 +113,6 @@ export const CONSTRAINTS_FILE_NAME = 'social-campaign-pins.txt';
 
 /** yt-dlp with curl_cffi, so TikTok's bot check can be answered with browser impersonation (--impersonate chrome). */
 export const VIDEO_TOOLS_REQUIREMENT = 'yt-dlp[default,curl-cffi]';
-
-/**
- * Optional discovery libraries for finding popular in-niche Reels and TikToks: Instaloader (MIT) and TikTok-Api (MIT,
- * drives Playwright). Installed best effort, the same way as VIDEO_TOOLS_REQUIREMENT; a failure here never fails setup.
- */
-export const DISCOVERY_TOOLS_REQUIREMENTS = ['instaloader', 'TikTokApi'];
 
 /** The oldest Python the helper works on. */
 export const MIN_PYTHON = { major: 3, minor: 10 };
@@ -247,7 +242,8 @@ export function run(command, args, timeoutMs, env) {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
-        ...(env ? { env } : {}),
+        // Python prints its answers in UTF-8, whatever the console code page is.
+        env: pythonChildEnv(env),
       });
     } catch (error) {
       const code = /** @type {any} */ (error)?.code;
@@ -686,10 +682,6 @@ export function researchToolsState(environmentRoot = managedEnvironmentRoot(), o
       const padded = ytdlp.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`);
       const age = ytdlpAgeDays(padded, options.now);
       if (age !== null && age > YTDLP_STALE_DAYS) outdated.push('yt-dlp');
-    }
-    for (const [pkg, label] of [['instaloader', 'Instaloader'], ['tiktokapi', 'TikTok-Api']]) {
-      versions[pkg] = installed.get(pkg) ?? null;
-      if (!installed.get(pkg)) missing.push(label);
     }
   }
   const hasFfmpeg = options.ffmpeg ?? (findOnPath('ffmpeg') !== null && findOnPath('ffprobe') !== null);
@@ -1546,18 +1538,7 @@ async function runInstallWithLease(job, options) {
     // keep going
   }
 
-  // Discovery libraries (Instaloader, TikTok-Api). Best effort and never fatal: without them the discovery routes
-  // report not_installed and research goes on with the other routes. Added only when missing; they are not upgraded
-  // on a schedule, so a working version is never replaced by a newer one that breaks.
-  try {
-    if (!before || !before.get('instaloader') || !before.get('tiktokapi')) {
-      await runInstallCommand(python, ['-m', 'pip', 'install', ...pinArgs, ...DISCOVERY_TOOLS_REQUIREMENTS], STEP_TIMEOUT_MS.crawl4ai, installOptions);
-    }
-  } catch {
-    // keep going
-  }
-
-  // Playwright's own Chromium is what the page reader and TikTok-Api drive; it is required on a fresh install.
+  // Playwright's own Chromium is what the page reader drives; it is required on a fresh install.
   // `scrapling install` is never run: Chromium for both Playwright and Patchright comes from these two commands.
   if (!chromiumWasThere || (pinnedChanged && !chromiumPresentFor(environmentRoot, 'playwright'))) {
     step(job, 'browser');

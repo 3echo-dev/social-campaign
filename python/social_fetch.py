@@ -204,7 +204,17 @@ async def run(request: dict) -> dict:
     }
 
 
+def configure_output() -> None:
+    """Read and write UTF-8 on stdin, stdout and stderr, whatever the console code page is (cp1252 on Windows when piped)."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+            pass
+
+
 def main() -> int:
+    configure_output()
     try:
         raw = sys.stdin.read()
         request = json.loads(raw) if raw.strip() else {}

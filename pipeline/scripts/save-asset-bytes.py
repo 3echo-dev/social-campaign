@@ -11,6 +11,14 @@ Decodes, converts to PNG (thumbnails come back as WebP, which pptxgenjs will not
 embed), validates, and reports what the file is actually good for.
 """
 import base64, io, sys, os
+
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
 from PIL import Image
 
 if len(sys.argv) < 2:

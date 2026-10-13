@@ -20,6 +20,9 @@ import { saveEvidence } from '../social/store.mjs';
 
 const PLATFORMS = ['tiktok', 'instagram', 'facebook'];
 
+/** Account reads (a profile and its outliers) also cover YouTube channels: yt-dlp lists a channel's Shorts. */
+const ACCOUNT_PLATFORMS = [...PLATFORMS, 'youtube'];
+
 /**
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @returns {import('node:sqlite').DatabaseSync|null}
@@ -112,12 +115,12 @@ export const socialTools = [
   defineTool({
     name: 'social_profile_get',
     description:
-      'Read a public TikTok, Instagram or Facebook account: profile facts plus its most recent posts. ' +
+      'Read a public TikTok, Instagram, Facebook or YouTube account: profile facts plus its most recent posts (a YouTube channel\'s Shorts). ' +
       'Says honestly how much it could read, and when it could not, returns a plan for finding the same evidence on the web.',
     inputSchema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', enum: PLATFORMS },
+        platform: { type: 'string', enum: ACCOUNT_PLATFORMS },
         handle_or_url: { type: 'string', description: 'A handle like @brand or the profile address.' },
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'How many recent posts to include. Default 12.' },
       },
@@ -126,7 +129,7 @@ export const socialTools = [
     },
     handler: (args, context) =>
       routerFor(context).profile({
-        platform: oneOf(args.platform, PLATFORMS, 'platform'),
+        platform: oneOf(args.platform, ACCOUNT_PLATFORMS, 'platform'),
         handle_or_url: String(args.handle_or_url),
         limit: integerIn(args.limit, 'limit', 1, 50, 12),
       }),
@@ -134,7 +137,7 @@ export const socialTools = [
   defineTool({
     name: 'social_post_get',
     description:
-      'Read one public post or reel from its address: caption, author, date, engagement counts and media details.',
+      'Read one public post or reel from its address (TikTok, Instagram, Facebook or YouTube): caption, author, date, engagement counts and media details.',
     inputSchema: {
       type: 'object',
       properties: { url: { type: 'string', description: 'The post address.' } },
@@ -180,11 +183,11 @@ export const socialTools = [
   defineTool({
     name: 'social_outliers_find',
     description:
-      'Find the posts on a public account that did far better than that account usually does, measured against its own recent baseline.',
+      'Find the posts on a public account that did far better than that account usually does, measured against its own recent baseline (views; on Instagram, which shows no views to signed out readers, likes against the same account\'s median likes).',
     inputSchema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', enum: PLATFORMS },
+        platform: { type: 'string', enum: ACCOUNT_PLATFORMS },
         handle_or_url: { type: 'string' },
         window: {
           type: 'string',
@@ -197,7 +200,7 @@ export const socialTools = [
     },
     handler: (args, context) =>
       routerFor(context).outliers({
-        platform: oneOf(args.platform, PLATFORMS, 'platform'),
+        platform: oneOf(args.platform, ACCOUNT_PLATFORMS, 'platform'),
         handle_or_url: String(args.handle_or_url),
         window: /** @type {any} */ (oneOf(args.window, ['30d', '90d', '180d', 'all'], 'window', '90d')),
       }),

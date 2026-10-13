@@ -50,6 +50,14 @@ Exit 5 finishing failed: final-raw.mp4 is put back as final.mp4 and the reason i
 """
 import argparse, hashlib, json, os, re, shutil, subprocess, sys, tempfile
 
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
+
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:

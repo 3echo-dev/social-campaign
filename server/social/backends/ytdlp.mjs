@@ -16,6 +16,7 @@
 
 import { execFile, spawn } from 'node:child_process';
 
+import { pythonChildEnv } from '../../lib/python-env.mjs';
 import { referenceYtdlpBinary } from '../../lib/ytdlp-binary.mjs';
 import { postRecord, profileRecord, commentRecord, toCount, toIso } from '../records.mjs';
 
@@ -90,7 +91,7 @@ export function runYtDlp(args, options = {}) {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        env: pythonChildEnv(),
       });
     } catch {
       resolve({ ok: false, exitCode: null, stdout: '', stderr: '', missing: true, timedOut: false, tooLarge: false });
@@ -191,7 +192,7 @@ const REASONS = {
  * @returns {YtDlpFailure}
  */
 export function mapYtDlpError(run, platform) {
-  const name = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' }[platform] ?? 'The platform';
+  const name = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube' }[platform] ?? 'The platform';
   if (run.missing) return { code: 'backend_missing', reason: REASONS.backend_missing(name), trip: true };
   if (run.timedOut) return { code: 'timed_out', reason: REASONS.timed_out(name), trip: true };
   if (run.tooLarge) return { code: 'unsupported', reason: `${name} returned more data than a research read is allowed to hold.`, trip: false };
@@ -248,14 +249,15 @@ export function parseInfo(stdout) {
 /**
  * A post record from a yt-dlp info dict, or from one flat playlist entry.
  * @param {Record<string, any>} info
- * @param {'tiktok'|'instagram'|'facebook'} platform
+ * @param {'tiktok'|'instagram'|'facebook'|'youtube'} platform
  * @param {string} observedAt
  * @param {string} sourceRef
  * @returns {Record<string, any>}
  */
 export function postFromInfo(info, platform, observedAt, sourceRef) {
   const url = String(info.webpage_url ?? info.url ?? info.original_url ?? '');
-  const handle = info.uploader ?? info.channel ?? null;
+  // On YouTube the handle is the @name (uploader_id); `uploader` is the channel's display name.
+  const handle = (platform === 'youtube' ? String(info.uploader_id ?? '').replace(/^@/, '') || null : null) ?? info.uploader ?? info.channel ?? null;
   const tiktokUrl = platform === 'tiktok' && handle && info.id && !/\/video\//.test(url) ? `https://www.tiktok.com/@${handle}/video/${info.id}` : url;
   const artists = Array.isArray(info.artists) ? info.artists.join(', ') : info.artist;
   return postRecord({
@@ -264,7 +266,7 @@ export function postFromInfo(info, platform, observedAt, sourceRef) {
     post_id: info.id != null ? String(info.id) : null,
     author_handle: handle,
     posted_at: info.timestamp ?? (info.upload_date ? `${info.upload_date.slice(0, 4)}-${info.upload_date.slice(4, 6)}-${info.upload_date.slice(6, 8)}` : null),
-    media_kind: info.duration || info.vcodec || /video|reel/.test(url) ? 'video' : info._type === 'playlist' ? 'carousel' : 'unknown',
+    media_kind: info.duration || info.vcodec || /video|reel|\/shorts\//.test(url) ? 'video' : info._type === 'playlist' ? 'carousel' : 'unknown',
     caption: info.description ?? info.title ?? null,
     hashtags: Array.isArray(info.tags) ? info.tags.map((tag) => String(tag).replace(/^#/, '').toLowerCase()) : undefined,
     duration_s: typeof info.duration === 'number' ? info.duration : null,
@@ -353,9 +355,11 @@ export class YtDlpBackend {
   }
 
   /**
-   * A profile listing: the latest `limit` posts, without downloading anything.
+   * A profile listing: the latest `limit` posts, without downloading anything. On YouTube this is a channel's
+   * Shorts tab (https://www.youtube.com/@name/shorts), which yt-dlp lists in about 1.5 seconds with view counts
+   * (rounded by YouTube) and no dates.
    * @param {string} url
-   * @param {'tiktok'|'instagram'|'facebook'} platform
+   * @param {'tiktok'|'instagram'|'facebook'|'youtube'} platform
    * @param {number} limit
    * @returns {Promise<{ok: true, profile: Record<string, any>, posts: Array<Record<string, any>>}|{ok: false, failure: YtDlpFailure}>}
    */
@@ -367,13 +371,13 @@ export class YtDlpBackend {
     const posts = info.entries
       .filter((entry) => entry && typeof entry === 'object')
       .slice(0, limit)
-      .map((entry) => postFromInfo({ uploader: info.uploader, ...entry }, platform, observedAt, `yt-dlp:${url}`));
+      .map((entry) => postFromInfo({ uploader: info.uploader, uploader_id: info.uploader_id, ...entry }, platform, observedAt, `yt-dlp:${url}`));
     const first = info.entries.find((entry) => entry && typeof entry === 'object') ?? {};
     const profile = profileRecord({
       platform,
       url,
-      handle: info.uploader ?? first.uploader ?? null,
-      display_name: info.channel ?? first.channel ?? null,
+      handle: (platform === 'youtube' ? String(info.uploader_id ?? '').replace(/^@/, '') || null : null) ?? info.uploader ?? first.uploader ?? null,
+      display_name: info.channel ?? info.uploader ?? first.channel ?? null,
       bio: info.description ?? null,
       followers: info.channel_follower_count,
       verified: typeof info.channel_is_verified === 'boolean' ? info.channel_is_verified : null,

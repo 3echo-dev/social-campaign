@@ -245,7 +245,7 @@ export function normalizeWords(raw) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'platform_captions'|'elevenlabs'|'manual'} TranscriptSource
+ * @typedef {'platform_captions'|'elevenlabs'|'manual'|'local_whisper'} TranscriptSource
  */
 
 /**
@@ -303,7 +303,7 @@ export function readTranscript(workspaceRoot, key) {
 }
 
 /** How much each transcript source is trusted, per the provenance rules. */
-const SOURCE_CONFIDENCE = /** @type {Record<TranscriptSource, number>} */ ({ platform_captions: 0.8, elevenlabs: 0.85, manual: 0.7 });
+const SOURCE_CONFIDENCE = /** @type {Record<TranscriptSource, number>} */ ({ platform_captions: 0.8, elevenlabs: 0.85, manual: 0.7, local_whisper: 0.75 });
 
 /**
  * Write a transcript, replacing any earlier one for the same media. The write goes

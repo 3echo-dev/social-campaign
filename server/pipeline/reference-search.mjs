@@ -9,10 +9,10 @@
  *   - TikTok (best effort, never blocks): hashtag pages through `--impersonate chrome`, which needs curl_cffi. A bot
  *     check or missing impersonation is recorded as a route status and the search goes on.
  *
- *   - Optional library routes, asked for with platform `tiktok_api` (TikTok-Api: hashtag, trending, user) and `instagram`
- *     (Instaloader: hashtag top posts, profile Reels). They run in the research helper venv through social-discovery.mjs,
- *     work with no login, and pick up a local credentials file if one exists. Each is a route status
- *     (ok / empty / blocked / login_required / not_installed), never a throw.
+ * The Instaloader (Instagram) and TikTok-Api (TikTok) library routes that used to sit beside these were retired on
+ * 2026-10-13: signed out, 0 of 5 live reads worked (Instaloader profile 429 and hashtag 403 login_required, TikTok-Api
+ * hashtag, user and trending all empty or crashing after 21 to 30 seconds). Instagram is read by social_profile_get,
+ * social_post_get and social_search (the Scrapling page op, whose /popular/<topic>/ pages list reels with play counts).
  *
  * - `urls: [...]` is the verify step: each single public video URL (found by a web search, a competitor's site or a press
  *   page, never from a listing page) is opened on its own with `--dump-json --skip-download --no-cookies`, with
@@ -25,7 +25,6 @@
 
 import { runYtDlp, mapYtDlpError } from '../social/backends/ytdlp.mjs';
 import { referenceYtdlpBinary } from './url-reference.mjs';
-import { runDiscovery } from './social-discovery.mjs';
 import { assertPublicHost } from '../social/backends/web.mjs';
 import { breaker as sharedBreaker } from '../social/breaker.mjs';
 
@@ -37,14 +36,12 @@ const SEARCH_TIMEOUT_MS = 30_000;
 const ENRICH_TIMEOUT_MS = 30_000;
 /** The whole pipeline_reference_search call, whatever it does, is over by this. */
 export const SEARCH_BUDGET_MS = 90_000;
-/** One discovery route (a tag, a profile, trending). */
-export const DISCOVERY_ROUTE_TIMEOUT_MS = 40_000;
 /** Below this there is no point starting another step. */
 const MIN_STEP_MS = 2_000;
 const BASE = ['--ignore-config', '--no-cookies', '--no-cookies-from-browser', '--no-update', '--no-progress', '--retries', '1', '--fragment-retries', '1', '--extractor-retries', '0', '--socket-timeout', '10'];
 
 /** Breaker key for each platform this tool can touch. */
-const HOST_OF_PLATFORM = { youtube: 'youtube.com', tiktok: 'tiktok.com', tiktok_api: 'tiktok.com', instagram: 'instagram.com' };
+const HOST_OF_PLATFORM = { youtube: 'youtube.com', tiktok: 'tiktok.com', instagram: 'instagram.com' };
 /** Failure codes that mean the platform is refusing us: skip the rest of that platform for this call. */
 const WALL_CODES = new Set(['blocked', 'login_required', 'rate_limited', 'impersonation_unavailable']);
 const BREAKER_CODES = new Set(['blocked', 'login_required', 'rate_limited']);
@@ -164,61 +161,6 @@ async function enrich(candidates, runOptions, run) {
     c.uploadDate ??= info.upload_date ? String(info.upload_date) : null;
     c.channel ??= info.channel || info.uploader || null;
   }));
-}
-
-/** Candidate from a discovery worker item. Dates are normalised to YYYYMMDD like yt-dlp's upload_date. */
-function fromDiscovery(item, platform, route) {
-  const num = (v) => (v === null || v === undefined || v === '' ? null : numStrict(v));
-  return {
-    url: item.url,
-    platform,
-    title: item.caption ? String(item.caption).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
-    channel: item.owner ?? null,
-    views: num(item.views),
-    likes: num(item.likes),
-    durationS: num(item.durationS),
-    uploadDate: item.date ? String(item.date).replace(/-/g, '') : null,
-    route,
-  };
-}
-
-/** One discovery route per tag / profile / user, in order, stopping early once there is enough or the platform refuses. */
-async function discoveryRoutes(kind, jobs, limit, discover, routes, found, deadline, gate) {
-  const platform = kind === 'tiktok_api' ? 'tiktok' : 'instagram';
-  const gateKey = kind;
-  let stopped = null;
-  for (const job of jobs) {
-    const route = `${job.route}`;
-    const label = job.target ? `${route}:${job.target}` : route;
-    if (stopped) {
-      routes.push({ route: label, status: 'skipped', detail: stopped, count: 0 });
-      continue;
-    }
-    const walled = gate.check(gateKey);
-    if (walled) {
-      routes.push({ route: label, status: walled.status, detail: walled.detail, count: 0 });
-      stopped = walled.detail;
-      continue;
-    }
-    if (deadline.expired()) {
-      routes.push({ route: label, status: 'skipped', detail: 'Skipped: the 90 second budget for this search was used.', count: 0 });
-      stopped = 'Skipped: the 90 second budget for this search was used.';
-      continue;
-    }
-    const result = await discover({ route: job.route, target: job.target, limit: Math.min(limit * 2, 40), timeoutMs: deadline.slice(DISCOVERY_ROUTE_TIMEOUT_MS) });
-    const items = (result.items ?? []).map((i) => fromDiscovery(i, platform, route));
-    found.push(...items);
-    routes.push({ route: label, status: result.status, ...(result.detail ? { detail: result.detail } : {}), ...(result.authenticated ? { loggedIn: true } : {}), count: items.length });
-    if (result.status === 'ok') gate.ok(gateKey);
-    else gate.fail(gateKey, result.status, result.detail ?? '');
-    // The library is not there at all: no point trying the next target on the same platform.
-    if (result.status === 'not_installed') stopped = 'Skipped: the library is not installed.';
-    else if (WALL_CODES.has(result.status) || result.status === 'timed_out') stopped = `Skipped: ${platform} answered ${result.status} on ${label}.`;
-  }
-}
-
-function handleOf(value) {
-  return String(value ?? '').trim().replace(/^@/, '').replace(/[^\p{L}\p{N}_.]/gu, '');
 }
 
 function tagOf(value) {
@@ -375,9 +317,8 @@ export async function verifyReferenceUrls(urls, options = {}) {
 }
 
 /**
- * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both'|'tiktok_api'|'instagram', tiktokTags?: string[],
- *   instagramTags?: string[], instagramProfiles?: string[], tiktokUsers?: string[], tiktokTrending?: boolean, limit?: number,
- *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, discover?: typeof runDiscovery, budgetMs?: number, breaker?: any}} options
+ * @param {{urls?: string[], query?: string, platform?: 'youtube'|'tiktok'|'both', tiktokTags?: string[], limit?: number,
+ *   maxDurationS?: number, binary?: string, run?: typeof runYtDlp, budgetMs?: number, breaker?: any}} options
  */
 export async function searchReferences(options = {}) {
   // One budget for the whole call; every step below asks for min(its own limit, what is left).
@@ -385,24 +326,20 @@ export async function searchReferences(options = {}) {
   const gate = createGate(options.breaker ?? sharedBreaker);
   if (Array.isArray(options.urls) && options.urls.length) return verifyReferenceUrls(options.urls, { binary: options.binary, run: options.run, assertHost: options.assertHost, deadline, breaker: options.breaker, impersonation: options.impersonation });
   const query = String(options.query ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
-  const platform = ['youtube', 'tiktok', 'both', 'tiktok_api', 'instagram'].includes(options.platform) ? options.platform : 'both';
+  // The library routes were retired; a caller still asking for one is told so instead of getting a different search.
+  if (['tiktok_api', 'instagram'].includes(String(options.platform))) {
+    return {
+      ok: false,
+      status: 'route_retired',
+      message: 'The Instaloader and TikTok-Api routes were retired: signed out, none of five live reads worked. Use platform youtube, tiktok or both here; for Instagram use social_search with a #hashtag or topic, social_profile_get and social_outliers_find.',
+      candidates: [],
+      routes: [],
+    };
+  }
+  const platform = ['youtube', 'tiktok', 'both'].includes(options.platform) ? options.platform : 'both';
   const limit = Math.min(Math.max(Math.floor(Number(options.limit) || SEARCH_DEFAULT_LIMIT), 1), SEARCH_MAX_LIMIT);
   const maxDurationS = num(options.maxDurationS) || SEARCH_MAX_DURATION_S;
   const tags = (Array.isArray(options.tiktokTags) ? options.tiktokTags : []).map(tagOf).filter(Boolean).slice(0, 3);
-  const igTags = (Array.isArray(options.instagramTags) ? options.instagramTags : []).map(tagOf).filter(Boolean).slice(0, 3);
-  const igProfiles = (Array.isArray(options.instagramProfiles) ? options.instagramProfiles : []).map(handleOf).filter(Boolean).slice(0, 3);
-  const ttUsers = (Array.isArray(options.tiktokUsers) ? options.tiktokUsers : []).map(handleOf).filter(Boolean).slice(0, 3);
-  // With only keywords, the library routes try one hashtag made from them (youth football -> youthfootball).
-  const queryTag = tagOf(query.toLowerCase().split(' ').slice(0, 3).join(''));
-  if (platform === 'tiktok_api' || platform === 'instagram') {
-    const api = platform === 'tiktok_api';
-    const trending = api && options.tiktokTrending === true;
-    const jobs = api
-      ? [...(tags.length ? tags : queryTag ? [queryTag] : []).map((t) => ({ route: 'tiktok_hashtag', target: t })), ...ttUsers.map((u) => ({ route: 'tiktok_user', target: u })), ...(trending ? [{ route: 'tiktok_trending', target: '' }] : [])]
-      : [...(igTags.length ? igTags : queryTag ? [queryTag] : []).map((t) => ({ route: 'instagram_hashtag', target: t })), ...igProfiles.map((u) => ({ route: 'instagram_profile', target: u }))];
-    if (!jobs.length) return { ok: false, status: 'invalid_query', message: api ? 'TikTok-Api needs tiktokTags, tiktokUsers, tiktokTrending or query keywords.' : 'Instagram needs instagramTags, instagramProfiles or query keywords.', candidates: [], routes: [] };
-    return finish({ query, maxDurationS, limit, jobs, kind: platform, discover: options.discover ?? runDiscovery, deadline, gate });
-  }
   if (!query && platform !== 'tiktok') return { ok: false, status: 'invalid_query', message: 'Give niche keywords to search for.', candidates: [], routes: [] };
   if (platform === 'tiktok' && !tags.length) return { ok: false, status: 'invalid_query', message: 'TikTok search needs tiktokTags (hashtags without #).', candidates: [], routes: [] };
 
@@ -481,13 +418,11 @@ export async function searchReferences(options = {}) {
   return finish({ query, maxDurationS, limit, routes, found, runOptions, run, deadline });
 }
 
-/** Rank, filter and describe. `jobs` means library routes still have to run first. */
-async function finish({ query, maxDurationS, limit, jobs, kind, discover, routes = [], found = [], runOptions = null, run = null, deadline, gate }) {
-  if (jobs) await discoveryRoutes(kind, jobs, limit, discover, routes, found, deadline, gate);
+/** Rank, filter and describe. */
+async function finish({ query, maxDurationS, limit, routes = [], found = [], runOptions = null, run = null, deadline }) {
   const seen = new Set();
   found = found.filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
-  // Library routes return their own numbers (runOptions is null for them); only yt-dlp routes are opened to fill gaps,
-  // and only while there is budget left.
+  // Only yt-dlp routes are opened to fill gaps in a listing, and only while there is budget left.
   if (runOptions && !deadline.expired()) await enrich(found, runOptions, run);
 
   const candidates = found

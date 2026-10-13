@@ -1,27 +1,37 @@
 """Stealth research worker, built on Scrapling: TikTok profiles, TikTok Creative Center top ads,
-Meta Ad Library search and pages that answer 403 or a Cloudflare check.
+Meta Ad Library search and pages that answer 403 or a Cloudflare check (Instagram profile, post and
+popular-topic pages included).
 
-Reads ONE JSON request on stdin and prints ONE JSON result on stdout. It never logs in, never
-uses or stores cookies, never rotates proxies, and makes ONE request per operation. It has its
-own deadline (the request's timeout_ms minus 3 s) and, when that passes, prints a timed_out
-result and ends itself and the browser it started.
+Reads ONE JSON request on stdin and prints ONE JSON result on stdout, in UTF-8 whatever the console
+code page is (an emoji in a caption must never turn the answer into a traceback). It never logs in,
+never uses or stores cookies, never rotates proxies, and makes ONE request per operation, with one
+exception: when TikTok answers a profile page with an empty video list, the page is read one more time
+(see op_tiktok_profile). It has its own deadline (the request's timeout_ms minus 3 s) and, when that
+passes, prints a timed_out result and ends itself and the browser it started.
 
 Request:  {"op": "tiktok_profile|tiktok_top_ads|meta_ad_library|page",
            "handle": "...", "url": "...", "query": "...", "keyword": "...", "country": "US", "period": 30,
-           "limit": 20, "timeout_ms": 45000}
-Result:   {"status": "ok|empty|blocked|login_required|not_installed|timed_out|error",
+           "limit": 20, "timeout_ms": 75000}
+Result:   {"status": "ok|empty|blocked|login_required|rate_limited|not_found|not_installed|timed_out|error",
            "detail": "...", ...data}
 
 Data by operation:
   tiktok_profile   profile {handle,nickname,bio,verified,followers,following,likes,videos},
-                   items [{url,id,views,likes,comments,shares,createdAt,caption,durationS}]
+                   items [{url,id,views,likes,comments,shares,createdAt,caption,durationS}],
+                   attempts (1 or 2), itemsStatus ("empty" when the profile was read but no video was),
+                   itemsNote
   tiktok_top_ads   ads [{id,title,caption,brand,industry,ctr,likes,videoUrl,cover,landing,url}]
   meta_ad_library  ads [{id,pageName,startDate,text,snapshotUrl}]
-  page             finalUrl, status, title, text (20k), links (200), method
+  page             finalUrl, httpStatus, title, text (20k), links (200), method, meta {og:*, description, ...};
+                   a page that is only a JavaScript shell (no text, no links) is reported as status "empty".
+                   instagram.com pages also carry instagram {user, media}: the account and post facts the
+                   page embeds for a signed out visitor (followers, caption, likes, comments, date, video
+                   address, popular-topic play counts). Instagram is read with the plain request only.
 
 Scrapling's own browser install is never run from here (the plugin installs Chromium in setup).
 """
 
+import html as html_lib
 import ipaddress
 import json
 import os
@@ -33,10 +43,17 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import quote, urlencode, urlparse
 
-DEFAULT_TIMEOUT_MS = 45_000
+DEFAULT_TIMEOUT_MS = 75_000
 DEADLINE_MARGIN_S = 3.0
 TEXT_CAP = 20_000
 LINK_CAP = 200
+# A profile read whose video list is empty is repeated once, but only when this much of the deadline is left.
+RETRY_MIN_REMAINING_MS = 20_000
+# A page with less readable text than this and no links is a JavaScript shell, not a page.
+SHELL_TEXT_MAX = 60
+META_CAP = 40
+META_VALUE_CAP = 1_000
+INSTAGRAM_MEDIA_CAP = 60
 
 TIKTOK_PROFILE_URL = "https://www.tiktok.com/@{handle}"
 TIKTOK_ITEM_LIST = r"/api/post/item_list/"
@@ -58,11 +75,30 @@ _printed = threading.Lock()
 
 # ---------------------------------------------------------------- output and deadline
 
+def configure_output():
+    """Read and write UTF-8 on stdin, stdout and stderr, whatever the console code page is.
+
+    A Python started by a pipe on Windows uses cp1252, so one emoji in a caption raised UnicodeEncodeError and the
+    reader that spawned this worker saw no JSON at all. The caller also sets PYTHONUTF8=1; this makes the worker
+    correct on its own.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+            pass
+
+
 def emit(result):
     """Print the one result and flush. Only the first call prints."""
     if not _printed.acquire(blocking=False):
         return
-    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+    try:
+        text = json.dumps(result, ensure_ascii=False)
+        sys.stdout.write(text)
+    except UnicodeError:
+        # Last resort for a stream that is not UTF-8 (or a lone surrogate): ASCII escapes are valid JSON anywhere.
+        sys.stdout.write(json.dumps(result, ensure_ascii=True))
     sys.stdout.flush()
 
 
@@ -257,11 +293,8 @@ def items_from_item_list(payloads, handle, limit):
     return items
 
 
-def op_tiktok_profile(request):
-    handle = re.sub(r"[^A-Za-z0-9._]", "", str(request.get("handle") or "").lstrip("@"))
-    if not handle:
-        return {"status": "error", "detail": "No TikTok handle was given."}
-    limit = max(1, min(int(request.get("limit") or 20), 50))
+def read_tiktok_profile(handle, limit):
+    """One load of the profile page: (response, html, blocked, profile, items)."""
     response = stealth_fetch(
         TIKTOK_PROFILE_URL.format(handle=quote(handle)),
         capture_xhr=TIKTOK_ITEM_LIST,
@@ -270,15 +303,49 @@ def op_tiktok_profile(request):
     )
     html = body_text(response)
     if looks_blocked(response, html):
-        return {"status": "blocked", "detail": "TikTok answered with a bot check."}
+        return response, html, True, None, []
     profile = profile_from_universal(universal_data(html))
     payloads = [p for p in (body_json(x) for x in getattr(response, "captured_xhr", []) or []) if p]
-    items = items_from_item_list(payloads, handle, limit)
+    return response, html, False, profile, items_from_item_list(payloads, handle, limit)
+
+
+def op_tiktok_profile(request):
+    """A public TikTok profile and its latest videos.
+
+    The one exception to "one request per operation": TikTok's item_list call answered 200 with an empty body on
+    three of four live reads of one account (2026-10-13), the profile facts being there each time. When the list is
+    empty and there is time left, the page is loaded ONE more time. If it is still empty the answer says so (a
+    profile with itemsStatus "empty"), never an ok with nothing in it.
+    """
+    handle = re.sub(r"[^A-Za-z0-9._]", "", str(request.get("handle") or "").lstrip("@"))
+    if not handle:
+        return {"status": "error", "detail": "No TikTok handle was given."}
+    limit = max(1, min(int(request.get("limit") or 20), 50))
+    response, html, blocked, profile, items = read_tiktok_profile(handle, limit)
+    if blocked:
+        return {"status": "blocked", "detail": "TikTok answered with a bot check."}
+    attempts = 1
+    reload_refused = False
+    if not items and remaining_ms() >= RETRY_MIN_REMAINING_MS:
+        attempts = 2
+        _, retry_html, retry_blocked, retry_profile, retry_items = read_tiktok_profile(handle, limit)
+        reload_refused = retry_blocked
+        if not retry_blocked:
+            items = retry_items
+            profile = profile or retry_profile
+            html = retry_html if profile is None else html
     if profile is None and not items:
         if LOGIN_PATTERN.search(html[:6000]):
             return {"status": "login_required", "detail": "TikTok asked for a sign in."}
         return {"status": "empty", "detail": "No profile data came back for that handle."}
-    return {"status": "ok", "profile": profile or {"handle": handle}, "items": items}
+    result = {"status": "ok", "profile": profile or {"handle": handle}, "items": items, "attempts": attempts}
+    if not items:
+        result["itemsStatus"] = "empty"
+        result["itemsNote"] = (
+            "TikTok answered the profile page but its video list came back empty"
+            + (", and the reload was refused." if reload_refused else " twice." if attempts == 2 else " (no time was left to ask again).")
+        )
+    return result
 
 
 # ---------------------------------------------------------------- TikTok Creative Center top ads
@@ -467,6 +534,26 @@ def op_meta_ad_library(request):
 
 # ---------------------------------------------------------------- generic page
 
+META_TAG = re.compile(r"<meta\s+([^>]*?)/?>", re.I)
+META_ATTR = re.compile(r"([A-Za-z:_-]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')")
+META_KEYS = re.compile(r"^(og:|twitter:|description$|keywords$|robots$)", re.I)
+
+
+def meta_tags(html):
+    """The page's own <meta> tags that describe it (Open Graph, Twitter card, description), HTML-unescaped."""
+    found = {}
+    for tag in META_TAG.finditer(html or ""):
+        attrs = {}
+        for attr in META_ATTR.finditer(tag.group(1)):
+            attrs[attr.group(1).lower()] = html_lib.unescape(attr.group(2) if attr.group(2) is not None else attr.group(3) or "")
+        key = attrs.get("property") or attrs.get("name")
+        if key and "content" in attrs and META_KEYS.match(key) and key not in found:
+            found[key] = attrs["content"][:META_VALUE_CAP]
+            if len(found) >= META_CAP:
+                break
+    return found
+
+
 def page_result(response, method):
     text = text_of(response)
     links = []
@@ -494,10 +581,223 @@ def page_result(response, method):
     }
 
 
+def is_js_shell(result):
+    """A page with no readable text and no links at all: its content is drawn in the browser (TikTok tag and search pages)."""
+    return len((result.get("text") or "").strip()) < SHELL_TEXT_MAX and not result.get("links")
+
+
+SHELL_DETAIL = "The page is only a JavaScript shell: its content is drawn in the browser, so there was nothing to read."
+
+
+# ---------------------------------------------------------------- Instagram pages (signed out)
+
+INSTAGRAM_HOST = re.compile(r"(^|\.)instagram\.com$", re.I)
+SJS_BLOCK = re.compile(r"<script[^>]*type=\"application/json\"[^>]*data-sjs[^>]*>(.*?)</script>", re.S)
+MEDIA_CODE = re.compile(r"^[A-Za-z0-9_-]{5,20}$")
+MONTHS = {
+    name: index
+    for index, name in enumerate(
+        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], 1
+    )
+}
+
+
+def is_instagram_url(url):
+    try:
+        return bool(INSTAGRAM_HOST.search(urlparse(url).hostname or ""))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def iter_dicts(node, depth=0):
+    """Every dict in a parsed JSON document, in document order."""
+    if depth > 60:
+        return
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                yield from iter_dicts(value, depth + 1)
+    elif isinstance(node, list):
+        for value in node:
+            if isinstance(value, (dict, list)):
+                yield from iter_dicts(value, depth + 1)
+
+
+def count_or_none(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def date_from_accessibility(text):
+    """'Video by Duolingo on June 10, 2025.' -> '2025-06-10'. None when the caption carries no date."""
+    match = re.search(r"on ([A-Z][a-z]+) (\d{1,2}), (\d{4})", str(text or ""))
+    if not match or match.group(1) not in MONTHS:
+        return None
+    return "%s-%02d-%02d" % (match.group(3), MONTHS[match.group(1)], int(match.group(2)))
+
+
+def first_video_url(node):
+    versions = node.get("video_versions")
+    if isinstance(versions, list):
+        for version in versions:
+            if isinstance(version, dict) and isinstance(version.get("url"), str) and version["url"].startswith("http"):
+                return version["url"]
+    return None
+
+
+def sound_of(node):
+    meta = node.get("clips_metadata")
+    if not isinstance(meta, dict):
+        return None
+    music = meta.get("music_info")
+    if isinstance(music, dict):
+        asset = music.get("music_asset_info")
+        if isinstance(asset, dict) and asset.get("title"):
+            return " - ".join(str(x) for x in (asset.get("title"), asset.get("display_artist")) if x)
+    original = meta.get("original_sound_info")
+    if isinstance(original, dict) and original.get("original_audio_title"):
+        return str(original["original_audio_title"])
+    return None
+
+
+def media_from_node(node):
+    """The facts an Instagram media node carries for a signed out visitor, or None when it is not a media node."""
+    code = node.get("code")
+    if not isinstance(code, str) or not MEDIA_CODE.match(code):
+        return None
+    if not ("media_type" in node or "product_type" in node or "like_count" in node or "play_count" in node):
+        return None
+    caption = node.get("caption")
+    text = caption.get("text") if isinstance(caption, dict) else None
+    user = node.get("user") if isinstance(node.get("user"), dict) else {}
+    owner = node.get("owner") if isinstance(node.get("owner"), dict) else {}
+    taken = count_or_none(node.get("taken_at"))
+    date = None
+    if taken:
+        try:
+            date = datetime.fromtimestamp(taken, tz=timezone.utc).strftime("%Y-%m-%d")
+        except Exception:  # noqa: BLE001
+            date = None
+    date = date or date_from_accessibility(node.get("accessibility_caption"))
+    disabled = bool(node.get("like_and_view_counts_disabled"))
+    media_type = node.get("media_type")
+    product = node.get("product_type")
+    duration = node.get("video_duration")
+    plays = node.get("play_count") if node.get("play_count") is not None else node.get("view_count")
+    if product == "clips":
+        kind = "reel"
+    elif media_type == 2:
+        kind = "video"
+    elif media_type == 8:
+        kind = "carousel"
+    elif media_type == 1:
+        kind = "image"
+    else:
+        kind = None
+    return {
+        "code": code,
+        "kind": kind,
+        "owner": user.get("username") or owner.get("username"),
+        "caption": text if isinstance(text, str) else None,
+        "date": date,
+        "takenAt": taken,
+        "likes": None if disabled else count_or_none(node.get("like_count")),
+        "comments": count_or_none(node.get("comment_count")),
+        "views": count_or_none(plays),
+        "durationS": round(float(duration), 2) if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0 else None,
+        "videoUrl": first_video_url(node),
+        "sound": sound_of(node),
+    }
+
+
+def merge_media(into, extra):
+    """Fill the gaps of `into` with what `extra` knows about the same post."""
+    for key, value in extra.items():
+        if into.get(key) is None and value is not None:
+            into[key] = value
+
+
+def user_from_node(node):
+    if count_or_none(node.get("follower_count")) is None or not ("biography" in node or "full_name" in node):
+        return None
+    return {
+        "username": node.get("username") if isinstance(node.get("username"), str) else None,
+        "fullName": node.get("full_name") if isinstance(node.get("full_name"), str) else None,
+        "biography": node.get("biography") if isinstance(node.get("biography"), str) else None,
+        "verified": node.get("is_verified") if isinstance(node.get("is_verified"), bool) else None,
+        "followers": count_or_none(node.get("follower_count")),
+        "following": count_or_none(node.get("following_count")),
+        "posts": count_or_none(node.get("media_count")),
+    }
+
+
+def instagram_facts(html):
+    """What an Instagram page embeds for a signed out visitor: the account and its posts, in page order.
+
+    Instagram ships its page data as JSON inside <script type="application/json" data-sjs> blocks. A profile carries
+    the account (exact follower count, bio) and its first dozen posts; a post page carries that post with its likes,
+    comments, date, caption and video address; a /popular/<topic>/ page carries reels with play counts.
+    Never raises: an unreadable page gives {"user": None, "media": []}.
+    """
+    user = None
+    media = {}
+    order = []
+    for block in SJS_BLOCK.finditer(html or ""):
+        raw = block.group(1)
+        if '"code"' not in raw and '"follower_count"' not in raw:
+            continue
+        try:
+            document = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        for node in iter_dicts(document):
+            if user is None:
+                user = user_from_node(node)
+            found = media_from_node(node)
+            if found is None:
+                continue
+            existing = media.get(found["code"])
+            if existing is None:
+                media[found["code"]] = found
+                order.append(found["code"])
+            else:
+                merge_media(existing, found)
+    return {"user": user, "media": [media[code] for code in order[:INSTAGRAM_MEDIA_CAP]]}
+
+
+def op_instagram_page(url):
+    """One plain request in Chrome's clothes (curl_cffi), no browser: what Instagram answers a signed out visitor.
+
+    No second attempt and no browser launch after a refusal: a 429 or a bot check is reported as it is.
+    """
+    from scrapling.fetchers import Fetcher
+
+    response = Fetcher.get(url, impersonate="chrome", timeout=max(3, min(12, remaining_ms() // 1000)), retries=1, follow_redirects=True)
+    code = status_of(response)
+    html = body_text(response)
+    if code == 404:
+        return {"status": "not_found", "detail": "Instagram says that page does not exist."}
+    if code == 429:
+        return {"status": "rate_limited", "detail": "Instagram asked automated readers to slow down."}
+    if code in (401, 403) or (CHALLENGE_PATTERN.search(html[:6000]) and len(html) < 8000):
+        return {"status": "blocked", "detail": "Instagram answered with a bot check."}
+    result = page_result(response, "fetcher")
+    if "/accounts/login" in result["finalUrl"]:
+        return {"status": "login_required", "detail": "Instagram sent the reader to its sign-in page."}
+    result["meta"] = meta_tags(html)
+    result["instagram"] = instagram_facts(html)
+    facts = result["instagram"]
+    if not facts["user"] and not facts["media"] and not result["meta"].get("og:description") and not result["meta"].get("description"):
+        return {"status": "login_required", "detail": "Instagram showed its sign-in page instead of the content."}
+    return {"status": "ok", **result}
+
+
 def op_page(request):
     url = safe_http_url(request.get("url"))
     if not url:
         return {"status": "error", "detail": "That address cannot be read."}
+    if is_instagram_url(url):
+        return op_instagram_page(url)
     from scrapling.fetchers import Fetcher
 
     try:
@@ -506,7 +806,11 @@ def op_page(request):
         if not looks_blocked(response, text):
             if not text.strip():
                 return {"status": "empty", "detail": "The page had nothing to read."}
-            return {"status": "ok", **page_result(response, "fetcher")}
+            result = page_result(response, "fetcher")
+            if is_js_shell(result):
+                return {"status": "empty", "detail": SHELL_DETAIL}
+            result["meta"] = meta_tags(body_text(response))
+            return {"status": "ok", **result}
     except Exception:  # noqa: BLE001 - a failed plain read goes to the one stealth attempt
         pass
     response = stealth_fetch(url, solve_cloudflare=True, network_idle=False, timeout=remaining_ms())
@@ -515,7 +819,11 @@ def op_page(request):
         return {"status": "blocked", "detail": "The site still answered with a bot check."}
     if not text.strip():
         return {"status": "empty", "detail": "The page had nothing to read."}
-    return {"status": "ok", **page_result(response, "stealth")}
+    result = page_result(response, "stealth")
+    if is_js_shell(result):
+        return {"status": "empty", "detail": SHELL_DETAIL}
+    result["meta"] = meta_tags(body_text(response))
+    return {"status": "ok", **result}
 
 
 OPERATIONS = {
@@ -528,6 +836,7 @@ OPERATIONS = {
 
 def main():
     global _deadline_s
+    configure_output()
     try:
         raw = sys.stdin.read()
         request = json.loads(raw) if raw.strip() else {}

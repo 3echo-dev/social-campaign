@@ -26,6 +26,14 @@ written (it never carries text) and the reason is printed.
 """
 import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
 
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
+
 RATIOS = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080),
           "3:4": (1080, 1440), "4:3": (1440, 1080), "21:9": (2520, 1080)}
 FPS, BAND_TOP, BAND_BOTTOM, FONT_SIZE = 30, 220, 1420, 56

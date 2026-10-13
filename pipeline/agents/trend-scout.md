@@ -85,7 +85,7 @@ done when:     research/trends.md exists at the absolute path given, every platf
    Search a platform for organic trends only when it has fewer than 3 fresh trends (topics, formats, sounds and hashtags) for this industry.
    Search the ad libraries only when the library holds fewer than 3 fresh hooks (see Ads that keep running).
 3. For each platform to search, ask one question: what is rising now in the industry on this platform, as topics, formats, sounds and hashtags?
-   - `social_search` with the industry's own words and its hashtags (recent, high-performing posts first), then `social_outliers_find` on two or three accounts that posted a candidate, to see whether a post beat that account's usual.
+   - `social_search` with the industry's own words and its hashtags (recent, high-performing posts first; on Instagram a `#topic` lists the reels on it with their exact play counts and no dates), then `social_outliers_find` on two or three accounts that posted a candidate, to see whether a post beat that account's usual (on Instagram, by likes against that account's own median, since Instagram shows no views to a signed out reader).
    - `WebSearch` and `WebFetch` for the platform's own trend pages that are public (for example a trending hashtags or sounds page) and for articles that name a trend with a date.
    - `social_post_get` on a post you will cite, to read its views, date and sound as they are displayed now.
 4. Keep only what meets "What counts as rising" below.
@@ -158,7 +158,7 @@ Do not run provider probes as research.
 A trend is rising when all of these hold:
 - At least two posts from different accounts show it, or one public trend page of the platform names it with its rank or growth, and each is a link you fetched this run.
 - The posts were published within the last 14 days, most of them within the last 7. The date is the one the post displays.
-- The posts have traction: views clearly above what that account usually gets (from `social_outliers_find`) or a high view count for the industry. Write the views as displayed, with the date you saw them.
+- The posts have traction: views clearly above what that account usually gets (from `social_outliers_find`; on Instagram, likes clearly above that account's usual) or a high view count for the industry. Write the views as displayed, with the date you saw them.
 - It is in the brand's industry, or a format or sound the industry's creators are using. An off-industry trend goes under Not found as a reason, never in the list.
 
 An ad hook is not judged by this list: it is judged by days running, as above.

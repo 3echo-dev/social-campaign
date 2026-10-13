@@ -6,16 +6,19 @@
  * holds only what was seen and heard, never an interpretation of it.
  *
  * Transcription is captions first: a transcript already saved for the same media,
- * then platform captions. No speech to text service is connected (see
- * docs/CONTRACTS.md, "Video watch tools"), so a video without captions degrades to
- * frames only: it comes back with its frames, transcript status
+ * then platform captions. No paid speech to text service is connected (see
+ * docs/CONTRACTS.md, "Video watch tools"), so video_watch on a video without captions
+ * degrades to frames only: it comes back with its frames, transcript status
  * needs_transcription_provider and an honest note that the spoken words are missing.
- * A person can still supply a transcript through transcript_save, and every later
- * watch reuses it.
+ * media_transcribe goes one step further for free: when a faster-whisper that already
+ * imports in this computer's Python is there, it transcribes the audio locally
+ * (local-whisper.mjs) and stores the result like any other transcript, source
+ * local_whisper. A person can still supply a transcript through transcript_save, and
+ * every later watch reuses it.
  *
  * The flow is captions before any download of audio, a focus window that filters
  * the transcript too, and a report of what was missing, expressed as a validated
- * contract rather than a markdown report, with no Whisper fallback.
+ * contract rather than a markdown report.
  */
 
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
@@ -28,6 +31,7 @@ import { log } from '../lib/log.mjs';
 import { sha256File } from '../media/hash.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
+import { LOCAL_WHISPER_MISSING, localWhisperAvailable, transcribeLocally } from './local-whisper.mjs';
 import { extractWatchFrames } from './watch-frames.mjs';
 import {
   captionLanguageTag,
@@ -226,7 +230,14 @@ function describe(facts) {
   const frames = `${facts.frames.length} frame${facts.frames.length === 1 ? '' : 's'}${scenes ? ` (${scenes} at scene changes)` : ''}`;
   let heard;
   if (facts.transcript.status === 'ready') {
-    const label = facts.transcript.source === 'platform_captions' ? 'platform captions' : facts.transcript.source === 'elevenlabs' ? 'a speech to text transcript' : 'a transcript a person supplied';
+    const label =
+      facts.transcript.source === 'platform_captions'
+        ? 'platform captions'
+        : facts.transcript.source === 'elevenlabs'
+          ? 'a speech to text transcript'
+          : facts.transcript.source === 'local_whisper'
+            ? 'a local speech to text transcript'
+            : 'a transcript a person supplied';
     heard = `a transcript from ${label} with ${facts.transcript.segments.length} segment${facts.transcript.segments.length === 1 ? '' : 's'}`;
   } else if (facts.transcript.status === 'no_audio') {
     heard = 'no audio track';
@@ -476,8 +487,9 @@ function readyAnswer(stored, path, reused) {
 /**
  * What the agent should do when there is no transcript to be had.
  * @param {{mediaPath: string|null, assetId: string|null, url: string|null, durationS: number|null}} facts
+ * @param {Awaited<ReturnType<typeof transcribeLocally>>|null} [local] why the free local speech to text did not give one.
  */
-function noProviderAnswer(facts) {
+function noProviderAnswer(facts, local = null) {
   return {
     status: /** @type {const} */ (NEEDS_TRANSCRIPTION_PROVIDER),
     provider_available: false,
@@ -486,7 +498,9 @@ function noProviderAnswer(facts) {
     asset_id: facts.assetId,
     source_url: facts.url,
     duration_s: facts.durationS === null ? null : round3(facts.durationS),
+    local_transcription: local && !local.ok ? { status: local.status, message: local.message } : null,
     next:
+      (local && !local.ok ? `The free local speech to text could not be used: ${local.message} ` : '') +
       'No speech to text service is connected to the plugin itself. ' +
       'If ElevenLabs is connected to this chat, get the words with its creative_transcribe_audio tool; the file goes onto a flow first (creative_create_asset_upload, creative_finalize_asset_upload) and the returned node_id is connect_from. ' +
       'With a job bound, in this order: 1) call it with connect_from, the context "job:{jobId} D1 TR{k}" and estimate_only true; 2) pipeline_quote_save with the item {key: "{jobId}-D1-TR{k}-v1", provider: "elevenLabs", kind: "transcription", deliverable: "D1", panel: "TR{k}", credits: the estimate, estimateId}, always D1, k counting up from 1; 3) pipeline_review_present with gate "price"; 4) once the person approves, call it again with the same inputs and context, without estimate_only; 5) transcript_save with source "elevenlabs". This has its own approval, works in any job state including research, and never touches the media price or starts media, so it is fine at any stage. ' +
@@ -494,6 +508,42 @@ function noProviderAnswer(facts) {
       'If it is not connected, carry on with the frames from video_watch and say the spoken words were not available. ' +
       'If the person has the script, a transcript or a subtitle file for this video, store it with transcript_save and source "manual"; every later watch will use it.',
   };
+}
+
+/**
+ * Transcribe a media file with the local faster-whisper and store the result like any other transcript.
+ * @param {import('../workspace/index.mjs').Workspace} workspace
+ * @param {{key: string, sha256: string|null, url: string|null, assetId: string|null, mediaPath: string, language: string|null, durationS: number|null}} facts
+ * @returns {Promise<{ok: true, stored: import('./watch-transcript.mjs').StoredTranscript, path: string, model: string}|{ok: false, local: Awaited<ReturnType<typeof transcribeLocally>>}>}
+ */
+async function transcribeWithLocalReader(workspace, facts) {
+  const local = await transcribeLocally({ path: facts.mediaPath, language: facts.language, durationS: facts.durationS });
+  if (!local.ok) return { ok: false, local };
+  const { segments } = normalizeSegments(local.segments);
+  if (segments.length === 0) return { ok: false, local: { ok: false, status: 'no_speech', message: 'No speech was found in that audio.', model: local.model } };
+  const saved = storeTranscript(workspace, {
+    workspaceRoot: workspace.requireRoot(),
+    key: facts.key,
+    sha256: facts.sha256,
+    url: facts.url,
+    assetId: facts.assetId,
+    mediaPath: facts.mediaPath,
+    source: 'local_whisper',
+    language: local.language ?? facts.language,
+    segments,
+    words: normalizeWords(local.words),
+    sourceType: 'local_media',
+    sourceRef: `local_whisper:${local.model}:${facts.assetId ? `asset:${facts.assetId}` : facts.url ?? facts.mediaPath}`,
+  });
+  return { ok: true, stored: saved.transcript, path: saved.path, model: local.model };
+}
+
+/**
+ * The answer for a transcript the local reader just made.
+ * @param {{stored: import('./watch-transcript.mjs').StoredTranscript, path: string, model: string}} made
+ */
+function localAnswer(made) {
+  return { ...readyAnswer(made.stored, made.path, false), transcribed_with: { engine: 'faster-whisper', model: made.model, device: 'cpu', compute_type: 'int8' } };
 }
 
 /**
@@ -520,7 +570,23 @@ export async function transcribeMedia(options) {
       const stored = storeCaptions(workspace, { key, sha256, url, assetId: null, mediaPath: fetched.videoPath, captions: fetched.captions });
       if (stored) return readyAnswer(stored, transcriptPath(root, key), false);
     }
-    return noProviderAnswer({ mediaPath: fetched.videoPath, assetId: null, url, durationS: fetched.durationS });
+    // No captions. The video is downloaded for the free local speech to text only when it can actually run.
+    if (!(await localWhisperAvailable())) {
+      return noProviderAnswer({ mediaPath: fetched.videoPath, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'not_installed', message: LOCAL_WHISPER_MISSING });
+    }
+    const downloaded = fetched.videoPath ? fetched : await fetchUrl({ url, workspaceRoot: root, language, breaker: options.breaker });
+    if (!downloaded.ok || !downloaded.videoPath) {
+      return noProviderAnswer({ mediaPath: null, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'failed', message: 'The video could not be downloaded for the local speech to text.' });
+    }
+    const downloadedSha = await sha256File(downloaded.videoPath);
+    const probed = await probeFile(downloaded.videoPath);
+    if (!probed.has_audio) return { status: /** @type {const} */ ('no_audio') };
+    const known = readTranscript(root, downloadedSha);
+    if (known) return readyAnswer(known, transcriptPath(root, downloadedSha), true);
+    const made = await transcribeWithLocalReader(workspace, { key: downloadedSha, sha256: downloadedSha, url, assetId: null, mediaPath: downloaded.videoPath, language, durationS: probed.duration });
+    if (made.ok) return localAnswer(made);
+    if (made.local.status === 'no_speech') return { status: /** @type {const} */ ('no_speech'), local_transcription: { status: made.local.status, message: made.local.message } };
+    return noProviderAnswer({ mediaPath: downloaded.videoPath, assetId: null, url, durationS: probed.duration }, made.local);
   }
 
   const source = resolveWatchSource(/** @type {string} */ (optionalString(options.assetId) ?? optionalString(options.path)), workspace);
@@ -531,12 +597,12 @@ export async function transcribeMedia(options) {
   if (existing) return readyAnswer(existing, transcriptPath(root, sha256), true);
   const probe = await probeFile(mediaPath);
   if (!probe.has_audio) return { status: /** @type {const} */ ('no_audio') };
-  return noProviderAnswer({
-    mediaPath,
-    assetId: source.assetId ?? findAssetId(workspace, mediaPath, sha256),
-    url: null,
-    durationS: probe.duration,
-  });
+  const assetId = source.assetId ?? findAssetId(workspace, mediaPath, sha256);
+  // No saved transcript and no captions: the free local speech to text, when this computer has one.
+  const made = await transcribeWithLocalReader(workspace, { key: sha256, sha256, url: null, assetId, mediaPath, language, durationS: probe.duration });
+  if (made.ok) return localAnswer(made);
+  if (made.local.status === 'no_speech') return { status: /** @type {const} */ ('no_speech'), local_transcription: { status: made.local.status, message: made.local.message } };
+  return noProviderAnswer({ mediaPath, assetId, url: null, durationS: probe.duration }, made.local);
 }
 
 // ---------------------------------------------------------------------------

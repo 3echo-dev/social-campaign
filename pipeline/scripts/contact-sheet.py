@@ -8,6 +8,14 @@ a .png and reaches a hand-off package without complaint. Anything unreadable or 
 is reported and left out rather than shipped as creative.
 """
 import argparse, os, re, sys
+
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
 from PIL import Image, ImageDraw
 
 BG, FG, BADGE = (24, 24, 27), (240, 240, 245), (220, 38, 38)

@@ -12,6 +12,14 @@
         [--timestamps 0:12,1:05] [--start HH:MM:SS --end HH:MM:SS] [--transcript file.vtt]
 """
 import argparse, json, os, re, shutil, subprocess, sys
+
+# Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
+# this script prints must not end the script with UnicodeEncodeError.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - a stream that cannot be reconfigured stays as it is
+        pass
 from urllib.parse import urlparse
 
 RES_W, MAX_H, MAX_FPS = 512, 1998, 2.0

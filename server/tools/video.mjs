@@ -2,11 +2,13 @@
  * Video understanding tools: video_watch, media_transcribe and transcript_save.
  *
  * Thin handlers over server/video/watch*.mjs, which hold the watch helpers.
- * Transcription is captions first: a transcript already saved for the
- * same media, then platform captions fetched with yt-dlp. No speech to text service
- * is connected, so without captions both video_watch's package and media_transcribe
- * answer needs_transcription_provider, the package covers the frames only, and a
- * person's transcript can still be stored with transcript_save.
+ * Transcription is captions first: a transcript already saved for the same
+ * media, then platform captions fetched with yt-dlp. media_transcribe then tries a
+ * free local faster-whisper (the small model on the CPU) when one already imports in
+ * this computer's Python. No paid speech to text service is connected, so without
+ * captions and without that, video_watch's package and media_transcribe answer
+ * needs_transcription_provider, the package covers the frames only, and a person's
+ * transcript can still be stored with transcript_save.
  */
 
 import { defineTool } from '../mcp/registry.mjs';
@@ -58,8 +60,9 @@ export const videoTools = [
   defineTool({
     name: 'media_transcribe',
     description:
-      'Get a timestamped transcript for a video or audio. Returns a transcript already saved for it, or the platform captions when they exist. ' +
-      'When neither exists it answers needs_transcription_provider: when ElevenLabs is connected, creative_transcribe_audio (file on a flow first, as connect_from) with estimate_only; with a job bound, save a transcription quote item TR{k} with pipeline_quote_save, get the price approved, run it again without estimate_only, then transcript_save (source elevenlabs), at any job stage; with no job, run it once the person says yes; otherwise carry on from the frames, and store a transcript the person has with transcript_save.',
+      'Get a timestamped transcript for a video or audio. Returns a transcript already saved for it, or the platform captions when they exist, ' +
+      'or, when faster-whisper is installed in this computer\'s Python and its small model is downloaded, a free local transcript (CPU, up to 15 minutes; source local_whisper, stored for every later step). ' +
+      'When none of those is possible it answers needs_transcription_provider, with local_transcription saying why the local reader could not run: when ElevenLabs is connected, creative_transcribe_audio (file on a flow first, as connect_from) with estimate_only; with a job bound, save a transcription quote item TR{k} with pipeline_quote_save, get the price approved, run it again without estimate_only, then transcript_save (source elevenlabs), at any job stage; with no job, run it once the person says yes; otherwise carry on from the frames, and store a transcript the person has with transcript_save.',
     inputSchema: {
       type: 'object',
       properties: {

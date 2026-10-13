@@ -318,6 +318,7 @@
             "platform_captions",
             "elevenlabs",
             "manual",
+            "local_whisper",
             "none"
           ]
         },

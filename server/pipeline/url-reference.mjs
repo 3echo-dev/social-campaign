@@ -45,6 +45,8 @@ export { referenceYtdlpBinary };
 export const REFERENCE_DOWNLOAD_TIMEOUT_MS = 120_000;
 export const REFERENCE_MAX_FILESIZE = '300M';
 const VIDEO_EXT = ['.mp4', '.mkv', '.webm', '.mov', '.m4v'];
+/** What yt-dlp saves when a post has a soundtrack and no video (a TikTok photo slideshow offers only an mp3). */
+const AUDIO_EXT = ['.mp3', '.m4a', '.aac', '.opus', '.ogg', '.oga', '.wav'];
 const THUMB_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 const BROWSERS = ['chrome', 'firefox', 'edge', 'safari', 'brave', 'chromium', 'opera', 'vivaldi'];
 const LINK_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'];
@@ -83,6 +85,7 @@ const NEXT = {
   impersonation_missing: { message: "TikTok needs yt-dlp's browser mode, which is not installed, so the video could not be downloaded." },
   ffmpeg_missing: { message: 'ffmpeg is not installed, so the video and its sound could not be joined.' },
   download_failed: { message: 'The video could not be downloaded.' },
+  audio_only: { message: 'That post has no video to download: it is a photo slideshow (or an audio post) with a soundtrack, so there is nothing to take apart frame by frame. Its caption and sound details are in the result.' },
   limit_reached: { message: `This job already has ${REFERENCES_PER_JOB} references, the most it can hold.` },
   page_blocked: { message: 'That site asks automated readers not to open the page, so it was not saved.' },
   page_failed: { message: 'That page could not be opened.' },
@@ -271,6 +274,36 @@ async function referenceFromCheckedUrl(ctx, mode, type) {
   return fromLink(ctx, hint);
 }
 
+/** Whether yt-dlp's details say the chosen format has no picture. */
+function isAudioOnlyInfo(info) {
+  return Boolean(info) && (info.vcodec === 'none' || info.resolution === 'audio only') && info.acodec !== 'none';
+}
+
+/** What an audio only post still tells: caption, author, sound, counts, date, soundtrack length and size. */
+function audioOnlyDetails(info, fileName, work) {
+  const artists = Array.isArray(info?.artists) ? info.artists.join(', ') : info?.artist;
+  let bytes = null;
+  try {
+    bytes = fileName ? statSync(join(work, fileName)).size : null;
+  } catch {
+    bytes = null;
+  }
+  return {
+    title: info?.title ? String(info.title).trim() : null,
+    caption: info?.description ? String(info.description).trim() : info?.title ? String(info.title).trim() : null,
+    author: info?.uploader ?? info?.channel ?? null,
+    musicTrack: info?.track ? String(info.track) : null,
+    musicArtist: artists ? String(artists) : null,
+    views: numberOrNull(info?.view_count),
+    likes: numberOrNull(info?.like_count),
+    comments: numberOrNull(info?.comment_count),
+    uploadDate: isoDay(info?.upload_date),
+    soundtrackS: numberOrNull(info?.duration),
+    soundtrackBytes: bytes,
+    soundtrackFormat: fileName ? extname(fileName).slice(1).toLowerCase() : null,
+  };
+}
+
 /** Whether a saved reference folder already holds what was asked for (the video, or for a caption only the details). */
 function folderComplete(dir, type) {
   if (!existsSync(dir)) return false;
@@ -325,7 +358,9 @@ async function downloadWithYtDlp(ctx, type) {
         '-o', join(work, 'video.%(ext)s'),
       ];
       if (type === 'caption') args.push('--skip-download');
-      else args.push('-f', 'bv*[height<=1080]+ba/b[height<=1080]/b', '--merge-output-format', 'mp4');
+      // The last choice, `ba`, is the soundtrack alone: a TikTok photo slideshow offers nothing else, and without it
+      // yt-dlp ends with "Requested format is not available", which read as a broken download and not as what it is.
+      else args.push('-f', 'bv*[height<=1080]+ba/b[height<=1080]/b/ba', '--merge-output-format', 'mp4');
       const runOptions = { binary, timeoutMs: options.timeoutMs ?? REFERENCE_DOWNLOAD_TIMEOUT_MS, maxBytes: 4 * 1024 * 1024 };
       // TikTok answers a plain downloader with a bot check; with curl_cffi installed yt-dlp can present itself as Chrome.
       // Whether it can is asked once per process, so the arguments are chosen up front and the download runs once.
@@ -336,6 +371,14 @@ async function downloadWithYtDlp(ctx, type) {
       const brk = options.breaker ?? sharedBreaker;
       videoName = names.find((n) => n.startsWith('video.') && VIDEO_EXT.includes(extname(n).toLowerCase()) && !n.includes('.part')) ?? null;
       infoName = names.find((n) => n === 'video.info.json') ?? null;
+      const audioName = names.find((n) => n.startsWith('video.') && AUDIO_EXT.includes(extname(n).toLowerCase()) && !n.includes('.part')) ?? null;
+      const soundOnly = type !== 'caption' && ((!videoName && audioName) || (videoName && infoName && isAudioOnlyInfo(parseInfo(readFileSync(join(work, infoName), 'utf8')))));
+      if (soundOnly) {
+        // The platform answered and the post exists: it just has no picture. Say so, with what the post still tells.
+        breakerRecord(options.breaker ?? sharedBreaker, url, 'ok');
+        const found = infoName ? parseInfo(readFileSync(join(work, infoName), 'utf8')) : null;
+        return fail('audio_only', { platform, details: audioOnlyDetails(found, audioName ?? videoName, work) });
+      }
       const gotWhatWasAsked = type === 'caption' ? Boolean(infoName) : Boolean(videoName);
       if (!gotWhatWasAsked) {
         const text = run.stderr + run.stdout;
