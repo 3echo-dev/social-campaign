@@ -73,6 +73,7 @@ After the finish, report what the video really has (captions, music or "no music
 
 When the strategist reports an unanswered fact the copy needs, put it to the person as a `pipeline_board_ask` question before the script stage; do not carry it to the final approval and never let an agent choose it.
 
+Before the Creative Director writes the script and storyboard, ask the brief's open questions that change the words on screen or the look (step labels, an accent colour, the account behind "link in profile") together with the voice-over, as one question card per job. Never leave them for the Creative Director to guess.
 For a video, ask the voice-over question once with `pipeline_board_ask` before the Creative Director writes the script and storyboard: "Voice-over: yes or no, and which voice?" (options Yes and No, with a text box for the voice). Pass the answer to the Creative Director so the script and clip lengths fit it. Music and captions are not asked here; they are chosen at the combine step. The storyboard is refused for a video until it carries the answer.
 
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
