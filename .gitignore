@@ -33,3 +33,5 @@ supabase/.temp/
 /.creative-studio-pipeline/
 /workspace-a/
 /\[object Object\]/
+__pycache__/
+*.pyc
