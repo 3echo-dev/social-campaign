@@ -430,6 +430,11 @@ button.sb-cell-body:active{transform:none}
 .sample-view .sample-frame{align-self:start}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
+.q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
+.q-still{margin:0}
+.q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}
+.q-still .media-open{display:block;padding:0;border:0;background:none;width:100%;cursor:zoom-in}
+.q-still figcaption{font-size:var(--t1);color:var(--dim);margin-top:4px}
 .stage-ask{margin:6px 0 10px;padding:12px var(--pad);border:1px solid var(--tape);border-radius:var(--radius-lg);background:var(--panel2)}
 .stage-ask-h{margin:0 0 8px;font-weight:600;color:var(--tape)}
 .stage-ask .inbox-question+.inbox-question{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2)}
@@ -4718,6 +4723,15 @@ const src=safePreviewUrl(take.url);
 return`<figure class="take"><figcaption>${esc(take.label)}</figcaption>${src?`<audio controls preload="metadata" src="${esc(src)}">${esc(take.label)}</audio>`:'<p class="muted take-wait">Getting this ready to play...</p>'}</figure>`;
 }).join('')}</div>`;
 }
+export function questionStillList(stills){
+const list=(Array.isArray(stills)?stills:[]).filter(still=>still&&trimmed(still.label));
+if(!list.length)return'';
+return`<div class="q-stills" role="group" aria-label="Pictures for this question">${list.map(still=>{
+const src=safePreviewUrl(still.url);
+const body=src?`<button type="button" class="media-open" data-view-media="${esc(src)}" data-view-alt="${esc(still.label)}" aria-label="${esc(`Open ${still.label} full size`)}"><img src="${esc(src)}" alt="${esc(still.label)}"></button>`:'<p class="muted take-wait">Getting this ready to show...</p>';
+return`<figure class="q-still">${body}<figcaption>${esc(still.label)}</figcaption></figure>`;
+}).join('')}</div>`;
+}
 function questionCard(item,state={},signal={},index=0,{place=''}={}){
 if(item.inChat)return`<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
 const key=String(item.questionId);
@@ -4738,7 +4752,7 @@ const upload=item.wantsUpload&&!locked?questionUpload(item,state.upload||{},{pla
 const sent=locked&&state.text?`<p class="inbox-sent">${esc(`"${truncateText(state.text,160)}"`)}</p>`:'';
 const done=state.answered?'<p class="inbox-note" role="status">Claude has your answer.</p>':inboxStatus(state,signal);
 const row=buttons&&link?buttons.replace(/<\/div>$/,`${link}</div>`):buttons||link;
-return`${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
+return`${questionStillList(item.stills)}${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
 }
 function sampleThumb(doc){
 const sample=doc?.review?.sample;

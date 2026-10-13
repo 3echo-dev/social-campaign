@@ -418,6 +418,13 @@ async function reviewSources(job, { all = false } = {}) {
       for (const take of readJsonFile(join(job.dir, 'media', kind, 'takes', 'takes.json'), []) || []) if (take && typeof take.file === 'string') add(join(job.dir, ...take.file.split('/')));
     } catch { /* no takes */ }
   }
+  // The pictures an open question on this job is about (frames of the finished video, a panel).
+  try {
+    const questions = await import('./questions.mjs');
+    for (const question of questions.listQuestions({ root: job.root, jobId: job.jobId, status: 'open', readOnly: true })) {
+      for (const still of Array.isArray(question.stills) ? question.stills : []) if (typeof still?.file === 'string') add(join(job.dir, ...still.file.split('/')));
+    }
+  } catch { /* no questions */ }
   return [...found.values()];
 }
 

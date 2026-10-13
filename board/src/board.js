@@ -4231,6 +4231,17 @@ export function takeList(takes) {
 }
 
 // place keeps element ids unique when the same question is also shown on its stage (place 'stage').
+/** The pictures a question is about, side by side, each opening full size. */
+export function questionStillList(stills) {
+  const list = (Array.isArray(stills) ? stills : []).filter(still => still && trimmed(still.label));
+  if (!list.length) return '';
+  return `<div class="q-stills" role="group" aria-label="Pictures for this question">${list.map(still => {
+    const src = safePreviewUrl(still.url);
+    const body = src ? `<button type="button" class="media-open" data-view-media="${esc(src)}" data-view-alt="${esc(still.label)}" aria-label="${esc(`Open ${still.label} full size`)}"><img src="${esc(src)}" alt="${esc(still.label)}"></button>` : '<p class="muted take-wait">Getting this ready to show...</p>';
+    return `<figure class="q-still">${body}<figcaption>${esc(still.label)}</figcaption></figure>`;
+  }).join('')}</div>`;
+}
+
 function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } = {}) {
   if (item.inChat) return `<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
   const key = String(item.questionId);
@@ -4252,7 +4263,7 @@ function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } =
   const done = state.answered ? '<p class="inbox-note" role="status">Claude has your answer.</p>' : inboxStatus(state, signal);
   // "Type an answer" sits in the row with the answer buttons, so every card ends on one row of buttons.
   const row = buttons && link ? buttons.replace(/<\/div>$/, `${link}</div>`) : buttons || link;
-  return `${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
+  return `${questionStillList(item.stills)}${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
 }
 
 function sampleThumb(doc) {

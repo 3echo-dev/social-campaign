@@ -147,6 +147,24 @@ function uploadWish(wantsUpload, jobId) {
 // Takes to pick between (voice-over or music versions made for the combine step): each is a short label and a job-relative audio
 // file. The board plays them side by side on the question card, and each label is also an answer button.
 const TAKE_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']);
+const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+export const QUESTION_STILL_LIMIT = 6;
+
+// Pictures a question is about (frames of the finished video with its captions burned in, a panel), shown on the card so the
+// person sees what they are deciding on instead of picturing it.
+function questionStills(root, stills, jobId, brand) {
+  if (stills === undefined || stills === null) return [];
+  if (!jobId) throw new TypeError('A question with pictures must be about one job (pass jobId).');
+  if (!Array.isArray(stills) || !stills.length || stills.length > QUESTION_STILL_LIMIT) throw new TypeError(`Give one to ${QUESTION_STILL_LIMIT} pictures.`);
+  const jobDir = join(root, 'workspaces', brand, 'jobs', jobId);
+  return stills.map(still => {
+    if (!still || typeof still !== 'object') throw new TypeError('Each picture needs a label and a file.');
+    const label = plainLine(still.label, { label: 'Each picture label', limit: OPTION_TEXT_LIMIT });
+    const file = typeof still.file === 'string' ? still.file.trim().replace(/\\/g, '/') : '';
+    if (!file || file.startsWith('/') || file.split('/').includes('..') || !STILL_EXTENSIONS.has(extname(file).toLowerCase()) || !existsSync(join(jobDir, ...file.split('/')))) throw new TypeError(`The file for ${label} must be a picture inside the job.`);
+    return { label, file };
+  });
+}
 function questionTakes(root, takes, jobId, brand) {
   if (takes === undefined || takes === null) return [];
   if (!jobId) throw new TypeError('A question with takes to pick from must be about one job (pass jobId).');
@@ -161,10 +179,11 @@ function questionTakes(root, takes, jobId, brand) {
   });
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined }) {
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined, stills = undefined }) {
   const place = questionPlace(root, { brand, jobId });
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
   const picks = inChat ? [] : questionTakes(root, takes, place.jobId, place.brand);
+  const pictures = inChat ? [] : questionStills(root, stills, place.jobId, place.brand);
   if (picks.length && options !== undefined && options !== null && !(Array.isArray(options) && !options.length)) throw new TypeError('A question with takes uses the takes as its options.');
   if (new Set(picks.map(take => take.label.toLowerCase())).size !== picks.length) throw new TypeError('Each take label must be different.');
   const choices = picks.length ? picks.map(take => take.label) : questionOptions(options);
@@ -183,6 +202,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     ...(inChat ? { inChat: true } : {}),
     ...(wish ? { wantsUpload: wish } : {}),
     ...(picks.length ? { takes: picks } : {}),
+    ...(pictures.length ? { stills: pictures } : {}),
     askedAt: new Date().toISOString(),
     status: 'open',
     answer: null,

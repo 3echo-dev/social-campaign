@@ -26,7 +26,7 @@ const STAGE_OF = {
   MEDIA_GENERATING: { stage: 'making-the-images-and-video', substep: 'Images', status: 'running' },
   MEDIA_READY: { stage: 'making-the-images-and-video', substep: 'Checking them', status: 'done' },
 
-  DRAFTS_READY: { stage: 'writing-the-posts', substep: 'Captions', status: 'running' },
+  DRAFTS_READY: { stage: 'writing-the-posts', substep: 'Post text', status: 'running' },
   VALIDATED: { stage: 'writing-the-posts', substep: 'Checks', status: 'done' },
   AWAITING_CONTENT_APPROVAL: { stage: 'your-final-approval', status: 'waiting' },
   CONTENT_APPROVED: { stage: 'your-final-approval', status: 'done' },

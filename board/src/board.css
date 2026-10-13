@@ -487,6 +487,11 @@ button.sb-cell-body:active{transform:none}
 .sample-view .sample-frame{align-self:start}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
+.q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
+.q-still{margin:0}
+.q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}
+.q-still .media-open{display:block;padding:0;border:0;background:none;width:100%;cursor:zoom-in}
+.q-still figcaption{font-size:var(--t1);color:var(--dim);margin-top:4px}
 .stage-ask{margin:6px 0 10px;padding:12px var(--pad);border:1px solid var(--tape);border-radius:var(--radius-lg);background:var(--panel2)}
 .stage-ask-h{margin:0 0 8px;font-weight:600;color:var(--tape)}
 .stage-ask .inbox-question+.inbox-question{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2)}

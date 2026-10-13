@@ -1040,6 +1040,7 @@ function questionItem(question, place, at = null) {
     kind: 'question', ...place, brand: question.brand || null, text: question.text, inline: true,
     ...(question.wantsUpload ? { wantsUpload: { type: question.wantsUpload.type } } : {}),
     ...(Array.isArray(question.takes) && question.takes.length ? { takes: takesOf(question, at) } : {}),
+    ...(Array.isArray(question.stills) && question.stills.length && at?.root && at.brand && at.jobId ? { stills: question.stills.map(still => ({ label: still.label, url: reviewUrlFor(at.root, { brand: at.brand, jobId: at.jobId, file: still.file }) })) } : {}),
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,
     at: inboxAt(question.askedAt),
   };
