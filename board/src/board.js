@@ -766,14 +766,20 @@ function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = ''
   return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : 'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
 }
 // The References panel on a job page: what is saved, and the control that adds more.
-export function referencesPanel(project, state = {}, { openKeys = new Set(), open: forceOpen = false } = {}) {
+// When Claude asked for a file (a question with wantsUpload), the panel opens on that question: its text and its own upload,
+// which answers it, come first, so the open panel never shows only a general form that does not say what is wanted.
+export function referencesPanel(project, state = {}, { openKeys = new Set(), open: forceOpen = false, asking = [], uploadState = () => ({}) } = {}) {
   const refs = Array.isArray(project?.references) ? project.references : [];
   const busy = Boolean(state.busy);
+  const asked = (Array.isArray(asking) ? asking : []).filter(item => item?.questionId && item.wantsUpload);
   const chips = refs.map(ref => `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note ? ` · ${esc(truncateText(ref.note, 60))}` : ''}</small></button></li>`).join('');
-  const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
-  const form = `<div class="ref-form">${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
-  const open = forceOpen || openKeys.has('more:refs') || busy || Boolean(state.error);
-  return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">Add a reference</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${list}${form}</div></details>`;
+  const list = refs.length ? `<ul class="ab-chips" aria-label="References on this job">${chips}</ul>` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+  const questions = asked.map(item => `<div class="ref-asked"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionUpload(item, uploadState(item) || {}, { place: 'refs' })}</div>`).join('');
+  const other = asked.length ? '<p class="field-hint">Any other picture, clip, audio or wording for this job:</p>' : '';
+  const form = `<div class="ref-form">${other}${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="${asked.length ? 'quiet' : 'primary'}" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
+  const open = forceOpen || asked.length > 0 || openKeys.has('more:refs') || busy || Boolean(state.error);
+  const title = asked.length ? (asked.length === 1 ? 'Claude asks for a file' : `Claude asks for ${asked.length} files`) : 'Add a reference';
+  return `<details class="panel doc-panel" data-open-key="more:refs"${open ? ' open' : ''}><summary><span class="doc-summary-title">${title}</span>${refs.length ? ` <span class="count">${refs.length}</span>` : ''}</summary><div class="doc-body">${questions}${list}${form}</div></details>`;
 }
 
 // The file kind a picked file is, as the reference type that fits it best.
@@ -799,11 +805,12 @@ export function chatAttachment(state = {}, agentName = 'Director') {
 }
 
 // The upload control inside a question card, when the Director asked for a file.
-export function questionUpload(item, state = {}) {
+// place keeps element ids unique when the same question's upload is also shown in the References panel.
+export function questionUpload(item, state = {}, { place = '' } = {}) {
   const busy = Boolean(state.busy);
   const shown = { ...state, type: state.type || item?.wantsUpload?.type || 'picture' };
   const key = String(item?.questionId || '');
-  return `<div class="inbox-upload ref-form" data-qref="${esc(key)}">${referenceControl(shown, { prefix: 'qref', busy, idKey: key })}<div class="ref-actions"><button type="button" class="primary" data-qref-send="${esc(key)}" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
+  return `<div class="inbox-upload ref-form" data-qref="${esc(key)}">${referenceControl(shown, { prefix: 'qref', busy, idKey: place ? `${key}-${place}` : key })}<div class="ref-actions"><button type="button" class="primary" data-qref-send="${esc(key)}" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
 }
 
 // The same control inside the new-job form, before the job exists: each one the person adds waits in a short list and is
@@ -6344,8 +6351,8 @@ if (typeof document !== 'undefined') {
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
-    const wantsFile = needItems.some(item => item.kind === 'question' && item.wantsUpload && !item.closing);
-    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, open: wantsFile });
+    const asking = needItems.filter(item => item.kind === 'question' && item.wantsUpload && !item.closing && !item.inChat && !questionState(item.questionId).answered);
+    const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, asking, uploadState: item => questionState(item.questionId).upload });
     const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
     const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;

@@ -2725,14 +2725,26 @@ function reportReviewPaths(dir) {
   return [REPORT_FILE, ...stills];
 }
 
-function postFilePaths(dir) {
+function draftFilePaths(dir, name) {
   try {
     return readdirSync(join(dir, 'drafts'), { withFileTypes: true })
-      .filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name) && existsSync(join(dir, 'drafts', entry.name, 'post.md')))
-      .map(entry => `drafts/${entry.name}/post.md`)
+      .filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name) && existsSync(join(dir, 'drafts', entry.name, name)))
+      .map(entry => `drafts/${entry.name}/${name}`)
       .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
   } catch { return []; }
 }
+
+function postFilePaths(dir) {
+  return draftFilePaths(dir, 'post.md');
+}
+
+// The files a review shows when the caller lists none: the concept pick is concepts.md, the storyboard each drafts/D*/storyboard.md.
+function defaultReviewPaths(dir, gate) {
+  if (gate === 'concept') return existsSync(join(dir, 'concepts.md')) ? ['concepts.md'] : [];
+  if (gate === 'storyboard') return draftFilePaths(dir, 'storyboard.md');
+  return [];
+}
+const REVIEW_PATHS_HINT = 'Pass paths: concepts.md for the concept pick, each drafts/D*/storyboard.md for the storyboard, each drafts/D*/post.md with its media for the final post, each drafts/D*/post.md for the posting decision.';
 
 function moveToReview(root, brand, jobId, snapshot, requested, paths) {
   const state = snapshot.project.state;
@@ -2884,7 +2896,9 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(aimed===FINDINGS_GATE && (!current || current===FINDINGS_GATE)) paths=reportReviewPaths(jobDirectory(root,brand,jobId));
     // The final post of a job made from supplied files needs no list: it is every post file, and the supplied files are added below.
     if((!Array.isArray(paths) || !paths.length) && aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=postFilePaths(jobDirectory(root,brand,jobId));
-    if(!Array.isArray(paths) || !paths.length || new Set(paths).size!==paths.length) throw new Error('Provide the complete, unique list of files for this review.');
+    if(!Array.isArray(paths) || !paths.length) paths=defaultReviewPaths(jobDirectory(root,brand,jobId),aimed);
+    if(!Array.isArray(paths) || !paths.length) throw new UserFacingError(`No files were given for the ${GATE_WORDS[aimed] || 'review'}, and none were found to present.`,{code:'invalid_input',fix:REVIEW_PATHS_HINT});
+    if(new Set(paths).size!==paths.length) throw new UserFacingError('The list of files for this review names a file twice.',{code:'invalid_input',fix:'Pass each file once.'});
     // The person's approval of the posting decision covers the posting plan by its hash, so the plan is built from
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
     // built before the job moves, so a plan that cannot be built leaves the job where it was.

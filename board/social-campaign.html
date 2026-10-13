@@ -1189,6 +1189,8 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .project-card.is-waiting .pc-body>.pill{color:var(--tape-ink);background:var(--tape);border-color:var(--tape)}
 @media (hover:hover) and (pointer:fine){.project-card.is-waiting:hover{box-shadow:0 0 0 1px rgba(245,200,75,.5),0 18px 36px -20px rgba(245,200,75,.75),inset 0 -1px 1px rgb(255 255 255/.05)}}
 .ref-form{display:flex;flex-direction:column;gap:10px;max-width:520px}
+.ref-asked{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line2)}
+.ref-asked .inbox-text{margin:0 0 8px}
 .ref-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
 .ref-form textarea,.ref-form input:not([type=file]),.ref-form select{font:inherit;color:inherit}
 .ref-file{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1848,14 +1850,18 @@ const picked=state.fileName?`<span class="muted">${esc(state.fileName)}</span>`:
 const textArea=isText?`<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy?'disabled':''}>${esc(state.text||'')}</textarea></label>`:'';
 return`<label>What is it<select name="${prefix}_type" ${busy?'disabled':''}>${REFERENCE_TYPES.map(item=>`<option value="${item.id}"${item.id===type.id?' selected':''}>${esc(item.label)}</option>`).join('')}</select></label>${textArea}<div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText?'Or choose a text file':'Choose a file'}</span></label>${picked}</div><label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note||'')}" placeholder="e.g. match this colour and pace" ${busy?'disabled':''}></label>`;
 }
-export function referencesPanel(project,state={},{openKeys=new Set(),open:forceOpen=false}={}){
+export function referencesPanel(project,state={},{openKeys=new Set(),open:forceOpen=false,asking=[],uploadState=()=>({})}={}){
 const refs=Array.isArray(project?.references)?project.references:[];
 const busy=Boolean(state.busy);
+const asked=(Array.isArray(asking)?asking:[]).filter(item=>item?.questionId&&item.wantsUpload);
 const chips=refs.map(ref=>`<li><button type="button" class="ab-chip" disabled aria-label="${esc(`${ref.label}: ${ref.name}`)}">${esc(ref.name)}<small>${esc(ref.label)}${ref.note?` · ${esc(truncateText(ref.note,60))}`:''}</small></button></li>`).join('');
-const list=refs.length?`<ul class="ab-chips" aria-label="References on this job">${chips}</ul>`:'<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
-const form=`<div class="ref-form">${referenceControl(state,{prefix:'ref',busy})}<div class="ref-actions"><button type="button" class="primary" data-ref-action="send" ${busy?'disabled':''}>${busy?'Saving...':'Add reference'}</button></div>${state.error?`<p class="field-error" role="alert">${esc(state.error)}</p>`:''}${!state.error&&state.message?`<p class="muted" role="status">${esc(state.message)}</p>`:''}</div>`;
-const open=forceOpen||openKeys.has('more:refs')||busy||Boolean(state.error);
-return`<details class="panel doc-panel" data-open-key="more:refs"${open?' open':''}><summary><span class="doc-summary-title">Add a reference</span>${refs.length?` <span class="count">${refs.length}</span>`:''}</summary><div class="doc-body">${list}${form}</div></details>`;
+const list=refs.length?`<ul class="ab-chips" aria-label="References on this job">${chips}</ul>`:asked.length?'':'<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+const questions=asked.map(item=>`<div class="ref-asked"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionUpload(item,uploadState(item)||{},{place:'refs'})}</div>`).join('');
+const other=asked.length?'<p class="field-hint">Any other picture, clip, audio or wording for this job:</p>':'';
+const form=`<div class="ref-form">${other}${referenceControl(state,{prefix:'ref',busy})}<div class="ref-actions"><button type="button" class="${asked.length?'quiet':'primary'}" data-ref-action="send" ${busy?'disabled':''}>${busy?'Saving...':'Add reference'}</button></div>${state.error?`<p class="field-error" role="alert">${esc(state.error)}</p>`:''}${!state.error&&state.message?`<p class="muted" role="status">${esc(state.message)}</p>`:''}</div>`;
+const open=forceOpen||asked.length>0||openKeys.has('more:refs')||busy||Boolean(state.error);
+const title=asked.length?(asked.length===1?'Claude asks for a file':`Claude asks for ${asked.length} files`):'Add a reference';
+return`<details class="panel doc-panel" data-open-key="more:refs"${open?' open':''}><summary><span class="doc-summary-title">${title}</span>${refs.length?` <span class="count">${refs.length}</span>`:''}</summary><div class="doc-body">${questions}${list}${form}</div></details>`;
 }
 const REFERENCE_TYPE_OF_KIND=Object.freeze({image:'picture',video:'video',audio:'audio',text:'caption',document:'addon'});
 export function referenceTypeFor(typeId,file){
@@ -1874,11 +1880,11 @@ const panel=open
 :'';
 return{button,panel};
 }
-export function questionUpload(item,state={}){
+export function questionUpload(item,state={},{place=''}={}){
 const busy=Boolean(state.busy);
 const shown={...state,type:state.type||item?.wantsUpload?.type||'picture'};
 const key=String(item?.questionId||'');
-return`<div class="inbox-upload ref-form" data-qref="${esc(key)}">${referenceControl(shown,{prefix:'qref',busy,idKey:key})}<div class="ref-actions"><button type="button" class="primary" data-qref-send="${esc(key)}" ${busy?'disabled':''}>${busy?'Sending...':'Send file'}</button></div>${state.error?`<p class="field-error" role="alert">${esc(state.error)}</p>`:''}${!state.error&&state.message?`<p class="muted" role="status">${esc(state.message)}</p>`:''}</div>`;
+return`<div class="inbox-upload ref-form" data-qref="${esc(key)}">${referenceControl(shown,{prefix:'qref',busy,idKey:place?`${key}-${place}`:key})}<div class="ref-actions"><button type="button" class="primary" data-qref-send="${esc(key)}" ${busy?'disabled':''}>${busy?'Sending...':'Send file'}</button></div>${state.error?`<p class="field-error" role="alert">${esc(state.error)}</p>`:''}${!state.error&&state.message?`<p class="muted" role="status">${esc(state.message)}</p>`:''}</div>`;
 }
 export const NEW_JOB_REFERENCES_MAX=8;
 export function freshNewJobRefs(){return{type:'picture',file:null,fileName:'',text:'',note:'',error:'',open:false,items:[]};}
@@ -6491,8 +6497,8 @@ const standalone=left('publish',sentPanel+kitPanel)+left('findings',report)+left
 const filesPanel=agentBox
 ?`<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files')?' open':''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox,{chipContext,jobId:project.jobId,openKeys,omitted})}</div></details>`
 :`<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files')?' open':''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts||[],doc,openKeys,reportJob?{empty:'The report will appear here.'}:{})}${omittedLine}</div></details>`;
-const wantsFile=needItems.some(item=>item.kind==='question'&&item.wantsUpload&&!item.closing);
-const referencesBox=referencesPanel(project,ui.refs||{},{openKeys,open:wantsFile});
+const asking=needItems.filter(item=>item.kind==='question'&&item.wantsUpload&&!item.closing&&!item.inChat&&!questionState(item.questionId).answered);
+const referencesBox=referencesPanel(project,ui.refs||{},{openKeys,asking,uploadState:item=>questionState(item.questionId).upload});
 const usagePanel=`<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage')?' open':''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({project,brands:data.brands||[],bare:true})}</div></details>`;
 const aboutRows=[['Brand',project.brand===NO_BRAND?'':brandLabel],['Kind of job',kindLabelOf(project)],['Opened',openedWord(project.usage?.startedAt)],['Where',project.ownershipStatus==='unbound'?'Local draft':'']].filter(([,value])=>value);
 const aboutPanel=`<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about')?' open':''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
