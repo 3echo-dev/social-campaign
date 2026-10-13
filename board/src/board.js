@@ -4250,7 +4250,9 @@ function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } =
   const upload = item.wantsUpload && !locked ? questionUpload(item, state.upload || {}, { place }) : '';
   const sent = locked && state.text ? `<p class="inbox-sent">${esc(`"${truncateText(state.text, 160)}"`)}</p>` : '';
   const done = state.answered ? '<p class="inbox-note" role="status">Claude has your answer.</p>' : inboxStatus(state, signal);
-  return `${takeList(item.takes)}${buttons}${upload}${link}${box}${sent}${inboxError(state)}${done}`;
+  // "Type an answer" sits in the row with the answer buttons, so every card ends on one row of buttons.
+  const row = buttons && link ? buttons.replace(/<\/div>$/, `${link}</div>`) : buttons || link;
+  return `${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
 }
 
 function sampleThumb(doc) {
@@ -4489,7 +4491,7 @@ export function inboxCard(item, ctx = {}) {
         : briefCard(item, ctx, index);
   const more = Number.isInteger(ctx.more) && ctx.more > 0 ? `<p class="inbox-more">${esc(`${ctx.more} more ${ctx.more === 1 ? 'thing waits' : 'things wait'} in this job.`)}</p>` : '';
   const opens = ctx.opensJob && item.jobId ? ` data-card-job="${esc(item.jobId)}"` : '';
-  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${body}${more}</li>`;
+  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${more}${body}</li>`;
 }
 
 // Several questions from one job on one card: the job line once, then each question with its own answers.

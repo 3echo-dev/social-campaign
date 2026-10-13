@@ -1322,9 +1322,13 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .needs-strip .inbox-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:calc(var(--gap) / 2);align-items:stretch}
 /* Cards in a row share one height: the words stay at the top and the picture and buttons line up along the bottom. */
 .needs-strip .inbox-item>div:first-of-type{margin-top:auto}
+/* Every card's buttons start at the left edge and the last row sits on the card's bottom edge. */
+.needs-strip .inbox-actions{justify-content:flex-start}
+.needs-strip .inbox-options{align-items:center}
+.needs-strip .inbox-options .inbox-type{align-self:center;margin:0;padding:0;min-height:auto}
 /* One button look on every card: answers use the same gold as Review and Open the job (no arrow, since they answer in place). */
-.needs-strip .inbox-options button:not(.is-chosen){background:linear-gradient(135deg,#FFD65A,#FFA234) border-box;border-color:transparent;color:#1A1206;font-weight:800}
-.needs-strip .inbox-options button:not(.is-chosen):hover:not(:disabled){filter:brightness(1.06)}
+.needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type){background:linear-gradient(135deg,#FFD65A,#FFA234) border-box;border-color:transparent;color:#1A1206;font-weight:800}
+.needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type):hover:not(:disabled){filter:brightness(1.06)}
 .project-card.is-waiting{border-color:var(--tape);box-shadow:0 0 0 1px rgba(245,200,75,.35),0 14px 32px -20px rgba(245,200,75,.6),inset 0 -1px 1px rgb(255 255 255/.05)}
 .project-card.is-waiting .pc-body>.pill{color:var(--tape-ink);background:var(--tape);border-color:var(--tape)}
 @media (hover:hover) and (pointer:fine){.project-card.is-waiting:hover{box-shadow:0 0 0 1px rgba(245,200,75,.5),0 18px 36px -20px rgba(245,200,75,.75),inset 0 -1px 1px rgb(255 255 255/.05)}}
