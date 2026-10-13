@@ -4178,6 +4178,17 @@ function briefCard(item, ctx = {}, index = 0) {
   return `<form class="inbox-fields" data-inbox-intake="${esc(jobId)}" data-inbox-fields="${esc(keys.join(' '))}"${own} novalidate>${fields}${error}<div class="inbox-actions"><button type="submit" class="primary" ${state.busy || pending ? 'disabled' : ''}>${label}</button></div></form>${here ? inboxStatus(state, signal) : ''}`;
 }
 
+// Jobs newest first, oldest at the bottom: by when the job was opened, else the date in its id (job-YYYYMMDD-...). Stable for ties.
+function jobOpenedAt(project) {
+  const started = Date.parse(project?.usage?.startedAt || '');
+  if (!Number.isNaN(started)) return started;
+  const day = /^job-(\d{4})(\d{2})(\d{2})-/.exec(String(project?.jobId || ''));
+  return day ? Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : 0;
+}
+export function newestJobsFirst(list) {
+  return (Array.isArray(list) ? list : []).map((project, at) => ({ project, at, time: jobOpenedAt(project) })).sort((a, b) => b.time - a.time || a.at - b.at).map(entry => entry.project);
+}
+
 const INBOX_TEXT_FALLBACK = Object.freeze({ decision: 'A decision is waiting for you.', brief: BRIEF_MISSING, question: '' });
 
 export function inboxKey(item) {
@@ -6381,7 +6392,7 @@ if (typeof document !== 'undefined') {
     const workspaceItems = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean) });
     const inbox = agentsPanel ? { ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
-    const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${projects.map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
+    const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
     const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}${aside}</div>` : aside);
     if (firstRun) {
       syncInboxDocuments();
@@ -6396,12 +6407,13 @@ if (typeof document !== 'undefined') {
     }
     // Home and the new-job page: "Needs you" comes first and holds every open item, the job ones included, with the same
     // cards (pictures, Approve, Ask for changes) as the Director's chat. Then the jobs, one row each from brief to posted,
-    // waiting ones first. The kinds of job to start come last.
+    // newest first. The kinds of job to start come last.
     const needsItems = inbox.items;
     syncInboxDocuments(needsItems.filter(answeredInPlace).map(item => item.jobId));
     const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
-    const rank = project => (cardWaiting(project, waitingJobs) ? 0 : FINAL_JOB_STATES.includes(project?.state) ? 2 : 1);
-    const ordered = projects.map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
+    // Newest first, like the In flight cards; finished jobs go to the bottom.
+    const rank = project => (FINAL_JOB_STATES.includes(project?.state) ? 1 : 0);
+    const ordered = newestJobsFirst(projects).map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
     const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
     const startRow = doors.length ? `<section class="doors-section" aria-labelledby="doors-title"><div class="section-head"><h2 id="doors-title">Start a new job</h2></div>${doorRow}</section>` : '';
     return `${head}<div class="overview-main">${needs}${overviewColumn({ strip, jobs: rows, onboarding })}${startRow}</div>`;
@@ -6413,7 +6425,7 @@ if (typeof document !== 'undefined') {
     const door = pipelineDoors(data.projects || [], pipelineItems).find(item => item.group === group);
     if (!door) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted">This kind of job is not on the board. <a href="#/">Back to all jobs</a></p>';
     const jobs = door.jobs.length
-      ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${door.jobs.length}</span></div><div class="project-grid">${door.jobs.map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
+      ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${door.jobs.length}</span></div><div class="project-grid">${newestJobsFirst(door.jobs).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
       : '<p class="muted empty-jobs">No jobs of this kind yet. Start one below.</p>';
     const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues, refs: starterRefs }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
     return `<div class="slate-head"><h1>${esc(door.title)}</h1></div>${doorHtml(door, { hero: true })}${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
