@@ -2455,7 +2455,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
       const { roster } = checkAgentMessage(root,{requestId:args.requestId,brand:args.brand,jobId:args.jobId,agent:args.to,text:said,workspaceId:runtime.readWorkspace({root}).workspaceId});
       saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.to,text:said.slice(0,MESSAGE_TEXT_LIMIT),requestId:`${args.requestId}-chat`,roster,attachment:{label:reference.label,name:shown,type:reference.type}});
     }
-    if(args.questionId) closeUploadQuestion({root,questionId:args.questionId,jobId:job.jobId,summary:`Added ${reference.label.toLowerCase()}: ${shown}`});
+    if(args.questionId) closeUploadQuestion({root,questionId:args.questionId,jobId:job.jobId,summary:`Added ${reference.label.toLowerCase()}: ${shown}`,file:typeof reference.path==='string' && reference.path ? `inputs/references/${reference.path}` : null});
     if(added) saveBoardRequest({root,operation:'continue_job',args:{requestId:`followup-${digest(args.requestId).slice(0,40)}`,brand:args.brand,jobId:args.jobId},source:'local'});
     return {jobId:job.jobId,reference,added,message:`${reference.label} saved to this job. Your Claude session can now use it.`};
   }

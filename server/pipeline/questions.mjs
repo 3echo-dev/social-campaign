@@ -217,16 +217,65 @@ export function answerQuestion({ root, questionId, choice, text, via, requestId 
   const answer = answerFor(question, { choice, text, via });
   const next = { ...question, status: 'answered', answer, answeredVia: via, answeredAt: new Date().toISOString(), requestId: typeof requestId === 'string' && requestId ? requestId : null };
   writeAtomic(questionFile(root, questionId), next);
+  syncJobAnswers({ root, jobId: next.jobId });
   return next;
 }
 
 /** The person sent the file a question asked for: it is answered, with what was added as the answer. */
-export function closeUploadQuestion({ root, questionId, jobId, summary }) {
+// file is the job-relative path of the saved reference, so the answer names the very file every later step uses.
+export function closeUploadQuestion({ root, questionId, jobId, summary, file = null }) {
   const question = readQuestion({ root, questionId });
   if (question.status !== 'open' || !question.wantsUpload || question.jobId !== jobId) return question;
-  const next = { ...question, status: 'answered', answer: { text: String(summary || 'Added the file.').slice(0, ANSWER_TEXT_LIMIT) }, answeredVia: 'board', answeredAt: new Date().toISOString() };
+  const answer = { text: String(summary || 'Added the file.').slice(0, ANSWER_TEXT_LIMIT), ...(typeof file === 'string' && file ? { file } : {}) };
+  const next = { ...question, status: 'answered', answer, answeredVia: 'board', answeredAt: new Date().toISOString() };
   writeAtomic(questionFile(root, questionId), next);
+  syncJobAnswers({ root, jobId });
   return next;
+}
+
+/**
+ * Every answer the person gave on one job, oldest first. The questions live in the workspace's board folder, which the
+ * writing agents cannot read, so the job keeps its own copy (inputs/answers.json) and every spawn brief quotes them:
+ * an answer given once reaches every later step, a redo and a resumed session, not only the next spawn prompt.
+ */
+export const JOB_ANSWERS_FILE = 'inputs/answers.json';
+export function jobAnswers({ root, jobId }) {
+  if (!jobId) return [];
+  return listQuestions({ root, jobId, status: 'answered', readOnly: true })
+    .sort((a, b) => String(a.answeredAt || '').localeCompare(String(b.answeredAt || '')) || a.questionId.localeCompare(b.questionId))
+    .map(question => ({
+      questionId: question.questionId,
+      question: question.text,
+      answer: {
+        ...(question.answer?.choice ? { choice: question.answer.choice } : {}),
+        ...(question.answer?.text ? { text: question.answer.text } : {}),
+        ...(question.answer?.file ? { file: question.answer.file } : {}),
+      },
+      answeredVia: question.answeredVia || null,
+      answeredAt: question.answeredAt || null,
+    }));
+}
+
+/** Writes the job's inputs/answers.json from its answered questions, and returns the answers. */
+export function syncJobAnswers({ root, jobId }) {
+  if (!jobId) return [];
+  const job = runtime.listJobs({ root }).find(entry => entry.jobId === jobId);
+  if (!job) return [];
+  const answers = jobAnswers({ root, jobId });
+  const file = join(job.path, ...JOB_ANSWERS_FILE.split('/'));
+  if (!answers.length && !existsSync(file)) return answers;
+  mkdirSync(join(job.path, 'inputs'), { recursive: true });
+  writeAtomic(file, { schemaVersion: 1, jobId, answers });
+  return answers;
+}
+
+const ANSWERS_INTRO = 'The person already answered these on this job, word for word (also in inputs/answers.json). Follow them in your work; a file named in an answer is the one to use. They never approve a price, a sample, a post or any spend.';
+
+/** The <person-answers> block for a spawn prompt, or null when nothing was answered. */
+export function personAnswersBlock(answers) {
+  if (!Array.isArray(answers) || !answers.length) return null;
+  const rows = answers.map(item => ({ question: item.question, ...item.answer }));
+  return ['<person-answers>', ANSWERS_INTRO, JSON.stringify(rows).replace(/</g, '\\u003c'), '</person-answers>'].join('\n');
 }
 
 export function withdrawQuestion({ root, questionId }) {

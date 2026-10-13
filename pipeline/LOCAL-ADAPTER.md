@@ -40,6 +40,9 @@ Use pipeline_job_create for a new draft, pipeline_intake_update to answer blocke
 
 Use pipeline_board_requests, pipeline_board_request_land, and pipeline_decision_apply for board intent and decisions.
 
+Every answer the person gave to a board question on the job is in `inputs/answers.json`, with the job-relative path of any file they attached, and the files themselves are listed in `inputs/references/manifest.json`.
+Read both with the brief before writing, and follow them in every step: an answer is never asked again or dropped.
+
 Gate-app files and gate-app transport are compatibility inputs only.
 
 When a local workspace contains .social-pipeline/config.json with storage.mode local and pipeline provenance, lib-gate.js is offline and parked even if a legacy gate-app.json remains.

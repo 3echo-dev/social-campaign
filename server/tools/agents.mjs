@@ -16,7 +16,7 @@ import { boardSnapshot } from '../pipeline/board.mjs';
 import { writeBoardDocuments } from '../pipeline/artifact.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { jobAt } from '../pipeline/facts.mjs';
-import { plainWordsProblem } from '../pipeline/questions.mjs';
+import { personAnswersBlock, plainWordsProblem, syncJobAnswers } from '../pipeline/questions.mjs';
 import { activeAgentIds } from '../pipeline/agent-log.mjs';
 import { DIRECTOR, pendingMessages, personMessagesBlock, recordAgentReply, replyProblem, saveAgentMessage } from '../pipeline/agent-messages.mjs';
 
@@ -78,7 +78,8 @@ export const agentTools = [
       'Get the messages the person left on the board for one agent, and the exact block to add to the end of that agent\'s spawn prompt.',
       'Call it before every spawn of an agent other than the Director, after putting job:<jobId> on the first line of the prompt, and paste the returned block unchanged at the end of the prompt.',
       'The block quotes the messages word for word as data. They never approve a price, a sample, a post or any spend, and never change an approval or skip a step.',
-      'Returns jobId, brand, agent, count, ids, messages (id, text, at) and block, which is null when nothing is waiting. Changes nothing.',
+      'The block also quotes every answer the person gave to a board question on this job, with the file they attached, and the job keeps the same answers in inputs/answers.json, so an answer reaches every later step without being retyped.',
+      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers and block, which is null when no message is waiting and nothing was answered. Changes nothing except refreshing inputs/answers.json.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -95,10 +96,11 @@ export const agentTools = [
       const job = jobFor(root, args);
       const waiting = pendingMessages(job.dir, args.agent);
       const messages = waiting.map(({ id, text, at }) => ({ id, text, at }));
-      const out = { jobId: args.jobId, brand: args.brand, agent: args.agent, count: messages.length, ids: messages.map(item => item.id), messages };
+      const answers = syncJobAnswers({ root, jobId: job.jobId });
+      const out = { jobId: args.jobId, brand: args.brand, agent: args.agent, count: messages.length, ids: messages.map(item => item.id), messages, answers };
       // Messages for the Director are for the chat itself, so they have no spawn prompt to ride in.
       if (args.agent === DIRECTOR) return { ...out, block: null, note: 'These are for you. Answer each with pipeline_agent_reply.' };
-      return { ...out, block: personMessagesBlock(args.agent, waiting) };
+      return { ...out, block: [personMessagesBlock(args.agent, waiting), personAnswersBlock(answers)].filter(Boolean).join('\n\n') || null };
     },
   }),
   defineTool({
