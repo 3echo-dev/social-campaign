@@ -428,6 +428,14 @@ button.sb-cell-body:active{transform:none}
 .sb-slot,.sample-view{display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);align-items:stretch;gap:var(--gap);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
 .sb-slot-frame{border-radius:var(--radius);align-self:start;width:100%;min-width:0}
 .sample-view .sample-frame{align-self:start}
+.sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
+.sample-why strong{color:var(--paper)}
+.sample-sets{margin:0 0 10px}
+.sample-sets-title{margin:0 0 4px;font-weight:600}
+.sample-sets ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:var(--t2);color:var(--dim)}
+.sample-sets li strong{color:var(--paper)}
+.sample-rest{margin-top:var(--gap)}
+.sample-rest>summary{cursor:pointer;color:var(--dim);padding:6px 0}
 .sb-slot-body{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);min-width:0}
 .sb-slot-head{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
 .sb-slot-head strong{font-size:15px}
@@ -3537,7 +3545,15 @@ const media=mediaTile({kind:sample.kind,title:`${title} sample`,thumb:sample.thu
 const version=Number(sample.version)>1?`<span class="count">Version ${esc(Number(sample.version))}</span>`:'';
 const head=`<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(sample.deliverable))}${refTag(trimmed(sample.panel))}${version}</div>`;
 const strips=boards.map(board=>storyboardStrip(board,{highlight:found?.key||null})).join('');
-return`<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${found?panelFields(found.panel,found.board):''}</div></div>${strips}`;
+const count=storyboardPanelsOf(boards).length;
+const why=trimmed(found?.board?.sampleWhy);
+const looks=Array.isArray(found?.board?.looks)?found.board.looks.filter(item=>trimmed(item?.label)&&trimmed(item?.text)):[];
+const whyLine=why?`<p class="sample-why"><strong>Why this panel:</strong> ${esc(why)}</p>`:'';
+const sets=looks.length
+?`<div class="sample-sets"><p class="sample-sets-title">${esc(count>1?`This picture sets the look for all ${count} panels. Check:`:'Check:')}</p><ul>${looks.map(item=>`<li><strong>${esc(trimmed(item.label))}:</strong> ${esc(trimmed(item.text))}</li>`).join('')}</ul></div>`
+:'';
+const rest=count>1&&strips?`<details class="sample-rest"><summary>${esc(`The other ${count-1} panels, made after you approve this one`)}</summary>${strips}</details>`:strips;
+return`<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${whyLine}${sets}${found?panelFields(found.panel,found.board):''}</div></div>${rest}`;
 }
 const MEDIA_GATE_IDS=new Set(['pictures','clips','cut','finish']);
 const MEDIA_GATE_NOUNS=Object.freeze({pictures:['picture','pictures'],clips:['clip','clips'],cut:['video','videos'],finish:['video','videos']});

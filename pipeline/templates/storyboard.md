@@ -8,6 +8,7 @@ aspect_ratio: "9:16"          # confirmed, never assumed
 style: ""                     # one picture style for the job, from the chosen concept, repeated word for word in every image prompt
 voice_over: ""                # yes | no: asked before the storyboard is shown
 voice: ""                     # which voice, when voice_over is yes
+sample_why: ""                # one plain line: why this panel is the sample (what it shows that tests the look best)
 panels: 4
 format: panels                # panels | carousel (a carousel's panels are its slides)
 runtime_s: 20

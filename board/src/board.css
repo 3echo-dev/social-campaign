@@ -485,6 +485,14 @@ button.sb-cell-body:active{transform:none}
 .sb-slot,.sample-view{display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);align-items:stretch;gap:var(--gap);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
 .sb-slot-frame{border-radius:var(--radius);align-self:start;width:100%;min-width:0}
 .sample-view .sample-frame{align-self:start}
+.sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
+.sample-why strong{color:var(--paper)}
+.sample-sets{margin:0 0 10px}
+.sample-sets-title{margin:0 0 4px;font-weight:600}
+.sample-sets ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:var(--t2);color:var(--dim)}
+.sample-sets li strong{color:var(--paper)}
+.sample-rest{margin-top:var(--gap)}
+.sample-rest>summary{cursor:pointer;color:var(--dim);padding:6px 0}
 .sb-slot-body{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);min-width:0}
 .sb-slot-head{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
 .sb-slot-head strong{font-size:15px}

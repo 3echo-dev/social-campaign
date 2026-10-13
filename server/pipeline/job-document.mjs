@@ -739,6 +739,13 @@ export function parseStoryboard(text) {
   const voiceOver = ['yes', 'true'].includes(spoken) || ['no', 'false'].includes(spoken)
     ? { enabled: ['yes', 'true'].includes(spoken), voice: ['yes', 'true'].includes(spoken) && typeof meta.voice === 'string' && meta.voice.trim() ? clip(meta.voice.trim(), 200) : null }
     : null;
+  // What every picture keeps the same (the Continuity block's labelled bullets), shown on the sample card as what to check.
+  const looks = (sectionText(body, 'Continuity') || '').split(/\r?\n/)
+    .map(line => /^\s*[-*]\s+\*\*([^*]+?):?\*\*:?\s*(.+)$/.exec(line))
+    .filter(Boolean)
+    .map(hit => ({ label: clip(hit[1].replace(/:$/, '').trim(), 60), text: clip(hit[2].trim().split(/(?<=\.)\s+/)[0], 220) }))
+    .slice(0, 6);
+  const sampleWhy = typeof meta.sample_why === 'string' && meta.sample_why.trim() ? clip(meta.sample_why.trim(), 200) : null;
   const totalSeconds = shown.length && shown.every(panel => panel.durationSeconds > 0)
     ? Math.round(shown.reduce((sum, panel) => sum + panel.durationSeconds, 0) * 10) / 10
     : null;
@@ -751,6 +758,8 @@ export function parseStoryboard(text) {
     runtimeSeconds: runtimeSeconds ? runtimeSeconds : null, // 0 means no runtime (a still), never "0 s"
     totalSeconds,
     ...(voiceOver ? { voiceOver } : {}),
+    ...(looks.length ? { looks } : {}),
+    ...(sampleWhy ? { sampleWhy } : {}),
     panels: shown.map((panel, index) => ({ ...panel, label: `${carousel ? 'Slide' : 'Panel'} ${index + 1}` })),
   };
 }

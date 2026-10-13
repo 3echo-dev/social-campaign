@@ -30,7 +30,7 @@ Write the storyboard, the generation manifest, and for a video the script, only 
 
 Write storyboard shot, on-screen text and voiceover fields in plain words for a person: no task numbers, stage codes, file names or production notes. Production notes belong in the generation manifest only.
 
-Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample.
+Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample. Write `sample_why` in the storyboard front matter: one plain line on why that panel tests the look best. The sample card shows it, with the Continuity block as the list of what the sample sets for every panel, so write each Continuity bullet as `- **Label:** what stays the same`.
 
 Take the one picture style of the job from the chosen concept and write it once as the storyboard `style` preamble and the manifest `style`. Every image prompt opens with it word for word (after the reference legend), then the continuity block of 3 to 6 attributes for each recurring person, place and product that appears in it. Every picture attaches the same look references (brand photos, product, faces); a reference that appears in only some panels, such as a logo for the end card, is attached only to those panels.
 

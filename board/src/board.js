@@ -2770,7 +2770,16 @@ export function sampleView(doc) {
   const version = Number(sample.version) > 1 ? `<span class="count">Version ${esc(Number(sample.version))}</span>` : '';
   const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(sample.deliverable))}${refTag(trimmed(sample.panel))}${version}</div>`;
   const strips = boards.map(board => storyboardStrip(board, { highlight: found?.key || null })).join('');
-  return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${found ? panelFields(found.panel, found.board) : ''}</div></div>${strips}`;
+  const count = storyboardPanelsOf(boards).length;
+  const why = trimmed(found?.board?.sampleWhy);
+  const looks = Array.isArray(found?.board?.looks) ? found.board.looks.filter(item => trimmed(item?.label) && trimmed(item?.text)) : [];
+  const whyLine = why ? `<p class="sample-why"><strong>Why this panel:</strong> ${esc(why)}</p>` : '';
+  const sets = looks.length
+    ? `<div class="sample-sets"><p class="sample-sets-title">${esc(count > 1 ? `This picture sets the look for all ${count} panels. Check:` : 'Check:')}</p><ul>${looks.map(item => `<li><strong>${esc(trimmed(item.label))}:</strong> ${esc(trimmed(item.text))}</li>`).join('')}</ul></div>`
+    : '';
+  // Until the sample is approved the other panels have no picture yet, so they fold away and the card stays on the one picture.
+  const rest = count > 1 && strips ? `<details class="sample-rest"><summary>${esc(`The other ${count - 1} panels, made after you approve this one`)}</summary>${strips}</details>` : strips;
+  return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${whyLine}${sets}${found ? panelFields(found.panel, found.board) : ''}</div></div>${rest}`;
 }
 
 // The pictures, the clips and the joined video are each reviewed as a grid: one card per panel with its picture or player and the
