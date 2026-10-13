@@ -72,7 +72,7 @@ export const FACT_FILE_DENY = 'These records are kept by Social Campaign itself 
 export const SPEND_DENY = Object.freeze({
   elevenLabsMedia: 'Images and videos for jobs are made with 3Echo Studio.',
   noApproval: "The price for this job hasn't been approved yet. Show the price and wait for approval before making anything.",
-  noItem: "This call doesn't say which approved item it makes, so it can't be checked against the approved price.",
+  noItem: "This call doesn't say which approved item it makes, so it can't be checked against the approved price. Name the item by its key from the approved price: idempotencyKey on a 3Echo call, or context \"job:<the item key>\" (for example job:<jobId>-D1-VO1-v1) on an ElevenLabs call.",
   notInQuote: "This item isn't in the approved price. Anything new or redone needs its own price approval first.",
   mismatch: "This call doesn't match the approved item it names.",
   sampleLock: 'Show the sample and wait for approval before making the rest.',
