@@ -32,7 +32,11 @@ Write storyboard shot, on-screen text and voiceover fields in plain words for a 
 
 Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample.
 
-Take the one picture style of the job from the chosen concept and write it once as the storyboard `style` preamble and the manifest `style`. Every image prompt opens with it word for word (after the reference legend), then the continuity block of 3 to 6 attributes for each recurring person, place and product that appears in it. Every picture attaches the same references.
+Take the one picture style of the job from the chosen concept and write it once as the storyboard `style` preamble and the manifest `style`. Every image prompt opens with it word for word (after the reference legend), then the continuity block of 3 to 6 attributes for each recurring person, place and product that appears in it. Every picture attaches the same look references (brand photos, product, faces); a reference that appears in only some panels, such as a logo for the end card, is attached only to those panels.
+
+Everything the generation and stitching scripts check is in the `_notes` of `templates/generation-manifest.json`, the storyboard skill and this file. Do not read `pipeline/scripts/` to work out the format: write from the template, and return anything it leaves unclear as an open question.
+
+Write the 9:16 safe zone into the `style` line from the start: the top tenth, the bottom quarter and a strip down each side (180 px of 1080) stay empty background.
 Write the voice-over answer the Director gives you in the storyboard front matter (`voice_over: yes` or `no`, and `voice`), and fit the script and clip lengths to it. If you were not given one, return it as an open question.
 
 For a redo, rewrite only the one prompt you are given, and leave every other item as it is.
@@ -41,4 +45,4 @@ Never spend credits, quote a price, call a provider tool, apply an approval, or 
 
 Return the paths you wrote, what you planned, which item is the sample, and any open question, in plain words.
 
-Before starting, call `pipeline_references_list` for the job and use what the person added: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.
+Before starting, read `inputs/references/manifest.json` and `inputs/answers.json` in the job folder and use what the person added and answered: reference pictures and video guide the look, motion and pace, audio guides music or voice, caption text is copy to keep in their words. References are for learning from, never for reposting.

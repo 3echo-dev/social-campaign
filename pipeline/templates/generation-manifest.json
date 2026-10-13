@@ -56,6 +56,9 @@
     "voiceover": "Top level, only when the script has voice-over lines and nobody speaks on camera: [{\"beat\": 2, \"file\": \"media/D1/vo/B2.mp3\", \"text\": \"...\"}].",
     "characters": "Only for a talkingCharacter deliverable: [{\"id\": \"MINA\", \"description\": \"\", \"voice\": \"one voice description, pasted verbatim into every prompt where she speaks\"}].",
     "dialogue": "Only for a talkingCharacter deliverable, on a video item that speaks: {\"character\": \"MINA\", \"line\": \"...\"}. The line and the voice go in the prompt and generateAudio stays true; a silent beat has no dialogue.",
-    "credits": "Images are 1 each. Video is null until estimate_video_job returns a quote; the concept approval's maxSpendCredits is the ceiling."
+    "credits": "Images are 1 each. Video is null until estimate_video_job returns a quote; the concept approval's maxSpendCredits is the ceiling.",
+    "seedFromPanelImage": "On a video item: true makes the clip start from the approved picture of the same panel. Leave assetIds as they are; the producer uploads the picture and adds its id before the clip is made.",
+    "personUploads": "A file the person uploaded (inputs/references/<type>/<ref-id>/...) is listed by its local ref id in referenceAssets and in assetIds of only the items that show it. The producer uploads it to 3echo before the first picture and swaps in the real asset id; never send a ref id to a generation tool.",
+    "onScreen": "The storyboard's Spoken / on-screen cell is 'Spoken: \"...\" / On-screen: ...'. The stitch and finish steps draw the On-screen part over the clip, so prompts ask for no letters or numbers."
   }
 }
