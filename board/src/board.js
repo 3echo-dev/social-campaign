@@ -2408,13 +2408,31 @@ function artifactKindLabel(kind) {
   return ARTIFACT_KIND_LABELS[kind] || humanize(kind);
 }
 
-export function conceptCards(concepts, choice = null, { disabled = false } = {}) {
+// A concept's "Hook options" field, "1) line 2) line 3) line" or one per line, as a list of lines.
+export function hookOptionsOf(value) {
+  const text = String(value || '').trim();
+  if (!text) return [];
+  const numbered = text.split(/(?:^|\s|\n)\d[).]\s+/).map(part => part.trim().replace(/^["\u201c]|["\u201d]$/g, '').trim()).filter(Boolean);
+  const lines = numbered.length > 1 ? numbered : text.split(/\n+/).map(part => part.replace(/^[-*\d).\s]+/, '').trim()).filter(Boolean);
+  return lines.slice(0, 6);
+}
+
+export function conceptCards(concepts, choice = null, { disabled = false, hooks = {} } = {}) {
   const list = concepts?.concepts || [];
   if (!list.length) return '<p class="muted">No concepts were found in this file.</p>';
   return `<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept => {
     const credits = Number.isInteger(concept.credits) ? `${concept.credits.toLocaleString()} credits for media` : '';
     const fields = (concept.fields || []).filter(field => String(field.value || '').trim());
     const fieldRows = fields.map(field => {
+      // Hook options are picks: the person chooses the opening line, and the approval carries it.
+      if (/^hook options/i.test(field.label || '')) {
+        const options = hookOptionsOf(field.value);
+        if (options.length > 1) {
+          const picked = Number.isInteger(hooks?.[concept.id]) ? hooks[concept.id] : 0;
+          const radios = options.map((line, at) => `<label class="hook-pick"><input type="radio" name="hook_choice_${esc(concept.id)}" value="${at}" ${picked === at ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${esc(line)}</span></label>`).join('');
+          return `<div><dt>${esc(field.label)}</dt><dd><span class="hook-picks" role="radiogroup" aria-label="${esc(`Opening line for concept ${concept.id}`)}">${radios}</span></dd></div>`;
+        }
+      }
       const isSourceRef = /^insight it rests on$/i.test(field.label || '');
       const humanized = isSourceRef ? humanizeSourceRef(field.value) : null;
       const value = humanized ? esc(humanized) : inlineMarkdown(field.value);
@@ -3619,7 +3637,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     if (rest.length) parts.push(reviewFilesHtml(doc, rest));
     return parts.join('');
   }
-  if (gate === 'concept' && review.concepts) parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted }));
+  if (gate === 'concept' && review.concepts) parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {} }));
   if (gate === 'concept') parts.push(recipeReviewSection(doc, recipeState, { disabled: state.busy || state.submitted }));
   // Panel-by-panel decisions belong to the storyboard approval only (the server refuses them anywhere else), so a later
   // gate that still lists the storyboard shows it as a plain strip, with no per-panel buttons whose answer would be lost.
@@ -3872,7 +3890,7 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * error to show instead. Concept approvals carry the credits shown; price
  * approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null, hooks = {} }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -3930,6 +3948,9 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
       args.chosen = concept.id;
       args.credits = conceptCredits(concepts, concept);
       args.note = `Concept ${concept.id}: ${concept.title}`;
+      const hookField = (concept.fields || []).find(field => /^hook options/i.test(field.label || ''));
+      const options = hookOptionsOf(hookField?.value);
+      if (options.length > 1) args.note += ` · Opening line: "${options[Number.isInteger(hooks?.[concept.id]) && options[hooks[concept.id]] ? hooks[concept.id] : 0]}"`;
     } else {
       if (concept) args.chosen = concept.id;
       args.note = concept ? `Concept ${concept.id}: ${note}` : note;
@@ -7972,7 +7993,7 @@ if (typeof document !== 'undefined') {
     const comment = app.querySelector('#review-comment')?.value ?? state.comment ?? '';
     state.comment = comment;
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null, hooks: state.hooks || {} });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -8690,6 +8711,16 @@ if (typeof document !== 'undefined') {
     if (field.name === 'concept_choice') {
       const state = uiFor(project).review;
       state.choice = field.value;
+      state.error = '';
+      setTimeout(render, 0);
+      return;
+    }
+    if (field.name.startsWith('hook_choice_')) {
+      // Picking an opening line also picks its concept.
+      const state = uiFor(project).review;
+      const id = field.name.slice('hook_choice_'.length);
+      state.hooks = { ...(state.hooks || {}), [id]: Number(field.value) };
+      state.choice = id;
       state.error = '';
       setTimeout(render, 0);
       return;

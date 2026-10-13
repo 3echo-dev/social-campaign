@@ -487,6 +487,10 @@ button.sb-cell-body:active{transform:none}
 .sample-view .sample-frame{align-self:start}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
+.hook-picks{display:flex;flex-direction:column;gap:6px}
+.hook-pick{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
+.hook-pick:has(input:checked){border-color:var(--tape);background:var(--panel3)}
+.hook-pick input{margin-top:3px;accent-color:var(--tape)}
 .q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
 .q-still{margin:0}
 .q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}

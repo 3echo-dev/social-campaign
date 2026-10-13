@@ -52,6 +52,7 @@ Each concept also gives:
 - Proof moment and honest trade-off, from the brief.
 - Camera and sound: one line each (for example "one canvas, zoom out to the map at 10 s, follow the bar; upbeat bed, a tick on each step").
 Recommend the concept that best meets these, not the one closest to the reference's surface.
+The concept approval's note names the opening line the person picked ("Opening line: ..."): use it word for word as the first spoken line.
 
 ## Script and storyboard rules
 

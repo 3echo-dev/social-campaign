@@ -430,6 +430,10 @@ button.sb-cell-body:active{transform:none}
 .sample-view .sample-frame{align-self:start}
 .sample-why{margin:0 0 8px;color:var(--dim);font-size:var(--t2)}
 .step-ask{list-style:none}
+.hook-picks{display:flex;flex-direction:column;gap:6px}
+.hook-pick{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r2);cursor:pointer}
+.hook-pick:has(input:checked){border-color:var(--tape);background:var(--panel3)}
+.hook-pick input{margin-top:3px;accent-color:var(--tape)}
 .q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
 .q-still{margin:0}
 .q-still img{width:100%;aspect-ratio:9 / 16;object-fit:cover;border-radius:var(--r2);border:1px solid var(--line2);display:block}
@@ -3259,13 +3263,28 @@ function artifactKindLabel(kind){
 if(!kind)return'Project output';
 return ARTIFACT_KIND_LABELS[kind]||humanize(kind);
 }
-export function conceptCards(concepts,choice=null,{disabled=false}={}){
+export function hookOptionsOf(value){
+const text=String(value||'').trim();
+if(!text)return[];
+const numbered=text.split(/(?:^|\s|\n)\d[).]\s+/).map(part=>part.trim().replace(/^["\u201c]|["\u201d]$/g,'').trim()).filter(Boolean);
+const lines=numbered.length>1?numbered:text.split(/\n+/).map(part=>part.replace(/^[-*\d).\s]+/,'').trim()).filter(Boolean);
+return lines.slice(0,6);
+}
+export function conceptCards(concepts,choice=null,{disabled=false,hooks={}}={}){
 const list=concepts?.concepts||[];
 if(!list.length)return'<p class="muted">No concepts were found in this file.</p>';
 return`<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept=>{
 const credits=Number.isInteger(concept.credits)?`${concept.credits.toLocaleString()} credits for media`:'';
 const fields=(concept.fields||[]).filter(field=>String(field.value||'').trim());
 const fieldRows=fields.map(field=>{
+if(/^hook options/i.test(field.label||'')){
+const options=hookOptionsOf(field.value);
+if(options.length>1){
+const picked=Number.isInteger(hooks?.[concept.id])?hooks[concept.id]:0;
+const radios=options.map((line,at)=>`<label class="hook-pick"><input type="radio" name="hook_choice_${esc(concept.id)}" value="${at}" ${picked===at?'checked':''} ${disabled?'disabled':''}><span>${esc(line)}</span></label>`).join('');
+return`<div><dt>${esc(field.label)}</dt><dd><span class="hook-picks" role="radiogroup" aria-label="${esc(`Opening line for concept ${concept.id}`)}">${radios}</span></dd></div>`;
+}
+}
 const isSourceRef=/^insight it rests on$/i.test(field.label||'');
 const humanized=isSourceRef?humanizeSourceRef(field.value):null;
 const value=humanized?esc(humanized):inlineMarkdown(field.value);
@@ -4217,7 +4236,7 @@ const rest=(review.paths||[]).filter(path=>!covered.has(path)&&!/^report\/stills
 if(rest.length)parts.push(reviewFilesHtml(doc,rest));
 return parts.join('');
 }
-if(gate==='concept'&&review.concepts)parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted}));
+if(gate==='concept'&&review.concepts)parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted,hooks:state.hooks||{}}));
 if(gate==='concept')parts.push(recipeReviewSection(doc,recipeState,{disabled:state.busy||state.submitted}));
 if(review.storyboards?.length&&gate==='storyboard'){
 const current=currentPanelKey(review.storyboards,state);
@@ -4433,7 +4452,7 @@ export const FINISHING_PICKS=Object.freeze([
 {id:'skip',label:'Approve as is'},
 ]);
 const CHANGE_PLACEHOLDERS=Object.freeze({findings:'For example: compare prices too, and add one more competitor.'});
-export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null}){
+export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null,hooks={}}){
 const review=pendingReview(project);
 if(!review?.artifacts?.length)return{error:REVIEW_WAITING.preparing};
 if(!['approve','request_changes'].includes(verdict))return{error:'Unsupported decision.'};
@@ -4489,6 +4508,9 @@ if(pending.length)args.recipe=Object.fromEntries(pending.map(([id])=>[id,recipeP
 args.chosen=concept.id;
 args.credits=conceptCredits(concepts,concept);
 args.note=`Concept ${concept.id}: ${concept.title}`;
+const hookField=(concept.fields||[]).find(field=>/^hook options/i.test(field.label||''));
+const options=hookOptionsOf(hookField?.value);
+if(options.length>1)args.note+=` · Opening line: "${options[Number.isInteger(hooks?.[concept.id])&&options[hooks[concept.id]]?hooks[concept.id]:0]}"`;
 }else{
 if(concept)args.chosen=concept.id;
 args.note=concept?`Concept ${concept.id}: ${note}`:note;
@@ -8080,7 +8102,7 @@ if(!transport||state.busy||state.submitted||state.needsReconciliation||state.set
 const comment=app.querySelector('#review-comment')?.value??state.comment??'';
 state.comment=comment;
 const requestId=state.requestId||randomId(globalThis);
-const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null});
+const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null,hooks:state.hooks||{}});
 if(error){state.error=error;render();return;}
 Object.assign(state,{requestId,busy:true,verdict,error:'',declined:false,operation:'submit_decision',args});
 render();
@@ -8755,6 +8777,15 @@ if(!project)return;
 if(field.name==='concept_choice'){
 const state=uiFor(project).review;
 state.choice=field.value;
+state.error='';
+setTimeout(render,0);
+return;
+}
+if(field.name.startsWith('hook_choice_')){
+const state=uiFor(project).review;
+const id=field.name.slice('hook_choice_'.length);
+state.hooks={...(state.hooks||{}),[id]:Number(field.value)};
+state.choice=id;
 state.error='';
 setTimeout(render,0);
 return;
