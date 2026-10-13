@@ -8,7 +8,7 @@ import { projectJobMetrics } from '../studio/metrics.mjs';
 import { integrationsPath } from '../lib/paths.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { UserFacingError } from '../lib/errors.mjs';
-import { buildJobDocument, parseConcepts, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
+import { buildJobDocument, parseConcepts, previewThumb, parseQuote, parseStoryboard, postInboxItems, postingKitSection, postingLine, publishStatusSection } from './job-document.mjs';
 import * as facts from './facts.mjs';
 import { addReference, checkReference, referenceSummaries } from './references.mjs';
 import { researchCoverage } from './research-coverage.mjs';
@@ -803,7 +803,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     const reviewUrl = ({ sha256 }) => reviewUrlFor(root, { brand: job.brand, jobId: job.jobId, sourceSha: sha256 });
     const studioWorkspace = gate === PRICE_GATE || gate === 'publish' ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
     const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot) });
-    const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path }));
+    const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path, previews: true }));
     const brandDir = brandDirBySlug.get(job.brand) || null;
     const publish = gate === 'publish' ? publishContext({ root, brandDir, jobDir: job.path, jobRoute: snapshot.job?.publishRoute, channels: profileOf(job.brand)?.channels, brands: metricoolBrands, connected: metricoolOn }) : null;
     // The card is ready only when approval would accept it: the same fresh build and live checks decide both.
@@ -1078,7 +1078,53 @@ function sampleRestWords(rest) {
   return parts.join(' and ');
 }
 
-function decisionItem({ root, snapshot, gate, review, place, dir }) {
+// The reviews whose Needs-you card shows small pictures of what is waiting: the storyboard, the media checks and the post.
+const PREVIEW_GATES = new Set(['storyboard', PICTURES_GATE, CLIPS_GATE, CUT_GATE, FINISH_GATE, 'content', 'publish']);
+const PREVIEW_MANY = new Set(['storyboard', PICTURES_GATE, CLIPS_GATE]);
+const PREVIEW_VIDEO = /\.(mp4|mov|m4v|webm)$/i;
+const PREVIEW_IMAGE = /\.(png|jpe?g|webp|gif)$/i;
+
+// Job-relative paths of the media a review card previews: the review's own images and videos, else the finished video or picture,
+// else the made storyboard pictures. Never throws.
+function previewPaths(dir, artifacts) {
+  const media = artifacts.filter(path => PREVIEW_VIDEO.test(path) || PREVIEW_IMAGE.test(path));
+  if (media.length) return media;
+  const found = [];
+  try {
+    for (const deliverable of readdirSync(join(dir, 'media'))) {
+      const name = readdirSync(join(dir, 'media', deliverable)).find(file => /^final\.(mp4|mov|m4v|png|jpe?g|webp)$/i.test(file));
+      if (name) found.push(`media/${deliverable}/${name}`);
+    }
+  } catch { /* no media folder yet */ }
+  if (found.length) return found;
+  try {
+    for (const deliverable of readdirSync(join(dir, 'drafts'))) {
+      const manifest = readJsonFile(join(dir, 'drafts', deliverable, 'generation-manifest.json'), null);
+      for (const item of Array.isArray(manifest?.items) ? manifest.items : []) {
+        if (item?.kind === 'image' && typeof item.file === 'string' && PREVIEW_IMAGE.test(item.file)) found.push(item.file);
+      }
+    }
+  } catch { /* no drafts yet */ }
+  return found;
+}
+
+function decisionPreviews(root, dir, gate, review) {
+  if (!dir || !PREVIEW_GATES.has(gate)) return [];
+  const artifacts = (Array.isArray(review?.artifacts) ? review.artifacts : []).map(item => item?.path).filter(path => typeof path === 'string');
+  const limit = PREVIEW_MANY.has(gate) ? 3 : 1;
+  const shown = [];
+  for (const path of [...new Set(previewPaths(dir, artifacts))]) {
+    if (shown.length >= limit) break;
+    let file;
+    try { file = artifactFile(dir, path); } catch { continue; }
+    const video = PREVIEW_VIDEO.test(path);
+    const thumb = previewThumb(file, thumbnailDirectory(root), { video });
+    if (thumb) shown.push({ kind: video ? 'video' : 'image', thumb });
+  }
+  return shown;
+}
+
+function decisionItem({ root, snapshot, gate, review, place, dir, previews = false }) {
   const revision = snapshot.project.revision;
   const current = Boolean(review && review.revision === revision && Array.isArray(review.artifacts) && review.artifacts.length);
   const item = { kind: 'decision', ...place, text: wording.gateAsk(gate), inline: INLINE_GATES.has(gate) && current, gate, revision, at: inboxAt(review?.createdAt, snapshot.status?.updatedAt) };
@@ -1105,6 +1151,10 @@ function decisionItem({ root, snapshot, gate, review, place, dir }) {
     item.summary = reviewSummary(dir, gate, review.artifacts.map(artifact => artifact.path));
   }
   if (item.inline) item.artifacts = review.artifacts.map(({ path, sha256 }) => ({ path, sha256 }));
+  if (previews) {
+    const shown = decisionPreviews(root, dir, gate, review);
+    if (shown.length) item.previews = shown;
+  }
   return item;
 }
 
@@ -1112,10 +1162,14 @@ function plainNeedForInbox(text) {
   return typeof text === 'string' && text.trim() && !plainWordsProblem(text) ? text.trim() : wording.NEEDS_YOU_IN_CHAT;
 }
 
+// The direction is approved on the Director's direction card ("Go"), which is its own card. The brief card never counts it a second
+// time: before Claude shows that card it is Claude's turn, and after the person answers it Claude records it.
+const inChatDirection = text => text === kinds.DIRECTION_QUESTION;
+
 export function briefItems({ intake, place, revision, at }) {
   if (!intake) return [];
   const missing = (Array.isArray(intake.fields) ? intake.fields : []).filter(field => field.missing);
-  const other = [...new Set((Array.isArray(intake.other) ? intake.other : []).map(plainNeedForInbox))];
+  const other = [...new Set((Array.isArray(intake.other) ? intake.other : []).map(plainNeedForInbox))].filter(text => !inChatDirection(text));
   const total = missing.length + other.length;
   if (!total) return [];
   const base = { kind: 'brief', ...place };
@@ -1128,7 +1182,9 @@ export function briefItems({ intake, place, revision, at }) {
   const allShort = missing.every(field => SHORT_BRIEF_FIELDS.has(field.key));
   if (!other.length && (missing.length === 1 || (missing.length <= BRIEF_INLINE_LIMIT && allShort))) return missing.map(ask);
   if (!missing.length && other.length === 1) return [{ ...base, text: other[0], inline: false, at }];
-  return [{ ...base, text: wording.FINISH_BRIEF, inline: false, summary: `${plural(total, 'thing')} still needed.`, at }];
+  // Name what is still needed, so the card never says only "2 things" without saying which.
+  const named = [...missing.map(field => field.label || wording.briefQuestion(field.key, field.need)), ...other];
+  return [{ ...base, text: wording.FINISH_BRIEF, inline: false, summary: `Still needed: ${named.map(text => text.replace(/[.?!]+$/, '')).join('; ')}.`, at }];
 }
 
 // What the posts of a job say about it, read from the status list and the posting kit: the Inbox items the person is needed
@@ -1167,14 +1223,14 @@ function handoffItems(handoff, place, at) {
   return [];
 }
 
-function jobInbox({ root, snapshot, gate, review, intake, questions, dir }) {
+function jobInbox({ root, snapshot, gate, review, intake, questions, dir, previews = false }) {
   const place = { jobId: snapshot.project.jobId, jobTitle: snapshot.project.title || null, brandName: snapshot.brand?.name || null };
   const at = inboxAt(snapshot.status?.updatedAt, snapshot.job?.createdAt);
   const posting = postingState(dir, snapshot.project.state, snapshot.project.jobId, place, at);
   const handoff = handoffOf(dir, snapshot.project);
   const items = [
     ...(questions || []).map(question => questionItem(question, place, { root, brand: snapshot.project.brand, jobId: snapshot.project.jobId })),
-    ...(gate ? [decisionItem({ root, snapshot, gate, review, place, dir })] : []),
+    ...(gate ? [decisionItem({ root, snapshot, gate, review, place, dir, previews })] : []),
     ...briefItems({ intake, place, revision: snapshot.project.revision, at }),
     ...posting.items,
     ...handoffItems(handoff, place, at),
@@ -1255,10 +1311,23 @@ export function personWaiting(root, job, { questions = null } = {}) {
   return null;
 }
 
+// The pictures on the Needs-you cards share a small part of the board's size budget; cards past it show none.
+const INBOX_PREVIEW_BUDGET = 64 * 1024;
+function withinPreviewBudget(items) {
+  let used = 0;
+  return items.map(item => {
+    if (!Array.isArray(item.previews)) return item;
+    const size = item.previews.reduce((sum, entry) => sum + String(entry.thumb || '').length, 0);
+    if (used + size <= INBOX_PREVIEW_BUDGET) { used += size; return item; }
+    const { previews, ...rest } = item;
+    return rest;
+  });
+}
+
 function workspaceInbox(jobItems, looseQuestions, brandNames) {
   const loose = looseQuestions.map(question => questionItem(question, { jobId: null, jobTitle: null, brandName: question.brand ? brandNames.get(question.brand) || null : null }));
   const items = [...jobItems, ...loose].sort(newestFirst);
-  return { count: items.length, items: items.slice(0, INBOX_LIMIT) };
+  return { count: items.length, items: withinPreviewBudget(items.slice(0, INBOX_LIMIT)) };
 }
 
 export function boardStatus(snapshot, projection) {
@@ -1431,7 +1500,7 @@ export function boardSnapshot({ root } = {}) {
     const snapshot = withOpenQuestions(runtime.readJobSnapshot({ root, brand:job.brand, jobId:job.jobId }), questionsByJob.get(job.jobId));
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const intake = projectIntake(snapshot, rawProfiles.get(job.brand) || null);
-    const inbox = jobInbox({ root, snapshot, gate, review, intake, questions: questionsByJob.get(job.jobId), dir: job.path });
+    const inbox = jobInbox({ root, snapshot, gate, review, intake, questions: questionsByJob.get(job.jobId), dir: job.path, previews: true });
     const usage = jobUsage(root, job, snapshot);
     const kind = typeof snapshot.job?.kind === 'string' ? snapshot.job.kind : null;
     const report = isReportKind(kind);

@@ -957,13 +957,13 @@ let ffmpegMissing = false;
 // A small JPEG of an image or of a video's first frame, cached by content hash so
 // each file is scaled once. Uses ffmpeg when it is installed; without it only an
 // image already small enough is inlined, and a video gets no poster.
-function scaledThumbnail(file, sha256, cacheDir, { video = false } = {}) {
+function scaledThumbnail(file, sha256, cacheDir, { video = false, edge = THUMB_EDGE } = {}) {
   if (!cacheDir || !sha256 || ffmpegMissing) return null;
-  const target = join(cacheDir, `${sha256}.jpg`);
+  const target = join(cacheDir, edge === THUMB_EDGE ? `${sha256}.jpg` : `${sha256}-${edge}.jpg`);
   try { if (existsSync(target)) return readFileSync(target); } catch { return null; }
   mkdirSync(cacheDir, { recursive: true });
   const temp = join(cacheDir, `${sha256}.${process.pid}.${randomUUID()}.tmp.jpg`);
-  const scale = `scale='min(${THUMB_EDGE},iw)':'min(${THUMB_EDGE},ih)':force_original_aspect_ratio=decrease`;
+  const scale = `scale='min(${edge},iw)':'min(${edge},ih)':force_original_aspect_ratio=decrease`;
   const result = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...(video ? ['-ss', '0.5'] : []), '-i', file, '-frames:v', '1', '-vf', scale, '-q:v', '7', temp], { windowsHide: true, shell: false, timeout: 20000 });
   if (result.error?.code === 'ENOENT') { ffmpegMissing = true; return null; }
   try {
@@ -974,6 +974,27 @@ function scaledThumbnail(file, sha256, cacheDir, { video = false } = {}) {
   } catch { /* A concurrent writer produced the same file. */ }
   rmSync(temp, { force: true });
   return null;
+}
+
+/**
+ * A small JPEG thumbnail of an image, or of a video's first frame, as a data URI, or null. The Needs-you cards use it so a review
+ * card shows what it is about. Cached by path, size and time so a large video is never hashed; never throws.
+ */
+const PREVIEW_EDGE = 144;
+const PREVIEW_BYTES = 12 * 1024;
+export function previewThumb(file, cacheDir, { video = false } = {}) {
+  try {
+    const info = statSync(file);
+    if (!info.isFile() || !info.size) return null;
+    const key = createHash('sha256').update(`${resolve(file)}|${info.size}|${info.mtimeMs}`).digest('hex');
+    const scaled = scaledThumbnail(file, key, cacheDir, { video, edge: PREVIEW_EDGE });
+    if (scaled && scaled.length <= PREVIEW_BYTES) return `data:image/jpeg;base64,${scaled.toString('base64')}`;
+    const type = video ? null : IMAGE_TYPES[extname(file).toLowerCase()];
+    if (!type || info.size > PREVIEW_BYTES) return null;
+    return `data:${type};base64,${readFileSync(file).toString('base64')}`;
+  } catch {
+    return null;
+  }
 }
 
 function redact(text, root) {

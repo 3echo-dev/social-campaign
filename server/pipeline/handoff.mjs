@@ -209,12 +209,22 @@ function postMusic(dir) {
   return list;
 }
 
+// The person already chose to finish the video here: they approved the joined video or the finished video in Social Campaign.
+function finishedHere(dir) {
+  return ['cut', 'finish'].some(gate => readJsonFile(join(dir, 'approvals', `${gate}.json`), null)?.decision === 'approve');
+}
+
+// An offer is open only while the job is still at the point where the video can go out, and the person has not finished it here.
+function offerOpen(dir) {
+  const { state } = readJobState(dir);
+  return SUGGEST_STATES.includes(state) && !finishedHere(dir);
+}
+
 export function shouldSuggest(job, options = {}) {
   try {
     const dir = dirOf(job);
     if (!dir || readHandoff(dir)) return false;
-    const { state } = readJobState(dir);
-    if (!SUGGEST_STATES.includes(state)) return false;
+    if (!offerOpen(dir)) return false;
     if (!postAvailable(options)) return false;
     return madeVideo(dir) !== null;
   } catch {
@@ -303,7 +313,8 @@ export function handoffState(job, options = {}) {
       if (!shouldSuggest(job, options)) return null;
       record = writeHandoff(dir, { status: 'suggested', suggestedAt: nowIso() });
     }
-    if (record.status === 'suggested') return { status: 'suggested', line: LINES.suggested };
+    // A stale offer (the job moved on, or the video was finished here) is not shown again.
+    if (record.status === 'suggested') return offerOpen(dir) ? { status: 'suggested', line: LINES.suggested } : null;
     if (record.status === 'returned') return { status: 'returned', line: LINES.returned };
     if (record.status === 'released') return { status: 'released', line: LINES.released };
     if (record.status === 'sent') {

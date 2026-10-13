@@ -4060,6 +4060,14 @@ function sampleThumb(doc) {
 
 const REVIEW_NOT_READY = 'Claude is getting this ready to show you.';
 
+// Small pictures of what a review is about (storyboard pictures, clips, the joined or finished video, the post), each opening the review.
+function decisionPreviews(item, jobId) {
+  const list = (Array.isArray(item?.previews) ? item.previews : []).slice(0, 3).map(entry => ({ video: entry?.kind === 'video', src: safePreviewUrl(entry?.thumb) })).filter(entry => entry.src);
+  if (!list.length || !jobId) return '';
+  const figures = list.map(({ video, src }) => `<button type="button" class="inbox-preview${video ? ' is-video' : ''}" data-inbox-jump="${esc(jobId)}" data-inbox-target="review" aria-label="Open the review"><img src="${esc(src)}" alt="${video ? 'A frame from the video' : 'A picture to check'}" loading="lazy"></button>`).join('');
+  return `<div class="inbox-previews">${figures}</div>`;
+}
+
 export function inboxDecisionArgs(item, { brand = null, requestId } = {}) {
   const artifacts = Array.isArray(item?.artifacts) ? item.artifacts.filter(entry => entry && typeof entry.path === 'string' && typeof entry.sha256 === 'string') : [];
   if (!item?.jobId || !INLINE_DECISIONS.has(item.gate) || !artifacts.length || !Number.isSafeInteger(item.revision)) return { error: 'Open the review to decide this.' };
@@ -4082,7 +4090,7 @@ function decisionCard(item, ctx = {}) {
   if (trimmed(item.summary) === REVIEW_NOT_READY) return summaryLine(summary);
   const inline = Boolean(item.inline) && !inboxDecisionArgs(item).error;
   const reviewButton = `<button type="button"${inline ? '' : ' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
-  if (!inline) return `${summaryLine(summary)}<div class="inbox-actions">${reviewButton}</div>`;
+  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${reviewButton}</div>`;
   const shown = doc && doc.revision === item.revision && doc.review?.gate === gate ? doc : null;
   const status = shown && project && project.detailsLoaded !== false ? reviewStatus(project, shown, docState) : null;
   const plan = status === 'ready' ? approval(gate, shown, state, {}) : { label: gate === 'price' ? 'Approve price' : 'Approve sample', line: '' };
