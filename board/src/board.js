@@ -1404,12 +1404,12 @@ const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one :
 function libraryCounts(library) {
   const given = library.counts && typeof library.counts === 'object' ? library.counts : {};
   const count = (key, fallback) => (Number.isFinite(given[key]) && given[key] >= 0 ? Math.floor(given[key]) : fallback);
-  return { yours: count('yours', libraryItems(library.yours).length), proven: count('proven', libraryItems(library.proven).length), jobs: count('jobs', Array.isArray(library.recentJobs) ? library.recentJobs.length : 0), research: count('research', null) };
+  return { yours: count('yours', libraryItems(library.yours).length), proven: count('proven', libraryItems(library.proven).length), jobs: count('jobs', Array.isArray(library.recentJobs) ? library.recentJobs.length : 0), research: count('research', null), trends: count('trends', libraryItems(library.trends).length) };
 }
 export function libraryCountsLine(library) {
   const counts = libraryCounts(library || {});
   const footage = libraryFootage(library || {});
-  return [`${counts.yours} yours`, `${counts.proven} proven`, plural(counts.jobs, 'job') + ' filed', counts.research === null ? '' : plural(counts.research, 'research file'), footage ? plural(footage.files, 'footage file') : ''].filter(Boolean).join(' · ');
+  return [`${counts.yours} yours`, `${counts.proven} proven`, plural(counts.jobs, 'job') + ' filed', counts.research === null ? '' : plural(counts.research, 'research file'), counts.trends ? plural(counts.trends, 'fresh trend') : '', footage ? plural(footage.files, 'footage file') : ''].filter(Boolean).join(' · ');
 }
 // The Footage line of the Brand library: the brand's archive of past videos, pictures and audio, from `library.footage` ({folders, files,
 // analysedQuick, analysedFull, missing, list: [{id, name, rights, files, missing, state, processed?, total?}]}, which the server adds when
@@ -1487,6 +1487,26 @@ function libraryItem(item, brand, { removing, errors }) {
     : item.proven ? '' : `<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
   return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
 }
+// Fresh trends (`library.trends`, which the server adds when the Trend Scout saw something under 7 days ago): what is rising now in the brand's
+// industry, each with the platform, when it was seen and the post that shows it. They are not the person's own items, so there is no Remove.
+// A hook or caption comes from an ad that keeps running: the ad libraries show no views or spend, so the row says how many days it has run.
+const TREND_KIND_WORDS = Object.freeze({ topic: 'Topic', format: 'Format', sound: 'Sound', hashtag: 'Hashtag', hook: 'Hook', caption: 'Caption' });
+const TREND_SOURCE_WORDS = Object.freeze({ meta_ad_library: 'Meta Ad Library', tiktok_top_ads: 'TikTok Top Ads' });
+const TREND_AD_NOTE = 'Hooks and captions come from ads that keep running. The ad libraries show no views or spend, so days running stands in for them: 30 or more is a likely winner.';
+const TREND_PLATFORM_WORDS = Object.freeze({ tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', x: 'X' });
+function libraryTrend(trend) {
+  const evidence = (Array.isArray(trend.evidence) ? trend.evidence : []).find(item => item && typeof item === 'object' && safeHttpsLink(item.url)) || null;
+  const link = evidence ? safeHttpsLink(evidence.url) : null;
+  const platform = TREND_PLATFORM_WORDS[trend.platform] || (trimmed(trend.platform) ? humanize(trend.platform) : '');
+  const seen = libraryDay(trend.seenAt);
+  const views = Number.isFinite(evidence?.views) ? `${Math.round(evidence.views).toLocaleString('en-US')} views` : '';
+  const running = Number.isFinite(evidence?.runningDays) && evidence.runningDays >= 0 ? plural(Math.floor(evidence.runningDays), 'day') : '';
+  const variants = Number.isFinite(evidence?.variants) && evidence.variants >= 1 ? plural(Math.floor(evidence.variants), 'variant') : '';
+  const ad = Boolean(TREND_SOURCE_WORDS[evidence?.source]);
+  const meta = [platform, trimmed(trend.industry), TREND_SOURCE_WORDS[evidence?.source] || '', trimmed(evidence?.advertiser), running ? `running ${running}` : '', variants, seen ? `seen ${seen}` : '', views].filter(Boolean).map(esc).join(' &middot; ');
+  const proof = link ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the ${ad ? 'ad' : 'post'} behind: ${trend.text}`)}">See the ${ad ? 'ad' : 'post'}</a>` : '';
+  return `<li class="library-item"><div class="library-main"><span class="library-kind">${esc(TREND_KIND_WORDS[trend.kind] || humanize(trend.kind || 'trend'))}</span><span class="library-text">${esc(trend.text)}</span>${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${trimmed(trend.why) ? `<span class="library-hook">Why it fits: ${esc(trend.why)}</span>` : ''}</div></li>`;
+}
 function libraryJob(job) {
   const concept = job.concept && typeof job.concept === 'object' ? job.concept : {};
   const source = trimmed(concept.source) ? conceptSourceOf({ fields: [{ label: 'Source', value: concept.source }] }) : null;
@@ -1496,17 +1516,19 @@ function libraryJob(job) {
 export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map() } = {}) {
   const library = brand?.library;
   if (!library || typeof library !== 'object' || Array.isArray(library) || !brand.slug) return '';
-  const group = (title, id, list, row) => {
+  const group = (title, id, list, row, note = '') => {
     if (!list.length) return '';
     const more = list.length > LIBRARY_GROUP_LIMIT ? `<p class="muted library-more">${plural(list.length - LIBRARY_GROUP_LIMIT, 'more item')} on this computer.</p>` : '';
-    return `<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-${id}"><h3 id="library-${esc(brand.slug)}-${id}">${esc(title)} <span class="count">${list.length}</span></h3><ul class="library-list">${list.slice(0, LIBRARY_GROUP_LIMIT).map(row).join('')}</ul>${more}</section>`;
+    return `<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-${id}"><h3 id="library-${esc(brand.slug)}-${id}">${esc(title)} <span class="count">${list.length}</span></h3><ul class="library-list">${list.slice(0, LIBRARY_GROUP_LIMIT).map(row).join('')}</ul>${more}${note}</section>`;
   };
+  const trends = libraryItems(library.trends);
+  const trendNote = trends.some(trend => trend.kind === 'hook' || trend.kind === 'caption') ? `<p class="muted library-more">${esc(TREND_AD_NOTE)}</p>` : '';
   const state = { removing, errors };
   const yours = libraryItems(library.yours);
   const proven = libraryItems(library.proven).map(item => ({ ...item, proven: true }));
   const jobs = (Array.isArray(library.recentJobs) ? library.recentJobs : []).filter(job => job && typeof job === 'object');
   const footage = libraryFootage(library);
-  const body = group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state)) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
+  const body = group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state)) + group('Fresh trends', 'trends', trends, libraryTrend, trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
   const key = `brand-library:${brand.slug}`;
   const empty = body ? '' : '<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
   return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
@@ -2605,11 +2627,15 @@ export function conceptSummaryOf(concepts, doc = null) {
   const file = (doc?.files || []).find(item => item?.path && item.path === concepts?.path);
   return typeof file?.text === 'string' ? strategySummaryOf(file.text) : [];
 }
-export function conceptStrategy(summary) {
-  const rows = (Array.isArray(summary) ? summary : []).filter(item => item?.label && item?.value);
-  if (!rows.length) return '';
+/**
+ * The strategy summary; `extra` (the Industry row, when the document offers one) sits under it, or stands alone when there is no
+ * summary. The row says the industry as it stands, so the summary's own Industry line gives way to it.
+ */
+export function conceptStrategy(summary, extra = '') {
+  const rows = (Array.isArray(summary) ? summary : []).filter(item => item?.label && item?.value && !(extra && /^industry$/i.test(String(item.label).trim())));
+  if (!rows.length) return extra ? `<section class="concept-strategy is-picks-only" aria-label="Industry">${extra}</section>` : '';
   const facts = rows.map(item => `<div class="strategy-fact"><dt>${esc(item.label)}</dt><dd${/\n/.test(item.value) ? ' class="lines"' : ''}>${inlineMarkdown(item.value)}</dd></div>`).join('');
-  return `<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl></section>`;
+  return `<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl>${extra}</section>`;
 }
 
 // Opening lines. A concept offers the lines its "Hook options" field lists; the person may also edit any of them or add their own.
@@ -2717,7 +2743,210 @@ function hookPicks(concept, field, { hooks, own, edited, edit, disabled }) {
   return `<div><dt>${esc(field?.label || 'Opening lines')}</dt><dd><span class="hook-picks" role="group" aria-label="${esc(`Opening lines for concept ${id}`)}">${rows}</span>${adder}</dd></div>`;
 }
 
-export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null } = {}) {
+// Strategy picks. A concepts review may carry `strategyOptions` (the lists of playbook options and the brand's own, with the marks
+// the ranking gave them): each concept then shows rows for its Funnel stage, Ad style, Format and Call to action, and the job shows
+// an Industry row. A row is a radio group of chips with the concept's own value (`concept.picks`, `strategyOptions.industryPick`)
+// chosen to begin with; the person may pick another chip or add their own. What they pick and add stays in the review state
+// (strategyPicks: the option picked per row, strategyOwn: the texts added per row, strategyEdit: the box being typed in; a row is
+// "industry" or "<concept id>:<field>") and is not saved by the board: the approval carries it in its note (see decisionArgs) and
+// Claude files it.
+export const PICK_TEXT_LIMIT = 60;
+export const PICK_OWN_LIMIT = 5;
+const PICK_ROWS = Object.freeze([
+  { field: 'industry', title: 'Industry', noun: 'industry', picked: 'Industry', own: 'industry' },
+  { field: 'funnel', title: 'Funnel stage', noun: 'funnel stage', picked: 'Funnel stage', own: 'funnel stage' },
+  { field: 'style', title: 'Ad style', noun: 'ad style', picked: 'Ad style', own: 'ad style' },
+  { field: 'format', title: 'Format', noun: 'format', picked: 'Format', own: 'format' },
+  { field: 'cta', title: 'Call to action', noun: 'call to action', picked: 'CTA', own: 'CTA' },
+].map(row => Object.freeze(row)));
+const PICK_ROW_OF = Object.freeze(Object.fromEntries(PICK_ROWS.map(row => [row.field, row])));
+const CONCEPT_PICK_FIELDS = Object.freeze(['funnel', 'style', 'format', 'cta']);
+// How a concept's own fields name the four rows (as the concepts template writes them, and as the server matches them to a default).
+const PICK_FIELD_LABELS = Object.freeze({
+  funnel: /^(?:awareness|funnel)[\s_-]*stage\b/i,
+  style: /^ad[\s_-]*style\b/i,
+  format: /^(?:visual[\s_-]*)?format\b/i,
+  cta: /^(?:cta\b|call[\s_-]*to[\s_-]*action\b)/i,
+});
+export const pickRowKey =(conceptId, field) => (field === 'industry' ? 'industry' : `${conceptId}:${field}`);
+/** The concept and field a row key names (the industry row belongs to the job, so its id is null), or null for anything else. */
+export function pickRowParts(rowKey) {
+  const key = String(rowKey ?? '');
+  if (key === 'industry') return { id: null, field: 'industry' };
+  const cut = key.lastIndexOf(':');
+  const field = key.slice(cut + 1);
+  return cut > 0 && CONCEPT_PICK_FIELDS.includes(field) ? { id: key.slice(0, cut), field } : null;
+}
+const ownPickId = text => `own:${cleanHookLine(text).toLowerCase()}`;
+// A playbook option's text is "<id> <Name>" ("AS-PROBLEM-SOLUTION Problem solution"): the chip shows the name, the full text stays in its
+// tooltip and in the note, so the agents get the exact playbook row. Text that does not start with the option's own id is shown as it is.
+const pickShown = option => (option.text.length > option.id.length + 1 && option.text.startsWith(`${option.id} `) ? option.text.slice(option.id.length + 1).trim() : option.text);
+const pickFallback =(options, field, concept) => (field === 'industry' ? options?.industryPick : concept?.picks?.[field]);
+
+/** The lists of options a concepts review offers, or null when the document has none (an older job): the card then has no rows. */
+export function strategyOptionsOf(doc) {
+  const given = doc?.strategyOptions ?? doc?.review?.strategyOptions ?? doc?.review?.concepts?.strategyOptions;
+  return given && typeof given === 'object' && !Array.isArray(given) ? given : null;
+}
+
+/** One list as drawn: an id and a short text per option, with the "yours" and winner, weak or early marks it came with. */
+function pickOptionsList(value) {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set();
+  const list = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const id = trimmed(item.id);
+    const text = cleanHookLine(item.text);
+    if (!id || !text || seen.has(id)) continue;
+    seen.add(id);
+    list.push({ id, text, ...(item.yours === true ? { yours: true } : {}), ...(Object.prototype.hasOwnProperty.call(RESULT_PILLS, item.label) ? { label: item.label } : {}) });
+  }
+  return list;
+}
+
+/**
+ * A row as it stands: the listed options followed by the ones the person added, the option picked (theirs when it is still there,
+ * else the default the document gave, else none) and the texts they added. Null when the document has no list for this field.
+ */
+function pickRowOf(options, field, rowKey, fallbackId, { chosen, added } = {}) {
+  const listed = pickOptionsList(options?.[field]);
+  if (!listed) return null;
+  const mine = (Array.isArray(added?.[rowKey]) ? added[rowKey] : []).map(cleanHookLine).filter(Boolean);
+  const all = [...listed];
+  for (const text of mine) {
+    const id = ownPickId(text);
+    if (!all.some(item => item.id === id)) all.push({ id, text, yours: true, added: true });
+  }
+  const has = id => typeof id === 'string' && all.some(item => item.id === id);
+  const fallback = has(fallbackId) ? fallbackId : null;
+  const made = chosen && Object.prototype.hasOwnProperty.call(chosen, rowKey) ? chosen[rowKey] : undefined;
+  return { field, rowKey, options: all, picked: has(made) ? made : fallback, fallback, mine, room: mine.length < PICK_OWN_LIMIT };
+}
+
+/**
+ * Save what was typed in the box of a row (state.strategyEdit: { row, text }) into the review state: a new text goes to strategyOwn,
+ * and the option becomes the pick of its row (and, on a concept's row, that concept becomes the choice). An option the row already
+ * has is picked, not kept twice. Returns { pick } or { error } (the state is then left as it was).
+ */
+export function applyPickEdit(state, options, concept = null) {
+  const edit = state?.strategyEdit;
+  const parts = edit ? pickRowParts(edit.row) : null;
+  if (!parts || (parts.id !== null && concept?.id !== parts.id)) return { error: 'Nothing to save.' };
+  const noun = PICK_ROW_OF[parts.field].noun;
+  const text = cleanHookLine(edit.text);
+  if (!text) return { error: `Type your own ${noun} first.` };
+  if (text.length > PICK_TEXT_LIMIT) return { error: `Keep it to ${PICK_TEXT_LIMIT} characters or fewer.` };
+  const row = pickRowOf(options, parts.field, edit.row, pickFallback(options, parts.field, concept), { chosen: state.strategyPicks, added: state.strategyOwn });
+  if (!row) return { error: 'That row is no longer here.' };
+  const same = row.options.find(item => item.text.toLowerCase() === text.toLowerCase() || pickShown(item).toLowerCase() === text.toLowerCase());
+  if (!same && !row.room) return { error: `That is the most you can add here (${PICK_OWN_LIMIT}).` };
+  if (!same) state.strategyOwn = { ...(state.strategyOwn || {}), [edit.row]: [...row.mine, text] };
+  const pick = same ? same.id : ownPickId(text);
+  state.strategyPicks = { ...(state.strategyPicks || {}), [edit.row]: pick };
+  if (parts.id !== null) state.choice = parts.id;
+  state.error = '';
+  state.strategyEdit = null;
+  return { pick };
+}
+
+/**
+ * Take back an option the person added to a row in this review (`id` is its option id, "own:<text>"): it leaves strategyOwn, so it is
+ * no longer drawn nor sent, and when it was the pick the row goes back to the default. An option the document lists, the brand's saved
+ * ones included, is not the board's to remove. Returns whether anything was removed.
+ */
+export function dropPickOption(state, rowKey, id) {
+  const mine = Array.isArray(state?.strategyOwn?.[rowKey]) ? state.strategyOwn[rowKey] : [];
+  const kept = mine.filter(text => ownPickId(text) !== id);
+  if (kept.length === mine.length) return false;
+  const without = (map, key) => Object.fromEntries(Object.entries(map).filter(([name]) => name !== key));
+  state.strategyOwn = kept.length ? { ...state.strategyOwn, [rowKey]: kept } : without(state.strategyOwn, rowKey);
+  if (state.strategyPicks?.[rowKey] === id) state.strategyPicks = without(state.strategyPicks, rowKey);
+  state.error = '';
+  return true;
+}
+
+/**
+ * What a concept's own field row (Awareness stage, Ad style, Visual format, CTA) says once the person has picked something other than
+ * the default for it: the pick, so the card never shows two values for one thing. Null while the pick is the default, or for any other field.
+ */
+function pickFieldNow(concept, field, strategy) {
+  const options = strategy?.options;
+  const label = String(field?.label || '').trim();
+  const key = options ? CONCEPT_PICK_FIELDS.find(name => PICK_FIELD_LABELS[name].test(label)) : null;
+  const row = key ? pickRowOf(options, key, pickRowKey(concept.id, key), pickFallback(options, key, concept), strategy) : null;
+  const option = row && row.picked !== row.fallback ? row.options.find(item => item.id === row.picked) : null;
+  return option ? pickShown(option) : null;
+}
+
+/**
+ * The lines the approval adds to its note for the concept approved: none when no pick differs from the default and nothing was
+ * added; otherwise "Strategy picks: ..." with the five current values (an empty one left out), then one "Your own ..." line per text
+ * added on the concept's rows or the industry row. A text sits between straight quotes, as an opening line does.
+ */
+export function strategyNoteLines(options, concept, { chosen = {}, added = {} } = {}) {
+  if (!options || !concept) return [];
+  const rows = PICK_ROWS.map(spec => ({ spec, row: pickRowOf(options, spec.field, pickRowKey(concept.id, spec.field), pickFallback(options, spec.field, concept), { chosen, added }) })).filter(item => item.row);
+  if (!rows.some(({ row }) => row.picked !== row.fallback || row.mine.length)) return [];
+  const say = text => noteLine(text).slice(0, HOOK_LINE_LIMIT);
+  const now = rows.map(({ spec, row }) => {
+    const option = row.options.find(item => item.id === row.picked);
+    return option ? `${spec.picked}: "${say(option.text)}"` : '';
+  }).filter(Boolean);
+  const lines = now.length ? [`Strategy picks: ${now.join(' · ')}`] : [];
+  for (const { spec, row } of rows) for (const text of row.mine) lines.push(`Your own ${spec.own}: "${say(text)}"`);
+  return lines;
+}
+
+function pickEditForm(rowKey, edit, label) {
+  const errorId = `pick-error-${rowKey}`.replace(/\s+/g, '-');
+  const problem = edit.error ? `<span class="field-error" id="${esc(errorId)}" role="alert">${esc(edit.error)}</span>` : '';
+  return `<span class="hook-form pick-form"><input type="text" class="hook-input" name="pick_edit_${esc(rowKey)}" data-pick-input="${esc(rowKey)}" value="${esc(edit.text || '')}" maxlength="${PICK_TEXT_LIMIT}" autocomplete="off" enterkeyhint="done" aria-label="${esc(label)}"${edit.error ? ` aria-invalid="true" aria-describedby="${esc(errorId)}"` : ''}><span class="hook-form-actions"><button type="button" class="hook-save" data-pick-save="${esc(rowKey)}">Save</button><button type="button" class="quiet" data-pick-cancel="${esc(rowKey)}">Cancel</button></span>${problem}</span>`;
+}
+
+function pickChip(option, rowKey, picked, disabled, noun = '') {
+  const result = option.label ? RESULT_PILLS[option.label] : null;
+  const tags = `${option.yours ? '<span class="pick-tag">yours</span>' : ''}${result ? `<span class="pick-tag is-${option.label}" title="${esc(result.hint)}">${result.word.toLowerCase()}</span>` : ''}`;
+  const shown = pickShown(option);
+  const chip = `<label class="pick-chip"${shown === option.text ? '' : ` title="${esc(option.text)}"`}><input type="radio" class="visually-hidden" name="pick_${esc(rowKey)}" value="${esc(option.id)}" ${picked === option.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="pick-chip-body"><span class="pick-chip-text">${esc(shown)}</span>${tags}</span></label>`;
+  // An option added in this review can be taken back with a small x; one the document lists (the brand's saved ones too) cannot.
+  return option.added
+    ? `<span class="pick-own">${chip}<button type="button" class="pick-drop" data-pick-drop="${esc(rowKey)}" data-pick-id="${esc(option.id)}" aria-label="${esc(`Remove your own ${noun}: ${option.text}`)}" title="Remove" ${disabled ? 'disabled' : ''}><span aria-hidden="true">×</span></button></span>`
+    : chip;
+}
+
+function pickRowHtml(row, { concept = null, edit = null, disabled = false } = {}) {
+  const spec = PICK_ROW_OF[row.field];
+  const forConcept = concept ? ` for concept ${concept.id}` : '';
+  const labelId = `pick-label-${row.rowKey}`.replace(/\s+/g, '-');
+  const chips = row.options.length ? `<div class="pick-chips" role="radiogroup" aria-labelledby="${esc(labelId)}">${row.options.map(option => pickChip(option, row.rowKey, row.picked, disabled, `${spec.noun}${forConcept}`)).join('')}</div>` : '';
+  const editing = edit && edit.row === row.rowKey ? edit : null;
+  const adder = editing
+    ? pickEditForm(row.rowKey, editing, `Your own ${spec.noun}${forConcept}`)
+    : row.room ? `<button type="button" class="pick-add" data-pick-add="${esc(row.rowKey)}" aria-label="${esc(`Add your own ${spec.noun}${forConcept}`)}" ${disabled ? 'disabled' : ''}>+ Add your own</button>` : '';
+  return `<div class="pick-row"><span class="pick-label" id="${esc(labelId)}">${esc(spec.title)}${concept ? `<span class="visually-hidden"> for concept ${esc(concept.id)}</span>` : ''}</span><div class="pick-line">${chips}${adder}</div></div>`;
+}
+
+/** The Industry row, which sits under the strategy summary: '' when the document offers no industries to choose from. */
+export function industryRow(strategy, { disabled = false } = {}) {
+  const options = strategy?.options;
+  const row = options ? pickRowOf(options, 'industry', 'industry', pickFallback(options, 'industry'), strategy) : null;
+  return row?.options.length ? `<div class="pick-industry">${pickRowHtml(row, { edit: strategy.edit, disabled })}</div>` : '';
+}
+
+/** A concept's folded "Strategy picks" block: the picks as they stand in its summary, the four rows inside. */
+function conceptPickBlock(concept, strategy, disabled) {
+  const options = strategy?.options;
+  if (!options || !concept) return '';
+  const rows = CONCEPT_PICK_FIELDS.map(field => pickRowOf(options, field, pickRowKey(concept.id, field), pickFallback(options, field, concept), strategy)).filter(Boolean);
+  if (!rows.length) return '';
+  const now = rows.map(row => { const option = row.options.find(item => item.id === row.picked); return option ? pickShown(option) : ''; }).filter(Boolean);
+  const key = `strategy-picks:${concept.id}`;
+  const open = Boolean(strategy.openKeys?.has(key)) || rows.some(row => strategy.edit?.row === row.rowKey);
+  return `<details class="strategy-picks" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="strategy-picks-title">Strategy picks</span><span class="strategy-picks-now">${now.length ? esc(now.join(' · ')) : 'None chosen yet'}</span></summary><div class="strategy-picks-body">${rows.map(row => pickRowHtml(row, { concept, edit: strategy.edit, disabled })).join('')}</div></details>`;
+}
+
+export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null } = {}) {
   const list = concepts?.concepts || [];
   if (!list.length) return '<p class="muted">No concepts were found in this file.</p>';
   return `<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept => {
@@ -2734,13 +2963,18 @@ export function conceptCards(concepts, choice = null, { disabled = false, hooks 
       if (source && /^sources?$/i.test(String(field.label || '').trim())) {
         return source.detail ? `<div><dt>Evidence</dt><dd${/\n/.test(source.detail) ? ' class="lines"' : ''}>${inlineMarkdown(source.detail)}</dd></div>` : '';
       }
+      // A funnel stage, ad style, format or call to action the person picked something else for says the pick, not the concept's own words.
+      const picked = pickFieldNow(concept, field, strategy);
+      if (picked !== null) return `<div><dt>${esc(field.label)}</dt><dd>${esc(picked)}</dd></div>`;
       const isSourceRef = /^insight it rests on$/i.test(field.label || '');
       const humanized = isSourceRef ? humanizeSourceRef(field.value) : null;
       const value = humanized ? esc(humanized) : inlineMarkdown(field.value);
       return `<div>${field.label ? `<dt>${esc(field.label)}</dt>` : ''}<dd${/\n/.test(field.value) ? ' class="lines"' : ''}>${value}</dd></div>`;
     }).join('') + (hookField ? '' : picks);
     const badge = source ? `<span class="pill concept-source source-${esc(source.kind)}"><span class="visually-hidden">Source: </span>${esc(source.label)}</span>` : '';
-    return `<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${credits ? `<span class="concept-foot">${esc(credits)}</span>` : ''}</span></label>`;
+    // Funnel stage, ad style, format and call to action: folded, with the picks as they stand in its summary.
+    const strategyPicks = conceptPickBlock(concept, strategy, disabled || Boolean(strategy?.disabled));
+    return `<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${strategyPicks}${credits ? `<span class="concept-foot">${esc(credits)}</span>` : ''}</span></label>`;
   }).join('')}</div>`;
 }
 
@@ -3940,8 +4174,10 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     return parts.join('');
   }
   if (gate === 'concept' && review.concepts) {
-    parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc)));
-    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null }));
+    // The picks (industry under the strategy, funnel stage, ad style, format and call to action on each card) come with the options the document offers.
+    const strategy = { options: strategyOptionsOf(doc), chosen: state.strategyPicks || {}, added: state.strategyOwn || {}, edit: state.strategyEdit || null, openKeys, disabled: locked };
+    parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc), industryRow(strategy, { disabled: locked })));
+    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy }));
   }
   if (gate === 'concept') parts.push(recipeReviewSection(doc, recipeState, { disabled: state.busy || state.submitted }));
   // Panel-by-panel decisions belong to the storyboard approval only (the server refuses them anywhere else), so a later
@@ -4194,9 +4430,11 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * click, bound to the displayed revision and exact registered files, or an
  * error to show instead. Concept approvals carry the credits shown, and in
  * their note the opening line picked plus, one per line, each line the person
- * added (`own`) or edited (`edited`); price approvals carry the totals shown.
+ * added (`own`) or edited (`edited`), and, when a strategy pick differs from its default or an option was added
+ * (`strategyPicks`, `strategyOwn`), the "Strategy picks:" line and a "Your own ..." line per option added;
+ * price approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null, hooks = {}, own = {}, edited = {} }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -4265,6 +4503,8 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
       }
       for (const line of made.filter(item => item.own)) args.note += `\nYour own opening line: "${noteLine(line.text).slice(0, HOOK_LINE_LIMIT)}"`;
       for (const line of made.filter(item => item.edited)) args.note += `\nEdited opening line (was "${noteLine(line.was)}"): "${noteLine(line.text).slice(0, HOOK_LINE_LIMIT)}"`;
+      // The strategy picks follow the opening lines, and only when the person changed a pick or added an option.
+      for (const line of strategyNoteLines(strategyOptionsOf(doc), concept, { chosen: strategyPicks, added: strategyOwn })) args.note += `\n${line}`;
     } else {
       if (concept) args.chosen = concept.id;
       args.note = concept ? `Concept ${concept.id}: ${note}` : note;
@@ -5298,8 +5538,8 @@ const BLOB_MOODS = new Set(['happy', 'sleepy', 'surprised', 'sad', 'thinking']);
 const BLOB_SHAPES = ['34%', '50%', '46% 54% 52% 48% / 54% 46% 54% 46%', '50% 50% 36% 36% / 56% 56% 40% 40%', '38% 38% 50% 50% / 40% 40% 56% 56%'];
 // Each agent's place here sets its colour (47 degrees round the wheel per place) and its shape. A newer agent goes at the end so
 // nobody else changes colour; BLOB_HUES gives it a hue of its own in the widest gap left.
-const BLOB_ORDER = ['producer', 'researcher', 'strategist', 'copywriter', 'scriptwriter', 'media-buyer', 'videographer', 'editor', 'publisher', 'creative-director'];
-const BLOB_HUES = Object.freeze({ 'creative-director': 322 });
+const BLOB_ORDER = ['producer', 'researcher', 'strategist', 'copywriter', 'scriptwriter', 'media-buyer', 'videographer', 'editor', 'publisher', 'creative-director', 'trend-scout'];
+const BLOB_HUES = Object.freeze({ 'creative-director': 322, 'trend-scout': 56 });
 function faceSvg(mood) {
   const eye = (x, rx, ry, py) => `<g class="eye"><ellipse cx="${x}" cy="18" rx="${rx}" ry="${ry}" fill="#fff"/><g class="pu"><circle cx="${x}" cy="${py}" r="2.2" fill="#14161b"/><circle cx="${x + 0.9}" cy="${py - 1}" r=".75" fill="#fff"/></g></g>`;
   const open = (rx, ry, py) => eye(14, rx, ry, py) + eye(26, rx, ry, py);
@@ -6631,7 +6871,8 @@ if (typeof document !== 'undefined') {
       // shown is a different one, or when its receipt ends.
       if (!((ui.review.submitted && ui.review.requestId && ui.review.args) || (ui.review.settled && ui.review.args))) {
         // The opening lines the person wrote or edited are kept with their note (scopeReviewState drops them with it when the files change).
-        ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '', draftKey: ui.review.draftKey, ...(ui.review.ownLines ? { ownLines: ui.review.ownLines } : {}), ...(ui.review.editedLines ? { editedLines: ui.review.editedLines } : {}), ...(ui.review.hookEdit ? { hookEdit: ui.review.hookEdit } : {}) };
+        // So are the options they added to a strategy row and the box they are typing in; which option is picked starts over, as the opening line picked does.
+        ui.review = { choice: null, comment: ui.review.comment || '', commentOpen: false, panelDraft: ui.review.panelDraft || '', draftKey: ui.review.draftKey, ...(ui.review.ownLines ? { ownLines: ui.review.ownLines } : {}), ...(ui.review.editedLines ? { editedLines: ui.review.editedLines } : {}), ...(ui.review.hookEdit ? { hookEdit: ui.review.hookEdit } : {}), ...(ui.review.strategyOwn ? { strategyOwn: ui.review.strategyOwn } : {}), ...(ui.review.strategyEdit ? { strategyEdit: ui.review.strategyEdit } : {}) };
         stopJobRequestWatch(project.jobId + ':review');
       }
       ui.recipe = {};
@@ -7991,6 +8232,10 @@ if (typeof document !== 'undefined') {
     if(target.dataset.hookSave!==undefined){saveHookEdit();return;}
     if(target.dataset.hookCancel!==undefined){cancelHookEdit();return;}
     if(target.dataset.hookDrop!==undefined){dropHookLine();return;}
+    if(target.dataset.pickAdd!==undefined){startPickEdit(target.dataset.pickAdd);return;}
+    if(target.dataset.pickSave!==undefined){savePickEdit();return;}
+    if(target.dataset.pickCancel!==undefined){cancelPickEdit();return;}
+    if(target.dataset.pickDrop!==undefined){dropPickOwn(target.dataset.pickDrop,target.dataset.pickId);return;}
     if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref, target.dataset.finishing);return;}
     if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project, target.dataset.recipeSave);return;}
     if(target.dataset.workspaceAction){workspaceAction(target.dataset.workspaceAction);return;}
@@ -8394,6 +8639,43 @@ if (typeof document !== 'undefined') {
     render();
     focusHook(`[data-hook-add="${CSS.escape(edit.id)}"]`);
   }
+  // Strategy picks on a concept card or the industry row: add an option of one's own (the box being typed in is state.strategyEdit, see
+  // applyPickEdit). Picking a chip is the change handler's. Nothing is saved from here; the approval carries the picks in its note.
+  function startPickEdit(rowKey) {
+    const found = hookTarget();
+    const parts = found ? pickRowParts(rowKey) : null;
+    if (!parts || (parts.id !== null && !hookConcept(found.project, parts.id))) return;
+    found.state.strategyEdit = { row: rowKey, text: '' };
+    if (parts.id !== null) openKeys.add(`strategy-picks:${parts.id}`);
+    render();
+    focusHook(`[data-pick-input="${CSS.escape(rowKey)}"]`);
+  }
+  function cancelPickEdit() {
+    const found = hookTarget();
+    const edit = found?.state.strategyEdit;
+    if (!edit) return;
+    found.state.strategyEdit = null;
+    render();
+    focusHook(`[data-pick-add="${CSS.escape(edit.row)}"]`);
+  }
+  // The small x on an option added in this review: it goes, and the row goes back to its default when it was the pick.
+  function dropPickOwn(rowKey, id) {
+    const found = hookTarget();
+    if (!found || !dropPickOption(found.state, rowKey, id)) return;
+    render();
+    focusHook(`[data-pick-add="${CSS.escape(rowKey)}"],[data-pick-input="${CSS.escape(rowKey)}"]`);
+  }
+  function savePickEdit() {
+    const found = hookTarget();
+    const edit = found?.state.strategyEdit;
+    if (!edit) return;
+    const parts = pickRowParts(edit.row);
+    const doc = docFor(found.project);
+    const done = applyPickEdit(found.state, strategyOptionsOf(doc), parts?.id ? hookConcept(found.project, parts.id) : null);
+    if (done.error) { edit.error = done.error; render(); focusHook(`[data-pick-input="${CSS.escape(edit.row)}"]`); return; }
+    render();
+    focusHook(`input[name="pick_${CSS.escape(edit.row)}"][value="${CSS.escape(done.pick)}"]`);
+  }
   async function submitDecision(project, verdict, finishing = null) {
     const state = uiFor(project).review;
     if (!transport || state.busy || state.submitted || state.needsReconciliation || state.settled) return;
@@ -8401,8 +8683,9 @@ if (typeof document !== 'undefined') {
     state.comment = comment;
     // An opening line still being typed is not part of the approval: ask for it to be saved or dropped first, so it is never lost quietly.
     if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel the opening line you are typing first.'; render(); return; }
+    if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel the option you are typing first.'; render(); return; }
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {} });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -9061,6 +9344,14 @@ if (typeof document !== 'undefined') {
       }
       return;
     }
+    if (field.dataset?.pickInput !== undefined) {
+      const edit = uiFor(project).review.strategyEdit;
+      if (edit) {
+        edit.text = field.value;
+        if (edit.error) { edit.error = ''; field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); field.closest('.hook-form')?.querySelector('.field-error')?.remove(); }
+      }
+      return;
+    }
     if (field.id === 'review-comment') { uiFor(project).review.comment = field.value; return; }
     if (field.id === 'sb-note') { uiFor(project).review.panelDraft = field.value; return; }
     if (field.id === 'mr-note') { uiFor(project).review.mediaDraft = field.value; return; }
@@ -9074,6 +9365,13 @@ if (typeof document !== 'undefined') {
       if (event.isComposing) return;
       if (event.key === 'Enter') { event.preventDefault(); saveHookEdit(); }
       else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelHookEdit(); }
+      return;
+    }
+    // The box for an option of one's own on a strategy row: the same keys.
+    if (field instanceof HTMLInputElement && field.dataset.pickInput !== undefined) {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); savePickEdit(); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelPickEdit(); }
       return;
     }
     if (field instanceof HTMLInputElement && field.dataset.kitLink !== undefined && event.key === 'Enter') {
@@ -9145,6 +9443,18 @@ if (typeof document !== 'undefined') {
       const id = field.name.slice('hook_choice_'.length);
       state.hooks = { ...(state.hooks || {}), [id]: Number(field.value) };
       state.choice = id;
+      state.error = '';
+      setTimeout(render, 0);
+      return;
+    }
+    if (field.type === 'radio' && field.name.startsWith('pick_')) {
+      // Picking a chip on a concept's row also picks its concept; the industry row belongs to the job.
+      const row = field.name.slice('pick_'.length);
+      const parts = pickRowParts(row);
+      if (!parts) return;
+      const state = uiFor(project).review;
+      state.strategyPicks = { ...(state.strategyPicks || {}), [row]: field.value };
+      if (parts.id !== null) state.choice = parts.id;
       state.error = '';
       setTimeout(render, 0);
       return;

@@ -287,6 +287,8 @@ A `submit_decision` request from the board is the person's approval already, the
 Pass `maxCredits` equal to the request's `args.credits`, the credits the board showed, when approving a concept.
 A price approval carries its own `args.totals`, already matching the saved quote, and needs no `maxCredits`.
 A concept pick arrives as `args.chosen` with the concept letter, and a request for changes carries the person's comment in `args.note`.
+A concept pick's `args.note` can also carry the person's Strategy gate choices: a `Strategy picks:` line (industry, funnel stage, ad style, format, CTA) and `Your own ...` lines for options they added.
+Pass the note on unchanged and never edit or drop those lines: applying the decision saves the person's own options to the brand library, and the agents read the picks from the approval note, where they replace the concept's own fields.
 The tool validates the exact registered file set, hashes, current gate, and revision before applying the decision.
 `confirmedBy` is a local audit label and does not authenticate a Studio user.
 When the job revision or the registered files no longer match, because the quote or the files changed since the person clicked, the apply fails: say so in chat in one line and re-present the current decision on the board, rather than asking in chat for approval.

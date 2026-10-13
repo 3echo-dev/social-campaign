@@ -6,9 +6,10 @@
  * sees it half written.
  */
 
-import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { renameReplacing } from './rename.mjs';
 
 /** Every object in a line file, in order. A missing file is empty; a line that is not an object is skipped. */
 export function readLines(file) {
@@ -47,5 +48,5 @@ export function writeJsonAtomic(file, value) {
   mkdirSync(dirname(file), { recursive: true });
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(temp, file);
+  renameReplacing(temp, file);
 }

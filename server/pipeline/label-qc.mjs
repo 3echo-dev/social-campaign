@@ -1,11 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { UserFacingError } from '../lib/errors.mjs';
 import { probeFile, run } from '../media/probe.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const deliverableRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-deliverable.js'));
@@ -110,7 +111,7 @@ function writeJsonAtomic(file, value) {
   const temp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

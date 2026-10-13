@@ -12,6 +12,32 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_STALE_MS = 10000;
 const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
+// Windows reports a file that is in use, or one that was removed while another process still held it open ("delete pending"),
+// as EPERM, EACCES or EBUSY, and the state clears within milliseconds. A rename over a file another process is reading at that
+// instant, and the creation of a lock file that was just released while a waiter was reading it, both fail that way. Without
+// a retry the writer throws after it has taken the lock and the caller loses its update. Elsewhere the same codes are real
+// permission errors, so they are never retried there, and here they are only retried for a bounded time.
+const BUSY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const BUSY_RETRY_MS = 2000;
+const busy = e => process.platform === 'win32' && Boolean(e) && BUSY_CODES.has(e.code);
+const isDirectory = target => {
+  try { return fs.statSync(target).isDirectory(); } catch { return false; }
+};
+
+function renameReplacing(from, to) {
+  const deadline = Date.now() + BUSY_RETRY_MS;
+  for (let wait = 1; ; wait = Math.min(wait * 2, 50)) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (e) {
+      // A directory in the way gives the same code and never clears, so it is not waited on.
+      if (!busy(e) || Date.now() >= deadline || isDirectory(to)) throw e;
+      pause(wait);
+    }
+  }
+}
+
 function atomicWrite(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = file + '.' + crypto.randomUUID() + '.tmp';
@@ -25,7 +51,7 @@ function atomicWrite(file, text) {
     // Node replaces the destination as part of rename on the supported local filesystems.
     // There is deliberately no delete-then-rename fallback: that would make a crash expose a
     // missing state file instead of the previous complete snapshot.
-    fs.renameSync(temp, file);
+    renameReplacing(temp, file);
     // Directory fsync is supported on Unix; Windows still gets the atomic file replacement.
     try {
       const d = fs.openSync(path.dirname(file), 'r');
@@ -168,12 +194,18 @@ function acquire(file, timeoutOrOptions = DEFAULT_TIMEOUT_MS) {
   const me = owner();
   const text = ownerText(me);
   const deadline = Date.now() + opts.timeoutMs;
+  let blockedAt = null;
   for (;;) {
     let fd;
     try {
       fd = fs.openSync(lock, 'wx', 0o600);
     } catch (e) {
-      if (!e || e.code !== 'EEXIST') throw e;
+      if (e && e.code === 'EEXIST') blockedAt = null;
+      else if (busy(e)) {
+        // The holder just released and a waiter still has the old file open: wait for it to disappear instead of failing.
+        blockedAt = blockedAt === null ? Date.now() : blockedAt;
+        if (Date.now() - blockedAt >= BUSY_RETRY_MS) throw e;
+      } else throw e;
     }
     if (fd !== undefined) {
       try {
@@ -221,6 +253,7 @@ function update(file, change, initial = '') {
 
 module.exports = {
   atomicWrite,
+  renameReplacing,
   acquire,
   update,
   DEFAULT_TIMEOUT_MS,

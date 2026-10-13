@@ -10,6 +10,7 @@
 const ROLES = {
   producer: { label: 'Social media manager', action: 'Keeping the work moving and checking each piece as it lands.' },
   researcher: { label: 'Researcher', action: 'Gathering evidence and citing where each fact came from.' },
+  'trend-scout': { label: 'Trend Scout', action: 'Finding what is rising now in your industry on your platforms.' },
   strategist: { label: 'Strategist', action: 'Turning the research into one clear direction.' },
   copywriter: { label: 'Copywriter', action: 'Writing the post copy and the call to action.' },
   scriptwriter: { label: 'Scriptwriter', action: 'Writing the script and the storyboard.' },
@@ -35,7 +36,7 @@ const ROLES = {
 // The spellings a workflow row or a spawn prompt is likely to use for the same worker.
 const ALIASES = {
   manager: 'producer', 'social-media-manager': 'producer',
-  research: 'researcher', market: 'audience', 'market-research': 'audience',
+  research: 'researcher', trend: 'trend-scout', trends: 'trend-scout', 'trend-research': 'trend-scout', market: 'audience', 'market-research': 'audience',
   competitor: 'competitors', product: 'product-evidence', evidence: 'product-evidence',
   customers: 'customer', questions: 'customer',
   video: 'watch-video', 'analyze-video': 'watch-video', 'video-analysis': 'watch-video',

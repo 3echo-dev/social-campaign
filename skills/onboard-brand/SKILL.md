@@ -53,7 +53,7 @@ If a brand with onboardingStatus required matches the user's brand, continue tha
 If a ready brand matches, ask whether the user wants to update it or start a job.
 
 When a brand is opened or chosen this way, call `pipeline_brand_tidy_check` once for that brand.
-Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 1 to 8 short content pillars of 60 characters or fewer) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
+Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 1 to 8 short content pillars of 60 characters or fewer; research itself fills 3 to 5) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
 If the artifact board is ready, direct the user to its single inline Brand onboarding form and wait for one `onboard_brand` request.
@@ -160,8 +160,15 @@ It skips any part the person already provided and returns `skipped` when colours
 If the `pipeline_brand_research_start` result is `skipped`, do not dispatch the researcher.
 There is nothing blank to fill, or research is already current.
 
-Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (including its `turns` budget), and `draftPath`.
+A brand onboarded before research wrote its audience, positioning and platform notes still has them as the empty template, so its research is redone once even when it looks current.
+When the start result carries a `refreshReason`, say it to the person as one short line, word for word, for example "Your brand files were never filled from research; refreshing them now", and then dispatch as usual.
+No field may be blank in that case, and the researcher then fills only the research, the brand files and the top posts.
+After that one run the notes are filled or say research found nothing, so the next start is skipped again.
+
+Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (12 searches, 16 fetches and 40 turns, the budget of a campaign job's research), `draftPath`, and `rawDir`, the folder where it saves the text of every page it reads.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
+Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find`, and keeps a saved capture behind every source.
+It has no Chrome tools; the Instagram look below is yours.
 The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
 Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
 In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
@@ -172,8 +179,8 @@ Dispatch it in the background, then write the board documents right away (call `
 Then call `pipeline_brand_research_save` with the brand and `runId`.
 
 When the save returns `needs_changes`, never close the run and never tell the person about it.
-Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems` and `draftPath`, then save again.
-Never add, change or date a source, URL or piece of evidence yourself: anything about sources goes back to the researcher.
+Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems`, `draftPath` and `rawDir`, then save again.
+Never add, change or date a source, URL or piece of evidence yourself: anything about sources, captures, excerpts, competitor handles, or the files and top posts the draft carries goes back to the researcher.
 Do this for at most two rounds.
 When `needsAudience` is true, the researcher either finds the brand's own audience or suggests one from the top competitors' audiences in the target market.
 If audience alone still remains after the two rounds, save once more with `audienceUnavailable: true` and tell the person plainly that no audience could be found and that they can add one on the board.
@@ -182,6 +189,10 @@ Right after a successful save, tell the person plainly which fields research fil
 If `competitorsAdded` lists names, say research added them as competitors, for example "Research added Northshore Grocer and FreshCart SG to your competitors."
 If `suggested` lists a field, say it is a suggestion to check, for example "The audience is a suggestion based on competitors, so please check it."
 Name `forbiddenClaims` as "words and claims to avoid" and `examples` as "example posts", and say once that they are suggestions taken from the brand's own pages, without asking the person anything about them.
+The save also writes the brand's audience, positioning and platform notes and files the research in the brand library.
+When `brandFiles.enoughForJobs` is true, say in one line that research also filled in the audience and positioning notes, for example "Research also filled in your audience and positioning notes, with the proof behind them."
+When it is false, say nothing about them; the notes keep their empty template and a job researches what it needs.
+Never mention file names, tool names or the checks behind `brandFiles`, `library`, `toolCalls` or `warnings`.
 
 Close the run as failed with `pipeline_brand_research_close`, `status: 'failed'` and a reason, only when a tool itself returns an error.
 After a first failure, call `pipeline_brand_research_start` once more to restart the research, without calling `web_brand_kit` again; the board keeps showing that research is under way until the restart ends. A second failure is final.
@@ -205,19 +216,31 @@ For chat intake, show the proposed kit in chat, take any changes the person want
 Once research has saved, ask what kind of business the brand is, once, with `pipeline_board_ask` for the brand.
 Offer the closest industries from `pipeline/playbooks/ad-styles.md` as buttons in plain words, at most 6, the best fit from the brand's pages first, and let the person type another, for example "Which of these is closest to what SK-II does?". Show no tags or ids.
 Do not wait for the answer: until it comes, the strategist infers the industry and marks it inferred.
-When the answer arrives (see Questions on the board in `skills/board-sync/SKILL.md`), save it with `brand_bank_save` as the brand's industry item (kind `industry`, the tag as its text, and for `other` the tag then one line on what it is).
+When the answer arrives (see Questions on the board in `skills/board-sync/SKILL.md`), save it with `brand_bank_save` as the brand's industry item: bank `yours`, kind `industry`, and as its text the industry's name exactly as the Strategy step lists it.
+Those names are Beauty and skincare; Food and beverage; Fitness and health; Education; Finance; Real estate; Software, AI and tech; Retail and e-commerce; Hospitality and travel; Professional services; Gaming and entertainment.
+When none fits, the text is the person's own words.
+The Strategy step then opens with that industry already chosen, so never save the tag or an id as the text.
 On an update of a ready brand, edit its existing industry item rather than adding a second.
 
-Then start the brand library with what already worked, so the first concepts do not start blank.
-Call `brand_library_get` first and skip this when it already holds proven items.
-Call `social_outliers_find` once, with no retry, for each of the brand's TikTok and Instagram accounts and for each competitor account the research found (never a guessed handle).
-A source that comes back with no posts, no outliers or coverage `none` is skipped.
-Save with `brand_bank_save`, as proven items of kind `hook`, at most 3 posts per own account and 2 per competitor.
-The text is the post's opening words exactly as its caption has them, and the evidence is the post's url, its views and its posting date (YYYY-MM-DD).
-Start a competitor item's text with "Competitor <name>: ", so it is never taken for the brand's own.
+The brand library already has what the research found, so the first concepts do not start blank.
+The save filed the research for the next job to reuse (brand and competitor research stay fresh for 30 days), and it saved the best posts the researcher read on the brand's own accounts and on each competitor's as proven hooks, from the `topPosts` in the researcher's draft.
+Do not call `social_outliers_find` again for those accounts, and never guess a handle.
+When the save result's `topPosts.saved` is more than 0, say so in one line, for example "Saved 5 top posts to your brand library."
+When no post was saved and Instagram is not the reason, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
+
+### Instagram behind a login
+
+The research helper cannot read Instagram without a login, so a brand whose posts are on Instagram has none in its library after the save.
+Look at its declared Instagram once through the person's own signed-in Chrome, but only when the Claude in Chrome browser tools are among your tools.
+Do it in a background helper, so you keep answering board requests.
+Open the declared profile (its Reels tab when it has one), then at most 3 of its posts, one look each; never reopen a page, never scroll hunting for more, and never open a competitor's page.
+Read what the pages show: the followers and post count, and for the 3 posts with the most views their link, views, date and the opening words of the caption.
+Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials.
+Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it.
+Save each post with `brand_bank_save`: bank `proven`, kind `hook`, source `brand`, the caption's opening words exactly as the page has them as the text, and the post's link, views and date (YYYY-MM-DD) as the evidence.
 Skip a post that has no caption, views or date; never fill in or round a figure.
-When nothing could be read, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
-When items were saved, say so in one line, for example "Saved 5 top posts to your brand library."
+When the Chrome tools are not among your tools, or the page will not open, do not ask the person to connect anything in chat.
+Record the gap in one plain line instead, for example "I could not read your Instagram because it needs a login, so there are no Instagram posts to learn from yet. They will come in as you make posts."
 
 ## 4c. Your archive (optional)
 

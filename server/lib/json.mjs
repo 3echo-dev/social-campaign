@@ -5,11 +5,12 @@
  * disk. Every read has to survive a truncated or hand edited file without throwing.
  */
 
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
+import { renameReplacing } from './rename.mjs';
 
 /**
  * Parse JSON, returning a fallback instead of throwing.
@@ -57,7 +58,7 @@ function atomicWrite(filePath, value) {
   const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    renameSync(temp, filePath);
+    renameReplacing(temp, filePath);
   } finally {
     rmSync(temp, { force: true });
   }

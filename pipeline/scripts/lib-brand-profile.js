@@ -23,6 +23,10 @@ const CONTEXT_TEXT_LIMITS = Object.freeze({ audience: 400, market: 400, voice: 3
 const CONTENT_PILLAR_MIN = 1;
 const CONTENT_PILLAR_MAX = 8;
 const CONTENT_PILLAR_ITEM_MAX = 60;
+// A research fill is held to the count the research skill asks for (3 to 5 pillars), so a pass that lists seven topics is sent back
+// instead of saved. A typed list keeps the wider range above: the person's own choice is not narrowed.
+const RESEARCH_PILLAR_MIN = 3;
+const RESEARCH_PILLAR_MAX = 5;
 // The signals that a context field still carries research notes rather than brand-facing
 // copy: a link, a bare domain, an ISO date, or the words a research pass uses to cite itself.
 const SOURCE_NOTE_PATTERNS = Object.freeze([
@@ -797,6 +801,8 @@ module.exports = {
   CONTENT_PILLAR_MIN,
   CONTENT_PILLAR_MAX,
   CONTENT_PILLAR_ITEM_MAX,
+  RESEARCH_PILLAR_MIN,
+  RESEARCH_PILLAR_MAX,
   channel: normalizeChannel,
   normalizeChannel,
   normalizePalette,

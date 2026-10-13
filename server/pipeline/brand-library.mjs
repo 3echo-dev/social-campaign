@@ -9,10 +9,13 @@
  *     jobs/<jobId>.json      the filed job record (below)
  *     footage/               the brand's imported archive of past videos, pictures and audio: links to the originals with rights, plus
  *                            thumbnails and what was seen in each file (brand-footage.mjs documents the files)
- *     preferences.jsonl      {at, jobId, stage, picked, rejected[], note?}   what the person chose, and what they passed on
+ *     preferences.jsonl      {at, jobId, stage, picked, rejected[], note?, strategy?}   what the person chose, and what they passed on
+ *                            (strategy: the industry, funnel, style, format and cta they set on the Strategy gate, each in their words)
  *     results.jsonl          what a posted video earned, by job (brand-results.mjs scores it against the brand's own usual): bank items
  *                            read ranked, each with { score, uses, label }, and a job that becomes a winner has its opening line
  *                            promoted to bank/proven (promotedFrom: the job id)
+ *     trends.jsonl           {id, kind, text, platform, industry, evidence:[{url, views, date}], why, seenAt}   what the Trend Scout found
+ *                            rising, reused for 7 days (brand-trends.mjs documents the file)
  *
  * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel.
  * A bank file is only ever appended to: an edit appends the item again with the same id and `edited: true, was: <old text>`, a removal
@@ -27,7 +30,8 @@
  * only those that are still exactly as approved).
  *
  * Where it is used:
- *   - applying the concepts decision (board.mjs) calls recordConceptDecision: the opening lines the person wrote or edited go to
+ *   - applying the concepts decision (board.mjs) calls recordConceptDecision: the opening lines the person wrote or edited, and the
+ *     industry, funnel stage, ad style, format and CTA options they added on the Strategy gate (strategy-options.mjs), go to
  *     bank/yours.jsonl, and the pick goes to preferences.jsonl.
  *   - the final media approval, the final post approval and closing a job (board.mjs) call fileJob.
  *   - pipeline_agent_brief appends libraryBlock; the board's brand page reads boardLibrary (brand.library).
@@ -40,7 +44,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join, posix, resolve } from 'node:path';
 
 import { InvalidInputError } from '../lib/errors.mjs';
@@ -51,6 +55,9 @@ import { readAll as readSharedLibrary } from './library.mjs';
 import { SUMMARY_CACHE_MS as FOOTAGE_CACHE_MS, boardFootage, footageLine, footageSummary } from './brand-footage.mjs';
 // brand-results.mjs imports this file too; each use below is inside a function, never at load time.
 import { applyRanking, describeStat, jobResults } from './brand-results.mjs';
+// brand-trends.mjs imports this file too; each use below is inside a function, never at load time.
+import { boardTrends, freshTrends, trendLines } from './brand-trends.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel']);
 export const BANKS = Object.freeze(['yours', 'proven']);
@@ -78,7 +85,7 @@ const writeJson = (file, value) => {
   mkdirSync(join(file, '..'), { recursive: true });
   const tmp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(tmp, file);
+  renameReplacing(tmp, file);
 };
 const stable = value => JSON.stringify(value, (_key, item) => (item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item));
 
@@ -248,8 +255,9 @@ const preferencesFile = (root, brand) => join(brandLibraryDir(root, brand), 'pre
 /**
  * Log what the person chose at a step and what they passed on. The same record twice in a row for the same job and step is kept once.
  * `picked` is what they chose (for the concepts step { concept, title, line? }), `rejected` the other choices ([{ concept, title }]).
+ * `strategy` is what the person set on the Strategy gate when they changed it: { industry?, funnel?, style?, format?, cta? }, each their words.
  */
-export function recordPreference({ root, brand, jobId, stage, picked, rejected = [], note = null, now } = {}) {
+export function recordPreference({ root, brand, jobId, stage, picked, rejected = [], note = null, strategy = null, now } = {}) {
   requireBrand(root, brand);
   if (typeof jobId !== 'string' || !jobId.trim()) throw new InvalidInputError('A preference belongs to a job.');
   if (typeof stage !== 'string' || !stage.trim()) throw new InvalidInputError('Say which step the choice was made at.');
@@ -257,6 +265,7 @@ export function recordPreference({ root, brand, jobId, stage, picked, rejected =
     at: isoOf(now), jobId: jobId.trim(), stage: stage.trim(), picked: picked ?? null,
     rejected: Array.isArray(rejected) ? rejected : [],
     ...(typeof note === 'string' && note.trim() ? { note: clip(note, 400) } : {}),
+    ...(strategy && typeof strategy === 'object' && Object.keys(strategy).length ? { strategy } : {}),
   };
   const file = preferencesFile(root, brand);
   const last = readLines(file).filter(line => line.jobId === record.jobId && line.stage === record.stage).pop();
@@ -275,14 +284,24 @@ export function readPreferences({ root, brand, limit = null } = {}) {
 const OWN_LINE = /^Your own opening line:\s*"(.*)"\s*$/i;
 const EDITED_LINE = /^Edited opening line \(was "(.*?)"\):\s*"(.*)"\s*$/i;
 const HEAD_LINE = /^Concept\s+([A-Za-z0-9]{1,8})\s*:\s*(.*?)(?:\s+\u00b7\s+Opening line:\s*"(.*)")?\s*$/i;
+// The Strategy gate (strategy-options.mjs): the person's final choices for the approved concept, and the options they added.
+const PICKS_LINE = /^Strategy picks:\s*(.*)$/i;
+const PICK_PART = /(Industry|Funnel\s+stage|Ad\s+style|Format|CTA):\s*"(.*?)"(?=\s*\u00b7\s*(?:Industry|Funnel\s+stage|Ad\s+style|Format|CTA):|\s*$)/gi;
+const OWN_STRATEGY_LINE = /^Your own (industry|funnel\s+stage|ad\s+style|format|CTA):\s*"(.*)"\s*$/i;
+const STRATEGY_KIND = Object.freeze({ industry: 'industry', 'funnel stage': 'funnel', 'ad style': 'style', format: 'format', cta: 'cta' });
+const strategyKind = label => STRATEGY_KIND[String(label).toLowerCase().replace(/\s+/g, ' ')];
 
 /**
  * Read the note the board sends with a concept decision:
  *   Concept B: <title> \u00b7 Opening line: "<line>"
  *   Your own opening line: "<text>"                      (one line each, only when used)
  *   Edited opening line (was "<old>"): "<text>"
+ *   Strategy picks: Industry: "<text>" \u00b7 Funnel stage: "<text>" \u00b7 Ad style: "<text>" \u00b7 Format: "<text>" \u00b7 CTA: "<text>"
+ *   Your own industry|funnel stage|ad style|format|CTA: "<text>"      (one line per option the person added)
  * Returns { conceptId, title, line, own: [text], edited: [{ was, text }] }; conceptId, title and line are null when the first line has
- * no such part, so an older note still reads. The note is not changed: the agents read it as it is.
+ * no such part, so an older note still reads. A note with strategy lines also carries strategy: { industry?, funnel?, style?, format?,
+ * cta? } (the picks, each the person's words) and ownStrategy: [{ kind, text }] (kind is industry, funnel, style, format or cta); a note
+ * without them has neither key. The note is not changed: the agents read it as it is.
  */
 export function parseConceptNote(note) {
   const lines = String(note ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -293,12 +312,20 @@ export function parseConceptNote(note) {
     out.title = head[2].trim() || null;
     out.line = typeof head[3] === 'string' && head[3].trim() ? head[3].trim() : null;
   }
+  const strategy = {};
+  const ownStrategy = [];
   for (const line of lines.slice(head ? 1 : 0)) {
     const own = OWN_LINE.exec(line);
     if (own) { if (own[1].trim()) out.own.push(own[1].trim()); continue; }
     const edit = EDITED_LINE.exec(line);
-    if (edit && edit[2].trim()) out.edited.push({ was: edit[1].trim(), text: edit[2].trim() });
+    if (edit) { if (edit[2].trim()) out.edited.push({ was: edit[1].trim(), text: edit[2].trim() }); continue; }
+    const addition = OWN_STRATEGY_LINE.exec(line);
+    if (addition) { if (addition[2].trim()) ownStrategy.push({ kind: strategyKind(addition[1]), text: addition[2].trim() }); continue; }
+    const picks = PICKS_LINE.exec(line);
+    if (picks) for (const part of picks[1].matchAll(PICK_PART)) if (part[2].trim()) strategy[strategyKind(part[1])] = part[2].trim();
   }
+  if (Object.keys(strategy).length) out.strategy = strategy;
+  if (ownStrategy.length) out.ownStrategy = ownStrategy;
   return out;
 }
 
@@ -324,7 +351,9 @@ function conceptsOf(jobDir) {
 
 /**
  * The concepts decision, once it is applied: the person's own and edited opening lines go to bank/yours.jsonl (with the concept and the
- * job), and the choice goes to preferences.jsonl (the picked concept and line, the other concepts as passed over). Returns { saved, preference }.
+ * job), and the choice goes to preferences.jsonl (the picked concept and line, the other concepts as passed over). Options the person
+ * added on the Strategy gate (`Your own industry|funnel stage|ad style|format|CTA` lines) go to the same bank as kind industry, funnel,
+ * style, format or cta, and the picks they set go on the preference record as strategy. Returns { saved, preference }.
  */
 export function recordConceptDecision({ root, brand, jobId, note, chosen = null, now } = {}) {
   const parsed = parseConceptNote(note);
@@ -336,11 +365,14 @@ export function recordConceptDecision({ root, brand, jobId, note, chosen = null,
   const hook = (text, extra = {}) => addToBank({ root, brand, bank: 'yours', kind: 'hook', text, concept: conceptId, jobId, now, ...extra });
   for (const text of parsed.own) saved.push(hook(text));
   for (const edit of parsed.edited) saved.push(hook(edit.text, { edited: true, was: edit.was }));
+  // The industry belongs to the whole job; the other options to the concept that was approved.
+  for (const added of parsed.ownStrategy ?? []) saved.push(addToBank({ root, brand, bank: 'yours', kind: added.kind, text: added.text, concept: added.kind === 'industry' ? null : conceptId, jobId, now }));
   const preference = conceptId
     ? recordPreference({
       root, brand, jobId, stage: 'concept', now,
       picked: { concept: conceptId, title: picked?.title ?? parsed.title, ...(parsed.line ? { line: parsed.line } : {}) },
       rejected: concepts.filter(concept => concept.id !== conceptId).map(concept => ({ concept: concept.id, title: concept.title })),
+      strategy: parsed.strategy ?? null,
     })
     : null;
   return { saved, preference };
@@ -478,8 +510,9 @@ function conceptRecord(job) {
   const hook = parsed.line || hookOptions(fieldOf(concept, /^hook options/i))[0] || fieldOf(concept, /^hook\b/i) || null;
   const rubric = fieldOf(concept, /^rubric/i);
   // The parts the concept named, kept so posted results can be tied to them (brand-results.mjs). Left out when the concept does not name one.
+  // A format, ad style or CTA the person set on the Strategy gate is what the job used, so it replaces the concept's own.
   const parts = Object.entries({ angle: /^angle\b/i, format: /^(?:visual )?format\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
-    .map(([name, pattern]) => [name, fieldOf(concept, pattern)]).filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
+    .map(([name, pattern]) => [name, parsed.strategy?.[name] || fieldOf(concept, pattern)]).filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
   return {
     concept: { id, title: concept?.title ?? parsed.title ?? null, source: sourceKind(fieldOf(concept, /^source/i)), hook: hook ? clip(hook, TEXT_LIMIT) : null, ...Object.fromEntries(parts) },
     rubric: rubric ? clip(rubric, 300) : null,
@@ -556,6 +589,11 @@ export function fileJobQuietly(options) {
 }
 
 // ---------------------------------------------------------------- what the rest of the plugin reads
+/** { trends: n } when the brand has trends seen under 7 days ago, nothing when it has none, so a library without trends keeps its shape. */
+function trendCount({ root, brand, now }) {
+  try { const count = freshTrends({ root, brand, now }).length; return count ? { trends: count } : {}; } catch { return {}; }
+}
+
 /** Counts for the board. */
 export function librarySummary({ root, brand, now } = {}) {
   return {
@@ -566,6 +604,7 @@ export function librarySummary({ root, brand, now } = {}) {
       research: researchIndex({ root, brand, now }).length,
       jobs: readFiledJobs({ root, brand }).length,
       preferences: readPreferences({ root, brand }).length,
+      ...trendCount({ root, brand, now }),
     },
     footage: footageSummary({ root, brand, cacheMs: FOOTAGE_CACHE_MS }),
   };
@@ -601,6 +640,7 @@ export function boardLibrary({ root, brand, now } = {}) {
     return {
       counts: { ...librarySummary({ root, brand, now }).counts },
       ...footageForBoard({ root, brand }),
+      ...trendsForBoard({ root, brand, now }),
       industry: yours.find(item => item.kind === 'industry') || null,
       yours: yours.slice(0, BOARD_LIMITS.yours).map(item => ({ ...item, text: clip(item.text, BOARD_LIMITS.text), ...(item.was ? { was: clip(item.was, BOARD_LIMITS.text) } : {}) })),
       proven: proven.slice(0, BOARD_LIMITS.proven).map(item => ({ ...item, source: item.source || 'brand', text: clip(item.text, BOARD_LIMITS.text) })),
@@ -618,6 +658,7 @@ const viewsText = views => (Number.isFinite(views) ? `${views.toLocaleString('en
  * null when the library is empty. Kept to a few hundred words.
  */
 function libraryBlockWithoutFootage({ root, brand, now } = {}) {
+  let trends = [];
   let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = [];
   try {
     const own = readBank({ root, brand, bank: 'yours' });
@@ -633,8 +674,9 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     proven = all.filter(item => !shown(item)).slice(0, 5);
     research = researchIndex({ root, brand, now }).slice(0, 6);
     choices = readPreferences({ root, brand, limit: 3 });
+    trends = trendLines({ root, brand, now });
   } catch { return null; }
-  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !research.length && !choices.length) return null;
+  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !research.length && !choices.length && !trends.length) return null;
   const lines = ['Brand library (what this brand already has; ask brand_library_get for more):'];
   if (industry) lines.push(`Industry (the person's pick): ${clip(industry.text, 120)}`);
   if (winners.length) {
@@ -657,6 +699,7 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     lines.push('Research already done. Reuse brand and competitor research under 30 days old and trends under 7 days old; refresh only the rest, and say which you reused:');
     for (const item of research) lines.push(`- ${item.topic || 'research'}: ${item.ageDays === null ? 'date unknown' : `${item.ageDays} ${item.ageDays === 1 ? 'day' : 'days'} old`}${item.fresh === null ? '' : item.fresh ? ', reuse' : ', refresh'} - ${item.path}`);
   }
+  if (trends.length) lines.push(...trends);
   if (choices.length) {
     lines.push('What the person chose lately. Follow it:');
     for (const choice of choices) {
@@ -672,6 +715,12 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
 function footageForBoard({ root, brand }) {
   const footage = boardFootage({ root, brand, cacheMs: FOOTAGE_CACHE_MS });
   return footage.folders ? { footage } : {};
+}
+
+/** The board's fresh trends (seen under 7 days ago, brand-trends.mjs): only for a brand that has some, so a library without them keeps its shape. */
+function trendsForBoard({ root, brand, now }) {
+  const trends = boardTrends({ root, brand, now });
+  return trends.length ? { trends } : {};
 }
 
 /**

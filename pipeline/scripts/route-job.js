@@ -311,28 +311,13 @@ for (const s of refs) {
 // This used to add four workstreams to every content job unless the user asserted evidence
 // existed, and an onboarded brand did not count. One TikTok pulled four agents and most of
 // what came back was "Not verified", because the answers were already in the brand files.
-function countRows(file, headerMatch) {
-  try {
-    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
-    let inTable = false, n = 0;
-    for (const line of lines) {
-      if (!inTable) { if (headerMatch.test(line)) inTable = true; continue; }
-      // The first line that is not a table row ends the table. Reading on would count the
-      // next table's header as a proof point on a brand whose own table is still empty.
-      if (!line.trim().startsWith('|')) break;
-      const cells = line.split('|').slice(1, -1).map(c => c.trim());
-      if (!cells.length || cells.every(c => /^:?-+:?$/.test(c))) continue;
-      // A row counts when it carries a value and a source, and neither is the placeholder.
-      const filled = cells.filter(c => c && !/^unknown$/i.test(c));
-      if (filled.length >= 2) n++;
-    }
-    return n;
-  } catch { return 0; }
-}
-
-const proofPoints = countRows(path.join(brandDir, 'brand', 'positioning.md'), /^\s*\|\s*Proof\s*\|/i);
-const verbatim = countRows(path.join(brandDir, 'brand', 'audience.md'), /^\s*\|\s*Phrase\s*\|/i);
-const evidenceBearing = proofPoints >= 3 && verbatim >= 1;
+//
+// Brand onboarding research now writes both tables (lib-brand-files.js), and the same module counts them here, so what a
+// research run writes is exactly what this gate reads.
+const brandFileGate = require('./lib-brand-files.js').evidenceGate(brandDir);
+const proofPoints = brandFileGate.proofPoints;
+const verbatim = brandFileGate.phrases;
+const evidenceBearing = brandFileGate.evidenceBearing;
 
 if (supplied) {
   say('Rule 7: supplied files need no research');

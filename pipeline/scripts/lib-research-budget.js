@@ -6,7 +6,7 @@ const POLICY_VERSION = 'research-budget-v1';
 const DEFAULT_BUDGETS = Object.freeze({
   simple_post: Object.freeze({ searchLimit: 6, readLimit: 8 }),
   campaign: Object.freeze({ searchLimit: 12, readLimit: 16 }),
-  brand_onboarding: Object.freeze({ searchLimit: 12, readLimit: 12 }),
+  brand_onboarding: Object.freeze({ searchLimit: 12, readLimit: 16 }),
   default: Object.freeze({ searchLimit: 6, readLimit: 8 }),
 });
 // Per-question and per-fetch ceilings shared by the brand-onboarding research pass; see

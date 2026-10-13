@@ -54,10 +54,24 @@ Put the brand's target market in every researcher spawn prompt.
 Read `targetMarket` from `brand/profile.json`.
 Blank means Singapore, and so does a job with no brand.
 
+For a job that makes content and has a concepts step (every job but a repurpose of a video the person supplied), also spawn the Trend Scout during research, in the same message as the researcher spawns.
+It is its own agent, not a research workstream: the research decision does not list it, and it is not a workstream the plan omits.
+Brief it like any agent: `job:<jobId>` on the first line, `pipeline_agent_brief` with the brand, the job ID and `trend-scout`, and the block it returns unchanged at the end.
+Put in its prompt the brand, the job ID, the platforms of the job, the brand's industry (the person's pick from `brand_library_get`, else the market in the brand profile), the target market read the same way as for the researcher, the saved competitor names, 30 turns, and the exact path `research/trends.md`.
+Skip it when `brand_library_get` already lists, in `trends`, at least 3 fresh trends for each platform of the job in the brand's industry and at least 3 fresh hooks; the library block carries them to the Creative Director.
+When it fails or finds nothing, carry on without it and do not re-delegate it: its file is not one a plan row owes, and Concept C then says the trending source had nothing usable.
+Whether it runs or is skipped, tell the researcher in its spawn prompt that what is trending is covered by the Trend Scout and the library's fresh trends, so it leaves the trending part out.
+Progress line for the person: "Looking at what is trending and which ads keep running in your industry now."
+
 Put `job:<jobId>` on the first line of every spawn prompt.
 Before spawning an agent, call `pipeline_agent_brief` with the brand, the job ID and that agent, and add the block it returns, unchanged, at the end of the prompt.
 When it returns no block, add nothing.
 Answer every message addressed to the Director with `pipeline_agent_reply`.
+
+After the concepts decision, read its note (the `comment` of the latest `approvals/concept-*.json`).
+When it has a `Strategy picks:` line or `Your own industry|funnel stage|ad style|format|CTA: "..."` lines, add those lines unchanged to the spawn prompt of every agent from the script on (scriptwriter, creative director, copywriter, videographer, editor).
+They replace the concept's own funnel stage, ad style, format and CTA, and the brief's industry, for the script, storyboard, voice-over, captions, picture style and media; an own option is used as written.
+The plugin already saved the person's own options to the brand library when the decision was applied, so never save them again.
 
 Run every agent you spawn in the foreground: leave `run_in_background` off.
 Never present a review, and never move the job to a gate, while a spawned agent is still working.

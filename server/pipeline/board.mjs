@@ -35,6 +35,7 @@ import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingC
 import { normaliseCombine, recordCombine } from './combine.mjs';
 import { boardLibrary, fileJobQuietly, readBank, recordConceptDecision, removeBankItem } from './brand-library.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
 const campaignReport = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-campaign-report.js'));
@@ -1413,7 +1414,7 @@ function transparentThumb(file, cacheDir, key) {
       const temp = `${target}.${process.pid}.${randomUUID()}.tmp.png`;
       const result = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', file, '-frames:v', '1', '-vf', "scale='min(144,iw)':'min(144,ih)':force_original_aspect_ratio=decrease", '-pix_fmt', 'rgba', temp], { windowsHide: true, shell: false, timeout: 20000 });
       if (result.status !== 0 || !existsSync(temp)) { rmSync(temp, { force: true }); return null; }
-      renameSync(temp, target);
+      renameReplacing(temp, target);
     }
     const png = readFileSync(target);
     return png.length <= TRANSPARENT_THUMB_BYTES ? `data:image/png;base64,${png.toString('base64')}` : null;
@@ -1745,7 +1746,7 @@ export function reconcileBoardRequest({root,requestId,resolution,confirmedBy,evi
     renameSync(claim,`${claim}.closed-${randomUUID()}`);
   }
   const next={...record,status:resolution==='retry'?'requested':'applied',reconciliation:{resolution,confirmedBy,evidence,at:new Date().toISOString()}};
-  const temp=`${file}.${randomUUID()}.tmp`;writeFileSync(temp,JSON.stringify(next,null,2));renameSync(temp,file);
+  const temp=`${file}.${randomUUID()}.tmp`;writeFileSync(temp,JSON.stringify(next,null,2));renameReplacing(temp,file);
   return next;
 }
 
@@ -3389,7 +3390,7 @@ function declineBoardRequestNow({root,requestId,confirmedBy,reason,handled}) {
     ...(handled===true ? {handled:true} : {}),
     artifactReceipt: artifactReceipt(record, {status:'declined', declinedAt, reason:trimmedReason || undefined, handled:handled===true}),
   };
-  const temp=`${file}.${randomUUID()}.tmp`;writeFileSync(temp,JSON.stringify(next,null,2));renameSync(temp,file);
+  const temp=`${file}.${randomUUID()}.tmp`;writeFileSync(temp,JSON.stringify(next,null,2));renameReplacing(temp,file);
   return next;
 }
 
@@ -3438,7 +3439,7 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   const reopened = result.status===0 && args.reviewId===FINDINGS_GATE && args.decision!=='approve' ? reopenReport(root,validated.snapshot.brand.slug,args.jobId) : null;
   const next = {...record,status,confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt,detail:result.error?.message || result.stderr || result.stdout,...(labelCheck?.required ? {labelCheck:{checkedAt:labelCheck.checkedAt,accepted:labelCheck.accepted}} : {}),...(reopened ? {reopened} : {}),artifactReceipt:artifactReceipt(record,{status,appliedAt})};
   const temp = `${file}.${randomUUID()}.tmp`;
-  writeFileSync(temp,JSON.stringify(next,null,2));renameSync(temp,file);
+  writeFileSync(temp,JSON.stringify(next,null,2));renameReplacing(temp,file);
   if(result.status!==0) throw new Error('The decision needs reconciliation. Inspect the request and local approval before retrying.');
   return libraryAfterDecision({root,args,brand:validated.snapshot.brand.slug,applied:next});
 }
@@ -3550,7 +3551,7 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
 function writeJsonAtomic(file, value) {
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, JSON.stringify(value, null, 2));
-  renameSync(temp, file);
+  renameReplacing(temp, file);
 }
 
 // A price decision has no pipeline gate to move: it is recorded on the price

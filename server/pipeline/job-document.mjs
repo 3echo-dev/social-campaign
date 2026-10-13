@@ -18,7 +18,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords } from './facts.mjs';
@@ -30,6 +30,9 @@ import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.m
 import { agentBox, coreOnlyAgentBox } from './agent-box.mjs';
 import { musicSection } from './music.mjs';
 import { combineSection } from './combine.mjs';
+// strategy-options.mjs reaches brand-library.mjs, which imports this file: it is only used inside functions, never at load time.
+import { withStrategyOptions } from './strategy-options.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const recipeRules = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-recipe.js'));
@@ -1002,7 +1005,7 @@ function scaledThumbnail(file, sha256, cacheDir, { video = false, edge = THUMB_E
   if (result.error?.code === 'ENOENT') { ffmpegMissing = true; return null; }
   try {
     if (result.status === 0 && existsSync(temp) && statSync(temp).size > 0) {
-      renameSync(temp, target);
+      renameReplacing(temp, target);
       return readFileSync(target);
     }
   } catch { /* A concurrent writer produced the same file. */ }
@@ -1678,7 +1681,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const paths = [...reviewPaths];
     const conceptPath = paths.find(path => /(^|\/)concepts\.md$/i.test(path));
     if (conceptPath && load(conceptPath).raw != null) {
-      document.review.concepts = { path: conceptPath, sha256: registered.get(conceptPath), changed: changedSince(conceptPath), ...parseConcepts(load(conceptPath).raw) };
+      // The Strategy gate rows: the options to pick from, and the option each concept's own fields already name (strategy-options.mjs).
+      document.review.concepts = { path: conceptPath, sha256: registered.get(conceptPath), changed: changedSince(conceptPath), ...withStrategyOptions(parseConcepts(load(conceptPath).raw), { root, brand: project.brand }) };
     }
     const boards = paths.filter(path => /(^|\/)storyboard\.md$/i.test(path)).sort().slice(0, MAX_BOARDS);
     if (boards.length) {
@@ -1961,6 +1965,8 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     document.truncated = true;
     document.report.stills.forEach(still => { delete still.thumb; });
   }
+  // The Strategy gate's option rows are a convenience on the concepts: without them the board shows no rows, and they go before the concepts do.
+  if (byteSize(document) > budgetBytes && document.review?.concepts?.strategyOptions) delete document.review.concepts.strategyOptions;
   if (byteSize(document) > budgetBytes && document.review) {
     for (const key of ['studioWorkspace', 'posts', 'storyboards', 'concepts', 'quote', 'media', 'sample', 'mediaSet', 'labelCheck', 'publish']) {
       delete document.review[key];

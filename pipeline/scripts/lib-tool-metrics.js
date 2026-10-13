@@ -115,6 +115,56 @@ function appendToolEvents(dir, list) {
   return added;
 }
 
+/** The tool.completed events of <dir>/.metrics/tool-calls.jsonl, oldest first. A missing file or an unreadable line is skipped. */
+function readToolEvents(dir) {
+  let raw = '';
+  try { raw = fs.readFileSync(toolCallsPath(dir), 'utf8'); } catch { return []; }
+  const out = [];
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event && event.eventName === 'tool.completed' && event.attrs && typeof event.attrs.tool === 'string') out.push(event);
+    } catch { /* a torn line is not a call */ }
+  }
+  return out;
+}
+
+// The tool without its server prefix: 'mcp__plugin_social-campaign_core__web_crawl' is 'web_crawl'. A Chrome tool is 'chrome'.
+function baseTool(name) {
+  const text = String(name || '');
+  if (/^mcp__claude-in-chrome__/i.test(text)) return 'chrome';
+  const match = /^mcp__.+?__(.+)$/.exec(text);
+  return match ? match[1] : text;
+}
+const SEARCH_TOOLS = new Set(['WebSearch', 'social_search']);
+const FETCH_TOOLS = new Set([
+  'WebFetch', 'web_crawl', 'social_profile_get', 'social_post_get', 'social_outliers_find', 'social_comments_get', 'social_ad_search', 'chrome',
+]);
+
+/**
+ * What a run or job really called, counted from its tool log and not from what the agent says it did.
+ * { recorded, total, failed, searches, fetches, byTool: { web_crawl: { ok, failed } } }. `recorded` is false when the
+ * log has no call at all, which also happens when the host never runs the hook; callers then cannot check anything against it.
+ */
+function summarizeToolEvents(events) {
+  const byTool = {};
+  let failed = 0;
+  let searches = 0;
+  let fetches = 0;
+  for (const event of Array.isArray(events) ? events : []) {
+    const tool = baseTool(event.attrs && event.attrs.tool);
+    const bad = event.attrs && event.attrs.status === 'failed';
+    byTool[tool] = byTool[tool] || { ok: 0, failed: 0 };
+    byTool[tool][bad ? 'failed' : 'ok'] += 1;
+    if (bad) failed += 1;
+    if (SEARCH_TOOLS.has(tool)) searches += 1;
+    if (FETCH_TOOLS.has(tool)) fetches += 1;
+  }
+  const total = Object.values(byTool).reduce((sum, item) => sum + item.ok + item.failed, 0);
+  return { recorded: total > 0, total, failed, searches, fetches, byTool };
+}
+
 function record(hook, argv = []) {
   if (!hook || typeof hook.tool_name !== 'string' || typeof hook.tool_use_id !== 'string' || !hook.tool_use_id) return;
   const target = usageTarget(argv, hook.session_id, { agentId: hook.agent_id });
@@ -133,4 +183,4 @@ function record(hook, argv = []) {
   })]);
 }
 
-module.exports = { record, toolEvent, appendToolEvents, usageTarget, toolCallsPath };
+module.exports = { record, toolEvent, appendToolEvents, readToolEvents, summarizeToolEvents, baseTool, usageTarget, toolCallsPath };

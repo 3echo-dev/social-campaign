@@ -5,9 +5,10 @@
 // pipeline_finishing_choice and a change note. finish-video.py reads the same file and refuses to run without it
 // (pipeline/scripts/review_gate.py).
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as facts from './facts.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const FINISHING_FILE = 'approvals/finishing.json';
 export const FINISHING_CHOICES = Object.freeze({
@@ -79,7 +80,7 @@ export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
   const file = join(job.dir, ...FINISHING_FILE.split('/'));
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, JSON.stringify(saved, null, 2));
-  renameSync(temp, file);
+  renameReplacing(temp, file);
   return saved;
 }
 

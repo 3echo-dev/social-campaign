@@ -43,6 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { UserFacingError } from '../lib/errors.mjs';
 import { appendRecord, jobAt, moveJobTo, readJobState } from './facts.mjs';
 import { readAll as readLibrary } from './library.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -77,7 +78,7 @@ function writeJsonFile(file, value) {
   try {
     writeFileSync(temp, `${JSON.stringify(value, null, 2)}
 `);
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

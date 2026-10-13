@@ -164,7 +164,7 @@ button.library-remove{flex:none;min-height:30px;padding:3px 10px;border-color:va
 .pill.result-weak{color:var(--hold);background:rgba(242,144,138,.07);border-color:var(--hold-dim)}
 .pill.result-early{color:var(--tape);background:rgba(245,200,75,.06);border-color:rgba(245,200,75,.45)}
 .library-job-results{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
-@media(pointer:coarse){.hook-form button,.hook-add,button.library-remove{min-height:40px}.hook-edit{width:40px}}
+@media(pointer:coarse){button.library-remove{min-height:40px}}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(245,200,75,.14);color:var(--tape);font-size:13px;font-weight:800}
 .start-card{position:relative;isolation:isolate;display:flex;flex-direction:column;gap:15px;padding:var(--pad);background:var(--surface);border:1px solid transparent;border-radius:var(--r3);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05)}
@@ -476,6 +476,42 @@ button.sb-cell-body:active{transform:none}
 .hook-form button{min-height:32px;padding:4px 12px;font-size:13px}
 .hook-form .hook-save{border-color:var(--tape);background:var(--tape);color:var(--tape-ink);font-weight:800}
 .hook-form .field-error{flex-basis:100%}
+.pick-industry{padding-top:calc(var(--gap) * .75);border-top:1px solid var(--line)}
+.concept-strategy.is-picks-only .pick-industry{padding-top:0;border-top:0}
+.pick-row{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pick-label{color:var(--faint);font-size:11px;font-weight:700}
+.pick-line{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;min-width:0}
+.pick-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0;max-width:100%}
+.pick-chip{position:relative;display:inline-flex;min-width:0;max-width:100%;cursor:pointer}
+.pick-chip-body{display:inline-flex;align-items:flex-start;gap:6px;min-width:0;max-width:100%;min-height:28px;padding:5px 10px 5px 8px;border:1px solid var(--line2);border-radius:14px;color:var(--dim);font-size:12px;font-weight:600;line-height:1.3;transition:border-color 150ms ease,background-color 150ms ease,color 150ms ease}
+.pick-chip-body::before{content:"";flex:none;width:12px;height:12px;margin-top:2px;border:1.5px solid var(--line2);border-radius:50%;transition:border-color 150ms ease,box-shadow 150ms ease}
+.pick-chip:hover .pick-chip-body{border-color:var(--dim)}
+.pick-chip input:checked+.pick-chip-body{border-color:var(--tape);background:rgba(245,200,75,.08);color:var(--paper)}
+.pick-chip input:checked+.pick-chip-body::before{border-color:var(--tape);box-shadow:inset 0 0 0 2px var(--ink),inset 0 0 0 6px var(--tape)}
+.pick-chip input:focus-visible+.pick-chip-body{outline:2px solid var(--tape);outline-offset:2px}
+.pick-chip input:disabled+.pick-chip-body{opacity:.5;cursor:not-allowed}
+.pick-chip-text{min-width:0;overflow-wrap:anywhere}
+.pick-tag{flex:none;padding:0 6px;border:1px solid var(--go-dim);border-radius:999px;color:var(--go);font-size:10px;font-weight:700;line-height:1.3}
+.pick-tag.is-winner{background:rgba(126,217,160,.08)}
+.pick-tag.is-weak{color:var(--hold);border-color:var(--hold-dim);background:rgba(242,144,138,.07)}
+.pick-tag.is-early{color:var(--tape);border-color:rgba(245,200,75,.45);background:rgba(245,200,75,.06)}
+.pick-add{min-height:28px;padding:3px 10px;border-style:dashed;border-radius:14px;color:var(--dim);font-size:12px}
+.pick-own{display:inline-flex;align-items:stretch;min-width:0;max-width:100%}
+.pick-own .pick-chip-body{border-top-right-radius:0;border-bottom-right-radius:0}
+.pick-drop{flex:none;min-height:0;width:28px;padding:0;border:1px solid var(--line2);border-left:0;border-radius:0 14px 14px 0;color:var(--faint);font-size:15px;font-weight:400;line-height:1}
+.pick-own:has(input:checked) .pick-drop{border-color:var(--tape)}
+@media (hover:hover){.pick-drop:hover{color:var(--hold);border-color:var(--hold);background:rgba(242,144,138,.07)}}
+.pick-form{flex:1 1 260px;min-width:0}
+.strategy-picks{border:1px solid var(--line);border-radius:var(--radius)}
+.strategy-picks>summary{position:relative;display:flex;flex-direction:column;gap:2px;min-height:40px;padding:8px 30px 8px 10px;cursor:pointer;list-style:none}
+.strategy-picks>summary::-webkit-details-marker{display:none}
+.strategy-picks>summary::after{content:"";position:absolute;top:14px;right:12px;width:7px;height:7px;border-right:1.5px solid var(--dim);border-bottom:1.5px solid var(--dim);transform:rotate(45deg);transition:transform 150ms ease}
+.strategy-picks[open]>summary::after{transform:rotate(-135deg);top:17px}
+.strategy-picks>summary:hover .strategy-picks-title{color:var(--paper)}
+.strategy-picks-title{color:var(--faint);font-size:11px;font-weight:700}
+.strategy-picks-now{color:var(--dim);font-size:12px;overflow-wrap:anywhere}
+.strategy-picks-body{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:2px 10px 12px}
+@media(pointer:coarse){.hook-form button,.hook-add,.pick-add{min-height:40px}.hook-edit{width:40px}.pick-chip-body{min-height:36px;align-items:center}.pick-chip-body::before{margin-top:0}.pick-drop{width:36px}}
 .concept-strategy{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
 .concept-strategy h3{margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .strategy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--gap) * .75) var(--gap);margin:0}
@@ -2488,12 +2524,12 @@ const plural=(count,one,many=`${one}s`)=>`${count} ${count===1?one:many}`;
 function libraryCounts(library){
 const given=library.counts&&typeof library.counts==='object'?library.counts:{};
 const count=(key,fallback)=>(Number.isFinite(given[key])&&given[key]>=0?Math.floor(given[key]):fallback);
-return{yours:count('yours',libraryItems(library.yours).length),proven:count('proven',libraryItems(library.proven).length),jobs:count('jobs',Array.isArray(library.recentJobs)?library.recentJobs.length:0),research:count('research',null)};
+return{yours:count('yours',libraryItems(library.yours).length),proven:count('proven',libraryItems(library.proven).length),jobs:count('jobs',Array.isArray(library.recentJobs)?library.recentJobs.length:0),research:count('research',null),trends:count('trends',libraryItems(library.trends).length)};
 }
 export function libraryCountsLine(library){
 const counts=libraryCounts(library||{});
 const footage=libraryFootage(library||{});
-return[`${counts.yours} yours`,`${counts.proven} proven`,plural(counts.jobs,'job')+' filed',counts.research===null?'':plural(counts.research,'research file'),footage?plural(footage.files,'footage file'):''].filter(Boolean).join(' · ');
+return[`${counts.yours} yours`,`${counts.proven} proven`,plural(counts.jobs,'job')+' filed',counts.research===null?'':plural(counts.research,'research file'),counts.trends?plural(counts.trends,'fresh trend'):'',footage?plural(footage.files,'footage file'):''].filter(Boolean).join(' · ');
 }
 const FOOTAGE_RIGHTS_WORDS=Object.freeze({ours:'Ours to use',client_ask:'Ask before posting',never:'Never use'});
 const FOOTAGE_STATE_WORDS=Object.freeze({indexing:'Reading the files',stopped:'Stopped part-way',moved:'Folder not found'});
@@ -2565,6 +2601,23 @@ const action=!item.id?'':pending
 :item.proven?'':`<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
 return`<li class="library-item${pending?' is-removing':''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta||proof?`<span class="library-meta">${meta}${meta&&proof?' &middot; ':''}${proof}</span>`:''}${item.edited&&trimmed(item.was)?`<span class="library-meta">Was: ${esc(item.was)}</span>`:''}${problem?`<span class="field-error" role="alert">${esc(problem)}</span>`:''}</div>${action}</li>`;
 }
+const TREND_KIND_WORDS=Object.freeze({topic:'Topic',format:'Format',sound:'Sound',hashtag:'Hashtag',hook:'Hook',caption:'Caption'});
+const TREND_SOURCE_WORDS=Object.freeze({meta_ad_library:'Meta Ad Library',tiktok_top_ads:'TikTok Top Ads'});
+const TREND_AD_NOTE='Hooks and captions come from ads that keep running. The ad libraries show no views or spend, so days running stands in for them: 30 or more is a likely winner.';
+const TREND_PLATFORM_WORDS=Object.freeze({tiktok:'TikTok',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',x:'X'});
+function libraryTrend(trend){
+const evidence=(Array.isArray(trend.evidence)?trend.evidence:[]).find(item=>item&&typeof item==='object'&&safeHttpsLink(item.url))||null;
+const link=evidence?safeHttpsLink(evidence.url):null;
+const platform=TREND_PLATFORM_WORDS[trend.platform]||(trimmed(trend.platform)?humanize(trend.platform):'');
+const seen=libraryDay(trend.seenAt);
+const views=Number.isFinite(evidence?.views)?`${Math.round(evidence.views).toLocaleString('en-US')} views`:'';
+const running=Number.isFinite(evidence?.runningDays)&&evidence.runningDays>=0?plural(Math.floor(evidence.runningDays),'day'):'';
+const variants=Number.isFinite(evidence?.variants)&&evidence.variants>=1?plural(Math.floor(evidence.variants),'variant'):'';
+const ad=Boolean(TREND_SOURCE_WORDS[evidence?.source]);
+const meta=[platform,trimmed(trend.industry),TREND_SOURCE_WORDS[evidence?.source]||'',trimmed(evidence?.advertiser),running?`running ${running}`:'',variants,seen?`seen ${seen}`:'',views].filter(Boolean).map(esc).join(' &middot; ');
+const proof=link?`<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the ${ad?'ad':'post'} behind: ${trend.text}`)}">See the ${ad?'ad':'post'}</a>`:'';
+return`<li class="library-item"><div class="library-main"><span class="library-kind">${esc(TREND_KIND_WORDS[trend.kind]||humanize(trend.kind||'trend'))}</span><span class="library-text">${esc(trend.text)}</span>${meta||proof?`<span class="library-meta">${meta}${meta&&proof?' &middot; ':''}${proof}</span>`:''}${trimmed(trend.why)?`<span class="library-hook">Why it fits: ${esc(trend.why)}</span>`:''}</div></li>`;
+}
 function libraryJob(job){
 const concept=job.concept&&typeof job.concept==='object'?job.concept:{};
 const source=trimmed(concept.source)?conceptSourceOf({fields:[{label:'Source',value:concept.source}]}):null;
@@ -2574,17 +2627,19 @@ return`<li class="library-item"><div class="library-main"><span class="library-t
 export function brandLibrarySection(brand,{open=false,removing=new Set(),errors=new Map()}={}){
 const library=brand?.library;
 if(!library||typeof library!=='object'||Array.isArray(library)||!brand.slug)return'';
-const group=(title,id,list,row)=>{
+const group=(title,id,list,row,note='')=>{
 if(!list.length)return'';
 const more=list.length>LIBRARY_GROUP_LIMIT?`<p class="muted library-more">${plural(list.length-LIBRARY_GROUP_LIMIT,'more item')} on this computer.</p>`:'';
-return`<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-${id}"><h3 id="library-${esc(brand.slug)}-${id}">${esc(title)} <span class="count">${list.length}</span></h3><ul class="library-list">${list.slice(0,LIBRARY_GROUP_LIMIT).map(row).join('')}</ul>${more}</section>`;
+return`<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-${id}"><h3 id="library-${esc(brand.slug)}-${id}">${esc(title)} <span class="count">${list.length}</span></h3><ul class="library-list">${list.slice(0,LIBRARY_GROUP_LIMIT).map(row).join('')}</ul>${more}${note}</section>`;
 };
+const trends=libraryItems(library.trends);
+const trendNote=trends.some(trend=>trend.kind==='hook'||trend.kind==='caption')?`<p class="muted library-more">${esc(TREND_AD_NOTE)}</p>`:'';
 const state={removing,errors};
 const yours=libraryItems(library.yours);
 const proven=libraryItems(library.proven).map(item=>({...item,proven:true}));
 const jobs=(Array.isArray(library.recentJobs)?library.recentJobs:[]).filter(job=>job&&typeof job==='object');
 const footage=libraryFootage(library);
-const body=group('Yours','yours',yours,item=>libraryItem(item,brand,state))+group('Proven','proven',proven,item=>libraryItem(item,brand,state))+group('Recent jobs filed','jobs',jobs,libraryJob)+(footage?libraryFootageGroup(brand,footage):'');
+const body=group('Yours','yours',yours,item=>libraryItem(item,brand,state))+group('Proven','proven',proven,item=>libraryItem(item,brand,state))+group('Fresh trends','trends',trends,libraryTrend,trendNote)+group('Recent jobs filed','jobs',jobs,libraryJob)+(footage?libraryFootageGroup(brand,footage):'');
 const key=`brand-library:${brand.slug}`;
 const empty=body?'':'<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
 return`<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open?' open':''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name||brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
@@ -3489,11 +3544,11 @@ if(rows.length)return rows.slice(0,SUMMARY_LIMIT);
 const file=(doc?.files||[]).find(item=>item?.path&&item.path===concepts?.path);
 return typeof file?.text==='string'?strategySummaryOf(file.text):[];
 }
-export function conceptStrategy(summary){
-const rows=(Array.isArray(summary)?summary:[]).filter(item=>item?.label&&item?.value);
-if(!rows.length)return'';
+export function conceptStrategy(summary,extra=''){
+const rows=(Array.isArray(summary)?summary:[]).filter(item=>item?.label&&item?.value&&!(extra&&/^industry$/i.test(String(item.label).trim())));
+if(!rows.length)return extra?`<section class="concept-strategy is-picks-only" aria-label="Industry">${extra}</section>`:'';
 const facts=rows.map(item=>`<div class="strategy-fact"><dt>${esc(item.label)}</dt><dd${/\n/.test(item.value)?' class="lines"':''}>${inlineMarkdown(item.value)}</dd></div>`).join('');
-return`<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl></section>`;
+return`<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl>${extra}</section>`;
 }
 export const HOOK_LINE_LIMIT=120;
 export const HOOK_OWN_LIMIT=5;
@@ -3581,7 +3636,158 @@ const adder=editing&&editing.at==='new'
 :room?`<button type="button" class="hook-add" data-hook-add="${esc(id)}" aria-label="${esc(`Add your own opening line for concept ${id}`)}" ${disabled?'disabled':''}>+ Add your own opening line</button>`:'';
 return`<div><dt>${esc(field?.label||'Opening lines')}</dt><dd><span class="hook-picks" role="group" aria-label="${esc(`Opening lines for concept ${id}`)}">${rows}</span>${adder}</dd></div>`;
 }
-export function conceptCards(concepts,choice=null,{disabled=false,hooks={},own={},edited={},edit=null}={}){
+export const PICK_TEXT_LIMIT=60;
+export const PICK_OWN_LIMIT=5;
+const PICK_ROWS=Object.freeze([
+{field:'industry',title:'Industry',noun:'industry',picked:'Industry',own:'industry'},
+{field:'funnel',title:'Funnel stage',noun:'funnel stage',picked:'Funnel stage',own:'funnel stage'},
+{field:'style',title:'Ad style',noun:'ad style',picked:'Ad style',own:'ad style'},
+{field:'format',title:'Format',noun:'format',picked:'Format',own:'format'},
+{field:'cta',title:'Call to action',noun:'call to action',picked:'CTA',own:'CTA'},
+].map(row=>Object.freeze(row)));
+const PICK_ROW_OF=Object.freeze(Object.fromEntries(PICK_ROWS.map(row=>[row.field,row])));
+const CONCEPT_PICK_FIELDS=Object.freeze(['funnel','style','format','cta']);
+const PICK_FIELD_LABELS=Object.freeze({
+funnel:/^(?:awareness|funnel)[\s_-]*stage\b/i,
+style:/^ad[\s_-]*style\b/i,
+format:/^(?:visual[\s_-]*)?format\b/i,
+cta:/^(?:cta\b|call[\s_-]*to[\s_-]*action\b)/i,
+});
+export const pickRowKey=(conceptId,field)=>(field==='industry'?'industry':`${conceptId}:${field}`);
+export function pickRowParts(rowKey){
+const key=String(rowKey??'');
+if(key==='industry')return{id:null,field:'industry'};
+const cut=key.lastIndexOf(':');
+const field=key.slice(cut+1);
+return cut>0&&CONCEPT_PICK_FIELDS.includes(field)?{id:key.slice(0,cut),field}:null;
+}
+const ownPickId=text=>`own:${cleanHookLine(text).toLowerCase()}`;
+const pickShown=option=>(option.text.length>option.id.length+1&&option.text.startsWith(`${option.id} `)?option.text.slice(option.id.length+1).trim():option.text);
+const pickFallback=(options,field,concept)=>(field==='industry'?options?.industryPick:concept?.picks?.[field]);
+export function strategyOptionsOf(doc){
+const given=doc?.strategyOptions??doc?.review?.strategyOptions??doc?.review?.concepts?.strategyOptions;
+return given&&typeof given==='object'&&!Array.isArray(given)?given:null;
+}
+function pickOptionsList(value){
+if(!Array.isArray(value))return null;
+const seen=new Set();
+const list=[];
+for(const item of value){
+if(!item||typeof item!=='object')continue;
+const id=trimmed(item.id);
+const text=cleanHookLine(item.text);
+if(!id||!text||seen.has(id))continue;
+seen.add(id);
+list.push({id,text,...(item.yours===true?{yours:true}:{}),...(Object.prototype.hasOwnProperty.call(RESULT_PILLS,item.label)?{label:item.label}:{})});
+}
+return list;
+}
+function pickRowOf(options,field,rowKey,fallbackId,{chosen,added}={}){
+const listed=pickOptionsList(options?.[field]);
+if(!listed)return null;
+const mine=(Array.isArray(added?.[rowKey])?added[rowKey]:[]).map(cleanHookLine).filter(Boolean);
+const all=[...listed];
+for(const text of mine){
+const id=ownPickId(text);
+if(!all.some(item=>item.id===id))all.push({id,text,yours:true,added:true});
+}
+const has=id=>typeof id==='string'&&all.some(item=>item.id===id);
+const fallback=has(fallbackId)?fallbackId:null;
+const made=chosen&&Object.prototype.hasOwnProperty.call(chosen,rowKey)?chosen[rowKey]:undefined;
+return{field,rowKey,options:all,picked:has(made)?made:fallback,fallback,mine,room:mine.length<PICK_OWN_LIMIT};
+}
+export function applyPickEdit(state,options,concept=null){
+const edit=state?.strategyEdit;
+const parts=edit?pickRowParts(edit.row):null;
+if(!parts||(parts.id!==null&&concept?.id!==parts.id))return{error:'Nothing to save.'};
+const noun=PICK_ROW_OF[parts.field].noun;
+const text=cleanHookLine(edit.text);
+if(!text)return{error:`Type your own ${noun} first.`};
+if(text.length>PICK_TEXT_LIMIT)return{error:`Keep it to ${PICK_TEXT_LIMIT} characters or fewer.`};
+const row=pickRowOf(options,parts.field,edit.row,pickFallback(options,parts.field,concept),{chosen:state.strategyPicks,added:state.strategyOwn});
+if(!row)return{error:'That row is no longer here.'};
+const same=row.options.find(item=>item.text.toLowerCase()===text.toLowerCase()||pickShown(item).toLowerCase()===text.toLowerCase());
+if(!same&&!row.room)return{error:`That is the most you can add here (${PICK_OWN_LIMIT}).`};
+if(!same)state.strategyOwn={...(state.strategyOwn||{}),[edit.row]:[...row.mine,text]};
+const pick=same?same.id:ownPickId(text);
+state.strategyPicks={...(state.strategyPicks||{}),[edit.row]:pick};
+if(parts.id!==null)state.choice=parts.id;
+state.error='';
+state.strategyEdit=null;
+return{pick};
+}
+export function dropPickOption(state,rowKey,id){
+const mine=Array.isArray(state?.strategyOwn?.[rowKey])?state.strategyOwn[rowKey]:[];
+const kept=mine.filter(text=>ownPickId(text)!==id);
+if(kept.length===mine.length)return false;
+const without=(map,key)=>Object.fromEntries(Object.entries(map).filter(([name])=>name!==key));
+state.strategyOwn=kept.length?{...state.strategyOwn,[rowKey]:kept}:without(state.strategyOwn,rowKey);
+if(state.strategyPicks?.[rowKey]===id)state.strategyPicks=without(state.strategyPicks,rowKey);
+state.error='';
+return true;
+}
+function pickFieldNow(concept,field,strategy){
+const options=strategy?.options;
+const label=String(field?.label||'').trim();
+const key=options?CONCEPT_PICK_FIELDS.find(name=>PICK_FIELD_LABELS[name].test(label)):null;
+const row=key?pickRowOf(options,key,pickRowKey(concept.id,key),pickFallback(options,key,concept),strategy):null;
+const option=row&&row.picked!==row.fallback?row.options.find(item=>item.id===row.picked):null;
+return option?pickShown(option):null;
+}
+export function strategyNoteLines(options,concept,{chosen={},added={}}={}){
+if(!options||!concept)return[];
+const rows=PICK_ROWS.map(spec=>({spec,row:pickRowOf(options,spec.field,pickRowKey(concept.id,spec.field),pickFallback(options,spec.field,concept),{chosen,added})})).filter(item=>item.row);
+if(!rows.some(({row})=>row.picked!==row.fallback||row.mine.length))return[];
+const say=text=>noteLine(text).slice(0,HOOK_LINE_LIMIT);
+const now=rows.map(({spec,row})=>{
+const option=row.options.find(item=>item.id===row.picked);
+return option?`${spec.picked}: "${say(option.text)}"`:'';
+}).filter(Boolean);
+const lines=now.length?[`Strategy picks: ${now.join(' · ')}`]:[];
+for(const{spec,row}of rows)for(const text of row.mine)lines.push(`Your own ${spec.own}: "${say(text)}"`);
+return lines;
+}
+function pickEditForm(rowKey,edit,label){
+const errorId=`pick-error-${rowKey}`.replace(/\s+/g,'-');
+const problem=edit.error?`<span class="field-error" id="${esc(errorId)}" role="alert">${esc(edit.error)}</span>`:'';
+return`<span class="hook-form pick-form"><input type="text" class="hook-input" name="pick_edit_${esc(rowKey)}" data-pick-input="${esc(rowKey)}" value="${esc(edit.text||'')}" maxlength="${PICK_TEXT_LIMIT}" autocomplete="off" enterkeyhint="done" aria-label="${esc(label)}"${edit.error?` aria-invalid="true" aria-describedby="${esc(errorId)}"`:''}><span class="hook-form-actions"><button type="button" class="hook-save" data-pick-save="${esc(rowKey)}">Save</button><button type="button" class="quiet" data-pick-cancel="${esc(rowKey)}">Cancel</button></span>${problem}</span>`;
+}
+function pickChip(option,rowKey,picked,disabled,noun=''){
+const result=option.label?RESULT_PILLS[option.label]:null;
+const tags=`${option.yours?'<span class="pick-tag">yours</span>':''}${result?`<span class="pick-tag is-${option.label}" title="${esc(result.hint)}">${result.word.toLowerCase()}</span>`:''}`;
+const shown=pickShown(option);
+const chip=`<label class="pick-chip"${shown===option.text?'':` title="${esc(option.text)}"`}><input type="radio" class="visually-hidden" name="pick_${esc(rowKey)}" value="${esc(option.id)}" ${picked===option.id?'checked':''} ${disabled?'disabled':''}><span class="pick-chip-body"><span class="pick-chip-text">${esc(shown)}</span>${tags}</span></label>`;
+return option.added
+?`<span class="pick-own">${chip}<button type="button" class="pick-drop" data-pick-drop="${esc(rowKey)}" data-pick-id="${esc(option.id)}" aria-label="${esc(`Remove your own ${noun}: ${option.text}`)}" title="Remove" ${disabled?'disabled':''}><span aria-hidden="true">×</span></button></span>`
+:chip;
+}
+function pickRowHtml(row,{concept=null,edit=null,disabled=false}={}){
+const spec=PICK_ROW_OF[row.field];
+const forConcept=concept?` for concept ${concept.id}`:'';
+const labelId=`pick-label-${row.rowKey}`.replace(/\s+/g,'-');
+const chips=row.options.length?`<div class="pick-chips" role="radiogroup" aria-labelledby="${esc(labelId)}">${row.options.map(option=>pickChip(option,row.rowKey,row.picked,disabled,`${spec.noun}${forConcept}`)).join('')}</div>`:'';
+const editing=edit&&edit.row===row.rowKey?edit:null;
+const adder=editing
+?pickEditForm(row.rowKey,editing,`Your own ${spec.noun}${forConcept}`)
+:row.room?`<button type="button" class="pick-add" data-pick-add="${esc(row.rowKey)}" aria-label="${esc(`Add your own ${spec.noun}${forConcept}`)}" ${disabled?'disabled':''}>+ Add your own</button>`:'';
+return`<div class="pick-row"><span class="pick-label" id="${esc(labelId)}">${esc(spec.title)}${concept?`<span class="visually-hidden"> for concept ${esc(concept.id)}</span>`:''}</span><div class="pick-line">${chips}${adder}</div></div>`;
+}
+export function industryRow(strategy,{disabled=false}={}){
+const options=strategy?.options;
+const row=options?pickRowOf(options,'industry','industry',pickFallback(options,'industry'),strategy):null;
+return row?.options.length?`<div class="pick-industry">${pickRowHtml(row,{edit:strategy.edit,disabled})}</div>`:'';
+}
+function conceptPickBlock(concept,strategy,disabled){
+const options=strategy?.options;
+if(!options||!concept)return'';
+const rows=CONCEPT_PICK_FIELDS.map(field=>pickRowOf(options,field,pickRowKey(concept.id,field),pickFallback(options,field,concept),strategy)).filter(Boolean);
+if(!rows.length)return'';
+const now=rows.map(row=>{const option=row.options.find(item=>item.id===row.picked);return option?pickShown(option):'';}).filter(Boolean);
+const key=`strategy-picks:${concept.id}`;
+const open=Boolean(strategy.openKeys?.has(key))||rows.some(row=>strategy.edit?.row===row.rowKey);
+return`<details class="strategy-picks" data-open-key="${esc(key)}"${open?' open':''}><summary><span class="strategy-picks-title">Strategy picks</span><span class="strategy-picks-now">${now.length?esc(now.join(' · ')):'None chosen yet'}</span></summary><div class="strategy-picks-body">${rows.map(row=>pickRowHtml(row,{concept,edit:strategy.edit,disabled})).join('')}</div></details>`;
+}
+export function conceptCards(concepts,choice=null,{disabled=false,hooks={},own={},edited={},edit=null,strategy=null}={}){
 const list=concepts?.concepts||[];
 if(!list.length)return'<p class="muted">No concepts were found in this file.</p>';
 return`<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept=>{
@@ -3595,13 +3801,16 @@ if(field===hookField)return picks;
 if(source&&/^sources?$/i.test(String(field.label||'').trim())){
 return source.detail?`<div><dt>Evidence</dt><dd${/\n/.test(source.detail)?' class="lines"':''}>${inlineMarkdown(source.detail)}</dd></div>`:'';
 }
+const picked=pickFieldNow(concept,field,strategy);
+if(picked!==null)return`<div><dt>${esc(field.label)}</dt><dd>${esc(picked)}</dd></div>`;
 const isSourceRef=/^insight it rests on$/i.test(field.label||'');
 const humanized=isSourceRef?humanizeSourceRef(field.value):null;
 const value=humanized?esc(humanized):inlineMarkdown(field.value);
 return`<div>${field.label?`<dt>${esc(field.label)}</dt>`:''}<dd${/\n/.test(field.value)?' class="lines"':''}>${value}</dd></div>`;
 }).join('')+(hookField?'':picks);
 const badge=source?`<span class="pill concept-source source-${esc(source.kind)}"><span class="visually-hidden">Source: </span>${esc(source.label)}</span>`:'';
-return`<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice===concept.id?'checked':''} ${disabled?'disabled':''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended?'<span class="pill ready">Recommended</span>':''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${credits?`<span class="concept-foot">${esc(credits)}</span>`:''}</span></label>`;
+const strategyPicks=conceptPickBlock(concept,strategy,disabled||Boolean(strategy?.disabled));
+return`<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice===concept.id?'checked':''} ${disabled?'disabled':''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended?'<span class="pill ready">Recommended</span>':''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${strategyPicks}${credits?`<span class="concept-foot">${esc(credits)}</span>`:''}</span></label>`;
 }).join('')}</div>`;
 }
 const RECIPE_FIELDS=Object.freeze(['pillar','angle','hookFamily','cta','hashtags']);
@@ -4548,8 +4757,9 @@ if(rest.length)parts.push(reviewFilesHtml(doc,rest));
 return parts.join('');
 }
 if(gate==='concept'&&review.concepts){
-parts.push(conceptStrategy(conceptSummaryOf(review.concepts,doc)));
-parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{},edit:state.hookEdit||null}));
+const strategy={options:strategyOptionsOf(doc),chosen:state.strategyPicks||{},added:state.strategyOwn||{},edit:state.strategyEdit||null,openKeys,disabled:locked};
+parts.push(conceptStrategy(conceptSummaryOf(review.concepts,doc),industryRow(strategy,{disabled:locked})));
+parts.push(conceptCards(review.concepts,state.choice,{disabled:state.busy||state.submitted,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{},edit:state.hookEdit||null,strategy}));
 }
 if(gate==='concept')parts.push(recipeReviewSection(doc,recipeState,{disabled:state.busy||state.submitted}));
 if(review.storyboards?.length&&gate==='storyboard'){
@@ -4766,7 +4976,7 @@ export const FINISHING_PICKS=Object.freeze([
 {id:'skip',label:'Approve as is'},
 ]);
 const CHANGE_PLACEHOLDERS=Object.freeze({findings:'For example: compare prices too, and add one more competitor.'});
-export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null,hooks={},own={},edited={}}){
+export function decisionArgs({project,doc,verdict,choice=null,comment='',requestId,recipeState={},panels={},accepted={},finishing=null,combine=null,hooks={},own={},edited={},strategyPicks={},strategyOwn={}}){
 const review=pendingReview(project);
 if(!review?.artifacts?.length)return{error:REVIEW_WAITING.preparing};
 if(!['approve','request_changes'].includes(verdict))return{error:'Unsupported decision.'};
@@ -4831,6 +5041,7 @@ args.note+=` · Opening line: "${picked.own||picked.edited?noteLine(picked.text)
 }
 for(const line of made.filter(item=>item.own))args.note+=`\nYour own opening line: "${noteLine(line.text).slice(0,HOOK_LINE_LIMIT)}"`;
 for(const line of made.filter(item=>item.edited))args.note+=`\nEdited opening line (was "${noteLine(line.was)}"): "${noteLine(line.text).slice(0,HOOK_LINE_LIMIT)}"`;
+for(const line of strategyNoteLines(strategyOptionsOf(doc),concept,{chosen:strategyPicks,added:strategyOwn}))args.note+=`\n${line}`;
 }else{
 if(concept)args.chosen=concept.id;
 args.note=concept?`Concept ${concept.id}: ${note}`:note;
@@ -5696,8 +5907,8 @@ q:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-
 const icon=name=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`;
 const BLOB_MOODS=new Set(['happy','sleepy','surprised','sad','thinking']);
 const BLOB_SHAPES=['34%','50%','46% 54% 52% 48% / 54% 46% 54% 46%','50% 50% 36% 36% / 56% 56% 40% 40%','38% 38% 50% 50% / 40% 40% 56% 56%'];
-const BLOB_ORDER=['producer','researcher','strategist','copywriter','scriptwriter','media-buyer','videographer','editor','publisher','creative-director'];
-const BLOB_HUES=Object.freeze({'creative-director':322});
+const BLOB_ORDER=['producer','researcher','strategist','copywriter','scriptwriter','media-buyer','videographer','editor','publisher','creative-director','trend-scout'];
+const BLOB_HUES=Object.freeze({'creative-director':322,'trend-scout':56});
 function faceSvg(mood){
 const eye=(x,rx,ry,py)=>`<g class="eye"><ellipse cx="${x}" cy="18" rx="${rx}" ry="${ry}" fill="#fff"/><g class="pu"><circle cx="${x}" cy="${py}" r="2.2" fill="#14161b"/><circle cx="${x+0.9}" cy="${py-1}" r=".75" fill="#fff"/></g></g>`;
 const open=(rx,ry,py)=>eye(14,rx,ry,py)+eye(26,rx,ry,py);
@@ -6856,7 +7067,7 @@ if(ui.revision!==project.revision){
 ui.revision=project.revision;
 ui.intake={values:ui.intake.values||{}};
 if(!((ui.review.submitted&&ui.review.requestId&&ui.review.args)||(ui.review.settled&&ui.review.args))){
-ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||'',draftKey:ui.review.draftKey,...(ui.review.ownLines?{ownLines:ui.review.ownLines}:{}),...(ui.review.editedLines?{editedLines:ui.review.editedLines}:{}),...(ui.review.hookEdit?{hookEdit:ui.review.hookEdit}:{})};
+ui.review={choice:null,comment:ui.review.comment||'',commentOpen:false,panelDraft:ui.review.panelDraft||'',draftKey:ui.review.draftKey,...(ui.review.ownLines?{ownLines:ui.review.ownLines}:{}),...(ui.review.editedLines?{editedLines:ui.review.editedLines}:{}),...(ui.review.hookEdit?{hookEdit:ui.review.hookEdit}:{}),...(ui.review.strategyOwn?{strategyOwn:ui.review.strategyOwn}:{}),...(ui.review.strategyEdit?{strategyEdit:ui.review.strategyEdit}:{})};
 stopJobRequestWatch(project.jobId+':review');
 }
 ui.recipe={};
@@ -8127,6 +8338,10 @@ if(target.dataset.hookEdit!==undefined){const cut=target.dataset.hookEdit.lastIn
 if(target.dataset.hookSave!==undefined){saveHookEdit();return;}
 if(target.dataset.hookCancel!==undefined){cancelHookEdit();return;}
 if(target.dataset.hookDrop!==undefined){dropHookLine();return;}
+if(target.dataset.pickAdd!==undefined){startPickEdit(target.dataset.pickAdd);return;}
+if(target.dataset.pickSave!==undefined){savePickEdit();return;}
+if(target.dataset.pickCancel!==undefined){cancelPickEdit();return;}
+if(target.dataset.pickDrop!==undefined){dropPickOwn(target.dataset.pickDrop,target.dataset.pickId);return;}
 if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction,target.dataset.ref,target.dataset.finishing);return;}
 if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project,target.dataset.recipeSave);return;}
 if(target.dataset.workspaceAction){workspaceAction(target.dataset.workspaceAction);return;}
@@ -8503,14 +8718,49 @@ if(!concept||!dropHookEdit(found.state,concept))return;
 render();
 focusHook(`[data-hook-add="${CSS.escape(edit.id)}"]`);
 }
+function startPickEdit(rowKey){
+const found=hookTarget();
+const parts=found?pickRowParts(rowKey):null;
+if(!parts||(parts.id!==null&&!hookConcept(found.project,parts.id)))return;
+found.state.strategyEdit={row:rowKey,text:''};
+if(parts.id!==null)openKeys.add(`strategy-picks:${parts.id}`);
+render();
+focusHook(`[data-pick-input="${CSS.escape(rowKey)}"]`);
+}
+function cancelPickEdit(){
+const found=hookTarget();
+const edit=found?.state.strategyEdit;
+if(!edit)return;
+found.state.strategyEdit=null;
+render();
+focusHook(`[data-pick-add="${CSS.escape(edit.row)}"]`);
+}
+function dropPickOwn(rowKey,id){
+const found=hookTarget();
+if(!found||!dropPickOption(found.state,rowKey,id))return;
+render();
+focusHook(`[data-pick-add="${CSS.escape(rowKey)}"],[data-pick-input="${CSS.escape(rowKey)}"]`);
+}
+function savePickEdit(){
+const found=hookTarget();
+const edit=found?.state.strategyEdit;
+if(!edit)return;
+const parts=pickRowParts(edit.row);
+const doc=docFor(found.project);
+const done=applyPickEdit(found.state,strategyOptionsOf(doc),parts?.id?hookConcept(found.project,parts.id):null);
+if(done.error){edit.error=done.error;render();focusHook(`[data-pick-input="${CSS.escape(edit.row)}"]`);return;}
+render();
+focusHook(`input[name="pick_${CSS.escape(edit.row)}"][value="${CSS.escape(done.pick)}"]`);
+}
 async function submitDecision(project,verdict,finishing=null){
 const state=uiFor(project).review;
 if(!transport||state.busy||state.submitted||state.needsReconciliation||state.settled)return;
 const comment=app.querySelector('#review-comment')?.value??state.comment??'';
 state.comment=comment;
 if(verdict==='approve'&&state.hookEdit&&cleanHookLine(state.hookEdit.text)){state.error='Save or cancel the opening line you are typing first.';render();return;}
+if(verdict==='approve'&&state.strategyEdit&&cleanHookLine(state.strategyEdit.text)){state.error='Save or cancel the option you are typing first.';render();return;}
 const requestId=state.requestId||randomId(globalThis);
-const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{}});
+const{args,error}=decisionArgs({project,doc:docFor(project),verdict,choice:state.choice,comment,requestId,recipeState:uiFor(project).recipe,panels:state.panels||{},accepted:state.accepted||{},finishing,combine:state.combine||null,hooks:state.hooks||{},own:state.ownLines||{},edited:state.editedLines||{},strategyPicks:state.strategyPicks||{},strategyOwn:state.strategyOwn||{}});
 if(error){state.error=error;render();return;}
 Object.assign(state,{requestId,busy:true,verdict,error:'',declined:false,operation:'submit_decision',args});
 render();
@@ -9131,6 +9381,14 @@ if(edit.error){edit.error='';field.removeAttribute('aria-invalid');field.removeA
 }
 return;
 }
+if(field.dataset?.pickInput!==undefined){
+const edit=uiFor(project).review.strategyEdit;
+if(edit){
+edit.text=field.value;
+if(edit.error){edit.error='';field.removeAttribute('aria-invalid');field.removeAttribute('aria-describedby');field.closest('.hook-form')?.querySelector('.field-error')?.remove();}
+}
+return;
+}
 if(field.id==='review-comment'){uiFor(project).review.comment=field.value;return;}
 if(field.id==='sb-note'){uiFor(project).review.panelDraft=field.value;return;}
 if(field.id==='mr-note'){uiFor(project).review.mediaDraft=field.value;return;}
@@ -9143,6 +9401,12 @@ if(field instanceof HTMLInputElement&&field.dataset.hookInput!==undefined){
 if(event.isComposing)return;
 if(event.key==='Enter'){event.preventDefault();saveHookEdit();}
 else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();cancelHookEdit();}
+return;
+}
+if(field instanceof HTMLInputElement&&field.dataset.pickInput!==undefined){
+if(event.isComposing)return;
+if(event.key==='Enter'){event.preventDefault();savePickEdit();}
+else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();cancelPickEdit();}
 return;
 }
 if(field instanceof HTMLInputElement&&field.dataset.kitLink!==undefined&&event.key==='Enter'){
@@ -9208,6 +9472,17 @@ const state=uiFor(project).review;
 const id=field.name.slice('hook_choice_'.length);
 state.hooks={...(state.hooks||{}),[id]:Number(field.value)};
 state.choice=id;
+state.error='';
+setTimeout(render,0);
+return;
+}
+if(field.type==='radio'&&field.name.startsWith('pick_')){
+const row=field.name.slice('pick_'.length);
+const parts=pickRowParts(row);
+if(!parts)return;
+const state=uiFor(project).review;
+state.strategyPicks={...(state.strategyPicks||{}),[row]:field.value};
+if(parts.id!==null)state.choice=parts.id;
 state.error='';
 setTimeout(render,0);
 return;

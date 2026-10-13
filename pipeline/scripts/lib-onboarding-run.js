@@ -72,6 +72,11 @@ function runDir(brandDir, runId) {
   return path.join(path.resolve(brandDir), 'onboarding', runId);
 }
 
+// The pages a run saved, as the research skill's raw captures: <run folder>/raw/<YYYY-MM-DD>/<slug>.md.
+function rawDir(brandDir, runId) {
+  return path.join(runDir(brandDir, runId), 'raw');
+}
+
 function newRunId(now) {
   const stamp = iso(msOf(now)).replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
   return 'run-' + stamp + '-' + crypto.randomBytes(3).toString('hex');
@@ -135,6 +140,21 @@ function clearMarker(root, runId) {
   try { dropMarker(file, runId); } finally { release(); }
 }
 
+// The tool-log counts a run keeps: totals, and the tools that were called with how many times each worked or failed.
+function measuredOf(value) {
+  const byTool = {};
+  for (const [tool, item] of Object.entries(plain(value.byTool)).slice(0, 40)) {
+    byTool[String(tool).slice(0, 80)] = { ok: count(item && item.ok) || 0, failed: count(item && item.failed) || 0 };
+  }
+  return {
+    recorded: value.recorded === true,
+    total: count(value.total) || 0, failed: count(value.failed) || 0,
+    searches: count(value.searches) || 0, fetches: count(value.fetches) || 0,
+    byTool,
+    overBudget: strings(value.overBudget, 4),
+  };
+}
+
 // Close the record only. Callers holding the marker lock use this directly.
 function finish(brandDir, runId, options) {
   if (!read(brandDir, runId)) throw notFound(runId);
@@ -156,6 +176,8 @@ function finish(brandDir, runId, options) {
       researchRevision: options.researchRevision === undefined ? run.researchRevision : count(options.researchRevision),
       filledFields: options.filledFields === undefined ? run.filledFields : strings(options.filledFields, 20),
       reported,
+      // What the run really called, counted from its tool log at save time. `reported` is only what the agent said.
+      ...(options.measured && typeof options.measured === 'object' ? { measured: measuredOf(options.measured) } : {}),
       reason: options.reason === undefined ? run.reason : text(options.reason, MAX_REASON),
     };
     if (options.status !== 'complete' && !result.reason) result.reason = NO_REASON;
@@ -299,6 +321,6 @@ function active(root, options) {
 
 module.exports = {
   STAGE, STAGE_ID, STAGE_LABEL, STALE_MS, PENDING_MS, RETRY_MS, RUN_ID,
-  markerPath, pendingPath, runDir, newRunId, read, list, start, close, active, isStale,
+  markerPath, pendingPath, runDir, rawDir, newRunId, read, list, start, close, active, isStale,
   markPending, clearPending, pendingState, pendingInfo,
 };

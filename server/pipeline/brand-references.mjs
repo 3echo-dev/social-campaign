@@ -8,10 +8,11 @@
  * Files are checked by the same rules as a job's reference pictures (real image bytes, size, type).
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { checkReference } from './references.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const BRAND_REFERENCE_KIND = 'reference';
 export const BRAND_REFERENCES_MAX = 5;
@@ -46,7 +47,7 @@ export function saveBrandReferenceFiles({ brandDir, files, existing = [] }) {
       if (!existsSync(target)) {
         const temp = `${target}.tmp-${process.pid}`;
         writeFileSync(temp, checked.buffer);
-        renameSync(temp, target);
+        renameReplacing(temp, target);
       }
       added.push({ uri, kind: BRAND_REFERENCE_KIND, name: checked.fileName || name, source: 'upload' });
     } catch (error) {

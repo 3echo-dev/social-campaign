@@ -9,6 +9,7 @@ import { sha256File } from '../media/hash.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { UserFacingError } from '../lib/errors.mjs';
 import { isFinishedState, jobAt, listJobs } from './facts.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -201,7 +202,7 @@ async function makeImageReviewCopy({ root, sourcePath, sha, ext }) {
   if (ext === '.gif') args.push('-frames:v', '1');
   args.push('-vf', IMAGE_SCALE_FILTER, '-c:v', 'libwebp', '-quality', '82', temp);
   await run('ffmpeg', args);
-  renameSync(temp, finalPath);
+  renameReplacing(temp, finalPath);
   const outputProbe = await probeFile(finalPath);
   const record = {
     sha,
@@ -225,7 +226,7 @@ async function makeAudioReviewCopy({ root, sourcePath, sha }) {
   const temp = tempPath(dir, 'mp4');
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=1', '-i', sourcePath, '-map', '0:v', '-map', '1:a:0', '-shortest',
     '-c:v', 'libx264', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', `${AUDIO_BITRATE_BPS}`, '-ar', '44100', '-movflags', '+faststart', temp]);
-  renameSync(temp, finalPath);
+  renameReplacing(temp, finalPath);
   const outputProbe = await probeFile(finalPath);
   const record = { sha, path: finalPath, contentType: 'video/mp4', bytes: statSync(finalPath).size, width: outputProbe.width, height: outputProbe.height, durationMs: outputProbe.duration ? Math.round(outputProbe.duration * 1000) : null, audioOnly: true };
   recordCopy(root, record);

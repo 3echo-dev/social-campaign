@@ -13,6 +13,7 @@ import {
   BANKS, BANK_KINDS, PROVEN_SOURCES, addToBank, boardLibrary, editBankItem, fileJob, readBank, readFiledJobs, readPreferences, readProven, removeBankItem, researchIndex,
 } from '../pipeline/brand-library.mjs';
 import { jobResults } from '../pipeline/brand-results.mjs';
+import { freshTrends } from '../pipeline/brand-trends.mjs';
 
 const string = { type: 'string' };
 
@@ -39,7 +40,8 @@ export const brandLibraryTools = [
       'research (the research files already done, newest per topic, each with its age in days and whether it is young enough to reuse: brand and competitor research under 30 days, trends under 7),',
       'recentJobs (the last jobs filed, with their concept, opening line, how many approved media files and, once posted, their results: score, label and views), and preferences (what the person chose lately and what they passed on).',
       'Once posts have results, yours and proven come best first, each item with score (1.0 is the brand\'s usual), uses (how many jobs it rests on) and label (winner, average, weak or early; null when there are no results). Prefer winners, say their numbers, and avoid weak ones unless the person asks.',
-      'Pass kind to see only one kind of item (hook, angle, style, cta, caption, format, industry or funnel).',
+      'trends lists what the Trend Scout found in the last 7 days (each with its kind, platform, industry, evidence links with views and dates, and when it was seen; empty when there are none): rising topics, formats, sounds and hashtags, and the hooks and captions of ads that keep running, whose evidence carries days running and variants because the ad libraries show no views. Reuse them for Concept C and the hook options instead of searching again.',
+      'Pass kind to see only one kind of item (hook, angle, style, cta, caption, format, industry or funnel); trends are then left out.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -65,6 +67,7 @@ export const brandLibraryTools = [
         yours: readBank({ root, brand, bank: 'yours', kind, limit }),
         proven: proven.slice(0, limit).map(item => ({ ...item, source: item.source || 'brand' })),
         research: researchIndex({ root, brand }),
+        trends: kind ? [] : freshTrends({ root, brand, limit }),
         recentJobs: readFiledJobs({ root, brand, limit: 10 }).map(record => ({ jobId: record.jobId, title: record.title, filedAt: record.filedAt, concept: record.concept, music: record.music, mediaCount: (record.media || []).length, ...(results.has(record.jobId) ? { results: results.get(record.jobId) } : {}) })),
         preferences: readPreferences({ root, brand, limit: 5 }),
       };

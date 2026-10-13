@@ -31,6 +31,7 @@ import * as facts from './facts.mjs';
 import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
 import { finishingChoice } from './finishing.mjs';
 import { BRAND_REFERENCE_KIND, saveBrandReferenceFiles } from './brand-references.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..', '..');
@@ -172,7 +173,7 @@ function writeJsonAtomic(filePath, value) {
   mkdirSync(parent, { recursive: true });
   const temp = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   writeFileSync(temp, jsonForFile(value), 'utf8');
-  renameSync(temp, filePath);
+  renameReplacing(temp, filePath);
 }
 
 function readJson(filePath, fallback = null) {

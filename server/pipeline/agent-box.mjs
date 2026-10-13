@@ -31,6 +31,8 @@ const statesLib = require(join(SCRIPTS, 'lib-states.js'));
 const { canonicalArtifactRef } = require(join(SCRIPTS, 'lib-revision-targets.js'));
 
 export const AGENT_STATES = Object.freeze(['needs_you', 'working', 'waiting', 'up_next', 'done']);
+/** Agents the Director spawns beside the plan rows: no row names them, so each gets a card once it has a run on the job. */
+export const OFF_PLAN_AGENTS = Object.freeze(['trend-scout']);
 export const DIRECTOR = 'producer';
 export const DIRECTOR_NAME = 'Director';
 export const DIRECTOR_TASK = 'Runs the job and talks to you';
@@ -148,9 +150,10 @@ function minutes(ms) {
 
 /**
  * The agents to show, as ids, the Director first: each distinct `Agent` of the plan rows in order of first appearance, active agents
- * only (a script, a human or an unknown name never counts). Before a plan, the route's owner and its support.
+ * only (a script, a human or an unknown name never counts). Before a plan, the route's owner and its support. An off-plan agent (the Trend
+ * Scout) follows once `ran` lists it, the agents that have a run on the job.
  */
-export function rosterOf({ rows = [], route = null } = {}) {
+export function rosterOf({ rows = [], route = null, ran = [] } = {}) {
   const active = agentRegistry();
   const out = [DIRECTOR];
   const add = id => {
@@ -161,6 +164,7 @@ export function rosterOf({ rows = [], route = null } = {}) {
     add(route?.owner);
     for (const id of Array.isArray(route?.support) ? route.support : []) add(id);
   }
+  for (const id of OFF_PLAN_AGENTS) if ((Array.isArray(ran) ? ran : []).includes(id)) add(id);
   return out;
 }
 
@@ -306,7 +310,8 @@ function ownerOf(path, { contracts, roster }) {
     if (owned.has(task.agent) && task.outputRefs.some(ref => refCovers(ref, path))) return task.agent;
   }
   const registry = agentRegistry();
-  for (const agent of roster) {
+  // An off-plan agent names its own file exactly (research/trends.md), so it is asked before the agent whose pattern also covers it.
+  for (const agent of [...roster.filter(id => OFF_PLAN_AGENTS.includes(id)), ...roster.filter(id => !OFF_PLAN_AGENTS.includes(id))]) {
     if ((registry.get(agent)?.produces ?? []).some(ref => refCovers(ref, path))) return agent;
   }
   return null;
@@ -731,7 +736,10 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
   const finished = statesLib.isTerminal(state);
   const rows = Array.isArray(snapshot?.plan?.rows) ? snapshot.plan.rows : [];
   const inboxItems = Array.isArray(inbox?.items) ? inbox.items : [];
-  const roster = rosterOf({ rows, route: snapshot?.route });
+  // The runs are read first: an off-plan agent (the Trend Scout) is on the roster once it has one.
+  const allLines = lines ?? (folder ? readAgentLines(folder) : []);
+  const allRuns = runsFrom(allLines);
+  const roster = rosterOf({ rows, route: snapshot?.route, ran: allRuns.map(run => run.agent) });
   const registry = agentRegistry();
 
   // Where each agent's rows sit in the stage list, and which stages are current and next.
@@ -775,8 +783,6 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
   }
 
   // Runs, messages and the gate the person is deciding.
-  const allLines = lines ?? (folder ? readAgentLines(folder) : []);
-  const allRuns = runsFrom(allLines);
   const stuck = stuckFor({ dir: folder, snapshot, inboxItems, requests, retriedAt: retriedAt ?? null, blockedLine, now: clock, lines: allLines });
   const pendingPaths = new Set((Array.isArray(details?.pendingReviews) ? details.pendingReviews : []).flatMap(review => (Array.isArray(review?.artifacts) ? review.artifacts : [])).map(item => item?.path).filter(path => typeof path === 'string'));
   const waits = personWaits({ inbox: { items: inboxItems }, state });
@@ -814,7 +820,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
       agentState = 'waiting';
       note = lastRun.ended === 'failed' ? 'The last run did not finish' : 'The last run stopped responding';
       at = lastRun.ended === 'failed' ? lastRun.endedAt : text(lastRun.startedAt) ?? text(lastRun.dispatchedAt);
-    } else if (finished || isDirector || rowsDone) {
+    } else if (finished || isDirector || rowsDone || (OFF_PLAN_AGENTS.includes(agent) && lastRun)) {
       agentState = 'done';
       const ends = runs.map(run => timeOf(run.endedAt)).filter(time => time !== null);
       at = ends.length ? iso(Math.max(...ends)) : null;

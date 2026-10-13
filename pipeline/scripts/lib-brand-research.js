@@ -11,15 +11,26 @@ const MAX_RESEARCH_BYTES = 60000;
 const POLICY_VERSION = 'research-policy-v2';
 const DEFAULT_FRESHNESS_DAYS = Object.freeze({
   brand_identity: 365,
+  brand_social: 30,
+  competitor: 30,
+  competitor_social: 30,
   competitor_identity: 90,
   competitor_activity: 14,
   product_claims: 30,
   audience: 90,
+  market: 90,
   recent_posts: 14,
   platform_assumptions: 30,
   strategy: 90,
   offer: 1,
 });
+// The kinds a brand onboarding source may have. A kind sets how long the source stays fresh (above), so
+// there is no default: a competitor page must never quietly get the year a brand's own about page gets.
+const ONBOARDING_SOURCE_KINDS = Object.freeze([
+  'brand_identity', 'brand_social', 'competitor', 'competitor_social', 'audience', 'product_claims', 'market',
+]);
+// Where a competitor can be followed. A handle is kept as '@name' or as the platform's own profile address.
+const HANDLE_PLATFORMS = Object.freeze(['instagram', 'tiktok', 'facebook']);
 const FINDING_KEYS = Object.freeze([
   'summary', 'strategy', 'voice', 'visualIdentity', 'contentPillars',
   'postAudit', 'campaignDecomposition', 'competitorRationale',
@@ -99,6 +110,36 @@ function normalizeScope(value) {
 
 const COMPETITOR_ORIGINS = new Set(['declared', 'research']);
 
+function handleHostOk(host, platform) {
+  const lower = String(host || '').toLowerCase().replace(/^www\./, '');
+  return lower === platform + '.com' || lower.endsWith('.' + platform + '.com');
+}
+
+// { instagram: '@name', tiktok: 'https://www.tiktok.com/@name' }. A bare name becomes '@name'; an address must be on the platform's own host.
+function normalizeHandles(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Competitor handles must be an object such as {"instagram": "@name"}.');
+  const out = {};
+  for (const key of Object.keys(value)) {
+    const platform = String(key).trim().toLowerCase();
+    if (!HANDLE_PLATFORMS.includes(platform)) throw new Error('Competitor handles are for ' + HANDLE_PLATFORMS.join(', ') + ', not "' + key + '".');
+    const raw = value[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    if (typeof raw !== 'string') throw new Error('The ' + platform + ' handle must be text.');
+    const text = raw.trim();
+    if (!text) continue;
+    if (/^https?:\/\//i.test(text)) {
+      const href = capabilities.publicUrl(text, 'The ' + platform + ' handle');
+      if (!handleHostOk(new URL(href).hostname, platform)) throw new Error('The ' + platform + ' handle must be a handle or an address on ' + platform + '.com.');
+      out[platform] = href;
+    } else {
+      const name = text.replace(/^@/, '');
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(name)) throw new Error('The ' + platform + ' handle "' + text.slice(0, 40) + '" is not a handle.');
+      out[platform] = '@' + name;
+    }
+  }
+  return out;
+}
+
 function normalizeCompetitors(value) {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > profiles.MAX_COMPETITORS) throw new Error('Save up to three named competitors.');
@@ -125,6 +166,12 @@ function normalizeCompetitorDetails(value) {
       if (!COMPETITOR_ORIGINS.has(origin)) throw new Error('Competitor origin must be declared or research.');
       out.origin = origin;
     }
+    // The accounts to read for this competitor. social_outliers_find needs a real handle, never a guessed one.
+    if (item.handles !== undefined && item.handles !== null) {
+      const handles = normalizeHandles(item.handles);
+      if (Object.keys(handles).length) out.handles = handles;
+    }
+    if (item.website !== undefined && item.website !== null && item.website !== '') out.website = capabilities.publicUrl(item.website, 'Competitor website');
     // An empty evidence list means nothing could be fetched for this competitor: the same as leaving it out, never a refusal.
     if (item.evidence !== undefined && !(Array.isArray(item.evidence) && item.evidence.length === 0)) out.evidence = normalizeSources(item.evidence);
     return out;
@@ -586,7 +633,10 @@ function buildDraft(dir, input, options, previous, profile, now) {
   if (draft.competitorDetails.length > 3) throw new Error('Save up to three competitor details.');
   if (draft.gaps.length > 120) throw new Error('Research gaps exceed the limit.');
   draft.researchRevision = draft.revision;
-  draft.freshness = normalizeFreshness(input.freshness, previous, draft, { policy: freshnessPolicy });
+  // Sources replaced as a whole (a new onboarding run) take their freshness from the new sources only: a kind the new run did
+  // not use must not keep an old date that would turn the whole record stale.
+  const priorFreshness = sourcesReplacement && input.freshness && typeof input.freshness === 'object' ? { ...previous, freshness: {} } : previous;
+  draft.freshness = normalizeFreshness(input.freshness, priorFreshness, draft, { policy: freshnessPolicy });
   draft.refreshAfter = Object.values(draft.freshness).map(value => value.refreshAfter).filter(Boolean).sort()[0] || null;
   if (draft.refresh && typeof draft.refresh === 'object') {
     draft.refresh = {
@@ -1202,6 +1252,9 @@ module.exports = {
   MAX_RESEARCH_BYTES,
   POLICY_VERSION,
   DEFAULT_FRESHNESS_DAYS,
+  ONBOARDING_SOURCE_KINDS,
+  HANDLE_PLATFORMS,
+  normalizeHandles,
   FINDING_KEYS,
   DECISIONS,
   read,

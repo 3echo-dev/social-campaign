@@ -5,6 +5,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import { ELEVEN_LABS, appendLanded, finishMediaIfLanded, isFetchableUrl, isLanded, jobAt, parseJobKey, readLanded, readRecords, THREE_ECHO } from './facts.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const MIME_EXTENSIONS = Object.freeze({
@@ -156,7 +157,7 @@ function promoteFile(job, parsed, key, source) {
       moved.push([name, to]);
     }
     try {
-      renameSync(temp, target);
+      renameReplacing(temp, target);
     } catch (error) {
       for (const [from, to] of moved.reverse()) {
         try {
@@ -378,7 +379,7 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
       mkdirSync(dirname(target), { recursive: true });
       const temp = `${target}.${randomUUID()}.part`;
       writeFileSync(temp, got.bytes);
-      renameSync(temp, target);
+      renameReplacing(temp, target);
       const sha256 = createHash('sha256').update(got.bytes).digest('hex');
       const promotion = promote(job, { ...task, assetId: link.assetId }, parsed, file);
       outcome.landed.push(appendLanded(job, {

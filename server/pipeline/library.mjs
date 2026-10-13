@@ -7,11 +7,12 @@
  * shows in the library as music tagged with that brand and is never written to again.
  */
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
 import { probeFile } from '../media/probe.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const LIBRARY_KINDS = Object.freeze(['music', 'voice']);
 export const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac']);
@@ -19,7 +20,7 @@ export const DEFAULT_LICENCE = "the brand's own";
 export const ELEVEN_LABS_LICENCE = 'made with ElevenLabs';
 
 const readJson = (file, fallback) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return fallback; } };
-const writeJson = (file, value) => { const tmp = `${file}.tmp`; writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`); renameSync(tmp, file); };
+const writeJson = (file, value) => { const tmp = `${file}.tmp`; writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`); renameReplacing(tmp, file); };
 const sha256Of = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 
 export const libraryDir = root => join(root, 'library');

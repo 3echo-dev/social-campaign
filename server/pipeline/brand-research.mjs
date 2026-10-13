@@ -19,6 +19,7 @@ import { UserFacingError } from '../lib/errors.mjs';
 import * as runtime from './runtime.mjs';
 import { askQuestion, listQuestions, plainWordsProblem, withdrawQuestion } from './questions.mjs';
 import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mjs';
+import { fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = join(HERE, '..', '..', 'pipeline');
@@ -29,6 +30,9 @@ const brandResearch = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-research
 const researchBudgets = require(join(PIPELINE_ROOT, 'scripts', 'lib-research-budget.js'));
 const onboardingRun = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 const durable = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
+const brandFiles = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-files.js'));
+const onboardingEvidence = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-evidence.js'));
+const toolMetrics = require(join(PIPELINE_ROOT, 'scripts', 'lib-tool-metrics.js'));
 
 const REFRESH_FAILED = 'The scheduled research refresh failed';
 const BUSY = 'Another Claude window is already using the browser for research. Wait for it to finish, then run it again.';
@@ -152,6 +156,8 @@ function draftSkeleton(runId, blankFields, toFind) {
     fills,
     suggested: [],
     research: { sources: [], evidenceMatrix: [], competitorDetails: [], findings: {}, gaps: [] },
+    brandFiles: {},
+    topPosts: [],
     budget: { searches: 0, fetches: 0, stopReason: '' },
   };
 }
@@ -174,7 +180,10 @@ export function startBrandResearch({ root, brand }) {
   const existingResearch = brandResearch.read(brandDir);
   const researchRevision = existingResearch ? existingResearch.revision : 0;
 
-  if (!blankFields.length && existingResearch && existingResearch.current) {
+  // Research that looks current is still redone once for a brand onboarded before the brand files were written from research:
+  // an untouched template, or sources with no saved page behind them. After one good run neither is true, so this is once.
+  const refreshReason = !blankFields.length && existingResearch && existingResearch.current ? brandFiles.upgradeReason(brandDir, existingResearch) : null;
+  if (!blankFields.length && existingResearch && existingResearch.current && !refreshReason) {
     onboardingRun.clearPending(brandDir);
     return {
       status: 'skipped',
@@ -185,7 +194,9 @@ export function startBrandResearch({ root, brand }) {
     };
   }
 
-  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 12, totalFetches: 12, turns: 25 };
+  // The same budget as the largest job research (a campaign): 12 searches, 16 fetches, 40 turns. One profile read and one outlier
+  // read for each declared account and each competitor handle would not fit in fewer.
+  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 12, totalFetches: 16, turns: 40 };
   const workspaceId = runtime.readWorkspace({ root }).workspaceId;
   takeBrowser(root, entry.slug);
   const wasStale = onboardingRun.list(brandDir).filter((item) => item.status === 'running' && onboardingRun.isStale(item));
@@ -220,6 +231,9 @@ export function startBrandResearch({ root, brand }) {
   if (wasStale.length) raiseRefreshFailure(root, entry.slug, 'it stopped responding and ran out of time, which can happen when the browser disconnects');
   const declaredCompetitors = Array.isArray(run.declaredCompetitors) ? run.declaredCompetitors : declared;
   const draftPath = draftPathFor(brandDir, run.runId);
+  // The pages the researcher reads are saved here, one file each, like a job's research/raw: the save checks every source against one.
+  const rawDir = onboardingRun.rawDir(brandDir, run.runId);
+  mkdirSync(rawDir, { recursive: true });
   const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
   const alsoFill = brandProfile.blankResearchFields(profile).filter((name) => EXTRA_FILLS.includes(name));
   ensureDraftSkeleton(draftPath, run.runId, [...(run.blankFields || blankFields), ...alsoFill], toFind);
@@ -234,6 +248,8 @@ export function startBrandResearch({ root, brand }) {
     competitors: { declared: declaredCompetitors, toFind },
     limits: run.limits || limits,
     draftPath,
+    rawDir,
+    refreshReason,
     draftContract: draftContract(),
     profileRevision: run.profileRevisionAtStart ?? profile.revision,
     researchRevision: run.researchRevisionAtStart ?? researchRevision,
@@ -298,9 +314,10 @@ function defaultScope(item, slug, place) {
 function latestObservedAtByKind(sources) {
   const latest = {};
   for (const source of sources) {
-    const kind = source.kind || 'brand_identity';
+    // A source with no kind was already refused by the save's checks; none is given a longer life than its kind allows.
+    const kind = source.kind;
     const parsed = Date.parse(source.observedAt);
-    if (!Number.isFinite(parsed)) continue;
+    if (!kind || !Number.isFinite(parsed)) continue;
     if (!latest[kind] || parsed > Date.parse(latest[kind])) latest[kind] = source.observedAt;
   }
   const freshness = {};
@@ -321,10 +338,11 @@ const DEPTH_FINDING_KEYS = Object.freeze(['uniqueMechanism', 'alternativeSolutio
 const FINDING_NOTE_MAX = 1500;
 const CONSTRAINT_TAG = /^\s*(?:[-*\u2022]\s*)?[\[(]?(?:confirmed|inferred)\b/i;
 // One set of pillar limits for a typed save, the board and a research fill.
-const CONTENT_PILLARS_MIN = brandProfile.CONTENT_PILLAR_MIN;
-const CONTENT_PILLARS_MAX = brandProfile.CONTENT_PILLAR_MAX;
+// A research fill lists 3 to 5 pillars, as the research skill says. A typed list keeps the profile's wider 1 to 8.
+const CONTENT_PILLARS_MIN = brandProfile.RESEARCH_PILLAR_MIN;
+const CONTENT_PILLARS_MAX = brandProfile.RESEARCH_PILLAR_MAX;
 const CONTENT_PILLAR_ITEM_MAX = brandProfile.CONTENT_PILLAR_ITEM_MAX;
-const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'budget']);
+const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'brandFiles', 'topPosts', 'budget']);
 const RESEARCH_KEYS = Object.freeze(['scope', 'sources', 'evidenceMatrix', 'competitorDetails', 'findings', 'gaps', 'competitors']);
 const RESEARCH_LISTS = Object.freeze(['sources', 'evidenceMatrix', 'competitorDetails', 'gaps', 'competitors']);
 const FILL_BANNED_PATTERNS = Object.freeze([
@@ -451,7 +469,7 @@ function attempt(field, problems, step) {
   }
 }
 
-function researchProblems(researchDraft, slug, place, problems) {
+function researchProblems(researchDraft, slug, place, problems, ctx = {}) {
   for (const key of Object.keys(researchDraft)) {
     if (!RESEARCH_KEYS.includes(key)) {
       problems.push({ field: `research.${key}`, problem: `"${key}" is not a research field. Use ${RESEARCH_KEYS.join(', ')}.` });
@@ -472,7 +490,7 @@ function researchProblems(researchDraft, slug, place, problems) {
   if (own(researchDraft, 'scope') && !isObject(researchDraft.scope)) {
     problems.push({ field: 'research.scope', problem: 'research.scope must be an object.' });
   }
-  if (!listsOk) return;
+  if (!listsOk) return { bySource: new Map() };
 
   const sources = Array.isArray(researchDraft.sources) ? researchDraft.sources : [];
   if (!sources.length) problems.push({ field: 'research.sources', problem: 'Add at least one dated source the research used.' });
@@ -500,10 +518,7 @@ function researchProblems(researchDraft, slug, place, problems) {
   });
 
   const scope = isObject(researchDraft.scope) ? researchDraft.scope : defaultResearchScope(slug, place);
-  const preparedSources = sources.filter(isObject).map((source) => {
-    const scoped = defaultScope(source, slug, place);
-    return { ...scoped, kind: scoped.kind || 'brand_identity' };
-  });
+  const preparedSources = sources.filter(isObject).map((source) => defaultScope(source, slug, place));
   const evidenceMatrix = Array.isArray(researchDraft.evidenceMatrix) ? researchDraft.evidenceMatrix : [];
   if (evidenceMatrix.some((item) => !isObject(item))) {
     problems.push({ field: 'research.evidenceMatrix', problem: 'Each evidence item must be an object with id, question, finding, confidence, source, observedAt and semantics.' });
@@ -515,6 +530,16 @@ function researchProblems(researchDraft, slug, place, problems) {
   if (own(researchDraft, 'competitors')) attempt('research.competitors', problems, () => brandResearch.normalizeCompetitors(researchCompetitors));
   if (own(researchDraft, 'competitorDetails')) attempt('research.competitorDetails', problems, () => brandResearch.normalizeCompetitorDetails(competitorDetails));
   if (own(researchDraft, 'gaps')) attempt('research.gaps', problems, () => brandResearch.normalizeGaps(requiredFalseGaps(researchDraft.gaps)));
+
+  // The evidence rules: a fixed kind, a fresh read, a capture on disk, a tool that read it, quotes found in the capture,
+  // and competitors that are businesses with a handle. See lib-onboarding-evidence.js.
+  const checkedSources = onboardingEvidence.sourceProblems(sources, { rawDir: ctx.rawDir, now: ctx.now, calls: ctx.calls });
+  problems.push(...checkedSources.problems);
+  problems.push(...onboardingEvidence.evidenceProblems(evidenceMatrix, { bySource: checkedSources.bySource }));
+  problems.push(...onboardingEvidence.competitorProblems(competitorDetails, { bySource: checkedSources.bySource, gaps: researchDraft.gaps, expected: ctx.expectedCompetitors }));
+  const handleCount = competitorDetails.reduce((sum, detail) => sum + onboardingEvidence.handlesOf(detail).length, 0);
+  problems.push(...onboardingEvidence.socialReadProblems(ctx.calls, (ctx.ownSocial || 0) + handleCount));
+  return { bySource: checkedSources.bySource };
 }
 
 function audienceProblemText(market) {
@@ -569,14 +594,48 @@ function draftProblems(draft, ctx) {
   const named = suggestedProblems(draft.suggested, safeFills, problems);
   // A filled forbiddenClaims or examples always reads as a suggestion until the person has checked it.
   const suggested = [...new Set([...named, ...EXTRA_FILLS.filter((name) => filled(safeFills[name]))])];
-  if (isObject(researchDraft)) researchProblems(researchDraft, ctx.slug, ctx.place, problems);
+  const now = ctx.now || new Date();
+  const expected = expectedCompetitors(ctx.declared, safeFills, isObject(researchDraft) ? researchDraft : {});
+  let bySource = new Map();
+  if (isObject(researchDraft)) {
+    const checked = researchProblems(researchDraft, ctx.slug, ctx.place, problems, {
+      rawDir: ctx.rawDir, now, calls: ctx.calls, expectedCompetitors: expected, ownSocial: ctx.ownSocial,
+    });
+    if (checked && checked.bySource) bySource = checked.bySource;
+  }
+  // The audience, positioning and platform files, and the top posts that go to the brand library: both are checked against the
+  // sources above, so a quote that is not in a saved capture or a post with no views never reaches a file or the bank.
+  const filesChecked = brandFiles.validate(draft.brandFiles, { bySource, competitors: expected });
+  problems.push(...filesChecked.problems);
+  const postsChecked = topPostsProblems(draft.topPosts, { competitors: expected, now });
+  problems.push(...postsChecked.problems);
+  if (postsChecked.value.length && ctx.calls && ctx.calls.recorded
+    && !['social_outliers_find', 'social_profile_get', 'chrome'].some((tool) => ctx.calls.byTool[tool] && ctx.calls.byTool[tool].ok > 0)) {
+    problems.push({ field: 'topPosts', problem: 'The tool log of this run shows no successful social_outliers_find or social_profile_get call, so these posts were not read from an account. Read the accounts, or remove the posts.' });
+  }
   const shapeCount = problems.length;
   let needsAudience = false;
   if (ctx.audienceBlank && !filled(safeFills.audience) && !ctx.audienceUnavailable) {
     needsAudience = true;
     problems.push({ field: 'fills.audience', problem: audienceProblemText(ctx.market) });
   }
-  return { problems, shapeCount, suggested, needsAudience, fills: safeFills, researchDraft: isObject(researchDraft) ? researchDraft : {} };
+  return {
+    problems, shapeCount, suggested, needsAudience, fills: safeFills, researchDraft: isObject(researchDraft) ? researchDraft : {},
+    bySource, expected, brandFiles: filesChecked.value, topPosts: postsChecked.value,
+  };
+}
+
+// The competitors the profile will hold: the declared ones first, then the ones research found, at most 3 in all.
+function expectedCompetitors(declared, fills, researchDraft) {
+  const names = [];
+  const seen = new Set();
+  for (const raw of [...(Array.isArray(declared) ? declared : []), ...foundCompetitors(fills, researchDraft)]) {
+    const key = String(raw).trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(String(raw).trim());
+  }
+  return names.slice(0, brandProfile.MAX_COMPETITORS);
 }
 
 function foundCompetitors(fills, researchDraft) {
@@ -595,12 +654,15 @@ function foundCompetitors(fills, researchDraft) {
   return names.slice(0, brandProfile.MAX_COMPETITORS);
 }
 
-function buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found }) {
+function buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found, bySource = new Map() }) {
   const scope = isObject(researchDraft.scope) ? researchDraft.scope : defaultResearchScope(entry.slug, place);
   const sources = Array.isArray(researchDraft.sources) ? researchDraft.sources : [];
+  // Each source keeps the file its page text was saved in, and that file's hash, so the record can be checked against it later.
+  const capturedFor = (source) => (isObject(source) ? bySource.get(onboardingEvidence.normUrl(source.url)) : null);
   const preparedSources = sources.map((source) => {
     const scoped = defaultScope(source, entry.slug, place);
-    return { ...scoped, kind: scoped.kind || 'brand_identity' };
+    const hit = capturedFor(source);
+    return hit ? { ...scoped, captureRef: hit.capture.ref, contentHash: hit.capture.hash } : scoped;
   });
   const evidenceMatrix = Array.isArray(researchDraft.evidenceMatrix) ? researchDraft.evidenceMatrix : [];
   const preparedEvidence = evidenceMatrix.map((item) => defaultScope(item, entry.slug, place));
@@ -614,7 +676,18 @@ function buildSaveInput({ researchDraft, run, entry, place, runId, previousResea
   };
   if (preparedGaps !== undefined) saveInput.gaps = preparedGaps;
   if (found.length) saveInput.competitors = found;
-  if (own(researchDraft, 'competitorDetails')) saveInput.competitorDetails = researchDraft.competitorDetails;
+  if (own(researchDraft, 'competitorDetails')) {
+    // A competitor's evidence is one of the listed sources, so it carries that source's kind and capture.
+    saveInput.competitorDetails = researchDraft.competitorDetails.map((detail) => (isObject(detail) && Array.isArray(detail.evidence)
+      ? {
+        ...detail,
+        evidence: detail.evidence.map((item) => {
+          const hit = capturedFor(item);
+          return hit ? { ...item, kind: hit.source.kind, provider: hit.source.provider, title: item.title || hit.source.title, captureRef: hit.capture.ref, contentHash: hit.capture.hash } : item;
+        }),
+      }
+      : detail));
+  }
   if (own(researchDraft, 'findings')) saveInput.findings = researchDraft.findings;
   if (previousResearch) {
     for (const field of REPLACEABLE_FIELDS) {
@@ -663,7 +736,21 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
   const draft = read.value;
   const audienceBlank = Array.isArray(run.blankFields) && run.blankFields.includes('audience')
     && Boolean(profile) && brandProfile.blankContextFields(profile).includes('audience');
-  const checked = draftProblems(draft, { slug: entry.slug, market, place, audienceBlank, audienceUnavailable: audienceUnavailable === true });
+  // What the run really called, counted from its tool log. Nothing about it is taken from the draft's own budget figures.
+  const calls = toolMetrics.summarizeToolEvents(toolMetrics.readToolEvents(onboardingRun.runDir(brandDir, runId)));
+  const limits = run.limits && typeof run.limits === 'object' ? run.limits : {};
+  const measured = {
+    ...calls,
+    overBudget: [
+      Number.isFinite(limits.totalSearches) && calls.searches > limits.totalSearches ? 'searches' : null,
+      Number.isFinite(limits.totalFetches) && calls.fetches > limits.totalFetches ? 'fetches' : null,
+    ].filter(Boolean),
+  };
+  const ownSocial = ['instagram', 'tiktok', 'facebook'].filter((name) => profile && profile.channels && profile.channels[name] && profile.channels[name].status === 'provided').length;
+  const checked = draftProblems(draft, {
+    slug: entry.slug, market, place, audienceBlank, audienceUnavailable: audienceUnavailable === true,
+    rawDir: onboardingRun.rawDir(brandDir, runId), now: new Date(), calls, declared: run.declaredCompetitors, ownSocial,
+  });
   const { fills, researchDraft, suggested } = checked;
   const problems = [...checked.problems];
 
@@ -678,7 +765,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
   if (found.length) fillInput.competitors = found;
   let saveInput = null;
   if (!checked.shapeCount) {
-    saveInput = buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found });
+    saveInput = buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found, bySource: checked.bySource });
     let dryFill = null;
     try {
       dryFill = brandProfile.fillBlankContext(brandDir, fillInput, { runId, now: new Date(), suggested, dryRun: true });
@@ -710,6 +797,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
       profileRevisionAtEnd: fillResult.profile.revision,
       researchRevision: savedResearch.revision,
       reported: normalizeReported(draft.budget),
+      measured,
       reason: null,
       now: new Date(),
     });
@@ -725,6 +813,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
         profileRevisionAtEnd: fillResult ? fillResult.profile.revision : null,
         researchRevision: null,
         reported: normalizeReported(draft.budget),
+        measured,
         reason,
         now: new Date(),
       });
@@ -736,6 +825,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
   releaseBrowser(root, entry.slug);
   clearRefreshQuestions(root, entry.slug);
   runtime.writeBrandVoice({ root, brand: entry.slug });
+  const filed = fileResults({ root, entry, brandDir, runId, savedResearch, checked });
 
   return {
     status: 'complete',
@@ -754,7 +844,46 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
     sourceCount: savedResearch.sources.length,
     gapCount: savedResearch.gaps.length,
     current: savedResearch.current,
+    toolCalls: { recorded: calls.recorded, total: calls.total, failed: calls.failed, searches: calls.searches, fetches: calls.fetches, overBudget: measured.overBudget },
+    ...filed,
   };
+}
+
+/**
+ * Everything a saved run leaves behind besides the profile and the research record: the audience, positioning and platform files,
+ * the library entry for the next job, and the top posts in the proven bank. The research is already saved, so a failure here
+ * never fails the save; it comes back as a warning in plain words.
+ */
+function fileResults({ root, entry, brandDir, runId, savedResearch, checked }) {
+  const warnings = [];
+  const out = {};
+  const now = new Date();
+  try {
+    const written = brandFiles.write(brandDir, { data: checked.brandFiles, runId, now });
+    out.brandFiles = {
+      audience: written.files.audience.status,
+      positioning: written.files.positioning.status,
+      platformPlaybook: written.files['platform-playbook'].status,
+      proofPoints: written.proofPoints,
+      customerPhrases: written.phrases,
+      enoughForJobs: written.evidenceBearing,
+    };
+  } catch (error) {
+    warnings.push(`The audience, positioning and platform files could not be written: ${error.message}`);
+  }
+  try {
+    const profile = brandProfile.read(brandDir) || {};
+    out.library = fileOnboardingResearch({ root, brand: entry.slug, brandDir, name: entry.name, runId, record: savedResearch, profile, posts: checked.topPosts, now });
+  } catch (error) {
+    warnings.push(`The research could not be filed in the brand library: ${error.message}`);
+  }
+  try {
+    out.topPosts = fileTopPosts({ root, brand: entry.slug, posts: checked.topPosts, now });
+  } catch (error) {
+    warnings.push(`The top posts could not be saved to the brand library: ${error.message}`);
+  }
+  if (warnings.length) out.warnings = warnings;
+  return out;
 }
 
 function normalizeReported(budget) {

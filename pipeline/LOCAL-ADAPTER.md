@@ -77,9 +77,11 @@ The orchestrator dispatches only the active task and its named owner.
 route-job.js and plan-job.js are the only workflow selectors.
 Do not select a workflow from conversation memory.
 
-Brand-researcher, competitor-researcher, trend-scout, audience-researcher, and brand-onboarding are workstream labels for the researcher contract.
+Brand-researcher, competitor-researcher, audience-researcher, and brand-onboarding are workstream labels for the researcher contract.
 They are not independent routes when the plan names one researcher workstream.
 A researcher dispatch covers exactly one named workstream and reads the accepted evidence snapshot before searching.
+The Trend Scout is its own agent, with a root adapter at agents/trend-scout.md and a canonical contract at pipeline/agents/trend-scout.md.
+The producer spawns it for any job that makes content, in parallel with the researcher, and it is not a workstream of the research decision.
 A strategist reuses current research and raises a named gap instead of redoing research.
 A video specialist reuses the current watch report and probes only changed or missing media.
 A validation specialist reuses cached checks only when artifact and rule hashes match.

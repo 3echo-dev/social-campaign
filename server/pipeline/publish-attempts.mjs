@@ -41,7 +41,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
@@ -50,6 +50,7 @@ import { globalConfigDir } from '../lib/paths.mjs';
 import { jobAt } from './facts.mjs';
 import { localDateTime, postLabel, validZone, whenText, zonedInstant } from './publish-preflight.mjs';
 import { asObject, mediaAssetId, parseInfo } from './publish-tools.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const ATTEMPT_LOG_FILE = 'publish/metricool.jsonl';
 /** What 3echo said about media files, written by the hook (see above). Kept apart from the send log, which marks a job as sent once it has a line. */
@@ -156,7 +157,7 @@ function writeWhole(file, lines) {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, lines.map(line => `${line.raw}\n`).join(''), { encoding: 'utf8', mode: 0o600 });
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

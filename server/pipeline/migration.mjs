@@ -16,13 +16,13 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
-  renameSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { initializeWorkspace, runtimeConstants } from './runtime.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const SCHEMA_VERSION = '1.0';
 const MIGRATION_VERSION = 1;
@@ -41,7 +41,7 @@ function writeJsonAtomic(filePath, value) {
   mkdirSync(dirname(filePath), { recursive: true });
   const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  renameSync(temporary, filePath);
+  renameReplacing(temporary, filePath);
 }
 
 function readJson(filePath, fallback = null) {

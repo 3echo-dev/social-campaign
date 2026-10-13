@@ -90,6 +90,7 @@ Media generation moves its own state from the same hooks, at the first paid call
 On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
 
 - Every `researcher` spawn goes in one message, at most `max_parallel_agents`. Owner rows wait for their support rows.
+- For a job that makes content and has a concepts step (every job but a repurpose of a video the person supplied), the `trend-scout` goes in that same message. It is its own agent and not a research workstream, so the research decision does not list it and "never add a workstream the plan omits" does not apply to it. Skip it when `brand_library_get` already lists at least 3 fresh trends for each platform of the job in the brand's industry and at least 3 fresh hooks. Its prompt carries the platforms, the industry, the target market, the saved competitor names, 30 turns and the path `research/trends.md`; the researcher's prompt says the Trend Scout covers what is trending. A missing `research/trends.md` is not a row miss and never stops the job: Concept C says its trending source had nothing usable.
 - The stage row sets research depth, skills and model; state the turn budget in the spawn prompt, 40 for stage 3 and 25 for stage 3b. Never add a workstream the plan omits.
 - Spawn prompts carry the job folder, exact output path, brand, brief, deliverable IDs/platforms, live `status.md` Notes, revision directive, and a 15-line summary cap. Quote every path.
 - Every `researcher` spawn prompt also carries the target market.

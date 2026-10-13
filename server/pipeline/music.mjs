@@ -7,12 +7,13 @@
  * (`file` is job-relative), so the finishing script never has to look at the shelf.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { AUDIO_EXTENSIONS, addToLibrary, findItem, listLibrary } from './library.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const DEFAULT_LICENCE = "the brand's own";
 
@@ -23,7 +24,7 @@ function readJson(file, fallback) {
 function writeJson(file, value) {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(tmp, file);
+  renameReplacing(tmp, file);
 }
 
 function resolveBrand(root, value) {

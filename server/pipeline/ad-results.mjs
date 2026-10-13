@@ -14,12 +14,13 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
 import { AD_PROVIDERS, readBrandAdAccount } from './ad-accounts.mjs';
 import { recordAdResultsQuietly } from './brand-results.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const AD_RESULTS_DIR = 'results/ad-results';
 export const AD_RESULTS_SUMMARY = 'results/ad-results.md';
@@ -143,7 +144,7 @@ function writeAtomic(file, body) {
   const temp = `${file}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, body);
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

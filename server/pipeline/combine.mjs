@@ -11,7 +11,7 @@
  * ElevenLabs makes several takes they are shown side by side on a board question and the pick is recorded here.
  * finish-video.py then mixes the chosen music (ducked under the voice-over) and voice-over and draws the chosen captions.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as facts from './facts.mjs';
@@ -19,6 +19,7 @@ import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, listLibrary
 import { chooseMusic, readChoice as readMusicChoice } from './music.mjs';
 import { askQuestion } from './questions.mjs';
 import { FINISHING_FILE, approvedCut, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const COMBINE_ROWS = Object.freeze({
   music: Object.freeze([
@@ -42,7 +43,7 @@ export const COMBINE_ROWS = Object.freeze({
 const LISTED_LIMIT = 60;
 
 const readJson = file => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
-const writeJson = (file, value) => { mkdirSync(join(file, '..'), { recursive: true }); const tmp = `${file}.tmp`; writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`); renameSync(tmp, file); };
+const writeJson = (file, value) => { mkdirSync(join(file, '..'), { recursive: true }); const tmp = `${file}.tmp`; writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`); renameReplacing(tmp, file); };
 
 // ---------------------------------------------------------------- the job's voice-over choice (the music one is music.mjs)
 export const voiceChoicePath = jobDir => join(jobDir, 'media', 'voice', 'choice.json');

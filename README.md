@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.32.
+Current version: 0.17.33.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -78,7 +78,7 @@ It fixes what it can quietly and asks one plain question when it needs you.
 
 ## Roles
 
-Ten agents, one file each.
+Eleven agents, one file each.
 The producer dispatches and verifies.
 No specialist can spawn another agent, because every specialist file sets `disallowedTools: Agent`.
 Each specialist gets only the tools its stage needs.
@@ -86,7 +86,8 @@ Each specialist gets only the tools its stage needs.
 | Role | What it owns | Skills it uses | Model |
 |---|---|---|---|
 | `producer` | Intake, dispatch, checking each file on disk, state changes, gates, media spend, hand-off, and sending the posts to Metricool | all of them, as the plan names them | Sonnet 5.5 |
-| `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. The only agent with web search, page fetch and the social lookup tools | research, source-validation, write-report | Sonnet 5.5 |
+| `researcher` | One research workstream per dispatch: audience, competitors, product evidence, brand onboarding, reports. With the Trend Scout, the only agents with web search, page fetch and the social lookup tools | research, source-validation, write-report | Sonnet 5.5 |
+| `trend-scout` | What is rising now in the brand's industry on the job's platforms: topics, formats, sounds and hashtags, each with links, views, dates and when it was seen, plus the hooks and texts of ads that keep running in the Meta Ad Library and TikTok Top Ads, ranked by days running. Runs beside the researcher on any job that makes content, saves what it finds to the brand library for a week, and feeds Concept C and the hook options. Read-only | research, source-validation | Sonnet 5.5 |
 | `strategist` | The brief: angle, audience, proof points, per-platform treatment | write-hook, write-cta, brand-check, source-validation | Opus 5.5 |
 | `scriptwriter` | Concepts, the script and the storyboard with stable panel ids | write-hook, write-script, write-cta, storyboard, policy-check | Opus 5.5, for the whole run including the script and storyboard step |
 | `copywriter` | Captions, hashtags, ad copy, one coherent pass per platform | write-hook, write-caption, write-cta, platform-format | Opus 5.5 |

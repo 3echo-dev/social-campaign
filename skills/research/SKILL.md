@@ -47,6 +47,9 @@ A report job carries no research decision from the router; run its task the mome
 
 The brand-onboarding workstream and its Hard limits, which a report job's task also keeps to, are defined in pipeline/skills/research/SKILL.md.
 
+Brand onboarding research is held to the same standard as a job's: it names its tools (`web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_search`, `WebSearch`, `WebFetch`), applies the same competitor test, and saves the text of every page it reads before it cites it.
+The brand-onboarding section of pipeline/skills/research/SKILL.md has the rules, and the save refuses a source that has no saved capture.
+
 Read the brand profile, selected input revision, current research artifacts, source dates, and accepted evidence before searching.
 
 Reuse an artifact when its scope and evidence-specific freshness cover the assigned questions.

@@ -17,7 +17,13 @@ user-invocable: false
 - Target market
 - Hard limits
 - Brand onboarding workstream
+  - Tools
+  - Competitors
+  - Evidence
   - What each fill holds
+  - Strategic findings
+  - Files for the brand
+  - Top posts
   - Audience fallback
   - No evidence in a fill
 - Steps
@@ -64,6 +70,10 @@ The Hard limits below still apply in full: at most 3 searches per question, at m
 - The job's selected input revision under `<root>/inputs/{brand}/{job-id}/`
 - `brand/positioning.md` and `brand/audience.md`
 
+Brand onboarding research writes both files from pages it read, and each begins with a line that says so.
+A file that begins `Filled from brand onboarding research` holds proof points and customer phrases that were quoted from saved pages: cite them from the file, and search only the claims they do not answer.
+A file that begins `Not filled from research` is the empty template: it holds nothing to cite or reuse.
+
 The brand-onboarding workstream reads only the spawn prompt, `brand/profile.json` and `brand/research.json`.
 
 One spawn, one workstream, one file; a prompt naming two: do the first only.
@@ -93,7 +103,7 @@ Use it for the competitors and for any market-specific evidence, and never fill 
 | Fetches per section | 2 |
 | Competitors | 3 |
 | Items per competitor | 3 |
-| Brand onboarding totals | 12 searches, 12 fetches, 25 turns |
+| Brand onboarding totals | 12 searches, 16 fetches, 40 turns (a campaign job's budget) |
 | `simple_post` totals | 6 searches, 8 fetches, 25 turns |
 | `campaign` totals | 12 searches, 16 fetches, 40 turns |
 
@@ -108,26 +118,87 @@ Fill only the blank fields listed in the spawn prompt.
 The target market comes from the spawn prompt.
 It is Singapore when the person named none.
 Use it for the competitors and for the audience suggestion, and never fill it in.
-Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total, each with a one-line rationale and at most 3 items.
-Keep competitor work light.
+Onboarding research is as good as a job's research: the same tools, the same budget, the same discovery ladder, and a saved capture behind every source.
+Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total.
 The file at `draftPath` already holds the right keys.
-Fill it in place and never add, rename or remove a key; the keys you add inside `research.findings` below are the one exception.
+Fill it in place and never add, rename or remove a key.
+The keys you add inside `research.findings` and inside `brandFiles` below are the exception.
 The file looks like this, with only the fields still blank in `fills`:
 
 ```json
-{"version":1,"runId":"...","fills":{"audience":"","market":"","voice":"","contentPillars":[],"competitors":[]},"suggested":[],"research":{"sources":[],"evidenceMatrix":[],"competitorDetails":[],"findings":{},"gaps":[]},"budget":{"searches":0,"fetches":0,"stopReason":""}}
+{"version":1,"runId":"...","fills":{"audience":"","market":"","voice":"","contentPillars":[],"competitors":[]},"suggested":[],"research":{"sources":[],"evidenceMatrix":[],"competitorDetails":[],"findings":{},"gaps":[]},"brandFiles":{},"topPosts":[],"budget":{"searches":0,"fetches":0,"stopReason":""}}
 ```
 
 An empty value means not filled.
-A source is `{url, observedAt, kind, title}`.
-An evidence row is `{id, question, finding, confidence, source, observedAt, semantics}`.
-A competitor detail is `{name, rationale, origin: "research", evidence}`.
-`evidence` is 1 to 3 sources, each with its public `url` and the `observedAt` date you fetched it; when nothing could be fetched for a competitor, leave `evidence` out and add a gap instead.
+A source is `{url, observedAt, kind, title, provider, captureRef}`.
+An evidence row is `{id, question, finding, confidence, source, observedAt, semantics, supportingExcerpt}`.
+A competitor detail is `{name, rationale, origin: "research", handles, evidence}`.
+`evidence` is 1 to 3 of your listed sources, each with its public `url` and the `observedAt` date you read it; when nothing could be read for a competitor, leave `evidence` out and add a gap that names the competitor instead.
 Add at least one dated source.
 
 Each fill is board content for a marketer to read, not a research note.
 Write every fill as if it will be pasted straight onto the brand's board.
 Evidence, citations and run details never belong in a fill; save validates this and rejects a draft that breaks it.
+
+### Tools
+
+Use these tools, one attempt each, and count every call against the budget in Hard limits (12 searches, 16 fetches, 40 turns).
+`web_crawl` reads the brand's website and each competitor's website, one page per call; `WebFetch` is its one fallback.
+`social_profile_get` reads a declared own account or a competitor handle once: followers, bio and recent posts.
+`social_outliers_find` reads the same account once more: the posts that beat that account's own usual.
+`social_post_get` reads one post you want to quote.
+`social_comments_get` reads the comments on one top post, once, for the audience's own words.
+`social_search` finds posts on one platform, at most once per platform.
+`WebSearch` only finds addresses: competitors, their handles, coverage of the brand.
+A search result is never a source, and a page you did not read is never cited.
+The flow is the one a job uses.
+Make one attempt per source, at most one fallback, and never wait on or retry a source.
+Two failures on one host end that host for the run.
+A source that used its budget or failed is one line in `research.gaps` and the run moves on.
+Finding an address and opening it are two jobs: a walled profile page never stops the run and never becomes a claim about the whole platform.
+The research helper cannot read Instagram, so its coverage is `none` there.
+Make the one call anyway, write a gap that names the account, and go on; the person's signed-in Chrome is used for it after the save, not by you.
+For each account that does work, read the profile once and its outliers once, for every declared own account and every competitor handle, within the budget.
+For video posts the rules under "Finding the top N reference videos (discovery ladder)" below apply unchanged; onboarding needs the posts' numbers, not a teardown.
+
+### Competitors
+
+Apply the same test as a job's research (Step 0 under "Finding the top N reference videos (discovery ladder)").
+A competitor is a real business offering the same thing to the same buyer, in the brand's market first, then regional or global leaders.
+Government programmes, schools and umbrella bodies, media and publishers, news, aggregators, meme accounts and unrelated creators are never competitors.
+Declared competitors stay first and are not tested again; you add the rest up to 3.
+Every competitor, declared or found, gets a `competitorDetails` entry with:
+
+- `rationale`: one line on what it sells to the same buyer.
+- `handles`: its accounts found on its own website or in a search result, such as `{"instagram": "@name", "tiktok": "@name"}`, never guessed.
+- `website` when it has one, and `evidence` from your listed competitor sources.
+
+A competitor with no account found gets a gap that names it; so does one with nothing readable.
+The save refuses a competitor on a government or education address.
+
+### Evidence
+
+Save the text of every page you read before you cite it.
+Write one file per page under the `rawDir` of the spawn prompt, at `<rawDir>/<YYYY-MM-DD>/<slug>.md`.
+Its first line is the page address, then the date and the tool, then the text the tool returned.
+Name that file in the source as `captureRef`, as a path from the run folder, such as `raw/2026-10-13/acme-about.md`.
+`provider` is the tool that read the page: `web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_comments_get`, `social_search`, `WebFetch` or `chrome`.
+`kind` is exactly one of the following, and it sets how long the source stays fresh:
+
+| kind | what it is | fresh for |
+|---|---|---|
+| `brand_identity` | the brand's own website | 365 days |
+| `brand_social` | the brand's own account or post | 30 days |
+| `competitor` | a competitor's website | 30 days |
+| `competitor_social` | a competitor's account or post | 30 days |
+| `audience` | a study, article or comments about the audience | 90 days |
+| `product_claims` | what the brand states about its product | 30 days |
+| `market` | coverage of the category or the market | 90 days |
+
+Every evidence row needs a `question`, a `finding` and a `supportingExcerpt`.
+The excerpt is copied exactly from the saved capture of its `source`; use `...` to skip words.
+`semantics` is `FACT`, `OBSERVATION`, `INFERENCE` or `HYPOTHESIS`.
+The save checks all of this against your files and the run's own tool log before it writes anything, and it lists every problem at once.
 
 ### What each fill holds
 
@@ -173,6 +244,36 @@ Each is plain text (or a list of text lines) of at most 1,500 characters with no
 - `strategy`: context a marketer must know, such as seasonality, a subscription model, key channels or use of customer content.
 
 Open questions you could not close go in `research.gaps` as before.
+
+### Files for the brand
+
+`brandFiles` becomes the brand's audience, positioning and platform playbook files, which every job reads before it researches.
+Fill only what the pages you read support, and leave a part out when they do not; that file then keeps the template text and says research found nothing.
+Every `source` below is the address of one of your listed sources.
+Every `phrase` and `quote` is copied exactly from the saved capture of its source, and the save looks for it there.
+
+```json
+{"audience":{"segments":[{"name":"","who":"","goal":"","beliefs":"","objections":"","platforms":"","trigger":""}],"phrases":[{"phrase":"","source":"","segment":""}],"objections":[{"objection":"","answer":"","source":""}],"notFor":[""]},
+ "positioning":{"line":"","category":"","offer":"","offerSource":"","proof":[{"claim":"","source":"","quote":""}],"competitors":[{"name":"","says":"","differs":"","source":""}],"switching":{"push":"","pull":"","habit":"","anxiety":""},"neverClaim":[""]},
+ "platforms":{"pillars":[{"name":"","purpose":""}],"cadence":[{"platform":"","postsPerWeek":"","source":""}],"notes":[{"platform":"","suits":"","doesNot":"","notes":""}]}}
+```
+
+At most 3 segments, 8 phrases, 5 objections, 8 proof points, 3 competitors, 6 never-claim lines, 3 cadence rows and 3 notes.
+A proof point is something the brand shows or states on a page you read: a number, a result, a credential, a follower or post count.
+It is not an adjective or a promise, and three of them with a customer phrase are what lets a job skip its own brand research.
+A phrase is words a customer or the audience used, taken from comments, reviews or posts; never write one yourself.
+`postsPerWeek` comes from the dates of the recent posts you read, in words such as "about 3 (12 posts from 2026-09-01 to 2026-10-10)".
+`pillars` gives each of the fill's pillar names a one-line purpose.
+`platform` is `instagram`, `tiktok` or `facebook`.
+
+### Top posts
+
+`topPosts` lists the best posts `social_outliers_find` showed, at most 3 per declared own account and 2 per competitor.
+Each is `{source, competitor, platform, url, text, views, date}`.
+`source` is `brand` or `competitor`, and `competitor` is the competitor's name from `competitorDetails`.
+`text` is the post's opening words exactly as its caption has them, `views` is the number shown, and `date` is the day it was published as YYYY-MM-DD.
+Leave out a post with no caption, no views or no date, and never fill in or round a figure.
+Save files them in the brand library as proven hooks.
 
 ### Audience fallback
 

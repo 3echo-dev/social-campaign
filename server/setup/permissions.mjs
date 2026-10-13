@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { InvalidInputError } from '../lib/errors.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const MCP_SERVER_RULE = 'mcp__plugin_social-campaign_core';
 
@@ -65,7 +66,7 @@ function writeSettingsAtomic(target, value) {
   mkdirSync(dirname(target), { recursive: true });
   const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  renameSync(temp, target);
+  renameReplacing(temp, target);
 }
 
 export function previewPermissionRules({ projectRoot }) {

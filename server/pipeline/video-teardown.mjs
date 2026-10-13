@@ -24,7 +24,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, createReadStream, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, createReadStream, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 
 import { moveIntoPlace, toolWorkDir } from '../lib/paths.mjs';
@@ -35,6 +35,7 @@ import { isUrl, platformOf } from '../video/watch-source.mjs';
 import { breaker as sharedBreaker } from '../social/breaker.mjs';
 import { referenceFromUrl, referenceYtdlpBinary, breakerSkip, breakerRecord, REFERENCE_DOWNLOAD_TIMEOUT_MS } from './url-reference.mjs';
 import { readReferences, referencesDir, updateReferenceManifest } from './references.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const SCENE_THRESHOLD = 0.3;
 export const HOOK_TIMES_S = [0, 0.5, 1, 2, 3];
@@ -703,7 +704,7 @@ export async function videoTeardown(options) {
       folder: dir,
     };
     writeFileSync(`${jsonPath}.tmp`, `${JSON.stringify(teardown, null, 2)}\n`, 'utf8');
-    renameSync(`${jsonPath}.tmp`, jsonPath);
+    renameReplacing(`${jsonPath}.tmp`, jsonPath);
     return { ok: true, status: partial ? 'partial' : 'done', ...packageResult(teardown) };
   } finally {
     rmSync(work, { recursive: true, force: true });

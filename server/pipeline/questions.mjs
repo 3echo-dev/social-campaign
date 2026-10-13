@@ -1,9 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import * as runtime from './runtime.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const QUESTION_ID = /^q-[0-9a-f]{12}$/;
 
@@ -67,7 +68,7 @@ function writeAtomic(file, value) {
   const temp = `${file}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, JSON.stringify(value, null, 2));
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

@@ -2,6 +2,7 @@
 // person's answer, so the job's status lines say so and the brief step is not started. Questions live in the workspace root.
 const fs = require('fs');
 const path = require('path');
+const durable = require('./lib-durable.js');
 const states = require('./lib-states.js');
 const wording = require('./lib-wording.js');
 
@@ -53,7 +54,7 @@ function refreshStatusLines(dir, root, jobId) {
   } else return false;
   const tmp = file + '.tmp-' + process.pid;
   fs.writeFileSync(tmp, text.replace(/\n/g, nl), 'utf8');
-  fs.renameSync(tmp, file);
+  durable.renameReplacing(tmp, file);
   return true;
 }
 

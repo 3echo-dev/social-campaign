@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
@@ -18,6 +18,7 @@ import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { plainLabel, resolveBrand } from './metricool.mjs';
 import { askQuestion, listQuestions, withdrawQuestion, QUESTION_OPTION_LIMIT, OPTION_TEXT_LIMIT, plainWordsProblem } from './questions.mjs';
 import * as runtime from './runtime.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const brandProfile = require(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-brand-profile.js'));
@@ -227,7 +228,7 @@ function saveQuestionMeta(root, questionId, patch) {
   const temp = `${file}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, JSON.stringify(record, null, 2));
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }

@@ -48,6 +48,7 @@ import { handoffTools } from './handoff.mjs';
 import { brandLibraryTools } from './brand-library.mjs';
 import { brandFootageTools } from './brand-footage.mjs';
 import { brandResultsTools } from './brand-results.mjs';
+import { brandTrendsTools } from './brand-trends.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -89,6 +90,7 @@ export const ALL_TOOL_MODULES = [
   brandLibraryTools,
   brandFootageTools,
   brandResultsTools,
+  brandTrendsTools,
 ];
 
 /**

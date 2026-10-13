@@ -112,6 +112,8 @@ See Hard limits in the `research` skill for the search, fetch and turn totals by
 
 A lite spawn happens when the brand files already carry sourced proof points and verbatim customer language. Your questions are then only the claims this job makes that those files do not answer; everything they do answer is cited from them, not searched again.
 
+Brand onboarding research writes `brand/audience.md` and `brand/positioning.md` from pages it read and saved, so a brand onboarded on the current version usually has them filled. A file that begins `Filled from brand onboarding research` is filled: cite its proof points and customer phrases with the source and date on their rows. A file that begins `Not filled from research`, or still holds only `unknown` rows, is the empty template and gives you nothing to cite.
+
 ## Rules
 
 The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply; rule 1 is restated in full below because you fetch the open web. Fetch-before-cite, verbatim quoting, staleness, what-was-not-found and the per-question budget are in the `research` skill.

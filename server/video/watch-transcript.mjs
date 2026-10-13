@@ -9,10 +9,11 @@
  * and carried over line removal.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { newId, nowIso } from '../lib/ids.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 /**
  * @typedef {object} Segment
@@ -347,6 +348,6 @@ export function writeTranscript(options) {
   };
   const temporary = `${path}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(transcript, null, 2)}\n`, 'utf8');
-  renameSync(temporary, path);
+  renameReplacing(temporary, path);
   return { transcript, path };
 }

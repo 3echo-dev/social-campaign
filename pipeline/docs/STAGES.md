@@ -53,6 +53,7 @@ The stepper also names the roles working under the current stage, so a long stag
 |---|---|
 | `producer` | Social media manager |
 | `researcher` | Researcher |
+| `trend-scout` | Trend Scout |
 | `strategist` | Strategist |
 | `copywriter` | Copywriter |
 | `scriptwriter` | Scriptwriter |

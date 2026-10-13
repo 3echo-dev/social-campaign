@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 import { handoffSent } from './handoff.mjs';
 import { BOARD_OWNER_TTL_MS, releaseClaim, takeClaim } from './session-claims.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
 const SAFE_ARTIFACT_ID = '[A-Za-z0-9_-]{8,128}';
@@ -90,7 +91,7 @@ function writeJsonAtomic(file, value) {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, JSON.stringify(value, null, 2), { encoding: 'utf8', flag: 'wx' });
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -199,7 +200,7 @@ export function recordBoardAlias(root, uuid) {
   try {
     writeFileSync(temp, JSON.stringify({ ...record, aliasUrl, updatedAt: new Date().toISOString() }, null, 2), { encoding: 'utf8', flag: 'wx' });
     if (!readFileSync(file).equals(before)) return null;
-    renameSync(temp, file);
+    renameReplacing(temp, file);
     return aliasUrl;
   } catch {
     return null;

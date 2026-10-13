@@ -24,7 +24,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
-  realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync,
+  realpathSync, rmdirSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,7 @@ import { sniffMagic } from '../media/mime.mjs';
 import { probeMedia } from './media-probe.mjs';
 import { CAROUSEL_MAX, INSTAGRAM_FEED_RATIO, TIKTOK_PHOTO_MAX, VIDEO_LENGTHS } from './publish-preflight.mjs';
 import { THREE_ECHO, jobAt, readLanded } from './facts.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const PIPELINE_SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -329,7 +330,7 @@ function placeOne({ root, brandSlug, jobDir, checked, known, probe, now }) {
       // The name carries the start of the hash: the same content already there is kept as it is, anything else is not ours to remove.
       if (sha256OfFile(final) !== sha256) throw new Error('A different file is already stored under that name. Try again.');
       created = false;
-    } else renameSync(temp, final);
+    } else renameReplacing(temp, final);
     const measured = probe(final, checked.kind) || {};
     return {
       created,

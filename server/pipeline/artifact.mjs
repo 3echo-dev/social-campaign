@@ -13,7 +13,6 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -25,6 +24,7 @@ import * as runtime from './runtime.mjs';
 import { boardJobDocuments, boardSnapshot, boardSummary } from './board.mjs';
 import { ARTIFACT_PATH, ARTIFACT_SOURCE_VERSION, artifactIdOf, canonicalArtifactUrl, isBoardUrl, projectionFileName, projectionHashFromFileName, readBoardLink, recordProjectionWritten } from './board-freshness.mjs';
 import { JOB_DOCUMENT_COLLECTION } from './job-document.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export { ARTIFACT_SOURCE_VERSION };
 export const MAX_BATCH_WRITES = 50;
@@ -358,7 +358,7 @@ function writeTextAtomic(filePath, text) {
   const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    renameSync(temp, filePath);
+    renameReplacing(temp, filePath);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -369,7 +369,7 @@ function writeBufferAtomic(filePath, bytes) {
   const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temp, bytes, { mode: 0o600, flag: 'wx' });
-    renameSync(temp, filePath);
+    renameReplacing(temp, filePath);
   } finally {
     rmSync(temp, { force: true });
   }

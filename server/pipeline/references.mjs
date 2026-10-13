@@ -10,6 +10,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export const REFERENCE_TYPES = Object.freeze({
   picture: { label: 'Reference picture', use: 'Studio reference image', kinds: ['image'] },
@@ -192,7 +193,7 @@ export function updateReferenceManifest(jobDir, change) {
       const mf = manifestFile(jobDir);
       const temp = `${mf}.tmp-${process.pid}-${randomUUID()}`;
       writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`);
-      renameSync(temp, mf);
+      renameReplacing(temp, mf);
     }
     return next;
   } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
@@ -225,7 +226,7 @@ export function addReference({ jobDir, reference, requestId = null, by = null, n
     if (!inside(join(realpathSync(jobDir), 'inputs', 'references'), dest)) throw new Error('A reference must stay inside its job folder.');
     const temp = `${dest}.tmp-${process.pid}-${randomUUID()}`;
     writeFileSync(temp, checked.buffer);
-    renameSync(temp, dest);
+    renameReplacing(temp, dest);
     const rel = `${checked.type}/${id}/${fileName}`;
     const entry = {
       id,

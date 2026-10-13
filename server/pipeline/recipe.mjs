@@ -1,11 +1,12 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { UserFacingError } from '../lib/errors.mjs';
 import * as runtime from './runtime.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts');
@@ -50,7 +51,7 @@ function writeJsonAtomic(file, value) {
   mkdirSync(dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}-${randomUUID()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  renameSync(temp, file);
+  renameReplacing(temp, file);
 }
 
 function resolveBrand(root, brand) {

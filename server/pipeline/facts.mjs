@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import {
   ELEVEN_LABS_MEDIA, FACT_FILE_DENY, MUSIC_MODEL, MUSIC_TOOL, isMusicCall, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
   asObject, isFactFile, toolBase,
 } from './spend-tools.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 
 export { IMAGE_CREDITS_EACH };
 export {
@@ -1554,7 +1555,7 @@ export function saveQuote(job, input, options = {}) {
     mkdirSync(dirname(file), { recursive: true });
     const temp = join(dirname(file), `.quote-${process.pid}-${Date.now()}.tmp`);
     writeFileSync(temp, bytes, 'utf8');
-    renameSync(temp, file);
+    renameReplacing(temp, file);
   }
   return { quote, sha256: sha256(bytes), changed, made, dropped };
 }
