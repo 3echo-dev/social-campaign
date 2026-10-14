@@ -1,0 +1,11 @@
+# Competitor ad research
+
+Read by `pipeline/skills/research/SKILL.md`. Each section is applied exactly as written here.
+
+### Ad research (Meta Ad Library, TikTok Top Ads)
+
+Competitor ad research is one attempt per library, then blank.
+
+- **Meta Ad Library.** First use the Meta Ads connector tool `ads_library_search` (it may carry a connector prefix; match on the base name): `search_terms` for a brand or niche keyword, `page_ids` to pull one competitor's ads, `countries` as ISO-2 codes from the target market, `ad_active_status` `ACTIVE`, `limit` 50 or less. It needs an active ad account in that connector and returns the page name, headline, run dates and an `ad_snapshot_url` per ad; there is no video file. To watch an ad, open its snapshot link in the person's signed-in Chrome only if the Chrome tools are connected; otherwise record the ad text and the link and move on. Read-only: no other tool of that connector is used for research. If the connector is not connected or the call fails, make one attempt with the plugin's `social_ad_search` with `platform: "meta"` (`advertiser_or_query`, `country`), which falls back to a stealth browser read by itself; if that also fails, leave the Meta ad rows blank with the reason.
+- **TikTok Top Ads (Creative Center).** Use the plugin's `social_ad_search` with `platform: "tiktok"` (its stealth browser route), one attempt, with brand or product words as the keyword (the competitor's brand name, or one or two key words): the keyword is typed into the Creative Center's own search box, so a long phrase matches nothing. The result says `list_scope`: `keyword` is the ads that match, `region_wide` means the keyword could not be applied and the list is the region's top ads in general (say so; it is not the industry's). A search that matches nothing is an answer, not a failure to retry. Top Ads shows no start date and no spend: rank by the Creative Center likes and CTR when the result gives them, else keep its list order, and never write "running since" for a TikTok ad. If it fails, leave the TikTok ad rows blank with the reason. The TikTok for Business connector has no Top Ads tool, so do not look there for competitor ads.
+- Record what each library returned, or `skipped: <reason>`, in `research/competitors.md`; a library that gave nothing is never searched a second way.

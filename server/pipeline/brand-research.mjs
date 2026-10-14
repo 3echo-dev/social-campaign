@@ -330,7 +330,8 @@ export function startBrandResearch({ root, brand }) {
   };
 }
 
-const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'SKILL.md');
+// The onboarding workstream lives in its own file, so job researchers loading the skill do not read it.
+const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'references', 'brand-onboarding.md');
 
 /**
  * The brand onboarding section of the research skill, read from this plugin's own copy so it can go

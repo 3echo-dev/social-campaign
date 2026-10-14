@@ -33,6 +33,18 @@ metadata:
 - Artifact handoff
 - Recovery
 
+## Routing
+
+Read a branch file only when its condition holds; every other path stays on this page.
+
+- Read `branches/diagnose-request.md` (relative to this skill folder) when the person says what they want to get done, or says the planned pipeline is wrong; it covers diagnosing the pipeline from `pipelines_list`, `sourceRefs` and the brand question and is done when one pipeline and brand are picked and the job is created with its `kind` and `kindReason`.
+- Read `branches/pasted-link.md` (relative to this skill folder) when the person pastes a link; it covers `pipeline_reference_from_url`, the sign-in fallback in Chrome and each failure status and is done when the link is saved as a reference, or its status is recorded, with one plain line.
+- Read `branches/chat-only-jobs.md` (relative to this skill folder) when the person asks to work in chat without the board; it covers `chatOnly`, presenting in chat and `pipeline_chat_decision` and is done when the approvals are recorded through chat and the board is never opened for that job.
+- Read `branches/direction-and-angle.md` (relative to this skill folder) when a content job reaches its direction card or angle pick; it covers showing and taking the direction and the angles and is done when the direction is approved before research and the angle is picked.
+- Read `branches/reference-evidence.md` (relative to this skill folder) when N reference videos were asked for or style references are needed, and fewer than N are verified; it covers counting verified references and the one question about links that failed and is done when the brief is written with its `References: n of N verified` line and the one question is asked.
+- Read `branches/finish-video.md` (relative to this skill folder) when a joined video (`gate: "cut"`) is approved or finished, or music, voice-over or captions are added; it covers the combine card, the finishing choice, captions, ElevenLabs music and voice and the finished video and is done when the finished video from `finish-video.py` is approved.
+- Read `branches/helpers-hand-backs.md` (relative to this skill folder) when a routed job goes to the producer or the producer or a helper hands back; it covers waiting for helpers, reading `agents.jsonl` and what to tell the person and is done when the hand-back is understood from the log and the files.
+
 ## Talking to the person
 
 Speak in plain marketing language.
@@ -142,47 +154,7 @@ Retrying the same request ID with the same arguments must return the existing re
 
 ## What does the person want to get done
 
-A job starts from the person's own words, never from a job type they pick.
-The board asks one question, "What do you want to get done?", in a box on the home page and in Needs you.
-The person writes it in their own words, may choose a brand and add links, and sends it.
-It arrives as a `create_job` request that carries no kind: `brief` is their words, `title` is the first line of them, and `brand` and `sourceRefs` are there only when they chose a brand or gave links.
-In chat, what the person says is the same thing: treat their words as the brief.
-
-Never ask "What do you need?" with a list of job types, and never ask the person to pick a pipeline.
-You diagnose which one fits, then create and route the job.
-When the person has not said what they want yet, point them to the box in one plain line, for example "Tell me what you want to get done in the box on the board and I will take it from there", or let them say it in chat.
-
-Diagnose in this order:
-
-1. Read the words against `pipelines_list`.
-   In the Markdown each pipeline has a short description, then its Examples, Not for and Needs lists, and its heading names its `kind` in brackets.
-   Call it once per session with `format` set to `markdown`, which has all the diagnosis needs, and reuse the answer; ask for one pipeline by its id when you need its stages.
-2. Pick one pipeline, and keep its `kind`.
-   `publish_post` is for the person who already has the finished picture, pictures or video and only wants it posted as it is; new-job says how to tell it from a job that makes or edits something.
-3. Ask only for what is still missing, through the questions this skill and new-job already describe: a brand when the pipeline needs one and none was chosen, then the intake questions in one batch after the job exists.
-   Never ask again for what the words, the links or the brand profile already say.
-4. Create the job and route it as new-job describes, with the `kind` you picked and, in `kindReason`, one short plain sentence of why.
-   The board shows it under the job's title as "Claude planned this as <pipeline name>: <reason>".
-
-When the person asks how their ads did, that is not a new job: follow the ad-results skill on the job it is about.
-
-When two or more pipelines fit, or none does, never ask before the job exists: create the job right away with the likeliest pipeline and ask which one on that job, as new-job describes, so the person lands on the job and the Director asks there.
-Board-sync's Questions on the board describes how to ask it.
-
-Parse every link already in the request into `sourceRefs` before asking anything else, each `{uri, mediaType}`: a web link is `url`, a video file link is `video`.
-The files of a `publish_post` are never `sourceRefs`: they go in `files`, as new-job describes.
-Never re-ask for a link or a file the request already gave.
-
-Files come in through chat, after the person sends the request; the board does not take them.
-The box says so ("Have files? Add them in chat after you send this.").
-
-A pipeline needs a brand when `pipelines_list` says `Needs a brand: yes`.
-A pipeline that lists no brand runs with `brand: "no-brand"`, unless the person names a brand that already exists in the workspace.
-When the pipeline needs a brand and the request carries none, use the brand without asking when exactly one brand is ready; otherwise ask which one in Needs you and in chat together, with the ready brands as the options, and wait for whichever answer arrives first.
-When no brand is ready, go through the brand gate below first, and let the board's onboarding card and its Needs you item lead.
-A request whose brand you have had to ask for is landed with the brand the person chose, as board-sync describes.
-
-When the person says in a comment that the planned pipeline is not right, ask what they want in Needs you and in chat together, as board-sync describes, and carry on from their answer.
+Moved to `branches/diagnose-request.md` (relative to this skill folder); see Routing above for when to read it.
 
 ## Brand gate
 
@@ -221,17 +193,7 @@ The import copies files into an immutable input revision and preserves the origi
 
 ### A pasted link is a reference
 
-When the person pastes any link, a Reel, TikTok, YouTube or other video, a picture, or a web page, and a job exists (create one first if none does), call `pipeline_reference_from_url` with that job and the link, with no extra question.
-Pass their words about it as `note`.
-It saves the link into the job's references and lists it in the references manifest: a video with its caption, thumbnail, sound and view counts, a picture as a picture, and a web page as its text and main picture.
-Say in one line what you got ("Saved that Reel as a reference: 'Morning routine', 12 s, with its caption").
-
-- Reference use only: learn from it, describe it, borrow the idea. Never repost it or use the downloaded file in a finished post, and say so if the person asks to.
-- If it returns `needs_sign_in` (a login wall), do not ask in chat. Go straight to view the page in the person's signed-in Chrome with the Claude in Chrome tools (open the URL, read the caption and text, take screenshots or frames for reference), in a background helper so you keep answering board requests. Viewing is read-only: never post, like, follow, comment, message, change settings or type credentials. Claude Code may show its own tool permission prompt; that prompt is the person's to answer, and you never try to avoid it. This is for a link the person pasted themselves, one look and no repeat. If the Chrome tools are not available or the extension isn't connected, record that link as not fetched and carry on; the link goes into the one end-of-run question about links that could not be fetched, where the person can upload the file with the board's "Add a reference" button. Never pass `cookiesFromBrowser` unless the person asks for it and says yes.
-- For `blocked`, `rate_limited`, `region_restricted`, `yt_dlp_missing`, `timed_out` or `too_large`, record the status for that link, leave the slot blank and carry on without retrying it. Mention it in one plain sentence, and offer the board upload button once, together with any other links that could not be fetched, never one question per link.
-- For `save_failed`, `download_failed`, `impersonation_missing` or `ffmpeg_missing`, say the real cause from the result in one sentence, with its fix when it gives one; these are problems on this computer, not the platform refusing.
-- A link the tool refuses as `private_address` or `invalid_url` is not retried.
-- When the content of the saved file matters, a fresh helper watches it (the researcher, or the videographer for a teardown) and hands back a few lines and the path of its notes; the Director never watches the video or reads its frames itself.
+Moved to `branches/pasted-link.md` (relative to this skill folder); see Routing above for when to read it.
 
 Use the job snapshot to show the current route, missing fields, questions, plan, stages, artifacts, decisions, and metrics.
 
@@ -249,15 +211,7 @@ Each `jobs` entry has jobId, brand, brandSlug, title, state, revision and waitin
 
 Read pipeline_board_requests before handling a request submitted from a board artifact.
 
-When the person asks to work in chat without the board, set `chatOnly: true` on the job (in `job` when creating it, or in the intake patch later).
-Present each step and every approval in chat, with pictures and videos as files, and take the approvals from chat.
-First present the review with `pipeline_review_present` as usual, show its files in chat, then record the person's answer with `pipeline_chat_decision`.
-Pass the gate you presented, approve or changes, and the person's own words as `confirmedBy`.
-It writes the same approval the board would, so the spend guard, the price and the later steps work as on the board.
-It refuses an answer to a review that was not presented, or whose files changed after the person saw them; present it again and ask again.
-On a job that uses the board, the price, the sample and the posting plan still need the person's tap on the board.
-Making the storyboard pictures (the sample first, up to 3 per panel) needs no question and no price: tell the producer to make the sample once the shot plan is written, and never write "no spend without approval" in a brief in a way that covers those pictures.
-Never open or publish the board for that job.
+Chat-only jobs (the person asks to work in chat without the board) are in `branches/chat-only-jobs.md` (see Routing).
 
 Board requests are intent only until the local runner validates them; server validation still runs on every apply.
 
@@ -288,17 +242,7 @@ When the person says no to a request in chat, decline it through pipeline_board_
 
 ### The direction card and the angle pick
 
-Every job that makes content (a post, a series, a creator-style video or a paid campaign) starts with a direction the person approves before any research, and later shows 2 or 3 angles with a short brief summary for them to pick from.
-new-job describes how the direction card is built and recorded.
-
-- In a chat-only job, show the direction card in chat, in plain words, and take the answer in chat.
-  Show the angles and the short brief summary in chat the same way, each angle as a plain label with its hook line, its call to action and one line on why.
-- On the board, ask the same things through `pipeline_board_ask` on the job, and say the same short line in chat, so the board's Needs you and the chat show one question.
-  The angle pick is the board's concept decision; follow board-sync's Decisions on the board and in chat.
-- The person answers by saying go, by editing, or on angles by picking one, mixing two, or saying "pick for me".
-  "Go", "approve" and "just do it" approve the card as shown.
-  "Pick for me" takes the angle you would choose: say which one and why in one line, and apply it as the pick.
-- Never ask for the direction twice, and never start research before the person has approved it.
+Moved to `branches/direction-and-angle.md` (relative to this skill folder); see Routing above for when to read it.
 
 ### Never stop waiting on an open gate
 
@@ -321,12 +265,7 @@ The only chat line allowed while a gate is open is the one short summary this fi
 
 ## Reference evidence that falls short is asked once, never waited for
 
-When the person asked for N reference videos (for example "the top 5 Reels in my niche"; N is 3 when they gave no number), or the job needs style references, read `research/competitors.md` before writing the brief and count only references that were verified, popular and in the job's niche. Off-niche results never count.
-A rung of the discovery ladder that the file logs as `skipped: <reason>` counts as done. Never send the researcher back to run a skipped rung, and never send it back because the file blames a walled search, hashtag or profile page: the brief goes ahead with what was found.
-If fewer than N were verified, the brief proceeds anyway. Its research line reads `References: n of N verified`, with the status of each link that was tried, and the blank slots stay blank.
-Ask the person ONCE, without blocking the brief: one `pipeline_board_ask` question on the Director card, and the same line in chat. Say in plain words how many were verified and give the counts, then list every single video link that could not be fetched and what each returned (for example "I could check 1 of the 5. I found 9 public video links, 1 downloaded and 8 could not be opened: this link returned a bot check, that one was removed"), never "Instagram and TikTok need a login" or any platform-wide login reason. Offer "I'll paste links" (TikTok, Instagram and YouTube links are downloaded with `pipeline_reference_from_url`) and "Continue with what you found" (its description says plainly that the brief is written without watched references), with `allowText` true. Collect every link that needed a sign-in or an upload into this one question; do not ask per video.
-Do not wait for the answer before writing the brief. Any answer without links, including "continue" or "you can look at any popular TikTok reels", means continue: it never re-runs the ladder or sends the researcher back to search again. Pasted links are downloaded and watched (`pipeline_reference_from_url`, then the teardown) and added to the brief's references when they arrive; nothing else is re-run.
-The brief's "What you're deciding" section states plainly how many references were verified and that the rest were left blank.
+Moved to `branches/reference-evidence.md` (relative to this skill folder); see Routing above for when to read it.
 
 ## Facts the copy depends on are asked early
 
@@ -342,15 +281,7 @@ Do not park such questions for the final approval; the final approval lists only
 
 ## Finishing the joined video
 
-The joined video (`gate: "cut"`) is a plain join: no captions, no music, no on-screen text. All of that is added once, by `finish-video.py`, in one style (bold white on a dark box, inside the safe area above the bottom 500 px), so the person approves the cut without being asked to like text that will still change. The order is fixed: joined video, finishing choice, finishing, finished video, post text, checks, final.
-
-1. The cut card is the combine card: three rows, each with its own choice. Music: from your library, upload a track, make with ElevenLabs (priced), none. Voice-over: from your library, upload your recording, make with ElevenLabs from the script (priced), none; it starts from the storyboard's `voice_over` answer. Captions: from the voice-over words, from the script words, none. The library is one for the whole workspace, filterable by brand. One click ("Approve + add these") approves the cut and records the picks. When a request arrives from the cut card (a `submit_decision` with `reviewId` `cut`), call `pipeline_decision_apply` right away and do nothing else: the server records the picks in `approvals/finishing.json` in the same step and its reply lists what is left (`next`). Do not ask the finishing question again, and do not decline, re-record or "convert" these requests yourself.
-2. A change note on the cut that only asks for finishing ("add captions and background music") is not a redo: `pipeline_decision_apply` approves the cut and records the choice read from the note. A note that asks for a real edit (order, trims, a shot, a redo) reopens the cut as before. A request that repeats something already decided is declined with `pipeline_board_request_decline` and `handled: true`, so the board shows "Already handled".
-3. Only when the cut was approved some other way (in chat) and no choice is recorded, ask ONE question with `pipeline_board_ask` ("Add captions", "Add background music", "Both", "Skip, use as is") and record it with `pipeline_finishing_choice` (pass `combine`, or captions, music, both, skip).
-4. Captions: before running `finish-video.py` with captions, get the words that were actually spoken. Call `media_transcribe` on `media/D{n}/final-raw.mp4`; when it answers `needs_transcription_provider`, follow its steps (`creative_transcribe_audio` when ElevenLabs is connected, priced as a transcription item; `transcript_save` to keep it). Finishing builds the captions from that transcript. Without one it uses the script wording, and you must say so: "captions come from the script, not checked against the speech".
-5. Music and voice-over need an owner-clicked price when ElevenLabs makes them, and that is the only way to make them. Music: `creative_generate_in_flow` with `node_type: "music"` and an `eleven_music` model, priced with `estimate_only: true`, saved as a `music` item with `pipeline_quote_save`, made once after the price click (the spend guard lets only that call through, and only with an approved music price; pictures and video stay refused on this route). Voice-over: `creative_generate_speech` as for any voice line, with `generations_count` 2 or 3 for takes. Then `pipeline_combine_takes` saves the takes in the job and the library ("made with ElevenLabs", tagged with the brand); several takes are shown side by side on the board and the answer is recorded with `pipeline_combine_set`. Upload rows: ask with `pipeline_board_ask` (`wantsUpload` audio), then `pipeline_combine_set` with source `upload` and the path. Never create audio by hand, with Python or any other script; never say the video has music before a track is added.
-6. After `finish-video.py` exits 0, present the finished video (`pipeline_review_present` with `gate: "finish"`, review copies as for the cut) and wait. "Approve" lets the post text come next. A change asked there reruns finishing only (change the recorded choice with `pipeline_finishing_choice` if the note says so, then run `finish-video.py` again): the approved cut and its text plan stay. Finishing also draws the post's on-screen text (`media/D{n}/onscreen.json`, saved by the join), so "Approve as is" still makes a finished video when the script has on-screen text.
-7. Never re-join the clips yourself or run your own ffmpeg to finish. The stamped output of `finish-video.py` is the only finished video the board accepts.
+Moved to `branches/finish-video.md` (relative to this skill folder); see Routing above for when to read it.
 
 ## Say what was actually done
 
@@ -372,15 +303,7 @@ Never ask the person to fix a code problem: say "Something went wrong on our sid
 
 ## Helpers and hand-backs
 
-When you hand a routed job to the producer, tell it in one line that every helper it starts runs with `run_in_background: false` and that it answers only when the step is done.
-The producer may still hand back "not finished", or the host may report a helper as launched. That means the work is still going, not that it failed.
-
-1. Never decide that a step "did not land" from a short look at the job folder. A helper takes 5 to 15 minutes, and a file that is not there after seconds says nothing.
-2. Before you resume the producer, start any helper again or say that something stopped, Read `agents.jsonl` in the job folder. A `started` line for a helper with no later `stopped`, `finished` or `failed` line for it means it is still working: wait for its hand-back, which arrives by itself, and do not send the producer a message that says the work did not land.
-3. Never start a second producer. If the producer handed back without its work and no helper is open in `agents.jsonl`, continue the same producer once with a plain instruction to carry on from the files, and tell it to start only the helper that is missing.
-4. Tell the person only what the log and the files show. Say "the first try stopped" or "I restarted it" only when `agents.jsonl` has a `failed` or `stopped` line for that helper and a second one really was started. A helper that was merely slow was not restarted, and the message says it is still working.
-5. When the producer's hand-back says the brief and the ideas disagree ("BRIEF AND IDEAS DISAGREE"), or that a helper was run twice, say it in the chat message that opens the concept pick, in one plain line: for example "The plan behind these ideas was rewritten once, so it differs a little from them in the angle. The script follows the idea you pick." Do not leave it out because it is awkward.
-6. A question whose answer can change the ideas (real screens or an invented example, which helpers to show, whether a promise is real) is asked before the ideas are written, as a `pipeline_board_ask` question with `blocking: true` and the recommended answer first. The ideas wait for the answer: nothing is started on a default, "go" on another card does not answer it, and the concept pick is never opened while a question of yours is open (the server refuses). Questions that only matter for the script or the pictures are held until the idea is picked, then asked at the script step.
+Moved to `branches/helpers-hand-backs.md` (relative to this skill folder); see Routing above for when to read it.
 
 ## Stage behavior
 

@@ -28,9 +28,9 @@ Read the current job snapshot, brand profile, input revisions, accepted research
 
 Run exactly one workstream per dispatch, or, for a `research` or `creative_analysis` job, exactly one report task named by the active plan.
 
-The brand-onboarding workstream and the Hard limits table are defined in pipeline/skills/research/SKILL.md.
+The brand-onboarding workstream is defined in pipeline/skills/research/references/brand-onboarding.md and the Hard limits table in pipeline/skills/research/SKILL.md.
 
-For the brand-onboarding workstream, follow the draft contract pasted in the spawn prompt (`draftContract`); it is the same text as the brand-onboarding section of pipeline/skills/research/SKILL.md, which you need not find.
+For the brand-onboarding workstream, follow the draft contract pasted in the spawn prompt (`draftContract`); it is the same text as pipeline/skills/research/references/brand-onboarding.md, which you need not find.
 If the spawn prompt has no draft contract, ask for it back in your report rather than guessing the draft shape.
 Brand-onboarding research runs as parallel workers, and then the spawn prompt names a `part` (`website`, `own`, `competitors`, `competitor-1`, `competitor-2`, `competitor-3`, `pains` or `viral`), its `partPath` and its `contractPath` instead of a draft contract.
 Read the file at `contractPath` first: it is your whole contract, the research skill's onboarding section cut to your part, and every rule below that says "the draft" means your part file.

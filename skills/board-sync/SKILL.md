@@ -21,16 +21,30 @@ user-invocable: false
 - Housekeeping
 - Present a review
 - Decisions on the board and in chat
-  - Storyboard panels
-  - Sample image
-  - Pictures and clips
-  - The report
-  - Final approval and the label check
-  - Review media on the board
+  - Storyboard panels (references/review-gates.md)
+  - Sample image (references/review-gates.md)
+  - Pictures and clips (references/review-gates.md)
+  - The report (references/review-gates.md)
+  - Final approval and the label check (references/review-gates.md)
+  - Review media on the board (references/review-gates.md)
 - Recipe picks and the paying Studio workspace (references/picks.md)
 - Which Metricool brand posts (references/posting.md)
 - Native connectors
 - Where the posts stand (references/posting.md)
+
+## Routing
+
+Read a branch file only when its condition holds; every other path stays on this page.
+
+- Read `references/request-files.md` (relative to this skill folder) when a board request carries a file or link (kit logo or `kit.references`, product photo, `add_reference`, `args.references`, `remove_reference`); it covers saving each transit copy locally, passing the saved path, and deleting the transit copies and is done when the request is applied or declined and every transit copy is deleted.
+- Read `references/brand-requests.md` (relative to this skill folder) when the request is `create_brand`, `save_brand_details`, `start_research`, `brand_rename`, `onboard_brand`, `bank_remove`, `brand_folder_add` or `brand_folder_pick`; it covers the onboarding steps, the old single form, library removal and brand folders and is done when the request is applied or declined and the projection is published.
+- Read `references/job-requests.md` (relative to this skill folder) when the request is `create_job`, `update_intake`, `attach_product_photo` or `continue_job`, or a comment says a job is the wrong kind; it covers diagnosing a kind-less `create_job`, the `job` field names, Finish the brief answers and the product photo lookup and is done when the job is created with its pipeline (or its pipeline question is open) and the projection is published.
+- Read `references/connector-requests.md` (relative to this skill folder) when the request is `skip_provider`, `connectors_continue` or `connect_provider`, or an ad account question is answered in chat; it covers the read-only probe for each provider and saving Metricool brands or ad accounts and is done when the probe is saved, the request is applied only on `ok: true` or declined, and the projection is published.
+- Read `references/brand-intelligence.md` (relative to this skill folder) when the request is `subtopics_confirm` or `plan_cell_start`, or a concept pick carries Strategy picks; it covers confirming the six subtopics, starting a post from the 6 by 5 plan and the Strategy picks note and is done when the request is applied or declined and the projection is published.
+- Read `references/decision-requests.md` (relative to this skill folder) when the request is `submit_decision`, an apply reports `needs_reconciliation`, or a decision is answered in chat; it covers `pipeline_decision_apply` (credits, notes, stale files), reconciliation, and landing a chat decision and is done when the decision is applied or re-presented and the documents are written again.
+- Read `references/review-gates.md` (relative to this skill folder) when a storyboard, sample, pictures, clips, joined or finished video, report or final post is presented or answered, or review media must be uploaded; it covers panel verdicts, the sample, pictures, clips, cut and finish reviews, the report, the label check and review copies and is done when the decision is applied or the change is re-priced and re-presented, and the documents are written again.
+- Read `references/picks.md` (relative to this skill folder) when applying `choose_recipe`, a concept decision carrying `recipe`, or `choose_studio_workspace`; it covers recipe picks and the paying Studio workspace and is done when the pick is applied and the projection is published.
+- Read `references/posting.md` (relative to this skill folder) when applying `choose_metricool_brand`, `choose_publish_route`, `choose_post_type`, `choose_post_time`, `resolve_post` or `mark_posted`, or bringing sent posts up to date; it covers which Metricool brand posts, where the posts stand and marking a post as posted and is done when the request is applied and the board shows where the posts stand.
 
 Local pipeline files are the canonical job state.
 The Claude artifact stores projections and user requests.
@@ -92,47 +106,7 @@ Keep the source file path out of the artifact database.
 Follow this procedure for every request before calling `pipeline_board_request_land`.
 Never read plugin source, library code, or test files to work out how to handle a request; the shape below is complete.
 Never print, re-type, or otherwise hand-verify base64 or other bytes from a request; the server validates every byte on land and apply.
-If `args.kit.logo.action` is `suggested`, the person took one of the logo suggestions of the kit step (`skills/onboard-brand/SKILL.md`, section 4a): the picture is already on this computer and the request carries only its id, so there is nothing to download and nothing to delete; land and apply `args` unchanged.
-If `args.kit.logo.action` is `asset`, the board already uploaded the downscaled logo (and its thumb) to the artifact's own asset store instead of inlining it, so the request carries only ids, never bytes.
-Call the Artifact tool's `read` action with `url` set to the board's artifact URL and `path` set to `args.kit.logo.assetId`; it saves the logo to a local file and returns that file's path.
-Call `read` again the same way with `path` set to `args.kit.logo.thumbAssetId` when present, for the thumbnail.
-Pass `args` to `pipeline_board_request_land` unchanged except for `kit.logo`, which becomes `{action: 'file', path: <saved logo path>, thumbPath: <saved thumb path>}`.
-Then call `pipeline_board_request_apply` with `confirmedBy` set to `board request <requestId>`, and publish the workspace projection.
-Once the apply has succeeded, delete both transit copies from the artifact's asset store with the Artifact tool's `delete` action: `url` set to the board's artifact URL and `path` set to `assetId`, then again with `path` set to `thumbAssetId`.
-This is the owner's standing instruction: the asset store is only a transit path from the board to this computer, and the logo must never remain stored on claude.ai.
-If the host asks the person to confirm either delete, that is expected; do not skip the delete to avoid the prompt.
-From here on the logo lives only in the local workspace, under `workspaces/<brand>/brand/assets/`, recorded in that brand's `brand-kit.json` and `profile.json` and nowhere else.
-
-Photos of the brand's world travel the same way, in `args.kit.references` (a list, optional, up to 5).
-For each item whose `action` is `asset`, call the Artifact tool's `read` action with `path` set to its `assetId`, and pass that item to `pipeline_board_request_land` as `{path: <saved path>, fileName}`.
-An item whose `action` is `upload` already carries its bytes and goes through unchanged.
-After the apply has succeeded, delete each transit copy the same way as the logo's.
-A photo that cannot be saved never stops onboarding: the result says how many were saved, and the rest can be added later.
-
-A product photo, on `create_job` (`args.photo`) or `attach_product_photo` (`args.photo`), travels the same way: if `action` is `asset`, call the Artifact tool's `read` action with `path` set to `args.photo.assetId` to save it to a local file, then pass that saved path as `photo.path` (dropping `assetId`) to `pipeline_job_create` or `pipeline_product_photo_attach`.
-If `action` is `upload` instead (the pre-assets fallback, `dataBase64`), decode those bytes to a local file yourself before calling either tool with that path; never type or re-key them.
-Once the tool call succeeds, delete the transit copy from the artifact's asset store the same way as the logo's, with `path` set to `assetId`, when one was used.
-The photo lives only under that brand's own `inputs/<brand>/`, recorded on the job as `productAsset`, and nowhere else.
-
-A reference the person added on the job page (`add_reference`, `args.reference`) travels the same way: a picture, video, audio file or add-on arrives as `action` `asset` (an `assetId` in the artifact's asset store), `upload` (`dataBase64`, only for small files) or `text` (the caption or notes text itself, nothing to download).
-For `asset`, call the Artifact tool's `read` action with `path` set to `args.reference.assetId` to save it to a local file, and pass `reference.path` as that saved path (dropping `assetId`) to `pipeline_board_request_land`.
-For `upload`, decode those bytes to a local file yourself first; never type or re-key them.
-Then apply with `pipeline_board_request_apply` like any other request, delete the transit copy from the artifact's asset store the same way as the logo's, and publish the workspace projection.
-A `create_job` request can carry `args.references`, a list of up to 8 references the person added in the new-job form, each shaped exactly like `add_reference`'s `reference`.
-Land each one the same way before landing the request: for `asset`, save it with the Artifact tool's `read` action using `path` set to its `assetId` and put the saved path in that reference's `path` (dropping `assetId`); for `upload`, decode the bytes to a local file first; `text` needs nothing.
-Leave `references` in `args` otherwise unchanged, then apply once: the server checks every reference before the job exists (a bad one refuses the whole request, so tell the person the server's plain line and decline it), then saves them into the new job's `inputs/references/` and manifest, and reports how many it saved.
-Delete each transit copy afterwards, as above.
-A link the person pasted on the job page arrives as an `add_reference` whose `reference` is `{action: 'link', url, note}` (an https address, no file to land or download).
-Apply it with `pipeline_board_request_apply` like any other request: the server saves the link as a job reference itself, the same way `pipeline_reference_from_url` does for a link pasted in chat (a video-site link is downloaded with its caption and thumbnail, a direct picture or video link or any web page is saved with its title, text and main picture), and it can take a minute.
-Do not call `pipeline_reference_from_url` for it as well.
-If the apply refuses it (a login wall, a private address, a page that could not be read), tell the person the server's plain line, suggest the upload button for a file they already have, and decline the request with that reason.
-An `add_reference` request can also carry `to` (the agent chat the person sent it from, which then shows it as a chip) and `questionId` (an open question posted with `wantsUpload`, which the apply answers for you); land and apply it exactly as above, and do not answer that question again by hand.
-The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
-If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
-A reference can carry an optional `role` (`logo`, `product`, `person`, `style`, `motion` or `sound`); the server ignores any other value and stores a valid one on the manifest entry.
-When the person picks a file already saved on the brand (the job page's "From this brand"), the `add_reference` request's `reference` is `{ action: 'brand', brandAssetId, note? }` with no file to download: land and apply it as is, and the server copies the brand's own saved logo (as a picture with role `logo`) or reference photo into the job. Never add a path to it.
-A `remove_reference` request (`args.referenceId`) is the person taking a saved reference off the job page; it carries no file, so land and apply it like any other non-decision request, then publish the workspace projection.
-The server takes the entry out of the manifest and moves its files to `inputs/references/.removed/<id>/` inside the job folder (nothing is deleted); an id that is no longer on the job is refused with a plain line, so decline the request with it. Do not use a removed reference afterwards.
+The file-transit procedures for a board request's logo, photos, references and product photo are in `references/request-files.md` (see Routing).
 
 Only one window handles a board click.
 The newest window owns the board: opening, resuming or clearing a chat makes that window the owner, and an older window is told once, in plain words, that another window now owns the board; it then leaves the board alone and does not re-arm, list, land or apply anything for it.
@@ -164,165 +138,16 @@ A request from another workspace is refused, never applied, and server validatio
 If the person says no to a request in chat, before or after it lands, call `pipeline_board_request_decline` with the requestId, confirmedBy, and their reason if they gave one.
 Merge only the returned `artifactReceipt` into that request's artifact document, exactly as for an applied request.
 
-For brand creation, onboarding, new jobs, or local imports, apply immediately with `pipeline_board_request_apply` and the requestId and confirmedBy.
-Brand onboarding on the board is three requests, and research starts only on the third (the steps are in `skills/onboard-brand/SKILL.md`, "The three steps"):
-- `create_brand` (`name`) is the person naming a new brand. Apply it, publish the workspace projection and say in one line that the brand is created and its page is ready for details. Do not start research.
-- `save_brand_details` (`brand`, `profile`, optional `kit`) is the person saving what they typed on the brand's page, as often as they like. Apply it and publish the workspace projection. Do not start research, and say nothing about a save that worked. If the apply refuses it, decline it with the plain line.
-- `start_research` (`brand`, `profile`, optional `kit` and `metricoolBlogId`) is the person pressing Start research. Apply it, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields. If the apply refuses it (it needs a website or at least one social account), decline it with the plain line.
-- `brand_rename` (`brand`, `name`) changes the brand's display name only. Apply it, publish the workspace projection and say in one line what the result says: the name changed and the brand's folder keeps its original name. If the apply refuses it (the name is empty or another brand has it), decline it with the plain line.
-
-A `kit.logo` or `kit.references` on a `save_brand_details` or `start_research` request travels exactly as the procedure above describes for `onboard_brand`: read each asset, pass the saved paths when landing the request, and delete the transit copies after the apply.
-The stable request ID of each request makes a retry return the same receipt, so a retry never creates a second brand or starts research twice.
-
-The old single-form operation `onboard_brand` carries the name plus all four channel answers in one profile and still works, as create, details and start in one request.
-Validate the full profile before applying it, with each channel as a URL or explicit `Not available`.
-The stable request ID covers creation and completion together, so a retry resumes the same brand and never creates a second one.
-After applying `onboard_brand`, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields.
-An `onboard_brand` request that carries `kit` and `brand` for a brand that already did research is the Save and continue submission: apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection so the board moves to New job.
-If something about the submitted profile is worth flagging, for example a mismatched region between two channels, say so in chat in one plain sentence once research starts; do not block on it.
-Existing drafts use the safe profile projection to prefill the same page (a brand that has not started research shows what was saved with Save details).
-New jobs require a completed brand profile, except for a pipeline whose required inputs in `pipelines_list` do not list a brand (today `research`, `creative_analysis` and `video_breakdown`), which may carry `brand: "no-brand"` or a brand that already exists in the workspace.
-
-A `create_job` request from the board's "What do you want to get done?" box carries the person's own words as `brief`, a `title` made from the first line of them, and `brand` with `brandName` and `sourceRefs` only when the person chose a brand or gave links.
-It carries no `kind`: the person never picks a job type, so you diagnose it.
-
-Before landing a kind-less `create_job`:
-
-1. Read `brief`, the links and the chosen brand's saved profile against `pipelines_list`, and pick the one pipeline that fits, as new-job's Pick the pipeline from the person's words describes.
-   When two or more pipelines fit, or none does, never ask before the job exists and never leave a question with no job on the home page.
-   Pick the likeliest pipeline, add `pipelineUnsure: true` to `args.job`, and land and apply the request as below, so the person lands on the new job at once with their words as the brief.
-   Right after the apply, ask the pipeline question on that job with `pipeline_board_ask` and its `jobId`, with the likeliest pipelines' plain names or answers as options and a typed answer, write the returned `documents`, and say the same question in chat, as new-job's Pick the pipeline from the person's words describes.
-   Nothing is planned or started until the answer sets the pipeline with `pipeline_intake_update`.
-2. Put the pipeline's `kind` and, in `kindReason`, one short plain sentence of why into `args.job`, with every other field the words, the links and the brand profile state or clearly imply, so the job routes the moment it is created.
-3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in Needs you and in chat together, with the ready brands as options.
-   Land the request with `args.brand` set to the brand's slug and `args.brandName` to its name, from the person's answer or the one ready brand, and nothing else.
-   A pipeline that lists no brand needs none: land without one.
-   A landing that fails with the brand line ("A post or campaign needs a brand") means this step was skipped: ask the brand question, then land again.
-4. Land the request with `args` otherwise unchanged except for that added `job` object, then apply it with `pipeline_board_request_apply`.
-   Do not publish the board between landing and applying: the board must never show a question the brief already answers.
-
-An older request that does carry a `kind` is landed the same way, with `kindReason` added.
-For a `publish_post` request, the box takes no files: after the apply, ask for the files in chat if the person has not given them, and add them with `pipeline_post_files_add`, as new-job describes.
-A request never carries a file path from the person's computer.
-
-If the applied job's route blocks with "a photo of the product" among its blockers and the brief gave no photo, do not publish or ask for one yet.
-Look for the product's own page on the brand's official website, with web search restricted to that domain, then call web_product_photo_find with the brand, the job ID, and that page address.
-When it returns attached, continue from the refreshed, no longer blocked route.
-When it returns not_found, publish as usual so the board's Finish the brief form asks the one plain photo question.
-Never mention rules, tools, files, or where the picture came from to the person.
-
-Use these exact `job` field names and values:
-
-- `request`: the brief, in the person's words.
-- `kind`: the pipeline you picked, one of `organic_post`, `organic_series`, `ugc_creative`, `paid_campaign`, `content_repurpose`, `publish_post`, `research`, `creative_analysis`, `video_breakdown` or `results_review`.
-- `kindReason`: one short plain sentence, at most 200 characters, of why that pipeline fits, in the person's terms; the board shows it under the job's title.
-- `pipelineUnsure`: `true` only when the words fit more than one pipeline; it holds the job unplanned until `pipeline_intake_update` sets the kind. Leave it out otherwise.
-- `sourceJobId`: for `results_review` only, the id of the earlier job whose results to read (it must be a job of the same brand); ask which job if the person has not said.
-- `sourceRefs`: for every kind except `publish_post`, one object per link or file already given, each `{uri, mediaType}` where `mediaType` is `url` for a link or `video` for a video file.
-  Never use it for the files of a `publish_post`: those go in `files`, as new-job describes.
-- `caption` and `aiMade`: for `publish_post` only, exactly as new-job's "The job for `publish_post`" describes; the caption word for word, `aiMade` a yes or a no.
-- `objective`: `awareness`, `engagement`, `traffic`, `leads`, `sales`, `app_installs` or `retention`.
-- `distribution`: `organic`, `paid` or `both`.
-- `platforms`: a list of `facebook`, `instagram` and `tiktok`.
-- `deliverables`: one object per platform and format, `{id: "D1", platform, count, creativeDiscipline, placement}`, where `placement` is the fixed post type (instagram `post`, `reel` or `story`; facebook `post`, `reel` or `story`; tiktok `video` or `photo`), read from the brief and left out when the brief does not settle it, and `creativeDiscipline` is `static_image`, `carousel`, `brand_video`, `ugc`, `motion_graphic` or `text_only`, a `ugc` item adds `ugcSource: "ai"`, a `ugc` or `brand_video` item where a person or character speaks to camera adds `talkingCharacter: true`, and a stated shape adds `aspectRatios` (for example `["9:16"]`) and `durationSeconds: {min, max}`.
-- `audience`: `{description}`, only when the brief itself narrows the audience; leave it out otherwise, and never copy the brand profile's audience in. The router falls back to the brand profile's own audience on its own.
-- `budget` and `landingPageUrl`, only when the brief states them for paid work: `{currency, maxTotalAmount}` and an https URL.
-- `schedule`: `{publishAt, timezone}`, only when the brief states a time.
-
-The product or subject stays in `request`; a product photo goes in as an https link in `productAsset` when the words give one; the box takes no photo, and a photo file arrives later on the board's own Finish the brief photo field.
-For `research`, `creative_analysis`, `video_breakdown` or `results_review`, leave out `objective`, `distribution`, `platforms` and `deliverables` entirely; they do not apply.
-Leave out anything the brief and profile do not say; references and supporting material are never required.
-
-Talk to the person in plain marketing language only: never mention limits, character counts, validation, routing, blocked states, file paths or tool names.
-Fix quietly whatever can be fixed without changing what they meant; otherwise ask one plain question.
-
-For an `update_intake` request, the person answered the board's Finish the brief form: `args` carries `brand`, `jobId`, `expectedRevision` and `patch`.
-Land it, then apply it immediately with `pipeline_board_request_apply`; the click is the approval, and the apply runs the same update as `pipeline_intake_update`.
-If the apply refuses because the job changed or an answer is invalid, nothing was written: decline the request with `pipeline_board_request_decline` and the refusal as the reason, then publish, so the board shows the current questions.
-After a successful apply, publish, then continue the job as for `continue_job`.
-An intake answer given in chat instead is applied with `pipeline_intake_update` and then published the same way.
-
-For an `attach_product_photo` request, the person added a photo on the board's own Finish the brief field because the router was blocked on one: `args` carries `brand`, `jobId`, `expectedRevision` and `photo`, transited as described above under Handling a board request.
-Land it with the saved local path in `photo.path`, then apply it immediately with `pipeline_board_request_apply`; the click is the approval, same as `update_intake`.
-If the apply refuses because the job changed or the file is not a usable image, nothing was written: decline the request with `pipeline_board_request_decline` and the refusal as the reason, then publish.
-After a successful apply, publish, then continue the job as for `continue_job`.
-
-A comment that says the job is not the kind the person meant, for example 'This is not the kind of job I meant for "Serum Reel". Please ask me what I want.', comes from the "Not right? Tell Claude" button under a job's title.
-The comment names the job and carries its id in brackets: find the job by that id.
-Hold that job: do no further work on it (no research, drafting, making, checking or posting) until the person decides, and answer any decision it is waiting on only if the person asks.
-Ask what they want in Needs you and in chat together, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
-When the answer is a pipeline and the job has not been planned yet, call `pipeline_intake_update` with a patch of `kind` and a new `kindReason`, then let the job carry on.
-When it has been planned, its pipeline cannot change: only after the person has chosen another pipeline, create a new job from the same words with it, as new-job describes, and say in one plain line that the first job stays on the board as it was and is not being worked on.
-Never start a second job without that answer, and never cancel or edit the first.
-When the person says the plan was right after all, let the job carry on.
-When the answer is a new description of what they want, treat it as the words of a new request.
-
-For a `continue_job` request, apply it once and pass its returned snapshot to `new-job` to resume the existing job.
-Never create a replacement job to answer missing intake fields.
-Local imports use a source folder selected on the runner's computer, never a Drive URL.
-
-The board no longer offers a Skip button on a connector card; a `skip_provider` request left by an older board page is applied immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request.
-It records the choice in the workspace's `integrations.json` and never touches the other connector.
-
-For `connectors_continue` (the Continue on the setup Connectors step), apply it immediately the same way, then publish the workspace projection so the board moves on to the brand.
-It skips for now every connector that is not connected yet.
-
-For `connect_provider`, walking the person through connecting that provider is not a chat confirmation prompt; it is real work the apply depends on, and stays.
-When the provider's tools are already present in this session, verify the connection with the same read-only probe instead of walking the person through connecting.
-Otherwise, first walk the person through connecting that provider in chat: 3Echo Studio through the person's claude.ai connector (Settings > Connectors), ElevenLabs through their Claude connector.
-Then call the existing probe or mark-connected tool and verify it truly works.
-Only call `pipeline_board_request_apply` once that verification is in hand.
-Applying it before the provider is actually connected fails and leaves the request needing reconciliation.
-A `skip_provider` or `connect_provider` request can be declined the same way as any other, through `pipeline_board_request_decline`.
-For Metricool, a `connect_provider` request is also the board's Connect or Refresh brands button, and the verification is the full check in `skills/setup/SKILL.md`.
-Find Metricool by the tool base name `getBrandSettings`, under any prefix, since the prefix is an opaque per-connection id.
-Call `getBrandSettings` (read-only), then `integration_probe` with provider `metricool`, then `pipeline_metricool_brands_save` with the `data` list exactly as returned.
-Apply the request only when the probe was `ok: true`; when Metricool is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
-Never call a Metricool tool that creates, updates or sends a post while handling a connection request.
-
-For `meta_ads` and `tiktok_ads`, a `connect_provider` request is verified the same way, with the full check in `skills/setup/SKILL.md`.
-Find Meta ads by the tool base name `ads_get_ad_accounts` and TikTok ads by `auth_advertiser_get`, under any prefix.
-Call only that read-only listing tool, then `integration_probe` with provider `meta_ads` or `tiktok_ads`, then `pipeline_ad_accounts_save` with the list exactly as returned.
-Apply the request only when the probe was `ok: true`; when the connector is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
-Never call an ad tool that creates, updates, activates, pauses or deletes anything while handling a connection request.
-When a person answers the "Which Meta ad account belongs to ..." or "Which TikTok ad account belongs to ..." question in chat, call `pipeline_ad_account_choose` with the account id, or with `none` when they have no ad account yet or `later` when they are not sure; a board answer (its last two buttons are "No Meta ad account yet" and "Not sure, decide later") is applied for you.
-A single connection check can also use `integration_probes_save` with one entry, the same as setup does for all of them at once.
+The branches of Land and apply requests that are not in this file: brand and onboarding requests (`references/brand-requests.md`), job requests (`references/job-requests.md`) and connector requests (`references/connector-requests.md`); see Routing.
 
 For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions on the board below.
-
-A `bank_remove` request is the person removing one of their own items from the Brand library on the board: land it, remove the item it names with `brand_bank_save`, apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection.
-If the removal fails, decline the request with `pipeline_board_request_decline` and one plain reason.
-
-A `brand_folder_add` request is the person adding a folder of the brand's videos, photos or fonts on the onboarding page (its args are `brand`, `folder`, `rights` and an optional `label`; the rights are their own answer, never change them).
-Land it and apply it immediately with `pipeline_board_request_apply`: the apply imports the folder the way `brand_footage_import` does and reads it in the background, for free, without copying or changing a file.
-Then publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md` to look at a few files, ask before a full pass and report what was found.
-If the apply refuses it (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
-
-A `brand_folder_pick` request is the person pressing "Choose a folder..." on the onboarding page, after picking who owns the files (its args are `brand`, `rights` and an optional `label`; there is no path, because the board cannot read one, and the rights are their own answer, never change them).
-Land it, then call `pipeline_folder_pick` with its `requestId` and `confirmedBy` set to `board request <requestId>`: it opens the operating system's folder dialog on the person's computer, waits up to 3 minutes and imports the chosen folder exactly like `brand_folder_add`, so do not also call `pipeline_board_request_apply` or `brand_footage_import` for it.
-When its `status` is `applied`, write its `artifactReceipt` to the request's board document, publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md`.
-When it is `cancelled`, `timeout`, `unavailable` or `refused`, the tool has already declined the request with a plain line (the person closed the dialog, left it open too long, no dialog can open on this computer, or the folder was refused): write the `artifactReceipt` it returns, publish the workspace projection and say in one line what happened.
-When it is `handledElsewhere`, another window has the request: say nothing.
-When the call was stopped (`stopped`), the request is still waiting: leave it and land it again on the next pass.
 
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.
 Keep the original request envelope and `args` unchanged for idempotent retries.
 For navigation, a job result contains only `{ jobId }`, and a brand result contains only `{ brand: { id, slug, name, onboardingStatus } }`.
 Never copy a full local runtime result into the artifact because it can contain absolute paths, configuration, or profile assets.
 
-A `submit_decision` request from the board is the person's approval already, the same as any other board request: apply it immediately with `pipeline_decision_apply`, requestId and confirmedBy set to the board request, and no chat confirmation of the verdict.
-Pass `maxCredits` equal to the request's `args.credits`, the credits the board showed, when approving a concept.
-A price approval carries its own `args.totals`, already matching the saved quote, and needs no `maxCredits`.
-A concept pick arrives as `args.chosen` with the concept letter, and a request for changes carries the person's comment in `args.note`.
-A concept pick's `args.note` can also carry the person's Strategy gate choices: a `Strategy picks:` line (industry, funnel stage, ad style, format, CTA, problem, angle, subtopic, editing, visual hook) and `Your own ...` lines for options they added (a problem or angle they add is saved to their brand library by the plugin).
-Pass the note on unchanged and never edit or drop those lines: applying the decision saves the person's own options to the brand library, and the agents read the picks from the approval note, where they replace the concept's own fields.
-The tool validates the exact registered file set, hashes, current gate, and revision before applying the decision.
-`confirmedBy` is a local audit label and does not authenticate a Studio user.
-When the job revision or the registered files no longer match, because the quote or the files changed since the person clicked, the apply fails: say so in chat in one line and re-present the current decision on the board, rather than asking in chat for approval.
-If the tool reports `needs_reconciliation` instead, inspect the local request and approval record before taking any further action.
-Use `pipeline_request_reconcile` only after establishing the actual outcome from local records.
-Record `applied` when the effect is present, or `retry` when the effect did not apply, and include the evidence and confirmer.
-Reconciliation changes only the request receipt; a retry still revalidates the job gate, revision, and exact hashes.
+The apply details for a `submit_decision` request (credits, notes, stale files, reconciliation) are in `references/decision-requests.md` (see Routing).
 
 After a local apply succeeds, publish a fresh workspace projection before acknowledging the remote request.
 Then merge only that request's `artifactReceipt` into its individual artifact request document.
@@ -332,26 +157,7 @@ If either write fails, keep the local request and result intact and leave the re
 After every apply, list the board's saved `requests` again before moving on to anything else; a click made mid-turn can arrive while this turn is still running, and it must be handled now rather than left for the next comment or session start.
 
 ## Brand intelligence
-
-Onboarding builds each brand's intelligence (section 4e of `skills/onboard-brand/SKILL.md`): the posts it took apart and labelled, the six subtopics, the formats that work and a 6 by 5 plan.
-The board draws it from `brand.intelligence` in the workspace projection, so publish the workspace projection after every change to it: the checklist while the pass runs, the subtopic draft, the confirmed subtopics, the plan.
-Two requests come from that panel.
-
-A `subtopics_confirm` request is the person answering "Do these 6 subtopics look right?" (its args are `brand` and `items`: exactly six `{ id?, name }`; a subtopic that was kept carries its `id`, one the person added has none).
-It is their answer and it is already approved: land it and apply it immediately with `pipeline_board_request_apply`, `confirmedBy` set to the board request, with no chat confirmation and without changing a name.
-The apply saves the six as the brand's subtopics, keeps the evidence of the ones that stay, and marks the plan stale when a subtopic changed.
-Then publish the workspace projection, and when the receipt says the plan needs ideas for the new subtopics, follow "When the subtopics change" in section 4e of `skills/onboard-brand/SKILL.md`.
-If the apply refuses it (not exactly six, a name twice), say the refusal's plain line, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
-The same answer typed in chat is applied with `brand_intelligence_save` (action `subtopics_confirm`).
-
-A `plan_cell_start` request is the person clicking a cell of the 6 by 5 plan to start a post (its args are `brand`, `subtopic`, the subtopic's id, and `format`, a format library id, as they are in `plan.cells`).
-It is a new job request like `create_job`, already approved: land it and apply it immediately with `pipeline_board_request_apply`.
-The apply creates an organic post job whose `job.json` carries the pick (an `intelligence` block with the subtopic, the format, the cell's idea, angle and hook, and the brand's best examples of that format) and whose topic is the cell's idea, then queues the job's `continue_job` request, which you handle next like any new job: intake, then the strategist, with the subtopic and the format already chosen (`agents/producer.md`).
-Then publish the workspace projection so the job shows.
-If the apply refuses it (the brand is not ready for jobs, the subtopic or the format is not the brand's), say the plain line, decline the request with `pipeline_board_request_decline` and that line as the reason.
-
-The Strategy gate offers the brand's subtopics, the format library's story structures, editing styles and visual hooks as rows to click, with "+ Add your own".
-The person's choices arrive in the concept pick's `args.note` as `Subtopic: "..."`, `Format: "..."`, `Editing: "..."` and `Visual hook: "..."` in the `Strategy picks:` line, with `Your own subtopic|editing|visual hook: "..."` lines for options they added; pass the note on unchanged like the rest of it, and the plugin saves their own options to the brand library when the decision is applied.
+Moved to `references/brand-intelligence.md` (relative to this skill folder); see Routing above for when to read it.
 
 ## Questions on the board
 
@@ -459,12 +265,7 @@ Before landing a decision typed in chat, work out which job it answers.
 List every job whose latest `pipeline_status` line has `waitingOn` set, since that is what "waiting on a decision" means.
 When more than one job is waiting and the person did not say which one, ask which job it's for in the board's Needs you and in chat together, as Questions on the board below describes, with each waiting job's brand and title as an option, for example 'SK-II "Anna Sawai serum Reel"' and 'Olay "Retinol24 launch teaser"', and wait for whichever answer arrives first before landing anything.
 Never apply a chat decision to a guessed job.
-When only one job is waiting, apply the answer to that job.
-An answer in chat is applied with the same tools: land a `submit_decision` with `pipeline_board_request_land` and the workspace's `workspaceId`, using the `brand`, `jobId`, `revision` and `artifacts` from the `pipeline_review_present` result, `reviewId` set to its `gate`, a new `requestId`, `decision` set to `approve` or `request_changes`, the person's words in `note`, `chosen` for a concept letter, `credits` for a concept approval, and `totals` matching the saved quote for a price approval.
-Then apply it with `pipeline_decision_apply`, `confirmedBy` set to `chat`, and `maxCredits` equal to those `credits` for a concept approval.
-This is for the concept, the storyboard, the pictures, the clips, the cut, the final post and the report, and for any request for changes. Money and posting approvals are not landed from chat (see below).
-Write the documents again so the board no longer shows the decision.
-Then tell the person in one plain line naming the job's brand and title what happened, for example 'SK-II "Anna Sawai serum Reel": concept B approved.'
+How a decision typed in chat is landed and applied is in `references/decision-requests.md` (see Routing).
 
 Never ask the same decision twice.
 A board request that arrives for a decision already answered in chat fails validation; decline it with `pipeline_board_request_decline` and the reason `Already answered in chat.`, then write the documents again.
@@ -480,72 +281,7 @@ The same goes for choosing where to post (Post Now, Schedule Post, Save Draft, D
 The tools enforce it: a chat-landed approval for these is refused with that same sentence, and nothing is applied. Notes or requests for changes typed in chat still work, and so do concept picks, storyboard notes, brief answers and questions.
 An applied price approval is the explicit yes to that quote; a request for changes means re-price and present the price again.
 
-### Storyboard panels
-
-The board shows every panel of the storyboard in one strip, and the person approves or changes each panel in turn.
-The panel verdicts arrive together in one `submit_decision` as `args.panels`, a list of `{panel, verdict, note}` where `verdict` is `approve` or `changes`, and a `deliverable` such as `D1` when the job has more than one storyboard.
-Apply it with `pipeline_decision_apply` like any other decision; each panel with `changes` carries what the person wants in its `note`.
-A storyboard answer given in chat is landed the same way: put each panel the person named in `panels`, and put anything they said about the whole storyboard in `note`.
-An approval with `panels` must approve every panel; if the person approved only some, land it as `request_changes` with the panels they want changed.
-
-### Sample image
-
-Once the sample image has been saved and before the rest of the batch is made, the job's `pipeline_status` line shows `waitingOn` set to `sample image`, and the board asks for it.
-Write the documents as soon as the sample lands so the board shows it.
-Post one chat line naming the job's brand and title with the same decision, for example 'SK-II "Anna Sawai serum Reel": the sample is ready, approve it here or on the board, or say what to change.'
-A board answer arrives as a `submit_decision` with `reviewId` `sample`: apply it with `pipeline_decision_apply` right away.
-When the person types an approval in chat instead, do not land it: tell them to tap Approve on the sample card (see Money and posting need a click above).
-A request for changes typed in chat is landed as a `submit_decision` with `reviewId` `sample`, `decision` `request_changes`, the `revision` and `artifacts` from calling `pipeline_review_present` with `gate: "sample"`, and the person's words in `note`.
-Then apply it with `pipeline_decision_apply` and `confirmedBy` `chat`, and tell the person in one plain line naming the job's brand and title what happened.
-The applied decision is saved as the job's `approvals/sample.json`; make the rest of the batch only after an approval, and after a request for changes redo the sample first.
-
-### Pictures and clips
-
-The sample is not the only look the person gets. Two more reviews sit between it and the final post, each shown on the board as a grid with one card per panel (the picture or a player, and the storyboard's words for it), a per-card "Ask for changes" with a note, and "Approve all" under the grid. Only the Director presents them; a helper never does.
-
-1. **Pictures** (`gate` `pictures`): the storyboard review already shows every panel with its picture, and approving the storyboard approves them, so this review appears only when a picture was redone after that. Then stop: call `pipeline_review_present` with `gate: "pictures"`, prepare review copies of every picture (`pipeline_review_copies_prepare`, then upload them as described under Review media on the board), write the returned `documents`, and post one chat line naming the job. No video clip is made until the person approves all the pictures: the spend guard refuses `create_video_job` before that, so do not start a clip while the review is open.
-2. **Clips** (`gate` `clips`): once every clip is made, stop the same way. The clips are not joined until the person approves them all: `stitch-clips.py` refuses (exit 6) before that.
-3. **Joined video** (`gate` `cut`): the clips are joined plain (`media/D{n}/final-raw.mp4`, no captions, music or end card). Present it the same way (review copies, then `pipeline_review_present` with `gate: "cut"`): one player, "Ask for changes" with a note, and the combine card: Music, Voice-over and Captions rows, each with its own choice (library, upload, make with ElevenLabs which is priced, none; captions from the voice-over words, the script words, none), one "Approve + add these" button. `pipeline_decision_apply` approves the cut and records the picks in one step (its reply lists what is left in `next`), and reads a change note that only asks for captions or music the same way; a note about the cut itself goes back to the clips or the trim. Several voice (or music) takes made by ElevenLabs are shown side by side on a board question (`pipeline_combine_takes`; prepare review copies and write the board so they play); the person's answer is a take label for `pipeline_combine_set`. `finish-video.py` refuses (exit 6) until the cut is approved and the choice recorded.
-4. **Finished video** (`gate` `finish`): after `finish-video.py` ran (captions, music and the post's on-screen text, in one style), present `media/D{n}/final.mp4` the same way (review copies, then `pipeline_review_present` with `gate: "finish"`): one player, "Ask for changes", "Approve". A change reruns finishing only; the approved cut stays. The post text comes after this approval.
-
-A board answer arrives as a `submit_decision` with `reviewId` `pictures`, `clips`, `cut` or `finish`: apply it with `pipeline_decision_apply` right away. Each panel with `changes` carries what the person wants in its `note` (the `panels` list names them). An approval needs every panel approved.
-The applied decision is saved as `approvals/pictures.json` or `approvals/clips.json`, with the exact files shown, so a redo (a new file) opens the review again.
-
-**A change is a redo, and a redo is priced again.** For each panel with changes, have the Creative Director rewrite that one prompt, then add the redo as a new version of that panel (`-v2`) with `pipeline_quote_save`, present the price (`gate: "price"`), and wait for the person to approve the extra cost. Nothing is made before that: the spend guard refuses an item that is not in the approved price.
-
-### The report
-
-A `research`, `creative_analysis`, `video_breakdown`, or `results_review` job ends at its own approval, `findings`, shown on the board as "Report".
-Once the report is written, call `pipeline_review_present` with `gate: "findings"` and `report/report.md`, and for a video breakdown also every still in `report/stills/`, then write every entry of its returned `documents`.
-Post one chat line naming the job the same way as any other decision, by its brand and title, or by its title alone when it has no brand, for example '"Competitor pricing research": the report is ready, approve it here or on the board, or say what to change.'
-A board answer arrives as a `submit_decision` with `gate` (or `reviewId`) `findings`: apply it with `pipeline_decision_apply` right away, the same as any other decision.
-An answer in chat is worked out and landed the same way as Decisions on the board and in chat above, using `pipeline_review_present` with `gate: "findings"` for the revision and file list.
-Approving the report completes the job.
-Asking for changes returns the job to Write the report; write the documents again so the board shows the current stage.
-Tell the person in one plain line naming the job what happened, for example '"Competitor pricing research": report approved.' or '"Competitor pricing research": back to the researcher with your notes.'
-
-### Final approval and the label check
-
-Before presenting the final post, run the label check from `skills/brand-check/SKILL.md`, then write the documents so the board shows any item it found.
-The board shows each found item in plain words with "Accept as is", and a board approval carries the accepted ones in `args.acceptedFlagIds`.
-When the person accepts an item in chat instead, add its id from the `pipeline_qc_save` result to `acceptedFlagIds` on the `submit_decision` you land for them.
-`pipeline_decision_apply` refuses a final approval when the check is missing, out of date, or has an item nobody accepted.
-Then decline that request with `pipeline_board_request_decline` and one plain reason naming the job's brand and title, for example 'SK-II "Anna Sawai serum Reel": the labels and logos are checked first.', run or finish the label check, and write the documents again.
-Never name files, frames or ids to the person.
-
-### Review media on the board
-
-The Reel and the images play and open full size on the board from small review copies uploaded to the board, never from the originals.
-
-1. When a job reaches a review with images or video (the sample, the final post, or a storyboard that already has made frames), call `pipeline_review_copies_prepare` with the `brand` and `jobId`.
-2. Upload every `toUpload[].path` to the bound board with the Artifact tool: `action` publish, `asset: true`, `file_paths` set to those paths, and `url` set to the bound board.
-3. Write the documents again in one batch call (`pipeline_status`), so the board links each output to its copy.
-   `pipeline_review_present` also returns `reviewCopies.missing`; while it lists anything for a sample, the final post or the posting plan, the board keeps Approve off and tells the person you are adding copies, so do steps 1 to 3 before you ask them to look.
-   Approving in chat still works meanwhile.
-4. If the upload result or a reminder says the copies could not be matched, call `pipeline_review_copies_record` with each path and the `assetId` and `url` the Artifact tool returned for it, then write the documents again.
-5. After the final approval, or when the job is cancelled, call `pipeline_review_copies_cleanup` with the `brand` and `jobId` (add `force: true` for a cancel).
-   Delete each returned item with the Artifact tool: `action` delete, `url` set to the bound board, and `path` set to its `assetId`.
-   If the host asks the person to confirm a delete, that is expected; do not skip it.
+The review-by-review procedures (Storyboard panels, Sample image, Pictures and clips, The report, Final approval and the label check, Review media on the board) are in `references/review-gates.md` (see Routing).
 
 ## Recipe picks and the paying Studio workspace
 

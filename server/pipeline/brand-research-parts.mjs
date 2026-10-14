@@ -41,7 +41,8 @@ const durable = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 const evidence = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-evidence.js'));
 const onboardingRun = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 
-const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'SKILL.md');
+// The onboarding workstream lives in its own file, so job researchers loading the skill do not read it.
+const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'references', 'brand-onboarding.md');
 
 /** The most sources one run saves, all parts together. */
 export const MAX_RESEARCH_SOURCES = 20;

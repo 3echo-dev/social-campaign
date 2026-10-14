@@ -45,7 +45,7 @@ Dispatch exactly one workstream named by the active plan, or, for a `research` o
 
 A report job carries no research decision from the router; run its task the moment the active plan names it, never waiting for a decision that will not arrive.
 
-The brand-onboarding workstream and its Hard limits, which a report job's task also keeps to, are defined in pipeline/skills/research/SKILL.md.
+The brand-onboarding workstream is defined in pipeline/skills/research/references/brand-onboarding.md, and its Hard limits, which a report job's task also keeps to, in pipeline/skills/research/SKILL.md.
 
 Brand onboarding research is held to the same standard as a job's: it names its tools (`web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_search`, `WebSearch`, `WebFetch`), applies the same competitor test, and saves the text of every page it reads before it cites it.
 The brand-onboarding section of pipeline/skills/research/SKILL.md has the rules, and the save refuses a source that has no saved capture.
