@@ -8,7 +8,6 @@ const UNAVAILABLE = /^(?:n\/?a|not[ _-]?available|unavailable|none|not[ _-]?appl
 const MAX_PROFILE_BYTES = 40000;
 const MAX_COMPETITORS = 3;
 const TARGET_MARKET_MAX = 60;
-const DEFAULT_TARGET_MARKET = 'Singapore';
 const COMPETITOR_ITEM_MAX = 500;
 // The declared-context fields a brand onboarding research pass is allowed to fill in when blank.
 const CONTEXT_FIELDS = Object.freeze(['audience', 'market', 'voice', 'contentPillars', 'competitors']);
@@ -209,7 +208,12 @@ function normalizeTargetMarket(value) {
 
 function targetMarketOf(profile) {
   const value = profile && typeof profile.targetMarket === 'string' ? profile.targetMarket.replace(/\s+/g, ' ').trim() : '';
-  return value || DEFAULT_TARGET_MARKET;
+  return value;
+}
+
+// A saved 'Global' (any case) is a real answer: no one country. A blank market is unknown, not Global.
+function isGlobalMarket(value) {
+  return typeof value === 'string' && value.replace(/\s+/g, ' ').trim().toLowerCase() === 'global';
 }
 
 // The time zone a target market implies. Only countries that sit in one time zone are listed;
@@ -282,7 +286,7 @@ function validTimeZone(zone) {
 
 // The brand's time zone. One a person set wins: a stored, valid zone that is marked as set
 // (timezoneSource 'set') or is not the old default. Otherwise it follows the target market (a
-// blank market is Singapore). { timeZone: null } means the step that needs one must ask.
+// blank market gives none). { timeZone: null } means the step that needs one must ask.
 function brandTimeZone(config, profile) {
   const stored = config && typeof config.timezone === 'string' ? config.timezone.trim() : '';
   const marked = Boolean(config) && config.timezoneSource === 'set';
@@ -821,8 +825,8 @@ module.exports = {
   fillBlankContext,
   profileTidyReport,
   targetMarketOf,
+  isGlobalMarket,
   marketTimeZone,
   brandTimeZone,
   TARGET_MARKET_MAX,
-  DEFAULT_TARGET_MARKET,
 };

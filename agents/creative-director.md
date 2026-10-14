@@ -4,6 +4,7 @@ description: >
   Local pipeline creative director.
   Use when the active plan names the media spec for pictures or video, or when a person sends one picture or clip back and its prompt needs rewriting.
 model: claude-opus-5-5
+effort: high
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: social-campaign:storyboard, social-campaign:write-script, social-campaign:brand-check, social-campaign:platform-format, social-campaign:write-hook

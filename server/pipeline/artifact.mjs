@@ -473,9 +473,14 @@ export function writeJobDocuments({ root, jobIds = null }) {
 export function writeBoardDocuments({ root, snapshot, jobIds = null }) {
   const projection = writeWorkspaceProjection({ root, snapshot });
   const jobDocuments = writeJobDocuments({ root, jobIds });
-  const freshness = recordProjectionWritten(root, { projectionSha256: projection.projectionSha256, jobIds });
+  const documents = boardDocumentList({ jobDocuments, projectionFile: projection.projectionFile, jobIds });
+  // A batch holds at most MAX_BATCH_WRITES writes. A job left out of this one must not count as delivered when the
+  // workspace document lands, so only the jobs actually in the batch are recorded; the rest stay behind for the next refresh.
+  const sent = documents.filter(entry => entry.collection === JOB_DOCUMENT_COLLECTION).map(entry => entry.doc_id);
+  const trimmed = jobDocuments.some(entry => !sent.includes(entry.doc_id) && (jobIds || !entry.terminal || entry.changed));
+  const freshness = recordProjectionWritten(root, { projectionSha256: projection.projectionSha256, jobIds: trimmed ? sent : jobIds });
   pruneProjectionFiles(root, freshness);
-  return { ...projection, documents: boardDocumentList({ jobDocuments, projectionFile: projection.projectionFile, jobIds }) };
+  return { ...projection, documents };
 }
 
 export function boardDocumentList({ jobDocuments, projectionFile, jobIds = null }) {

@@ -5,6 +5,7 @@ tools: Read, Write, Glob, Grep, mcp__plugin_social-campaign_core__pipeline_qc_fr
 disallowedTools: Agent
 skills: fact-check, brand-check, policy-check, platform-format, source-validation
 model: claude-opus-5-5
+effort: high
 maxTurns: 60
 color: yellow
 ---

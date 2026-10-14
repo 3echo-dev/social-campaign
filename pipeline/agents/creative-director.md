@@ -5,6 +5,7 @@ tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: storyboard, write-script, brand-check, platform-format, write-hook
 model: claude-opus-5-5
+effort: high
 maxTurns: 50
 color: cyan
 ---

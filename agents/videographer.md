@@ -4,6 +4,7 @@ description: >
   Local pipeline video intelligence specialist.
   Use when the active plan names source video analysis or render quality assurance.
 model: claude-sonnet-5-5
+effort: medium
 tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__transcript_save, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__brand_footage_search, mcp__plugin_social-campaign_core__brand_footage_status, mcp__plugin_social-campaign_core__brand_footage_analysis_save
 disallowedTools: Agent
 skills: social-campaign:watch-video, social-campaign:analyze-video, social-campaign:source-validation, social-campaign:write-report

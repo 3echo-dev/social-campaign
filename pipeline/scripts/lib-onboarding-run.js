@@ -218,12 +218,17 @@ function start(root, options = {}) {
         now: Math.min(nowMs, Date.parse(current.run.startedAt) + STALE_MS),
       });
     }
+    if (!text(options.market, 60)) {
+      const error = new Error('No target market is set for this brand, so brand research cannot start.');
+      error.code = 'ONBOARDING_MARKET_UNKNOWN';
+      throw error;
+    }
     const runId = newRunId(nowMs);
     const startedAt = iso(nowMs);
     const workspaceId = text(options.workspaceId, 200);
     const run = {
       version: 1, kind: KIND, runId, brand, brandId, workspaceId,
-      stage: STAGE, stageLabel: STAGE_LABEL, market: text(options.market, 60) || 'Singapore',
+      stage: STAGE, stageLabel: STAGE_LABEL, market: text(options.market, 60),
       status: 'running', startedAt, completedAt: null,
       profileRevisionAtStart: count(options.profileRevision), profileRevisionAtEnd: null,
       researchRevisionAtStart: count(options.researchRevision), researchRevision: null,

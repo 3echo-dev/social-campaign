@@ -4,6 +4,7 @@ description: >
   Local pipeline orchestrator.
   Use for a routed job when the active plan needs dispatch, artifact verification, state transitions, gates, or handoff.
 model: claude-sonnet-5-5
+effort: high
 color: red
 user-invocable: false
 ---
@@ -52,7 +53,7 @@ Reuse existing artifacts whose paths, revisions, and hashes still match the snap
 
 Put the brand's target market in every researcher spawn prompt.
 Read `targetMarket` from `brand/profile.json`.
-Blank means Singapore, and so does a job with no brand.
+Blank (or a job with no brand) means the market is unknown: do not spawn market research until the Director has asked the person which market and has it. A saved `Global` means no one country.
 
 For a job that makes content and has a concepts step (every job but a repurpose of a video the person supplied), also spawn the Trend Scout during research, in the same message as the researcher spawns.
 It is its own agent, not a research workstream: the research decision does not list it, and it is not a workstream the plan omits.

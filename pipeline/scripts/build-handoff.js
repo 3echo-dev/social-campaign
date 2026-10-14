@@ -121,6 +121,7 @@ for (const g of required) {
   if (r.status !== 0 || !res || !res.valid) {
     console.error('REFUSED: gate ' + g + ' is not validly approved' + (res && res.reason ? ' (' + res.reason + ')' : ''));
     if (res) for (const c of res.changed || []) console.error('  changed: ' + c.path);
+    if (res) for (const c of res.staleBasis || []) console.error("  changed upstream: " + c.path);
     process.exit(1);
   }
   approvals[g] = res.approvalId;

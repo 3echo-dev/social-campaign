@@ -66,6 +66,7 @@ Handle each request as board-sync describes, apply it with `pipeline_board_reque
    Apply it, and say in one line what the result says, including that the folder keeps its original name.
 3. Start research. The Start research button turns on once the page has the brand's name and a website or at least one social account.
    The board sends `start_research` with `{ requestId, brand, profile, kit?, metricoolBlogId? }`, everything on the page at that moment.
+   If `profile.targetMarket` is blank (and the brand has none saved), ask before applying, with `pipeline_board_ask` and buttons: your best country guess from the website and social accounts, "Global (no one country)" and "Other" (then ask for the market in words). Put the answer in `profile.targetMarket` ("Global" for no one country) and carry on; research never starts with a blank market.
    Applying it finishes the profile (a channel left empty is saved as Not available, a context field left blank is filled by research) and marks research as waiting, exactly as the old single form did.
    If the apply refuses it, for example because there is still no website or social account, decline it with the plain line.
    Only after a successful `start_research` apply, start the research pass in section 4 at once, with no chat confirmation.
@@ -90,7 +91,7 @@ For a field the person typed, never change it; ask them in one plain line to sho
 If the artifact board is ready, direct the user to its Brand onboarding card and wait for its requests, one per step (see "The three steps"): `create_brand` with only the name, `save_brand_details` as the person fills the brand's page in, and `start_research` when they press Start research.
 The brand's page collects the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors).
 Any of those five fields left blank is filled in by research.
-A blank target market means Singapore, and research never fills it.
+A blank target market is unknown, not Singapore: the Director asks for it before research starts (see step 3), and research never fills it.
 A channel the person leaves empty is saved as Not available when research starts.
 Do not call `pipeline_brand_create` yourself for a board brand, or repeat the page as a chat questionnaire.
 
@@ -114,7 +115,7 @@ For explicit chat intake, ask for the Instagram URL or the exact value Not avail
 For explicit chat intake, ask for the TikTok URL or the exact value Not available.
 
 For explicit chat intake, ask for the target market, then audience, positioning, brand voice, content pillars, and competitors, and accept a blank answer for any of them.
-A blank target market means Singapore.
+A blank target market is asked for in chat with buttons before research starts (see step 3), never assumed.
 
 In chat intake, keep only the first 3 competitors the person lists, and tell them that only 3 are kept.
 
@@ -263,7 +264,7 @@ Tell the person in one sentence to check the logo, colours and fonts on the boar
 
 While they do that, follow 4b below.
 
-If something about the profile or the research is worth flagging, for example the TikTok account reading as the US market while the website reads as Singapore, say so in chat in one plain sentence once research starts; do not block starting it, and do not turn it into a confirmation question.
+If something about the profile or the research is worth flagging, for example the TikTok account reading as a different market from the website, say so in chat in one plain sentence once research starts; do not block starting it, and do not turn it into a confirmation question.
 
 Save and continue arrives as an `onboard_brand` request with `kit`.
 Apply it immediately: a board click is the approval, so there is no chat confirmation.

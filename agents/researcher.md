@@ -4,6 +4,7 @@ description: >
   Local pipeline evidence worker.
   Use for one active research workstream named by the route.
 model: claude-sonnet-5-5
+effort: medium
 tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__brand_library_get
 disallowedTools: Agent
 skills: social-campaign:research, social-campaign:source-validation, social-campaign:write-report
@@ -37,14 +38,14 @@ Write only your part file at `partPath` (with Write, the whole file), with `"sta
 The other parts run at the same time as you in other workers: do not wait for them, never write their files or `research-draft.json`, and keep to the searches, fetches and turns of your part (the run's total is split between the parts).
 A `viral-teardown` dispatch is the `viral` part: it does only what the research skill's "Viral now" says and writes the `viral` part file.
 Use a plain date (YYYY-MM-DD) for every `observedAt`; never invent a clock time.
-For the brand-onboarding workstream, the target market comes from the spawn prompt and is Singapore when none is named.
+For the brand-onboarding workstream, the target market comes from the spawn prompt and is never assumed: if none is named, stop and report that the market is unknown.
 For the brand-onboarding workstream, which is always the deep pass, take at most 14 of the top videos apart (the 5 best own, the 2 best of each competitor, 6 in all, and the 3 viral ones of the `viral-teardown` dispatch) with `pipeline_video_teardown` and `media_transcribe` as the research skill's "Taking the best videos apart" says, within the budget, and skip a video with a gap line when its download fails. In parts, take apart only the videos of your part: the `own` part the 5 best own, a competitor part the 2 best of each competitor it covers, and the `viral` part the 3 viral ones.
 For the brand-onboarding workstream, give every video you take apart its `labels` (format, editing style, visual hook, subtopic, and series when it is one), picked from the format library `pipeline/library/formats.json` as the research skill's "Labels" says, and its `transcriptExcerpt`; the save refuses a breakdown without its labels.
 For the brand-onboarding workstream, the Trend Scout runs beside you: leave what is trending to it and do not search for trends. A dispatch with the workstream `viral-teardown` does only what the research skill's "Viral now" says: it takes apart the first 3 videos of `viralPath` and adds them to the `topPosts` of the draft (in parts, of the `viral` part file).
 For the brand-onboarding workstream, give each top post the `thumbnail` the social read returned for it (the post's `thumbnail_url`, exactly as it came), and leave it out when the read gave none.
 For the brand-onboarding workstream, also run the pain points and the hooks, captions and CTAs workstreams that the draft contract describes, after the accounts are read and the best videos taken apart, and write what they found in the draft's `banks` (pains, desires, objections, angles, captions, ctas). In parts, the `pains` part runs them at once, without waiting for the accounts, and the `own` and competitors parts write only their own captions and calls to action in `banks`.
 Quote customers only from pages you saved under `rawDir`, copy every quote exactly, count only what you read, and leave a list empty when nothing was found; the save looks each quote up in its capture.
-For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.
+For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`; `Global` means no one country, and if both are blank stop and report that the market is unknown.
 The draft file at `draftPath` already holds the right keys, so read it, fill in its values and write the whole file back with Write (you have no Edit tool), and never add, rename or remove a key.
 When the spawn prompt passes `problems`, read the draft file, change exactly those, rewrite the whole file with Write, copying each quote exactly from its capture, and finish.
 

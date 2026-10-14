@@ -8,6 +8,7 @@ tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-cta, platform-format
 model: claude-opus-5-5
+effort: medium
 maxTurns: 50
 color: magenta
 ---

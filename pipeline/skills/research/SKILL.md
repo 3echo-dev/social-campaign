@@ -97,7 +97,7 @@ Platform conventions are not a workstream. `platform-rules/facebook.md`, `instag
 
 The target market comes from the spawn prompt.
 When the spawn prompt carries none, read `targetMarket` in `brand/profile.json`.
-It is Singapore when both are blank or the job has no brand.
+It is never assumed. When both are blank or the job has no brand, the Director asks the person which market, in chat with buttons, before the research starts. A saved `Global` means no one country.
 Use it for the competitors and for any market-specific evidence, and never fill it in.
 
 ## Hard limits
@@ -122,7 +122,7 @@ Never exceed a limit.
 
 Fill only the blank fields listed in the spawn prompt.
 The target market comes from the spawn prompt.
-It is Singapore when the person named none.
+It is never assumed: when none is named, the Director asks the person before the research starts. `Global` means no one country.
 Use it for the competitors and for the audience suggestion, and never fill it in.
 Onboarding research is as good as a job's research: the same tools, the same budget, the same discovery ladder, and a saved capture behind every source.
 Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total.
@@ -420,7 +420,7 @@ The banks are what every later job starts from: its agents' briefs list the top 
 Look for the brand's own audience first, in its own site, its social pages and coverage of the brand.
 When no reliable source describes the brand's own audience, fill `audience` with a suggestion instead of leaving it blank.
 Derive the suggestion from the audiences of the top competitors for the same product niche in the target market from the spawn prompt.
-The target market is Singapore when the person named none.
+The target market is never assumed: when none is named, the Director asks the person before the research starts. `Global` means no one country.
 Use only sources from the last 12 months.
 Record each competitor audience source in `research.sources` and `research.evidenceMatrix` as usual.
 Write the fill as a plain audience description with no marker and no competitor names.

@@ -4,6 +4,7 @@ description: >
   Local pipeline check-only editor.
   Use when the active plan names validation for current draft artifacts.
 model: claude-opus-5-5
+effort: high
 tools: Read, Write, Glob, Grep, mcp__plugin_social-campaign_core__pipeline_qc_frames, mcp__plugin_social-campaign_core__pipeline_qc_save
 disallowedTools: Agent
 skills: social-campaign:fact-check, social-campaign:brand-check, social-campaign:policy-check, social-campaign:platform-format, social-campaign:source-validation

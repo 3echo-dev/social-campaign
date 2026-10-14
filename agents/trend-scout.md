@@ -4,6 +4,7 @@ description: >
   Local pipeline trend scout.
   Use during research for a job that makes content, in parallel with the researcher, to find what is rising now in the brand's industry on the job's platforms, and the hooks and primary texts of ads that keep running.
 model: claude-sonnet-5-5
+effort: medium
 tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__brand_library_get, mcp__plugin_social-campaign_core__brand_trends_save
 disallowedTools: Agent
 skills: social-campaign:research, social-campaign:source-validation
@@ -29,7 +30,7 @@ You run on your own, next to it, and your one file is `research/trends.md`.
 
 Read the spawn prompt (brand, job, platforms, industry, target market, saved competitor names) and the library block at its end before searching.
 The industry is the spawn prompt's, else the person's industry pick from `brand_library_get`, else the market in `brand/profile.json`.
-The target market is the spawn prompt's, else `targetMarket` in `brand/profile.json`, else Singapore.
+The target market is the spawn prompt's, else `targetMarket` in `brand/profile.json`. `Global` means no one country; if both are blank, stop and report that the market is unknown instead of guessing one.
 
 Before you search, look at the fresh trends the library already holds (`trends` in `brand_library_get`, or the Fresh trends lines in the library block).
 Reuse a trend seen under 7 days ago: list it in the file under Reused with its own links and the day it was seen, and do not save it again.

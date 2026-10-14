@@ -5,6 +5,7 @@ tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-script, write-cta, storyboard, policy-check
 model: claude-opus-5-5
+effort: high
 maxTurns: 50
 color: green
 ---

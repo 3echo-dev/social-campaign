@@ -3,7 +3,8 @@ name: publisher
 description: >
   Local pipeline publisher.
   Use only after the active plan has a current final approval and a complete delivery package.
-model: claude-haiku-4-5-20251001
+model: claude-haiku-5-5
+effort: low
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: social-campaign:publish

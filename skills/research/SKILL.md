@@ -24,7 +24,7 @@ Progress updates are one short line in plain words, for example "Researching SK-
 
 Read pipeline/LOCAL-ADAPTER.md (its Agent routing section applies), the workflow file under pipeline/workflows that the route names, pipeline/agents/researcher.md, and pipeline/skills/research/SKILL.md.
 
-For any competitor or market work, the target market comes from the spawn prompt, then `targetMarket` in `brand/profile.json`, and is Singapore when both are blank.
+For any competitor or market work, the target market comes from the spawn prompt, then `targetMarket` in `brand/profile.json`, and is asked of the person (by the Director, in chat) when both are blank; `Global` means no one country.
 
 Reuse a fresh job snapshot supplied by the caller.
 

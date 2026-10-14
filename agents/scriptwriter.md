@@ -4,6 +4,7 @@ description: >
   Local pipeline scriptwriter.
   Use when the active plan names a UGC script, concepts, or storyboard task.
 model: claude-opus-5-5
+effort: high
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: social-campaign:write-hook, social-campaign:write-script, social-campaign:write-cta, social-campaign:storyboard, social-campaign:policy-check

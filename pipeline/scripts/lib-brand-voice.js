@@ -204,7 +204,7 @@ function renderBody(options) {
   section(lines, 'Who it speaks to', [clean(p.audience), audienceIsSuggested(p) ? 'This audience is a suggestion from competitor research and has not been checked yet.' : '', clean(p.customerSegment) ? 'Customer segment: ' + clean(p.customerSegment) : '']);
   section(lines, 'Positioning', [
     clean(p.market),
-    ['Target market: ' + profiles.targetMarketOf(p), clean(p.geography) ? 'Where: ' + clean(p.geography) : '', clean(p.language) ? 'Language: ' + clean(p.language) : ''].filter(Boolean).join('\n'),
+    [profiles.targetMarketOf(p) ? 'Target market: ' + profiles.targetMarketOf(p) : '', clean(p.geography) ? 'Where: ' + clean(p.geography) : '', clean(p.language) ? 'Language: ' + clean(p.language) : ''].filter(Boolean).join('\n'),
   ]);
   section(lines, 'Content pillars', [pillarsOf(p).map(item => '- ' + item).join('\n')]);
   section(lines, 'Vocabulary', [block(p.terminology)]);
