@@ -18,6 +18,7 @@ import { Workspace } from './workspace/index.mjs';
 import { StdioTransport } from './mcp/transport.mjs';
 import { buildRegistry } from './tools/index.mjs';
 import { log } from './lib/log.mjs';
+import { createGate } from './licence/licence.mjs';
 import { PLUGIN_VERSION, recordBoot } from './workspace/version.mjs';
 
 export { PLUGIN_VERSION, PLUGIN_VERSION_KEY, recordBoot } from './workspace/version.mjs';
@@ -49,6 +50,7 @@ export async function main() {
   const transport = new StdioTransport({
     registry,
     context: { workspace },
+    gate: createGate(),
     serverInfo: { name: 'social-campaign-core', version: PLUGIN_VERSION },
   });
   await transport.start();
