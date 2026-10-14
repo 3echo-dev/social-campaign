@@ -29,7 +29,7 @@ export const ENDED_MESSAGE =
   "Your 3echo workspace access for this plugin has ended, or this computer isn't connected yet. Ask your 3echo contact for a new connect message.";
 
 export const PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEA3yPzXERypx9mRm8d279CXiCT+/3RxiTbyT8jz3KHJmE=
+MCowBQYDK2VwAyEAkt8H2ZnzxUhUOePLPETNGNqS/io1+PPoP88SCjJSicc=
 -----END PUBLIC KEY-----
 `;
 
