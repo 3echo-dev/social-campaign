@@ -1,0 +1,278 @@
+{
+  "version": 1,
+  "description": "The format library: every short video is labelled on four separate axes (format = the story structure, editing = how it looks on screen, visualHook = what the first two seconds show, series = a repeatable episode). Entries here are the starter set that ships with the plugin; a brand's own taken-apart videos are added as examples under the same ids in its library (workspaces/<brand>/library/intelligence/posts.jsonl).",
+  "axes": {
+    "format": [
+      {
+        "id": "F-TUTORIAL",
+        "name": "Tutorial",
+        "definition": "Shows the viewer how to do one thing, step by step, so they can copy it.",
+        "whyItWorks": "It promises a concrete result, so people watch to the last step and save it to use later.",
+        "examples": []
+      },
+      {
+        "id": "F-LISTICLE",
+        "name": "Listicle or ranking",
+        "definition": "A numbered list or a ranking: 5 tools, 3 mistakes, the best to the worst.",
+        "whyItWorks": "The number tells the viewer what they will get and how long it lasts, and every item is a small payoff that keeps them watching.",
+        "examples": []
+      },
+      {
+        "id": "F-BREAKDOWN",
+        "name": "Breakdown",
+        "definition": "Takes apart something real (an ad, a result, a competitor's move, a product) and says why it works.",
+        "whyItWorks": "It feeds curiosity about the how, and it shows that you know the subject without saying so.",
+        "examples": []
+      },
+      {
+        "id": "F-STORY",
+        "name": "Story time",
+        "definition": "A story told from the start with a turn and a lesson, about a person, a customer or the brand.",
+        "whyItWorks": "People stay to find out how it ends, and remember the lesson through the person.",
+        "examples": []
+      },
+      {
+        "id": "F-BEFORE-AFTER",
+        "name": "Before and after",
+        "definition": "Shows the problem state, then the result, and what changed in between.",
+        "whyItWorks": "The gap is visible in seconds, and the viewer pictures themselves on the after side.",
+        "examples": []
+      },
+      {
+        "id": "F-MYTH-FACT",
+        "name": "Myth vs fact",
+        "definition": "States a common belief, then corrects it with the truth and the proof.",
+        "whyItWorks": "A contradiction creates tension, and people share it because it settles an argument or makes them feel informed.",
+        "examples": []
+      },
+      {
+        "id": "F-COMPARISON",
+        "name": "Comparison",
+        "definition": "Puts two options side by side (this against that, the old way against the new way) and picks one.",
+        "whyItWorks": "It helps a choice, and people who search for X against Y are close to deciding.",
+        "examples": []
+      },
+      {
+        "id": "F-CASE-STUDY",
+        "name": "Case study",
+        "definition": "One real customer or project: where they started, what was done, and the numbers.",
+        "whyItWorks": "Specific numbers are believable, and a named result is the proof a doubtful buyer looks for.",
+        "examples": []
+      },
+      {
+        "id": "F-POV",
+        "name": "POV",
+        "definition": "Puts the viewer inside a first-person moment, acted out in a short scene (\"POV: you ...\").",
+        "whyItWorks": "The viewer recognises their own situation at once and stops scrolling.",
+        "examples": []
+      },
+      {
+        "id": "F-REACTION",
+        "name": "Reaction or green screen",
+        "definition": "The presenter reacts to, or stands in front of, another video, post or news item and adds a clear take.",
+        "whyItWorks": "It borrows the attention of something already popular and adds an opinion.",
+        "examples": []
+      },
+      {
+        "id": "F-DAY-IN-LIFE",
+        "name": "Day in the life",
+        "definition": "Follows a person or the team through a day or a task and shows the work behind the brand.",
+        "whyItWorks": "It builds trust and familiarity, and it is easy to make from real footage.",
+        "examples": []
+      },
+      {
+        "id": "F-QA",
+        "name": "Q and A",
+        "definition": "Answers one real question from a customer or a comment, directly.",
+        "whyItWorks": "The question proves there is demand, and the answer speaks to everyone with the same doubt.",
+        "examples": []
+      }
+    ],
+    "editing": [
+      {
+        "id": "E-TALKING-HEAD",
+        "name": "Talking head with captions",
+        "definition": "A person speaks to camera, with burned-in captions and light cuts.",
+        "whyItWorks": "A voice and a face carry trust, and captions keep it watchable on mute.",
+        "examples": []
+      },
+      {
+        "id": "E-FACELESS-BROLL",
+        "name": "Faceless b-roll and voice-over",
+        "definition": "A voice-over (real or made) over product, screen or stock footage, with nobody on camera.",
+        "whyItWorks": "No presenter is needed, so it is quick to make in volume, and the footage keeps the picture changing.",
+        "examples": []
+      },
+      {
+        "id": "E-SCREEN-RECORDING",
+        "name": "Screen recording",
+        "definition": "The screen is the video: a walk through a tool, page or workflow, usually with a voice-over.",
+        "whyItWorks": "It shows the real thing working, which suits software and how-to topics.",
+        "examples": []
+      },
+      {
+        "id": "E-SPLIT-SCREEN",
+        "name": "Split screen",
+        "definition": "Two pictures at once: before and after, this and that, or a presenter over something playing.",
+        "whyItWorks": "It gives the eye a comparison or a second thing to hold on to.",
+        "examples": []
+      },
+      {
+        "id": "E-TEXT-LED",
+        "name": "Text-led",
+        "definition": "Big on-screen text does the talking, over simple footage, a whiteboard or a plain background.",
+        "whyItWorks": "It works without sound and without a presenter, and the reading pace sets the rhythm.",
+        "examples": []
+      },
+      {
+        "id": "E-CINEMATIC",
+        "name": "Cinematic",
+        "definition": "Planned shots, controlled light and sound design, with a polished look.",
+        "whyItWorks": "It signals quality and brand feel, and suits products and places.",
+        "examples": []
+      },
+      {
+        "id": "E-LOFI-PHONE",
+        "name": "Lo-fi phone",
+        "definition": "Shot on a phone, handheld, in natural light, with little or no polish.",
+        "whyItWorks": "It feels like a friend's video, not an ad, which lowers the viewer's guard.",
+        "examples": []
+      },
+      {
+        "id": "E-MOTION-GRAPHICS",
+        "name": "Animated or motion graphics",
+        "definition": "Animated shapes, icons and diagrams explain an idea, with no live footage needed.",
+        "whyItWorks": "It makes an abstract idea visible and keeps one look across every post.",
+        "examples": []
+      }
+    ],
+    "visualHook": [
+      {
+        "id": "V-OBJECT-IN-HAND",
+        "name": "Object in hand",
+        "definition": "The first frame shows a real object held up to the camera.",
+        "whyItWorks": "A physical thing is concrete and makes the viewer ask what it is and why it is being shown.",
+        "examples": []
+      },
+      {
+        "id": "V-PATTERN-INTERRUPT",
+        "name": "Pattern interrupt",
+        "definition": "Something unexpected in the first second: a sudden move, an odd prop, a jump straight into the scene.",
+        "whyItWorks": "It breaks the scrolling rhythm and buys the next two seconds.",
+        "examples": []
+      },
+      {
+        "id": "V-TEXT-SHOCK",
+        "name": "Text-only shock line",
+        "definition": "A bold line of text on a plain frame, such as \"Stop doing this.\"",
+        "whyItWorks": "It reads at a glance, needs no setup, and opens a question.",
+        "examples": []
+      },
+      {
+        "id": "V-RESULT-FIRST",
+        "name": "Result first",
+        "definition": "Opens on the finished result or the number, then goes back to show how it happened.",
+        "whyItWorks": "The payoff comes upfront, so the viewer stays for the how.",
+        "examples": []
+      },
+      {
+        "id": "V-SUBJECT-MOTION",
+        "name": "Subject motion",
+        "definition": "The first frame is something moving: pouring, walking towards the camera, a quick change.",
+        "whyItWorks": "Movement catches the eye in a feed of still frames.",
+        "examples": []
+      },
+      {
+        "id": "V-FACE-CLOSEUP",
+        "name": "Face close-up",
+        "definition": "A tight shot of a face with direct eye contact and an expression.",
+        "whyItWorks": "Faces are read instantly, and a direct look feels personal.",
+        "examples": []
+      },
+      {
+        "id": "V-DEMO",
+        "name": "Prop or demo",
+        "definition": "The first seconds show the product or a prop actually being used.",
+        "whyItWorks": "There is proof from the first frame of what it is and what it does.",
+        "examples": []
+      },
+      {
+        "id": "V-BEFORE-AFTER-FLASH",
+        "name": "Before and after flash",
+        "definition": "A quick cut between the before and the after in the opening second.",
+        "whyItWorks": "The contrast lands before the voice does.",
+        "examples": []
+      }
+    ],
+    "series": [
+      {
+        "id": "S-CASE-STUDY",
+        "name": "Case study series",
+        "definition": "One customer or project per post, always told in the same order.",
+        "whyItWorks": "Viewers know what to expect and come back, and every episode is proof.",
+        "examples": []
+      },
+      {
+        "id": "S-MYTH-WEEK",
+        "name": "Myth of the week",
+        "definition": "One myth of the field busted per week, in the same format.",
+        "whyItWorks": "A weekly habit trains the audience to return, and each myth is easy to find new material for.",
+        "examples": []
+      },
+      {
+        "id": "S-TOOL-OF-DAY",
+        "name": "Tool of the day",
+        "definition": "One tool, product or tip per post, always in the same quick shape.",
+        "whyItWorks": "It is easy to repeat, and each episode stands alone for a new viewer.",
+        "examples": []
+      },
+      {
+        "id": "S-TEARDOWN",
+        "name": "Teardown series",
+        "definition": "One example (an ad, a page, a post) taken apart per episode.",
+        "whyItWorks": "The repeated structure builds authority, and there is always a new example to take apart.",
+        "examples": []
+      }
+    ]
+  },
+  "legacyFormats": {
+    "F-TALKING-HEAD": {
+      "editing": "E-TALKING-HEAD"
+    },
+    "F-FOUNDER-DESK": {
+      "editing": "E-TALKING-HEAD",
+      "format": "F-DAY-IN-LIFE"
+    },
+    "F-UGC-SELFIE": {
+      "editing": "E-LOFI-PHONE",
+      "visualHook": "V-FACE-CLOSEUP"
+    },
+    "F-SCREEN-WALK": {
+      "editing": "E-SCREEN-RECORDING",
+      "format": "F-TUTORIAL"
+    },
+    "F-PRODUCT-DEMO": {
+      "visualHook": "V-DEMO"
+    },
+    "F-TEXT-ON-SCREEN": {
+      "editing": "E-TEXT-LED",
+      "visualHook": "V-TEXT-SHOCK"
+    },
+    "F-SPLIT-COMPARE": {
+      "editing": "E-SPLIT-SCREEN",
+      "format": "F-COMPARISON"
+    },
+    "F-CAROUSEL": {
+      "editing": "E-TEXT-LED",
+      "format": "F-LISTICLE"
+    },
+    "F-PROOF-CARD": {
+      "format": "F-CASE-STUDY",
+      "visualHook": "V-RESULT-FIRST"
+    },
+    "F-REPLY": {
+      "format": "F-REACTION"
+    }
+  },
+  "legacyNote": "legacyFormats maps the container ids of pipeline/playbooks/visual-formats.md (still used by the stage pairing table and post.md format_id) onto the axes above, so an older concept or filed job still lands on the right rows."
+}

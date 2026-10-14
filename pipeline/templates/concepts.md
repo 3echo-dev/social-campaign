@@ -35,7 +35,11 @@ Every concept names one value for each idea part (anchor, stage, angle, format, 
 - Anchor: "{the pain or desire, in the audience's own words}"
 - Awareness stage: {unaware | problem_aware | solution_aware | product_aware | most_aware} (playbooks/awareness-stages.md)
 - Angle: {A-* id} - {the angle in one sentence} (playbooks/angles.md)
-- Visual format: {F-* id} (playbooks/visual-formats.md)
+- Subtopic: {one of the brand's six subtopics: its id and name} (workspaces/{brand}/library/intelligence/subtopics.json)
+- Format: {F-* id and name from the format library} (pipeline/library/formats.json)
+- Editing style: {E-* id and name} (pipeline/library/formats.json)
+- Visual hook: {V-* id and name} (pipeline/library/formats.json)
+- Visual format: {F-* id} (playbooks/visual-formats.md; the container the stage pairing table reads)
 - Attention mechanic: {M-* id} (playbooks/attention-mechanics.md)
 - Micropersona (optional): the narrower group inside the segment, by life context, with the words they use
 - Creator persona (UGC only): who is speaking, why they are credible, their setting

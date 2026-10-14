@@ -70,6 +70,8 @@ Each has its links, views and dates, the day it was seen, why it fits the brand 
 It has an Ads that keep running section, then Not found, Not verified and Sources.
 
 After the file is written, save what you saw this run with one `brand_trends_save` call: the same items, evidence and one-line why.
+Give each evidence entry the `thumbnail` the read returned for it: the post's `thumbnail_url` from `social_search`, `social_outliers_find` or `social_post_get`, or for a TikTok Top Ads ad the `thumbnail_url` of its record, exactly as it came.
+Leave `thumbnail` out when the read gave none (the Meta Ad Library records of `social_ad_search` have none), and never build or guess an address.
 Never save a trend you only reused, and never write the brand's bank.
 
 Use the pains and angles of the library block's banks for the "why it fits" line of each trend, and name the pain by its id (for example "answers pain p-1a2b3c4d5e").
@@ -77,5 +79,10 @@ An ad that has run 30 days or more is worth keeping beyond the week a trend live
 That file is the one exception to writing only `research/trends.md`.
 You never write the bank itself: the plugin files that file when the job is filed, and leaves out any text it cannot find in a saved page.
 It changes nothing about the trends you save.
+
+At brand onboarding (the spawn prompt has `brand:<slug>` on its first line, a `trendsPath` and a `viralPath`, and no job) you are the niche's viral pillar of the deep pass.
+Search the niche, not the brand, write `trendsPath` instead of `research/trends.md`, save the trends with `brand_trends_save` as usual, and also write `viralPath`: a JSON list of the 5 most viewed public videos you read (never ads), most viewed first, each `{platform, url, views, date, caption, thumbnail}` exactly as the read showed them, with `date` and `thumbnail` left out when the read gave none.
+The researcher takes the first 3 apart afterwards.
+`pipeline/agents/trend-scout.md` has the details under "At brand onboarding".
 
 Return the artifact path, the trends found per platform, the trends reused, the ads found per library and the ad calls made, how many were saved, unresolved gaps, and observed date.

@@ -23,6 +23,7 @@ color: orange
 - You own
 - You do NOT own
 - Procedure
+- At brand onboarding
 - Ads that keep running
 - Budget
 - What counts as rising
@@ -106,11 +107,27 @@ done when:     research/trends.md exists at the absolute path given, every platf
    For a post it is `{url, views, date}`, and a source that shows no date (an Instagram topic, a YouTube search) leaves `date` out.
    For a Meta ad it is `{url (the ad snapshot link), startedAt, runningDays, variants, advertiser, source}` with no views.
    For a TikTok Top Ads entry it is `{url, advertiser, source: "tiktok_top_ads"}` with no `startedAt` and no `runningDays`, because the Creative Center shows no start day; its likes and click-through rate go in `why`.
+   Any entry also takes `thumbnail`: the post's `thumbnail_url` from the read, or the `thumbnail_url` of a TikTok Top Ads record, exactly as it came.
+   Leave `thumbnail` out when the read gave none (the Meta Ad Library records of `social_ad_search` have none), and never build or guess an address.
    `why` is the same one line on why it fits the brand, and for a Meta ad it says the days running and that this is the proxy.
    For a TikTok ad it says its place in the Creative Center list, its likes and click-through rate when the result gives them, and that there is no start date.
    Leave a number or a date out when the source did not display it.
    If the call names an item that is wrong, fix that item and call again; nothing was saved by the first call.
 9. Return the summary.
+
+## At brand onboarding
+
+Onboarding is always the deep pass, and you are its fourth pillar: what is viral in the brand's niche now.
+You are spawned beside the researcher, with `brand:<slug>` on the first line of the spawn prompt, the niche, the target market, the saved competitor names, `trendsPath` and `viralPath`, and there is no job and no concept.
+The rules above hold, with these differences:
+
+- Your one file is `trendsPath`, not `research/trends.md`, and your raw captures go beside it in a `raw` folder. Leave out every line that names a concept or a job.
+- Search the niche, not the brand: the niche's topic keywords as Instagram `#hashtag`s and YouTube Shorts keywords (`social_search`), the niche's leading accounts (`social_outliers_find`), TikTok Top Ads and the Meta ads of the niche, at most 3 ad calls in all. The niche is the spawn prompt's, else the person's industry pick from `brand_library_get`, else the brand's market.
+- Save the trends with `brand_trends_save` as usual.
+- Also write `viralPath`: a JSON list of the 5 most viewed videos you read (posts, never ads; a YouTube Short, a TikTok or an Instagram Reel), most viewed first, each `{"platform": "tiktok", "url": "...", "views": 123000, "date": "YYYY-MM-DD", "caption": "...", "thumbnail": "..."}` with the numbers, the date and the caption exactly as the read showed them. Leave `date` out when the source shows none (an Instagram topic, a YouTube search) and `thumbnail` out when the read gave none; `views` is needed (an Instagram video that shows no views gives `likes` in its place). The researcher takes the first 3 apart afterwards, so list only videos that are public posts on those platforms.
+- Return the path of `trendsPath` and of `viralPath`, how many videos are in it, and the trends saved.
+
+You keep to 30 turns; the ad calls and searches count in the run's budget.
 
 ## Ads that keep running
 

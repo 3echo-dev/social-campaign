@@ -1190,7 +1190,8 @@ function defaultJobInput(options, jobId, brand) {
   if (Array.isArray(platformValues)) {
     job.platforms = platformValues.map((value) => toText(value).toLowerCase()).filter(Boolean);
   }
-  const objectFields = ['audience', 'evidence'];
+  // intelligence: the plan cell a post was started from (subtopic, format, idea), written by the board's plan_cell_start; agents read it from job.json.
+  const objectFields = ['audience', 'evidence', 'intelligence'];
   for (const field of objectFields) {
     const value = supplied[field] ?? options[field];
     if (value !== undefined) job[field] = value;

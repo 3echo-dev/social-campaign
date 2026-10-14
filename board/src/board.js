@@ -519,15 +519,21 @@ export const KIT_PHOTOS_MAX = 5;
 export const KIT_PHOTOS_NOTE = 'Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
 const KIT_SOCIAL_PLATFORMS = Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
 
-// Folders of the brand's own videos, photos and fonts, added on the onboarding page (the board request `brand_folder_add`). The board runs in
-// a browser and cannot open a folder on this computer, so the person types or pastes its full path and says whose footage it is; Claude reads
-// the files where they are (nothing is copied or uploaded), learns from the videos and photos, and offers the fonts to the kit.
+// Folders of the brand's own videos, photos and fonts, added on the onboarding page. The board runs in a browser and cannot read a folder on this
+// computer, so the person presses "Choose a folder..." (the board request `brand_folder_pick`): Claude opens the operating system's own folder
+// dialog on their computer and imports the folder they choose. Pasting a full path (the request `brand_folder_add`) stays as a small fallback. Either
+// way the person says who owns the files, Claude reads them where they are (nothing is copied or uploaded), learns from the videos and photos, and
+// offers the fonts to the kit.
 export const KIT_FOLDER_NOTE = 'Add folders of your videos, photos and fonts. Claude reads them where they are on this computer: nothing is copied or uploaded. It learns your hooks and styles from the videos, offers photos for "Photos of your world", and adds your fonts to the kit.';
 export const KIT_FOLDER_RIGHTS = Object.freeze([
-  { value: 'ours', label: 'Ours, free to use' },
-  { value: 'client_ask', label: 'Client work, ask first' },
-  { value: 'never', label: 'Never use' },
+  { value: 'ours', label: 'Ours', hint: 'I study them and can use them in your posts.' },
+  { value: 'client_ask', label: 'Client work, ask first', hint: 'I study them, but ask you before any of it goes in a post.' },
+  { value: 'never', label: 'Reference only', hint: 'I list them so you can find them, but never study or post them.' },
 ]);
+export const KIT_FOLDER_OWNER_QUESTION = 'Who owns the files in this folder?';
+export const KIT_FOLDER_PICK_HINT = 'A folder picker opens on your computer, like saving a file. No need to copy a path.';
+export const KIT_FOLDER_PICK_WAIT = 'First choose who owns the files below.';
+export const KIT_FOLDER_PICK_OPENED = 'A folder picker opened on your computer';
 const KIT_FOLDER_KINDS = Object.freeze([['video', 'video', 'videos'], ['image', 'photo', 'photos'], ['audio', 'audio file', 'audio files'], ['font', 'font', 'fonts']]);
 const KIT_FOLDER_STATES = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
 const KIT_FOLDER_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/;
@@ -540,18 +546,163 @@ export function folderCountsLine(kinds) {
   return KIT_FOLDER_KINDS.map(([key, one, many]) => [folderNumber(counts[key]), one, many]).filter(([count]) => count).map(([count, one, many]) => `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`).join(', ');
 }
 
-// What the Add a folder control sends: { args: { folder, rights, label? }, name } or { error }. The rights answer is the person's own and is
+// What the paste-a-path fallback sends: { args: { folder, rights, label? }, name } or { error }. The rights answer is the person's own and is
 // never defaulted. The name is what the row shows (the label, else the folder's last part); the full path appears nowhere on the page.
 export function folderRequestArgs({ path, label, rights } = {}) {
   const folder = String(path ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
   if (!folder) return { error: 'Type or paste the full path of the folder.' };
   if (!KIT_FOLDER_PATH.test(folder)) return { error: 'Use the full path of the folder, starting at the drive, for example C:\\Users\\you\\Brand videos.' };
   if (folder.length > 1000) return { error: 'That path is too long.' };
-  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose whose footage this is.' };
+  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose who owns the files in this folder.' };
   const words = String(label ?? '').replace(/\s+/g, ' ').trim();
   if (words.length > 120) return { error: 'Keep the name under 120 characters.' };
   const last = folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder;
   return { args: { folder, rights, ...(words ? { label: words } : {}) }, name: words || last };
+}
+
+// What "Choose a folder..." sends (the request `brand_folder_pick`): { args: { rights, label? }, name } or { error }. No path: the folder is
+// chosen in the operating system's dialog on the person's computer. The rights answer is the person's own and is never defaulted.
+export function folderPickArgs({ label, rights } = {}) {
+  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose who owns the files in this folder.' };
+  const words = String(label ?? '').replace(/\s+/g, ' ').trim();
+  if (words.length > 120) return { error: 'Keep the name under 120 characters.' };
+  return { args: { rights, ...(words ? { label: words } : {}) }, name: words || 'Your folder' };
+}
+
+// Fonts the person uploads on the onboarding page. The kit keeps a font by its family name (the folder digest reads the name from a font file
+// the same way), so the file itself is only read here: its name goes into the kit's fonts and its bytes preview the specimen in the page.
+export const KIT_FONT_EXTENSIONS = Object.freeze(['ttf', 'otf', 'woff', 'woff2']);
+export const KIT_FONT_ACCEPT = '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2';
+export const KIT_FONT_FILE_MAX = 20 * 1024 * 1024;
+export const KIT_FONT_FAMILY = /^[A-Za-z0-9][A-Za-z0-9 ._'-]{0,79}$/;
+const FONT_WEIGHT_TAIL = /[-_\s]+(?:thin|hairline|extralight|ultralight|light|book|regular|roman|normal|medium|semibold|demibold|bold|extrabold|ultrabold|heavy|black|italic|oblique|italics|variable|[1-9]00)$/i;
+
+// The family as a lookup key: one spelling for "Playfair  Display" and "playfair display".
+export const fontKey = family => String(family ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+// A plain-words problem with a picked font file, or '' when it can be read.
+export function fontFileProblem(file) {
+  const extension = String(file?.name ?? '').toLowerCase().split('.').pop();
+  if (!file || !KIT_FONT_EXTENSIONS.includes(extension)) return 'Use a .ttf, .otf, .woff or .woff2 font file.';
+  if (!(file.size > 0)) return 'That font file is empty.';
+  if (file.size > KIT_FONT_FILE_MAX) return 'That font file is too large. Use one under 20 MB.';
+  return '';
+}
+
+// The first use a new font takes: headings, then body, then captions, then other (the kit holds at most 4 fonts).
+export function nextFontUse(fonts) {
+  const taken = new Set((Array.isArray(fonts) ? fonts : []).map(font => font?.use));
+  return KIT_FONT_USES.find(use => use !== 'other' && !taken.has(use)) || 'other';
+}
+
+// "BrandSans-Bold.woff2" is the family "BrandSans": the file name with its extension and weight word taken off. null when nothing usable is left.
+export function fontFamilyFromFileName(name) {
+  let base = String(name ?? '').split(/[\\/]/).pop().replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/[_]+/g, ' ');
+  for (let guard = 0; guard < 4; guard += 1) {
+    const next = base.replace(FONT_WEIGHT_TAIL, '');
+    if (!next || next === base) break;
+    base = next;
+  }
+  const family = base.replace(/\s+/g, ' ').trim();
+  return KIT_FONT_FAMILY.test(family) ? family : null;
+}
+
+// The Google Fonts stylesheet address for a family name, or null when the name could not be one (only letters, digits and spaces are asked for).
+export function googleFontHref(family) {
+  const name = String(family ?? '').trim().replace(/\s+/g, ' ');
+  return /^[A-Za-z0-9][A-Za-z0-9 ]{0,59}$/.test(name) ? `https://fonts.googleapis.com/css2?family=${name.replace(/ /g, '+')}&display=swap` : null;
+}
+
+function nameTableFamily(table) {
+  if (!table || table.byteLength < 6) return null;
+  const view = new DataView(table.buffer, table.byteOffset, table.byteLength);
+  const count = view.getUint16(2);
+  const base = view.getUint16(4);
+  const best = new Map();
+  for (let i = 0; i < count; i += 1) {
+    const at = 6 + i * 12;
+    if (at + 12 > table.byteLength) break;
+    const platform = view.getUint16(at);
+    const language = view.getUint16(at + 4);
+    const id = view.getUint16(at + 6);
+    const length = view.getUint16(at + 8);
+    const offset = base + view.getUint16(at + 10);
+    if ((id !== 1 && id !== 16) || offset + length > table.byteLength) continue;
+    const rank = platform === 3 && language === 0x0409 ? 4 : platform === 3 ? 3 : platform === 0 ? 2 : platform === 1 && language === 0 ? 1 : 0;
+    if (!rank || (best.get(id)?.rank ?? 0) >= rank) continue;
+    const raw = table.subarray(offset, offset + length);
+    let text = '';
+    if (platform === 1) for (const byte of raw) text += String.fromCharCode(byte);
+    else for (let j = 0; j + 1 < raw.length; j += 2) text += String.fromCharCode((raw[j] << 8) | raw[j + 1]);
+    text = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (text) best.set(id, { rank, text });
+  }
+  // The typographic family is the whole family ("Montserrat"); the plain family may carry a weight ("Montserrat SemiBold").
+  let family = best.get(16)?.text || '';
+  if (!family && best.get(1)?.text) {
+    family = best.get(1).text;
+    for (let guard = 0; guard < 4; guard += 1) {
+      const next = family.replace(FONT_WEIGHT_TAIL, '');
+      if (!next || next === family) break;
+      family = next;
+    }
+  }
+  return KIT_FONT_FAMILY.test(family) ? family : null;
+}
+
+function sfntTable(bytes, base, tag) {
+  if (base + 12 > bytes.byteLength) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(base + 4);
+  if (!count || count > 512) return null;
+  for (let i = 0; i < count; i += 1) {
+    const at = base + 12 + i * 16;
+    if (at + 16 > bytes.byteLength) return null;
+    if (String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]) !== tag) continue;
+    const offset = view.getUint32(at + 8);
+    const length = view.getUint32(at + 12);
+    if (!length || length > 2 * 1024 * 1024 || offset + length > bytes.byteLength) return null;
+    return bytes.subarray(offset, offset + length);
+  }
+  return null;
+}
+
+async function woffTable(bytes, tag) {
+  if (bytes.byteLength < 44) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(12);
+  if (!count || count > 512) return null;
+  for (let i = 0; i < count; i += 1) {
+    const at = 44 + i * 20;
+    if (at + 20 > bytes.byteLength) return null;
+    if (String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]) !== tag) continue;
+    const offset = view.getUint32(at + 4);
+    const packed = view.getUint32(at + 8);
+    const original = view.getUint32(at + 12);
+    if (!original || original > 2 * 1024 * 1024 || offset + packed > bytes.byteLength) return null;
+    const data = bytes.subarray(offset, offset + packed);
+    if (packed >= original) return data;
+    if (typeof DecompressionStream !== 'function') return null;
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return null;
+}
+
+// The family name inside a font file's own `name` table (.ttf, .otf, the first font of a .ttc, and .woff), the way the folder digest reads it on
+// the computer: the typographic family when the font has one, else the family with a trailing weight word taken off. A .woff2 file is Brotli packed
+// and the browser cannot unpack it, so it returns null (the caller falls back to the file name). Never throws.
+export async function fontFamilyFromBytes(input) {
+  try {
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+    if (bytes.byteLength < 12) return null;
+    const signature = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (signature === 'wOF2') return null;
+    if (signature === 'wOFF') return nameTableFamily(await woffTable(bytes, 'name'));
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const base = signature === 'ttcf' ? view.getUint32(12) : 0;
+    return nameTableFamily(sfntTable(bytes, base, 'name'));
+  } catch { return null; }
 }
 
 // A hex colour, with or without '#', 3 or 6 digits, normalized to
@@ -1079,6 +1230,8 @@ export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}
 //   last, or the list's own "+ Add" button once the list is empty.
 // - remove-logo/replace-logo: the (hidden) file input behind both the
 //   upload tile and the Replace label, the one control they share.
+// - pick-folder/rights-folder/upload-font: the Choose a folder button, the
+//   first owner card (the button is off until one is picked), the font file input.
 export function kitFocusSelector(action, index, count) {
   if (action === 'add-color') return `[name="kit_color_hex_${count - 1}"]`;
   if (action === 'add-font') return `[name="kit_font_family_${count - 1}"]`;
@@ -1087,6 +1240,9 @@ export function kitFocusSelector(action, index, count) {
   if (action === 'remove-logo' || action === 'replace-logo') return '#kit-logo-file';
   if (action === 'remove-ref' || action === 'add-ref') return '#kit-ref-file';
   if (action === 'add-folder') return '#kit-folder-path';
+  if (action === 'pick-folder') return '[data-kit-action="pick-folder"]';
+  if (action === 'rights-folder') return '[name="kit_folder_rights"]';
+  if (action === 'upload-font') return '#kit-font-file';
   return null;
 }
 
@@ -1105,7 +1261,15 @@ const KIT_ICONS = Object.freeze({
  removeSmall: '<svg aria-hidden="true" viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"/></svg>',
   check: '<svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></svg>',
   image: '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>',
+  folder: '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  pencil: '<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 2.5 3 3L5 14H2v-3z"/></svg>',
 });
+
+// Fonts the page could not show: a family that is neither a Google font nor installed on this computer. The page marks it after it has asked
+// (see the app's loadKitFonts), and the font rows then say so instead of showing the fallback letters as if they were the font.
+// `uploadedFonts` maps a family (fontKey) to the CSS name of the font file the person uploaded in this page, so its specimen shows the real letters.
+export const uploadedFonts = new Map();
+export const fontPreview = { missing: new Set() };
 
 // One labelled block of the kit grid (Logo, Colours or Fonts). It reuses the
 // context fields' own .context-field/.context-field-head markup, so its label
@@ -1125,23 +1289,27 @@ function kitFolderRow(folder) {
   const looked = folder.state === 'ready' || !folder.state ? (lookable ? (described ? `Looked at ${described} of ${lookable}` : 'Not looked at yet') : '') : '';
   const held = folderCountsLine(folder.kinds) || (folderNumber(folder.files) ? `${folderNumber(folder.files)} ${folderNumber(folder.files) === 1 ? 'file' : 'files'}` : '');
   const meta = [rights, held, folderNumber(folder.missing) ? `${folderNumber(folder.missing)} missing` : '', reading, looked].filter(Boolean).map(esc).join(' &middot; ');
-  return `<li class="library-item kit-folder"><div class="library-main"><span class="library-text">${esc(trimmed(folder.name) || 'Folder')}</span><span class="library-meta">${meta}</span></div></li>`;
+  return `<li class="library-item kit-folder"><span class="kit-folder-icon" aria-hidden="true">${KIT_ICONS.folder}</span><div class="library-main"><span class="library-text">${esc(trimmed(folder.name) || 'Folder')}</span><span class="library-meta">${meta}</span></div></li>`;
 }
 
-// A folder just added on this page, before the brand's footage lists it: waiting for Claude, read, or turned down with the reason.
+// A folder just added on this page, before the brand's footage lists it: waiting for Claude, read, or turned down with the reason. A folder
+// picked in the dialog (kind 'pick') says the picker is open on the person's computer until the folder is chosen.
 function kitFolderPending(entry, index) {
   const rights = KIT_FOLDER_RIGHTS.find(option => option.value === entry.rights)?.label || '';
   const failed = entry.status === 'declined' || entry.status === 'error';
-  const status = entry.status === 'sent' ? 'Sending...' : entry.status === 'waiting' ? 'Waiting for Claude' : entry.status === 'applied' ? 'Added. Reading the files' : '';
+  const picking = entry.kind === 'pick';
+  const status = entry.status === 'sent' ? 'Sending...' : entry.status === 'waiting' ? (picking ? KIT_FOLDER_PICK_OPENED : 'Waiting for Claude') : entry.status === 'applied' ? 'Added. Reading the files' : '';
   const meta = [rights, status].filter(Boolean).map(esc).join(' &middot; ');
   const dismiss = failed ? `<button type="button" class="quiet" data-kit-action="dismiss-folder" data-index="${index}" aria-label="${esc(`Dismiss: ${entry.name}`)}">Dismiss</button>` : '';
-  return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Claude could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
+  const live = !failed && entry.status === 'waiting' && picking ? ' role="status"' : '';
+  return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><span class="kit-folder-icon" aria-hidden="true">${KIT_ICONS.folder}</span><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta"${live}>${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Claude could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
 }
 
-// The "Folders of your videos, photos and fonts" block of the kit: the folders added so far with their status and counts (the brand's
-// footage list, plus requests still waiting for Claude), then the control to add one. `folders` is the draft's own state:
-// { path, label, rights, error, busy, pending: [{ requestId, name, rights, status, message, folderId, appliedAt }] }. Without a brand
-// (before onboarding has started) there is nowhere to keep a folder yet, so the control waits.
+// The "Your videos, photos and fonts" block of the kit: a "Choose a folder..." button that opens the folder dialog on the person's computer, the
+// question of who owns the files (three cards, none picked until the person picks one), a small "or paste a path" fallback, then the folders added
+// so far with their status and counts (the brand's footage list, plus requests still waiting for Claude). `folders` is the draft's own state:
+// { path, label, rights, error, busy, pasteOpen, pending: [{ requestId, kind?, name, rights, status, message, folderId, appliedAt }] }. Without a
+// brand (before onboarding has started) there is nowhere to keep a folder yet, so the controls wait.
 export function kitFolders(brand, folders = {}, disabled = false, now = Date.now()) {
   const state = folders && typeof folders === 'object' ? folders : {};
   const footage = brand?.library?.footage && typeof brand.library.footage === 'object' ? brand.library.footage : null;
@@ -1154,12 +1322,18 @@ export function kitFolders(brand, folders = {}, disabled = false, now = Date.now
   const fonts = Array.isArray(footage?.fonts) ? footage.fonts.map(name => trimmed(name)).filter(Boolean) : [];
   const waiting = !brand;
   const off = disabled || waiting || state.busy ? 'disabled' : '';
+  const chosen = KIT_FOLDER_RIGHTS.some(option => option.value === state.rights);
   const errorId = 'kit-folder-error';
-  const radios = KIT_FOLDER_RIGHTS.map(option => `<label class="kit-radio"><input type="radio" name="kit_folder_rights" value="${option.value}" data-kit-folder="rights" ${state.rights === option.value ? 'checked' : ''} ${off}><span>${esc(option.label)}</span></label>`).join('');
-  const add = `<div class="kit-folder-add"><div class="kit-folder-fields"><label class="kit-folder-field" for="kit-folder-path"><span>Folder on this computer</span><input type="text" id="kit-folder-path" name="kit_folder_path" data-kit-folder="path" value="${esc(state.path || '')}" placeholder="C:\\Users\\you\\Brand videos" autocomplete="off" spellcheck="false" aria-invalid="${state.error ? 'true' : 'false'}" ${state.error ? `aria-describedby="${errorId}"` : ''} ${off}></label><label class="kit-folder-field" for="kit-folder-label"><span>Name (optional)</span><input type="text" id="kit-folder-label" name="kit_folder_label" data-kit-folder="label" maxlength="120" value="${esc(state.label || '')}" placeholder="Summer shoot 2024" autocomplete="off" ${off}></label></div><div class="kit-rights" role="radiogroup" aria-labelledby="kit-folder-rights-label"><span class="kit-sublabel" id="kit-folder-rights-label">Whose footage is this?</span>${radios}</div>${state.error ? `<p class="field-error" id="${errorId}" role="alert">${esc(state.error)}</p>` : ''}<button type="button" class="kit-add" data-kit-action="add-folder" ${off}>${KIT_ICONS.plus}<span>${state.busy ? 'Adding...' : 'Add folder'}</span></button></div>`;
+  const cards = KIT_FOLDER_RIGHTS.map(option => `<label class="kit-owner-card"><input type="radio" name="kit_folder_rights" value="${option.value}" data-kit-folder="rights" ${state.rights === option.value ? 'checked' : ''} ${disabled || waiting ? 'disabled' : ''}><span class="kit-owner-body"><span class="kit-owner-title">${esc(option.label)}</span><span class="kit-owner-hint">${esc(option.hint)}</span></span></label>`).join('');
+  const pickHint = waiting || disabled ? '' : chosen ? KIT_FOLDER_PICK_HINT : KIT_FOLDER_PICK_WAIT;
+  const pick = `<div class="kit-folder-pick"><button type="button" class="kit-choose" data-kit-action="pick-folder" aria-describedby="kit-folder-pick-hint" ${off || !chosen ? 'disabled' : ''}>${KIT_ICONS.folder}<span>${state.busy ? 'Opening...' : 'Choose a folder&hellip;'}</span></button><span class="muted kit-folder-pick-hint" id="kit-folder-pick-hint" data-pick-hint>${esc(pickHint)}</span></div>`;
+  const owner = `<fieldset class="kit-owner" ${disabled || waiting ? 'disabled' : ''}><legend class="kit-sublabel" id="kit-folder-owner-label">${esc(KIT_FOLDER_OWNER_QUESTION)}</legend><div class="kit-owner-cards">${cards}</div></fieldset>`;
+  const paste = `<details class="kit-paste" data-kit-paste ${state.pasteOpen || state.error ? 'open' : ''}><summary>Or paste a path</summary><div class="kit-folder-add"><div class="kit-folder-fields"><label class="kit-folder-field" for="kit-folder-path"><span>Folder on this computer</span><input type="text" id="kit-folder-path" name="kit_folder_path" data-kit-folder="path" value="${esc(state.path || '')}" placeholder="C:\\Users\\you\\Brand videos" autocomplete="off" spellcheck="false" aria-invalid="${state.error ? 'true' : 'false'}" ${state.error ? `aria-describedby="${errorId}"` : ''} ${off}></label><label class="kit-folder-field" for="kit-folder-label"><span>Name (optional)</span><input type="text" id="kit-folder-label" name="kit_folder_label" data-kit-folder="label" maxlength="120" value="${esc(state.label || '')}" placeholder="Summer shoot 2024" autocomplete="off" ${off}></label></div><button type="button" class="kit-add" data-kit-action="add-folder" ${off}>${KIT_ICONS.plus}<span>${state.busy ? 'Adding...' : 'Add folder'}</span></button></div></details>`;
+  const problem = state.error ? `<p class="field-error" id="${errorId}" role="alert">${esc(state.error)}</p>` : '';
   const intro = `<p class="muted">${esc(waiting ? 'Folders can be added as soon as onboarding has started.' : KIT_FOLDER_NOTE)}</p>`;
   const found = fonts.length ? `<p class="muted kit-folder-fonts">Fonts found: ${fonts.map(esc).join(', ')}</p>` : '';
-  return kitBlock('folders', 'Folders of your videos, photos and fonts', `${intro}${rows ? `<ul class="library-list kit-folder-list">${rows}</ul>` : ''}${found}${add}`, '', 'kit-folders-block');
+  const list = rows ? `<ul class="library-list kit-folder-list">${rows}</ul>` : '';
+  return kitBlock('folders', 'Your videos, photos and fonts (optional)', `${intro}${pick}${owner}${problem}${paste}${list}${found}`, '', 'kit-card kit-folders-block');
 }
 
 export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
@@ -1170,6 +1344,7 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const provided = projected.provided || {};
   const showTags = phase === 'ready';
   const tag = '<span class="pill">Added by you</span>';
+  const readTag = '<span class="pill">Read from your website</span>';
   const logoState = kit.logo || {};
   const palette = Array.isArray(kit.palette) ? kit.palette : (projected.palette || []);
   const fonts = Array.isArray(kit.fonts) ? kit.fonts : (projected.fonts || []);
@@ -1181,26 +1356,35 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const logoAlt = brand?.name ? `${brand.name} logo` : 'Logo';
   const logoError = fieldErrors?.logo || null;
   const fileInput = label => `<input type="file" id="kit-logo-file" class="kit-file visually-hidden" name="kit_logo_file" accept="image/png,image/jpeg,image/webp,image/svg+xml"${label ? ` aria-label="${label}"` : ''} aria-invalid="${logoError ? 'true' : 'false'}" ${logoError ? 'aria-describedby="kit-logo-error"' : ''} ${dis}>`;
+  // The same logo on a light and on a dark tile, so the person can check both. The second image is a decoration (the first carries the alt text).
+  const tiles = src => `<div class="kit-logo-tiles"><figure class="kit-logo-tile is-light"><img src="${esc(src)}" alt="${esc(logoAlt)}"><figcaption>On light</figcaption></figure><figure class="kit-logo-tile is-dark"><img src="${esc(src)}" alt=""><figcaption>On dark</figcaption></figure></div>`;
+  const ghostTiles = `<span class="kit-logo-ghosts" aria-hidden="true"><span class="kit-logo-ghost is-light">${KIT_ICONS.image}</span><span class="kit-logo-ghost is-dark">${KIT_ICONS.image}</span></span>`;
   const logoBody = hasLogo
-    ? `<div class="kit-logo-preview${preview ? '' : ' kit-logo-preview-none'}">${preview ? `<img src="${esc(preview)}" alt="${esc(logoAlt)}">` : `<span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div>`
-    : `${fileInput('')}<label class="kit-upload" for="kit-logo-file">${KIT_ICONS.upload}<span class="kit-upload-title">Upload logo</span><span class="kit-upload-hint">PNG, JPG, WebP or SVG</span></label>`;
-  const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, showTags && provided.logo ? tag : '', 'kit-logo-block');
+    ? `<div class="kit-drop kit-drop-filled" data-kit-drop="logo">${preview ? tiles(preview) : `<div class="kit-logo-preview kit-logo-preview-none"><span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span></div>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div><p class="muted kit-card-note">${preview ? 'Shown on light and dark so you can check both. ' : ''}Drop a new file on the logo to replace it.</p>`
+    : `<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload" for="kit-logo-file">${ghostTiles}<span class="kit-upload-title">Drop your logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div><p class="muted kit-card-note">Shown on light and dark so you can check both.</p>`;
+  const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, showTags && provided.logo ? tag : '', 'kit-card kit-logo-block');
 
   const removeButton = (action, index, label) => `<button type="button" class="quiet kit-icon-button" data-kit-action="${action}" data-index="${index}" aria-label="${label}" ${dis}>${KIT_ICONS.remove}</button>`;
+  // Each colour is a tile: the swatch itself (a colour input the whole block opens), its hex code and its role.
   const colorRows = palette.map((color, index) => {
     const n = index + 1;
     const error = fieldErrors?.[`color_${index}`];
     const errorId = `kit-color-${index}-error`;
-    return `<div class="kit-row kit-color-row"><input type="color" class="kit-swatch" name="kit_color_swatch_${index}" value="${esc(normalizeHex(color?.value) || '#000000')}" aria-label="Pick colour ${n}" ${dis}><input type="text" name="kit_color_hex_${index}" maxlength="7" placeholder="#1A2B3C" value="${esc(color?.value || '')}" aria-label="Colour ${n} hex code" spellcheck="false" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} ${dis}><select name="kit_color_role_${index}" aria-label="Colour ${n} role" ${fieldErrors?.palette ? 'aria-describedby="kit-palette-error"' : ''} ${dis}>${KIT_COLOR_ROLES.map(role => `<option value="${role}" ${color?.role === role ? 'selected' : ''}>${humanize(role)}</option>`).join('')}</select>${removeButton('remove-color', index, `Remove colour ${n}`)}${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
+    const hex = normalizeHex(color?.value);
+    return `<div class="kit-row kit-color-row"><label class="kit-swatch-block${hex ? '' : ' is-invalid'}" style="--swatch:${esc(hex || '#000000')}"><input type="color" class="kit-swatch" name="kit_color_swatch_${index}" value="${esc(hex || '#000000')}" aria-label="Pick colour ${n}" ${dis}><span class="kit-swatch-edit" aria-hidden="true">${KIT_ICONS.pencil}</span></label><input type="text" class="kit-hex" name="kit_color_hex_${index}" maxlength="7" placeholder="#1A2B3C" value="${esc(color?.value || '')}" aria-label="Colour ${n} hex code" spellcheck="false" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} ${dis}><select name="kit_color_role_${index}" aria-label="Colour ${n} role" ${fieldErrors?.palette ? 'aria-describedby="kit-palette-error"' : ''} ${dis}>${KIT_COLOR_ROLES.map(role => `<option value="${role}" ${color?.role === role ? 'selected' : ''}>${humanize(role)}</option>`).join('')}</select>${removeButton('remove-color', index, `Remove colour ${n}`)}${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
   }).join('');
   const settled = phase === 'ready' && CAPTURE_SETTLED.has(projected.capture?.status) && !(projected.palette || []).length;
   const socialPlatform = KIT_SOCIAL_PLATFORMS[projected.paletteSource];
   const paletteNote = socialPlatform && !provided.palette && palette.length ? `<p class="muted">From your ${socialPlatform} profile picture.</p>` : '';
   const emptyColours = settled ? 'We could not read your colours. Add them here.' : 'No colours yet';
-  const colorsBody = `${paletteNote}${colorRows || `<p class="muted">${emptyColours}</p>`}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}<button type="button" class="kit-add" data-kit-action="add-color" ${loading || palette.length >= KIT_LIMITS.maxColors ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
-  const colorsBlock = kitBlock('colors', 'Colours', colorsBody, showTags && provided.palette ? tag : '');
+  const paletteFull = loading || palette.length >= KIT_LIMITS.maxColors;
+  const addColor = `<button type="button" class="kit-add kit-add-swatch" data-kit-action="add-color" ${paletteFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
+  const colorsBody = `${paletteNote}${colorRows ? '' : `<p class="muted">${emptyColours}</p>`}<div class="kit-swatches">${colorRows}${addColor}</div>${colorRows ? '<p class="muted kit-card-note">Click a swatch to change it.</p>' : ''}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}`;
+  const readColours = showTags && !provided.palette && !socialPlatform && !Array.isArray(kit.palette) && palette.length && projected.paletteSource === 'website';
+  const colorsBlock = kitBlock('colors', 'Colours', colorsBody, showTags && provided.palette ? tag : readColours ? readTag : '', 'kit-card kit-colors-block');
 
   const fontOptions = (projected.fonts || []).map(font => `<option value="${esc(font.family)}">`).join('');
+  // Each font is a specimen: "Aa" and the name in the real font (a Google font, a font installed here, or the file the person uploaded).
   const fontRows = fonts.map((font, index) => {
     const n = index + 1;
     const error = fieldErrors?.[`font_${index}`];
@@ -1208,11 +1392,19 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     // Quotes, semicolons and braces are dropped so a typed name can only
     // ever be a font family inside the inline style, never more CSS.
     const family = String(font?.family || '').trim().replace(/['"\\;{}<>]/g, '');
-    const sampleFamily = family ? `'${family}', var(--sans)` : 'var(--sans)';
-    return `<div class="kit-row kit-font-row"><input type="text" name="kit_font_family_${index}" maxlength="80" placeholder="Inter" list="kit-font-options" value="${esc(font?.family || '')}" aria-label="Font ${n} name" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} ${dis}><select name="kit_font_use_${index}" aria-label="Font ${n} use" ${dis}>${KIT_FONT_USES.map(use => `<option value="${use}" ${font?.use === use ? 'selected' : ''}>${humanize(use)}</option>`).join('')}</select><span class="kit-font-sample" aria-hidden="true" style="font-family:${esc(sampleFamily)}">Aa</span>${removeButton('remove-font', index, `Remove font ${n}`)}${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
+    const key = fontKey(family);
+    const uploaded = uploadedFonts.get(key) || null;
+    const stack = `${uploaded ? `'${uploaded}', ` : ''}${family ? `'${family}', ` : ''}var(--sans)`;
+    const missing = Boolean(family) && !uploaded && fontPreview.missing.has(key);
+    const note = uploaded ? 'Uploaded font file' : missing ? 'Preview unavailable' : '';
+    return `<div class="kit-row kit-font-row${missing ? ' is-fallback' : ''}" data-font-key="${esc(key)}"><span class="kit-font-sample" aria-hidden="true" style="font-family:${esc(stack)}">Aa</span><input type="text" class="kit-font-name" name="kit_font_family_${index}" maxlength="80" placeholder="Inter" list="kit-font-options" value="${esc(font?.family || '')}" aria-label="Font ${n} name" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} style="font-family:${esc(stack)}" ${dis}><select name="kit_font_use_${index}" aria-label="Font ${n} use" ${dis}>${KIT_FONT_USES.map(use => `<option value="${use}" ${font?.use === use ? 'selected' : ''}>${humanize(use)}</option>`).join('')}</select>${removeButton('remove-font', index, `Remove font ${n}`)}<span class="kit-font-note muted" data-font-note>${note}</span>${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
   }).join('');
-  const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${fontRows || '<p class="muted">No fonts yet</p>'}<button type="button" class="kit-add" data-kit-action="add-font" ${loading || fonts.length >= KIT_LIMITS.maxFonts ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add font</span></button>`;
-  const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : '');
+  const fontsFull = loading || fonts.length >= KIT_LIMITS.maxFonts;
+  const fontActions = `<div class="kit-actions"><button type="button" class="kit-add" data-kit-action="add-font" ${fontsFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add font</span></button><input type="file" id="kit-font-file" class="kit-file visually-hidden" name="kit_font_file" accept="${KIT_FONT_ACCEPT}" aria-label="Upload a font file" ${fontsFull ? 'disabled' : ''}><label class="kit-file-button kit-upload-font" for="kit-font-file">${KIT_ICONS.upload}<span>Upload a font file</span></label></div>`;
+  const fontFeedback = `${kit.fontError ? `<p class="field-error" role="alert">${esc(kit.fontError)}</p>` : ''}${kit.fontStatus ? `<p class="muted kit-card-note" role="status">${esc(kit.fontStatus)}</p>` : ''}`;
+  const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${fontRows ? `<div class="kit-specimens">${fontRows}</div>` : '<p class="muted">No fonts yet</p>'}${fontFeedback}${fontActions}`;
+  const readFonts = showTags && !provided.fonts && !Array.isArray(kit.fonts) && fonts.length;
+  const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : readFonts ? readTag : '', 'kit-card kit-fonts-block');
 
   const photos = Array.isArray(kit.references) ? kit.references : [];
   const savedPhotos = Number(brand?.referencePhotos) || 0;
@@ -1226,7 +1418,7 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     ? `<input type="file" id="kit-ref-file" class="kit-file visually-hidden" name="kit_ref_file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Add photos" ${dis}><label class="kit-file-button" for="kit-ref-file">${KIT_ICONS.upload}<span>Add photos</span></label>`
     : '';
   const photosBody = `<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photoState}${photoThumbs ? `<div class="kit-photos">${photoThumbs}</div>` : ''}${kit.referencesError ? `<p class="field-error" role="alert">${esc(kit.referencesError)}</p>` : ''}${photoAdd}`;
-  const photosBlock = kitBlock('photos', 'Photos of your world', photosBody, '', 'kit-photos-block');
+  const photosBlock = kitBlock('photos', 'Photos of your world', photosBody, '', 'kit-card kit-photos-block');
   const foldersBlock = kitFolders(brand, kit.folders, loading);
 
   const note = loading
@@ -1502,7 +1694,7 @@ export function libraryCountsLine(library) {
 // The Footage line of the Brand library: the brand's archive of past videos, pictures and audio, from `library.footage` ({folders, files,
 // analysedQuick, analysedFull, missing, list: [{id, name, rights, files, missing, state, processed?, total?}]}, which the server adds when
 // the brand has imported footage). The counts, then each folder with whose footage it is. Nothing is drawn for a brand with none.
-const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours to use', client_ask: 'Ask before posting', never: 'Never use' });
+const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours', client_ask: 'Client work, ask first', never: 'Reference only' });
 const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
 const footageCount = value => (Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0);
 function libraryFootage(library) {
@@ -1559,7 +1751,35 @@ function libraryJobResults(results) {
   if (!numbers.length) return '';
   return `<span class="library-hook library-job-results">Results: ${numbers.map(esc).join(' &middot; ')}${resultPill(results.label) ? ` ${resultPill(results.label)}` : ''}</span>`;
 }
-function libraryItem(item, brand, { removing, errors }) {
+// A social post behind a Brand library line (a proven top post of the brand or of a competitor, a fresh trend, a bank item that came from a post):
+// a thumbnail when the record has a safe picture (else a neutral tile with the platform name and a play mark), Open post (a real https link in a new
+// tab) and Copy link. `copy` is the page's { copied, fallback, hint }: the key whose button says Copied, and the key whose link is shown in a box to
+// copy by hand because the clipboard was refused.
+const POST_PLATFORMS = Object.freeze([[/(^|\.)tiktok\.com$/, 'TikTok'], [/(^|\.)instagram\.com$/, 'Instagram'], [/(^|\.)(facebook\.com|fb\.watch)$/, 'Facebook'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'YouTube'], [/(^|\.)(x\.com|twitter\.com)$/, 'X'], [/(^|\.)threads\.net$/, 'Threads'], [/(^|\.)linkedin\.com$/, 'LinkedIn']]);
+export function postPlatformOf(href) {
+  try {
+    const host = new URL(href).hostname.toLowerCase();
+    return POST_PLATFORMS.find(([pattern]) => pattern.test(host))?.[1] || '';
+  } catch { return ''; }
+}
+// Pictures that would not load (a scraped address that expired or refuses other sites): drawn as the neutral tile from then on.
+export const failedPostThumbs = new Set();
+function libraryPost({ href, thumbnail, platform, key, title, ad = false, copy = {} }) {
+  const src = safePreviewUrl(thumbnail);
+  const picture = src && !failedPostThumbs.has(src) ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-post-thumb>` : '';
+  const word = ad ? 'ad' : 'post';
+  const shown = copy.copied === key;
+  const id = String(key).replace(/[^A-Za-z0-9_-]/g, '-');
+  const thumb = `<span class="post-thumb">${picture}<span class="post-thumb-play" aria-hidden="true"></span>${platform ? `<span class="post-thumb-plat">${esc(platform)}</span>` : ''}</span>`;
+  const open = `<a class="library-open" href="${esc(href)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`Open ${word} in a new tab: ${title}`)}">Open ${word} \u2197</a>`;
+  const button = `<button type="button" class="quiet library-copy${shown ? ' is-copied' : ''}" data-post-copy="${esc(key)}" data-post-url="${esc(href)}" aria-label="${esc(`${shown ? 'Link copied' : 'Copy link'}: ${title}`)}">${shown ? 'Copied' : 'Copy link'}</button>`;
+  const links = `<span class="library-actions">${open}${button}</span>${shown ? '<span class="visually-hidden" role="status">Link copied</span>' : ''}`;
+  const box = copy.fallback === key
+    ? `<div class="kit-fallback library-fallback"><p class="kit-fallback-status" role="status">${esc(KIT_COPY_REFUSED.replace('the text', 'the link'))}</p><label class="visually-hidden" for="post-copy-${esc(id)}">Link to this ${word}</label><input id="post-copy-${esc(id)}" type="text" readonly value="${esc(href)}" data-post-fallback="${esc(key)}" aria-describedby="post-copy-hint-${esc(id)}"><div class="kit-fallback-foot"><span class="muted" id="post-copy-hint-${esc(id)}">${esc(copy.hint || 'Press Ctrl+C to copy')}</span><button type="button" class="quiet" data-post-copy-done="${esc(key)}">Done</button></div></div>`
+    : '';
+  return { thumb, links, box };
+}
+function libraryItem(item, brand, { removing, errors, copy = {} }) {
   const key = libraryKey(brand.slug, item.id);
   const kind = LIBRARY_KIND_WORDS[item.kind] || humanize(item.kind || 'item');
   const evidence = item.evidence && typeof item.evidence === 'object' ? item.evidence : null;
@@ -1575,24 +1795,26 @@ function libraryItem(item, brand, { removing, errors }) {
   const moreQuotes = Number.isFinite(item.quoteCount) && item.quoteCount > 1 ? ` (+${item.quoteCount - 1} more)` : '';
   const said = quote ? `<span class="library-hook library-quote">&ldquo;${esc(quote.text)}&rdquo;${quoteLink ? ` <a class="post-link library-proof" href="${esc(quoteLink)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See where this was said: ${quote.text}`)}">See where</a>` : ''}${esc(moreQuotes)}</span>` : '';
   const matched = item.kind === 'angle' && (trimmed(item.pain) || trimmed(item.proof)) ? `<span class="library-hook">${[trimmed(item.pain) ? `Answers: ${esc(item.pain)}` : '', trimmed(item.proof) ? `Proof: ${esc(item.proof)}` : ''].filter(Boolean).join(' &middot; ')}</span>` : '';
-  const proof = link ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the post behind: ${item.text}`)}">See the post</a>` : '';
+  const platform = link ? postPlatformOf(link) : '';
+  const postBits = link && !evidence?.file && (platform || safePreviewUrl(evidence?.thumbnail)) ? libraryPost({ href: link, thumbnail: evidence?.thumbnail, platform, key: `post:${key}`, title: item.text, ad: item.source === 'ad', copy }) : null;
+  const proof = link && !postBits ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the post behind: ${item.text}`)}">See the post</a>` : '';
   const pending = removing.has(key);
   const problem = errors.get(key);
   const action = !item.id ? '' : pending
     ? '<span class="library-pending" role="status">Removal sent to Claude</span>'
     : item.proven ? '' : `<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
-  return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${said}${matched}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
+  return `<li class="library-item${pending ? ' is-removing' : ''}${postBits ? ' library-post' : ''}">${postBits ? postBits.thumb : ''}<div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${said}${matched}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}${postBits ? postBits.links + postBits.box : ''}</div>${action}</li>`;
 }
 // One bank of the library, folded: its name, how many items it holds (and how many are the person's own), the top item as a preview, and
 // when opened the top items, the person's own with their Remove. The rest stay on the computer for Claude to read with the bank's kind.
-function libraryBankGroup(bank, brand, { removing, errors, openKeys }) {
+function libraryBankGroup(bank, brand, { removing, errors, openKeys, copy }) {
   const items = (Array.isArray(bank?.items) ? bank.items : []).filter(item => item && typeof item === 'object' && !item.removed && trimmed(item.text));
   if (!items.length) return '';
   const total = Number.isFinite(bank.total) && bank.total >= items.length ? Math.floor(bank.total) : items.length;
   const yours = Number.isFinite(bank.yours) && bank.yours > 0 ? Math.floor(bank.yours) : 0;
   const title = LIBRARY_BANK_TITLES[bank.kind] || humanize(bank.kind || 'items');
   const key = `brand-library:${brand.slug}:${bank.kind}`;
-  const rows = items.map(item => libraryItem({ ...item, proven: item.bank !== 'yours' }, brand, { removing, errors })).join('');
+  const rows = items.map(item => libraryItem({ ...item, proven: item.bank !== 'yours' }, brand, { removing, errors, copy })).join('');
   const more = total > items.length ? `<p class="muted library-more">${plural(total - items.length, 'more item')} on this computer. Ask Claude to show the whole bank.</p>` : '';
   return `<details class="library-bank" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary><span class="library-bank-title">${esc(title)}</span><span class="count">${total}</span>${yours ? `<span class="library-bank-yours">${esc(`${yours} yours`)}</span>` : ''}<span class="library-bank-top">${esc(items[0].text)}</span></summary><ul class="library-list">${rows}</ul>${more}</details>`;
 }
@@ -1603,7 +1825,7 @@ const TREND_KIND_WORDS = Object.freeze({ topic: 'Topic', format: 'Format', sound
 const TREND_SOURCE_WORDS = Object.freeze({ meta_ad_library: 'Meta Ad Library', tiktok_top_ads: 'TikTok Top Ads' });
 const TREND_AD_NOTE = 'Hooks and captions come from ads that keep running. The ad libraries show no views or spend, so days running stands in for them: 30 or more is a likely winner.';
 const TREND_PLATFORM_WORDS = Object.freeze({ tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', x: 'X' });
-function libraryTrend(trend) {
+function libraryTrend(trend, brand, copy = {}) {
   const evidence = (Array.isArray(trend.evidence) ? trend.evidence : []).find(item => item && typeof item === 'object' && safeHttpsLink(item.url)) || null;
   const link = evidence ? safeHttpsLink(evidence.url) : null;
   const platform = TREND_PLATFORM_WORDS[trend.platform] || (trimmed(trend.platform) ? humanize(trend.platform) : '');
@@ -1613,8 +1835,9 @@ function libraryTrend(trend) {
   const variants = Number.isFinite(evidence?.variants) && evidence.variants >= 1 ? plural(Math.floor(evidence.variants), 'variant') : '';
   const ad = Boolean(TREND_SOURCE_WORDS[evidence?.source]);
   const meta = [platform, trimmed(trend.industry), TREND_SOURCE_WORDS[evidence?.source] || '', trimmed(evidence?.advertiser), running ? `running ${running}` : '', variants, seen ? `seen ${seen}` : '', views].filter(Boolean).map(esc).join(' &middot; ');
-  const proof = link ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the ${ad ? 'ad' : 'post'} behind: ${trend.text}`)}">See the ${ad ? 'ad' : 'post'}</a>` : '';
-  return `<li class="library-item"><div class="library-main"><span class="library-kind">${esc(TREND_KIND_WORDS[trend.kind] || humanize(trend.kind || 'trend'))}</span><span class="library-text">${esc(trend.text)}</span>${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${trimmed(trend.why) ? `<span class="library-hook">Why it fits: ${esc(trend.why)}</span>` : ''}</div></li>`;
+  const postBits = link ? libraryPost({ href: link, thumbnail: evidence?.thumbnail, platform: platform || postPlatformOf(link), key: `trend:${brand?.slug || ''}:${trend.id || trend.text}`, title: trend.text, ad, copy }) : null;
+  const proof = '';
+  return `<li class="library-item${postBits ? ' library-post' : ''}">${postBits ? postBits.thumb : ''}<div class="library-main"><span class="library-kind">${esc(TREND_KIND_WORDS[trend.kind] || humanize(trend.kind || 'trend'))}</span><span class="library-text">${esc(trend.text)}</span>${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${trimmed(trend.why) ? `<span class="library-hook">Why it fits: ${esc(trend.why)}</span>` : ''}${postBits ? postBits.links + postBits.box : ''}</div></li>`;
 }
 function libraryJob(job) {
   const concept = job.concept && typeof job.concept === 'object' ? job.concept : {};
@@ -1622,7 +1845,7 @@ function libraryJob(job) {
   const meta = [concept.id ? `Concept ${concept.id}${trimmed(concept.title) ? `: ${concept.title}` : ''}` : '', source?.label || '', libraryDay(job.filedAt) ? `filed ${libraryDay(job.filedAt)}` : ''].filter(Boolean).map(esc).join(' &middot; ');
   return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title) || 'Finished job')}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${trimmed(concept.hook) ? `<span class="library-hook">Opening line: ${esc(concept.hook)}</span>` : ''}${libraryJobResults(job.results)}</div></li>`;
 }
-export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map(), openKeys = new Set() } = {}) {
+export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map(), openKeys = new Set(), copy = {} } = {}) {
   const library = brand?.library;
   if (!library || typeof library !== 'object' || Array.isArray(library) || !brand.slug) return '';
   const group = (title, id, list, row, note = '') => {
@@ -1632,7 +1855,7 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   };
   const trends = libraryItems(library.trends);
   const trendNote = trends.some(trend => trend.kind === 'hook' || trend.kind === 'caption') ? `<p class="muted library-more">${esc(TREND_AD_NOTE)}</p>` : '';
-  const state = { removing, errors };
+  const state = { removing, errors, copy };
   const yours = libraryItems(library.yours);
   const proven = libraryItems(library.proven).map(item => ({ ...item, proven: true }));
   const jobs = (Array.isArray(library.recentJobs) ? library.recentJobs : []).filter(job => job && typeof job === 'object');
@@ -1640,7 +1863,7 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   const banks = (Array.isArray(library.banks) ? library.banks : []).map(bank => libraryBankGroup(bank, brand, { ...state, openKeys })).filter(Boolean);
   const bankSection = banks.length ? `<section class="library-group library-banks" aria-labelledby="library-${esc(brand.slug)}-banks"><h3 id="library-${esc(brand.slug)}-banks">Banks <span class="count">${banks.length}</span></h3>${banks.join('')}</section>` : '';
   const lists = banks.length ? bankSection : group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state));
-  const body = lists + group('Fresh trends', 'trends', trends, libraryTrend, trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
+  const body = lists + group('Fresh trends', 'trends', trends, trend => libraryTrend(trend, brand, copy), trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
   const key = `brand-library:${brand.slug}`;
   const empty = body ? '' : '<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
   return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
@@ -2876,9 +3099,12 @@ const PICK_ROWS = Object.freeze([
   { field: 'cta', title: 'Call to action', noun: 'call to action', picked: 'CTA', own: 'CTA' },
   { field: 'pain', title: 'Problem', noun: 'problem', picked: 'Problem', own: 'problem', limit: HOOK_LINE_LIMIT },
   { field: 'angle', title: 'Angle', noun: 'angle', picked: 'Angle', own: 'angle', limit: HOOK_LINE_LIMIT },
+  { field: 'subtopic', title: 'Subtopic', noun: 'subtopic', picked: 'Subtopic', own: 'subtopic' },
+  { field: 'editing', title: 'Editing style', noun: 'editing style', picked: 'Editing', own: 'editing' },
+  { field: 'visualHook', title: 'Visual hook', noun: 'visual hook', picked: 'Visual hook', own: 'visual hook' },
 ].map(row => Object.freeze(row)));
 const PICK_ROW_OF = Object.freeze(Object.fromEntries(PICK_ROWS.map(row => [row.field, row])));
-const CONCEPT_PICK_FIELDS = Object.freeze(['funnel', 'style', 'format', 'cta', 'pain', 'angle']);
+const CONCEPT_PICK_FIELDS = Object.freeze(['funnel', 'style', 'format', 'cta', 'pain', 'angle', 'subtopic', 'editing', 'visualHook']);
 const pickLimit = field => PICK_ROW_OF[field]?.limit ?? PICK_TEXT_LIMIT;
 // How a concept's own fields name the rows (as the concepts template writes them, and as the server matches them to a default).
 const PICK_FIELD_LABELS = Object.freeze({
@@ -2888,6 +3114,9 @@ const PICK_FIELD_LABELS = Object.freeze({
   cta: /^(?:cta\b|call[\s_-]*to[\s_-]*action\b)/i,
   pain: /^(?:anchor|viewer[\s_-]*problem)\b/i,
   angle: /^angle\b/i,
+  subtopic: /^sub[\s_-]*topic\b/i,
+  editing: /^editing(?:[\s_-]*style)?\b/i,
+  visualHook: /^visual[\s_-]*hook\b/i,
 });
 export const pickRowKey =(conceptId, field) => (field === 'industry' ? 'industry' : `${conceptId}:${field}`);
 /** The concept and field a row key names (the industry row belongs to the job, so its id is null), or null for anything else. */
@@ -6274,11 +6503,12 @@ export function directorAsks(items, { context = () => ({}), signal = {} } = {}) 
 // on its header and in the Inbox, and a chat opens on it at once when it has something to say (chatId undefined; null is the
 // Inbox the person went back to). Nobody can be messaged here, so any other chat shows who the agent is and what it is doing.
 // The page knows research was just requested before the server does, so the Director is Working at once.
-export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId, { items = [], context, signal } = {}) {
+// `notes` ({messages, waiting, first}, from intelDirectorNotes) are the Director's messages about the brand's intelligence; they follow its other asks.
+export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId, { items = [], context, signal, notes = null } = {}) {
   const list = (Array.isArray(brand?.agents?.list) ? brand.agents.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
   if (!list.length) return '';
   const running = brandResearchPhase(brand, draft, now) === 'running';
-  const asks = directorAsks(brandAsks(items, brand?.slug), { context, signal });
+  const asks = intelAsks(directorAsks(brandAsks(items, brand?.slug), { context, signal }), notes);
   const agents = list.map(agent => {
     if (!isDirectorAgent(agent)) return agent;
     if (asks.waiting > 0) return { ...agent, state: 'needs_you', task: asks.first || agent.task };
@@ -6289,6 +6519,355 @@ export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId
   const chat = open ? agents.find(agent => agent.id === open) : null;
   if (chat) return agentChat(chat, isDirectorAgent(chat) && asks.messages.length ? { asks: asks.messages, waiting: asks.waiting } : { status: agentPlain(chat.task) });
   return `<div class="onboard-agents">${agentInbox(agents, { now, needText: asks.first, questions: asks.waiting, waitingOnYou: asks.waiting })}</div>`;
+}
+
+// @module intel
+// Brand intelligence on the brand page: what Claude learned about a brand, from `brand.intelligence` ({status, updatedAt, steps, own,
+// competitors, viral, subtopics, plan, formatNames, banksSummary, newBrand}, which the server adds once a deep research pass has started;
+// a brand without it draws nothing). While the research runs the panel is a checklist with a progress bar. When it is ready the panel has
+// six tabs: the 6 by 5 plan (a cell asks first, on the page, then starts a post), the person's own winners, the 6 subtopics (confirm, edit,
+// add your own, remove), the competitors' winners, what is viral now, and a compact summary of the banks that links to the Brand library.
+// A post card has a picture (or a platform tile), the numbers, the labels and two controls: Open post and Copy link. The page state (open
+// tab, subtopic edits, the cell being confirmed) lives in the app, one record per brand; everything here is a function of the brand and it.
+export const INTEL_TABS = Object.freeze([
+  { id: 'plan', label: '6×5 plan' },
+  { id: 'own', label: 'Your winners' },
+  { id: 'subtopics', label: '6 subtopics' },
+  { id: 'competitors', label: 'Competitors' },
+  { id: 'viral', label: 'Viral now' },
+  { id: 'banks', label: 'Pains and banks' },
+]);
+export const INTEL_SUBTOPIC_COUNT = 6;
+export const INTEL_SUBTOPIC_MAX = 8;
+const INTEL_MONTHS = Object.freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+const INTEL_PLATFORM_WORDS = Object.freeze({ tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', x: 'X', linkedin: 'LinkedIn', meta: 'Meta ad', meta_ad: 'Meta ad', meta_ads: 'Meta ad', tiktok_ad: 'TikTok ad', tiktok_ads: 'TikTok ad' });
+const INTEL_STEP_WORDS = Object.freeze({ done: 'Done', running: 'In progress', todo: 'Not started' });
+// The banks the summary shows, in order: the key in `banksSummary`, the kind of the Brand library group it links to, and its name.
+const INTEL_BANKS = Object.freeze([
+  { key: 'pains', kind: 'pain', title: 'Pains' },
+  { key: 'objections', kind: 'objection', title: 'Objections' },
+  { key: 'desires', kind: 'desire', title: 'Desires' },
+  { key: 'angles', kind: 'angle', title: 'Angles' },
+  { key: 'hooks', kind: 'hook', title: 'Hooks' },
+  { key: 'ctas', kind: 'cta', title: 'CTAs' },
+]);
+const INTEL_LABELS = Object.freeze([['format', 'Format'], ['editing', 'Editing'], ['visualHook', 'Visual hook'], ['series', 'Series'], ['subtopic', 'Subtopic']]);
+const intelObject = value => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
+const intelList = value => (Array.isArray(value) ? value : []);
+const intelRecords = value => intelList(value).filter(item => item && typeof item === 'object' && !Array.isArray(item));
+const intelCountOf = value => (Number.isFinite(value) && value >= 0 ? value : null);
+const intelId = value => (typeof value === 'string' ? value.trim() : '');
+
+// The page state of one brand's intelligence panel: the open tab, the subtopic edit in progress (`rows`, each {id?, name}), the request
+// states, and which post card shows Copied or the hand-copy box.
+export function freshIntelState() {
+  return { tab: 'plan', editing: false, rows: [], busy: false, error: '', sent: null, cell: null, cellBusy: false, cellError: '', cellSent: '', copied: '', fallback: '' };
+}
+
+// The brand's intelligence document, or null: a brand with none (or an empty one) draws nothing at all.
+export function intelOf(brand) {
+  const intel = brand?.intelligence;
+  if (!intel || typeof intel !== 'object' || Array.isArray(intel)) return null;
+  const has = Boolean(intel.status || intelList(intel.steps).length || intelList(intel.own).length || intelList(intel.competitors).length || intelList(intel.viral).length
+    || intelList(intelObject(intel.subtopics).items).length || intelList(intelObject(intel.plan).cells).length || Object.keys(intelObject(intel.banksSummary)).length);
+  return has ? intel : null;
+}
+export const intelIsRunning = intel => intel?.status === 'running';
+
+// 1,234 as 1.2K, 67,700 as 67.7K, 1,200,000 as 1.2M. Anything that is not a count is an empty string.
+export function intelCount(value) {
+  if (intelCountOf(value) === null) return '';
+  const short = amount => (amount >= 100 ? String(Math.round(amount)) : String(Math.round(amount * 10) / 10));
+  if (value < 1000) return String(Math.round(value));
+  if (value < 999500) return `${short(value / 1000)}K`;
+  return `${short(value / 1e6)}M`;
+}
+// "4 Oct", or "4 Oct 2024" when it is not this year; an empty string for a value that is not a date.
+export function intelDay(value, now = Date.now()) {
+  const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof value === 'string' ? value : '');
+  if (!found) return '';
+  const month = Number(found[2]);
+  const day = Number(found[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+  return `${day} ${INTEL_MONTHS[month - 1]}${Number(found[1]) === new Date(now).getFullYear() ? '' : ` ${found[1]}`}`;
+}
+const intelPlatform = value => INTEL_PLATFORM_WORDS[String(value || '').toLowerCase()] || (trimmed(value) ? humanize(value) : 'Post');
+
+// The subtopic items, cleaned: {id, name, topViews, postCount, source}.
+export function intelSubtopics(intel) {
+  return intelRecords(intelObject(intel?.subtopics).items).filter(item => trimmed(item.name)).map(item => ({
+    id: intelId(item.id), name: trimmed(item.name), topViews: intelCountOf(item.topViews), postCount: intelCountOf(item.postCount), source: item.source === 'yours' ? 'yours' : 'data',
+  }));
+}
+// The name of a label, a plan row or a plan column: the format library's name for an id, the subtopic's own name, the person's custom
+// words, or a plain reading of the id when the library did not send its name.
+function intelName(intel, value, group) {
+  if (value && typeof value === 'object') return trimmed(value.custom) || trimmed(value.name) || (value.id ? intelName(intel, value.id, group) : '');
+  const id = intelId(value);
+  if (!id) return '';
+  const names = intelObject(intel?.formatNames);
+  if (Object.prototype.hasOwnProperty.call(names, id) && trimmed(names[id])) return trimmed(names[id]);
+  if (group === 'subtopic') {
+    const found = intelSubtopics(intel).find(item => item.id === id);
+    if (found) return found.name;
+  }
+  return /^[A-Z]-[A-Z0-9-]+$/.test(id) ? humanize(id.replace(/^[A-Z]-/, '')) : id;
+}
+function intelPlan(intel) {
+  const plan = intelObject(intel?.plan);
+  const subtopics = intelSubtopics(intel);
+  const cells = intelRecords(plan.cells);
+  return {
+    rows: intelList(plan.subtopics).map(intelId).filter(Boolean).map(id => ({ id, name: subtopics.find(item => item.id === id)?.name || intelName(intel, id, 'subtopic') })),
+    cols: intelList(plan.formats).map(intelId).filter(Boolean).map(id => ({ id, name: intelName(intel, id, 'format') })),
+    cell: (subtopic, format) => cells.find(cell => intelId(cell.subtopic) === subtopic && intelId(cell.format) === format) || null,
+  };
+}
+// The steps of the research checklist: {label, detail, state: done|running|todo}.
+export function intelSteps(intel) {
+  return intelRecords(intel?.steps).filter(step => trimmed(step.label)).map(step => ({ label: trimmed(step.label), detail: trimmed(step.detail), state: step.state === 'done' || step.state === 'running' ? step.state : 'todo' }));
+}
+
+// Why the subtopics cannot be saved as they stand, or '' when they can. A confirmed list has exactly 6 distinct names; while editing the
+// person can go up to 8 to swap one for another.
+export function intelSubtopicsProblem(rows) {
+  const names = intelList(rows).map(row => String(row?.name ?? '').trim());
+  if (names.some(name => !name)) return 'Fill in the empty subtopic or remove it.';
+  if (new Set(names.map(name => name.toLowerCase())).size < names.length) return 'Two subtopics have the same name. Rename or remove one.';
+  if (names.length > INTEL_SUBTOPIC_COUNT) return `Remove ${names.length - INTEL_SUBTOPIC_COUNT} to keep exactly ${INTEL_SUBTOPIC_COUNT}.`;
+  if (names.length < INTEL_SUBTOPIC_COUNT) return `Add ${names.length === INTEL_SUBTOPIC_COUNT - 1 ? 'one more' : `${INTEL_SUBTOPIC_COUNT - names.length} more`} to reach ${INTEL_SUBTOPIC_COUNT}.`;
+  return '';
+}
+// The items a subtopics_confirm request carries: {id, name} for a kept subtopic, {name} for one the person added.
+export const intelSubtopicItems = rows => intelList(rows).map(row => { const name = String(row?.name ?? '').trim(); const id = intelId(row?.id); return id ? { id, name } : { name }; });
+// What the edit form says about the rows as they stand: the problem (empty when they can be saved) and the line shown under the list.
+export function intelEditStatus(rows) {
+  const issue = intelSubtopicsProblem(rows);
+  return { issue, text: issue || `${intelList(rows).length} of ${INTEL_SUBTOPIC_COUNT} subtopics. Ready to save.` };
+}
+const intelNamesKey = rows => intelList(rows).map(row => String(row?.name ?? '').trim().toLowerCase()).join('\n');
+const INTEL_SENT_MS = 15 * 60 * 1000;
+// A subtopics_confirm the person sent has landed once the document says confirmed with the same names. Until then the panel says it was
+// sent (for a while: a request the server never lands should not leave the panel waiting for good).
+export function intelSentLanded(intel, sent) {
+  return Boolean(sent) && intelObject(intel?.subtopics).status === 'confirmed' && intelNamesKey(intelSubtopics(intel)) === intelNamesKey(sent.rows);
+}
+function intelSentPending(intel, sent, now) {
+  return Boolean(sent) && !intelSentLanded(intel, sent) && !(Number.isFinite(sent.at) && now - sent.at > INTEL_SENT_MS);
+}
+
+function intelNumbers(post, now) {
+  const views = intelCountOf(post.views);
+  const likes = intelCountOf(post.likes);
+  const first = views !== null ? `${intelCount(views)} views` : likes !== null ? `Likes only · ${intelCount(likes)}` : 'No numbers shown';
+  return [first, intelDay(post.date, now)].filter(Boolean).join(' · ');
+}
+// A picture that failed to load once is not asked for again (`bad` holds those addresses): the card keeps its platform tile.
+function intelThumb(post, bad) {
+  const src = safePreviewUrl(post.thumbnail);
+  const picture = src && !(bad && bad.has(src)) ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '';
+  return `<div class="intel-thumb">${picture}<span class="intel-plat">${esc(intelPlatform(post.platform))}</span><span class="intel-play" aria-hidden="true"></span></div>`;
+}
+/**
+ * One post, taken apart: a picture (or a platform tile with a play mark when there is no safe picture), the title, the numbers, the labels,
+ * the competitor's name when it is one's, and Open post (a real https link, new tab) with Copy link.
+ * opts: {section, index, competitor, copied, fallback, hint, now, bad}; `copied` and `fallback` are the card key that shows Copied or the
+ * hand-copy box (the key is `section:id`); `bad` is the set of picture addresses that did not load.
+ */
+export function intelPostCard(post, intel, { section = 'post', index = 0, competitor = '', copied = '', fallback = '', hint = '', now = Date.now(), bad = null } = {}) {
+  const key = `${section}:${intelId(post.id) || index}`;
+  const title = trimmed(post.title) || 'Untitled post';
+  const href = safeHttpsLink(post.url);
+  const labels = intelObject(post.labels);
+  const pills = INTEL_LABELS.map(([field, word]) => { const name = intelName(intel, labels[field], field); return name ? `<span class="pill">${esc(`${word}: ${name}`)}</span>` : ''; }).join('');
+  const maker = trimmed(post.competitor) || competitor;
+  const links = href
+    ? `<a class="intel-open" href="${esc(href)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`Open post in a new tab: ${title}`)}">Open post ↗</a><button type="button" class="intel-copy${copied === key ? ' is-copied' : ''}" data-intel-act="copy" data-intel-arg="${esc(key)}" data-intel-url="${esc(href)}" data-intel-focus="copy:${esc(key)}" aria-label="${esc(`${copied === key ? 'Link copied' : 'Copy link'}: ${title}`)}">${copied === key ? 'Copied' : 'Copy link'}</button>`
+    : '<span class="muted">No link was saved for this post.</span>';
+  const box = href && fallback === key
+    ? `<div class="kit-fallback intel-fallback"><p class="kit-fallback-status" role="status">${esc(KIT_COPY_REFUSED.replace('the text', 'the link'))}</p><label class="visually-hidden" for="intel-fallback-${esc(section)}-${index}">Link to this post</label><input id="intel-fallback-${esc(section)}-${index}" type="text" readonly value="${esc(href)}" data-intel-fallback="${esc(key)}" aria-describedby="intel-fallback-hint-${esc(section)}-${index}"><div class="kit-fallback-foot"><span class="muted" id="intel-fallback-hint-${esc(section)}-${index}">${esc(hint || copyHint(''))}</span><button type="button" class="quiet" data-intel-act="copy-done" data-intel-arg="${esc(key)}">Done</button></div></div>`
+    : '';
+  return `<article class="intel-card" data-intel-post="${esc(key)}">${intelThumb(post, bad)}<div class="intel-card-body">${maker ? `<span class="pill intel-comp">${esc(maker)}</span>` : ''}<h3 class="intel-title" title="${esc(title)}">${esc(title)}</h3><p class="intel-num">${esc(intelNumbers(post, now))}</p>${pills ? `<div class="intel-tags">${pills}</div>` : ''}<div class="intel-links">${links}</div>${box}</div></article>`;
+}
+function intelCards(items, intel, ui, section, ctx) {
+  return `<div class="intel-cards">${items.map(({ post, competitor }, index) => intelPostCard(post, intel, { section, index, competitor, copied: ui.copied, fallback: ui.fallback, hint: ctx.hint, now: ctx.now, bad: ctx.bad })).join('')}</div>`;
+}
+
+// The 6 by 5 plan: the subtopics down, the formats across, an idea in every cell. A cell is a button; the one chosen opens a confirm step
+// under the table (never a pop-up) and only that step's button starts the post.
+function intelPlanPanel(intel, ui) {
+  const plan = intelPlan(intel);
+  if (!plan.rows.length || !plan.cols.length) {
+    return '<p class="intel-intro">Your subtopics go down the side and the formats that work best across the top, with a post idea in every cell. It is written when the research steps are done.</p><p class="intel-empty">No plan yet.</p>';
+  }
+  const head = `<tr><th scope="col">Subtopic</th>${plan.cols.map(col => `<th scope="col">${esc(col.name)}</th>`).join('')}</tr>`;
+  const body = plan.rows.map((row, r) => `<tr><th scope="row">${esc(row.name)}</th>${plan.cols.map((col, c) => {
+    const cell = plan.cell(row.id, col.id);
+    if (!cell || !trimmed(cell.idea)) return '<td><span class="intel-cell-empty">No idea yet</span></td>';
+    const on = Boolean(ui.cell) && ui.cell.subtopic === row.id && ui.cell.format === col.id;
+    return `<td><button type="button" class="intel-cell" aria-pressed="${on}" data-intel-act="cell" data-intel-sub="${esc(row.id)}" data-intel-fmt="${esc(col.id)}" data-intel-focus="cell:${r}:${c}"><span class="visually-hidden">${esc(`${row.name}, ${col.name}: `)}</span>${esc(cell.idea)}</button></td>`;
+  }).join('')}</tr>`).join('');
+  const chosen = ui.cell ? { row: plan.rows.find(row => row.id === ui.cell.subtopic), col: plan.cols.find(col => col.id === ui.cell.format) } : null;
+  const cell = chosen?.row && chosen.col ? plan.cell(chosen.row.id, chosen.col.id) : null;
+  const detail = cell ? [['Angle', cell.angle], ['Hook', cell.hook]].filter(([, text]) => trimmed(text)).map(([word, text]) => `<p class="muted">${esc(`${word}: ${text.trim()}`)}</p>`).join('') : '';
+  const confirm = cell
+    ? `<div class="intel-confirm" role="group" aria-labelledby="intel-confirm-title" tabindex="-1" data-intel-focus="cell-confirm"><p id="intel-confirm-title"><strong>Start a post from this cell?</strong></p><p class="muted">${esc(chosen.row.name)} &times; ${esc(chosen.col.name)}</p><p class="intel-idea">${esc(cell.idea)}</p>${detail}<div class="intel-actions"><button type="button" class="primary" data-intel-act="cell-go" data-intel-focus="cell-go"${ui.cellBusy ? ' disabled aria-busy="true"' : ''}>${ui.cellBusy ? 'Sending...' : 'Start this post'}</button><button type="button" class="quiet" data-intel-act="cell-cancel" data-intel-focus="cell-cancel">Cancel</button></div>${ui.cellError ? `<p class="inline-error" role="alert">${esc(ui.cellError)}</p>` : ''}</div>`
+    : '';
+  const sent = ui.cellSent && !cell ? `<p class="intel-note" role="status" tabindex="-1" data-intel-focus="cell-sent">${esc(ui.cellSent)}</p>` : '';
+  return `<p class="intel-intro">Your ${plan.rows.length} subtopics down, the ${plan.cols.length} formats that work best across. Every cell is a post idea. Choose one to start a post from it; you confirm before anything is made.</p><div class="intel-scroll" tabindex="0" role="region" aria-label="6 by 5 plan, scrolls sideways on a narrow screen"><table class="intel-plan"><thead>${head}</thead><tbody>${body}</tbody></table></div>${confirm}${sent}`;
+}
+
+function intelOwnPanel(intel, ui, ctx) {
+  const posts = intelRecords(intel.own).map(post => ({ post, competitor: '' }));
+  const empty = intel.newBrand
+    ? 'None yet. This fills in from the results of your first posts.'
+    : 'No winners yet. Posts that beat your own usual views show here once the research has taken them apart.';
+  return `<p class="intel-intro">Posts that beat your own usual views, each taken apart and labelled. These feed concept A, from the brand.</p>${posts.length ? intelCards(posts, intel, ui, 'own', ctx) : `<p class="intel-empty">${esc(empty)}</p>`}`;
+}
+function intelCompetitorsPanel(intel, ui, ctx) {
+  const groups = intelRecords(intel.competitors);
+  const posts = groups.flatMap(group => intelRecords(group.posts).map(post => ({ post, competitor: trimmed(group.name) })));
+  const names = groups.map(group => trimmed(group.name)).filter(Boolean);
+  const who = names.length ? ` ${names.length === 1 ? 'Competitor' : 'Competitors'}: ${names.join(', ')}.` : '';
+  return `<p class="intel-intro">${esc(`Your top competitors' winning posts, taken apart. These feed concept B, from top competitors.${who}`)}</p>${posts.length ? intelCards(posts, intel, ui, 'competitor', ctx) : '<p class="intel-empty">No competitor posts yet.</p>'}`;
+}
+function intelViralPanel(intel, ui, ctx) {
+  const posts = intelRecords(intel.viral).map(post => ({ post, competitor: '' }));
+  return `<p class="intel-intro">What is rising now in your niche, taken apart. These feed concept C, from what is trending.</p>${posts.length ? intelCards(posts, intel, ui, 'viral', ctx) : '<p class="intel-empty">Nothing viral found yet.</p>'}`;
+}
+
+// The 6 subtopics: cards to read, and the controls that confirm, edit, add and remove. Confirming sends all of them at once.
+function intelSubtopicsPanel(intel, ui, now) {
+  const items = intelSubtopics(intel);
+  const meta = intelObject(intel.subtopics);
+  const intro = '<p class="intel-intro">The 6 subtopics that perform in your niche, ranked by views across your posts, your competitors and what is trending. Every job takes its topic from them.</p>';
+  const problem = ui.error ? `<p class="inline-error" role="alert">${esc(ui.error)}</p>` : '';
+  if (ui.editing) {
+    const rows = ui.rows;
+    const { issue, text: status } = intelEditStatus(rows);
+    const list = rows.map((row, at) => `<li class="intel-edit-row"><label class="visually-hidden" for="intel-sub-${at}">${esc(`Subtopic ${at + 1}`)}</label><input id="intel-sub-${at}" type="text" maxlength="80" autocomplete="off" value="${esc(row.name)}" data-intel-row="${at}" data-intel-focus="row:${at}" placeholder="Name a subtopic"><button type="button" class="quiet" data-intel-act="remove" data-intel-arg="${at}" data-intel-focus="remove:${at}" aria-label="${esc(`Remove subtopic ${at + 1}${trimmed(row.name) ? `: ${row.name.trim()}` : ''}`)}">Remove</button></li>`).join('');
+    return `${intro}<form class="intel-edit" data-intel-form novalidate><ul class="intel-edit-rows">${list}</ul><p class="intel-count${issue ? ' is-bad' : ''}" role="status" aria-live="polite">${esc(status)}</p>${problem}<div class="intel-actions"><button type="submit" class="primary" data-intel-focus="save"${issue || ui.busy ? ' disabled' : ''}${ui.busy ? ' aria-busy="true"' : ''}>${ui.busy ? 'Sending...' : `Save these ${INTEL_SUBTOPIC_COUNT}`}</button><button type="button" data-intel-act="add" data-intel-focus="add"${rows.length >= INTEL_SUBTOPIC_MAX || ui.busy ? ' disabled' : ''}>+ Add your own</button><button type="button" class="quiet" data-intel-act="cancel-edit" data-intel-focus="cancel-edit"${ui.busy ? ' disabled' : ''}>Cancel</button></div></form>`;
+  }
+  if (!items.length) return `${intro}<p class="intel-empty">The subtopics appear once enough posts have been taken apart.</p>`;
+  const cards = items.map(item => {
+    const facts = item.source === 'yours' ? 'Added by you' : [item.topViews !== null ? `Top post ${intelCount(item.topViews)}` : '', item.postCount !== null ? `${item.postCount} ${item.postCount === 1 ? 'post' : 'posts'}` : ''].filter(Boolean).join(' · ');
+    return `<li class="intel-sub"><strong>${esc(item.name)}</strong>${facts ? `<span class="intel-sub-meta">${esc(facts)}</span>` : ''}${item.source === 'yours' ? '<span class="pill">Yours</span>' : ''}</li>`;
+  }).join('');
+  const confirmed = meta.status === 'confirmed';
+  const waiting = intelSentPending(intel, ui.sent, now);
+  const ready = items.length === INTEL_SUBTOPIC_COUNT;
+  const state = waiting ? '<p class="intel-note" role="status">Sent. Claude saves these and updates this board.</p>'
+    : !ready && !confirmed ? `<p class="intel-note" role="status">I found ${items.length}, and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Edit them, or add your own.</p>` : '';
+  const confirmButton = waiting ? '' : confirmed ? '<span class="pill ready">Confirmed</span>'
+    : `<button type="button" class="primary" data-intel-act="confirm" data-intel-focus="confirm"${ready && !ui.busy ? '' : ' disabled'}${ui.busy ? ' aria-busy="true"' : ''}>${ui.busy ? 'Sending...' : 'Looks right'}</button>`;
+  return `${intro}<ul class="intel-subs">${cards}</ul>${state}${problem}<div class="intel-actions">${confirmButton}<button type="button" data-intel-act="edit" data-intel-focus="edit">Edit</button><button type="button" data-intel-act="add-own" data-intel-focus="add-own">+ Add your own</button></div>`;
+}
+
+function intelBank(value) {
+  const pick = entry => (typeof entry === 'string' ? trimmed(entry) : trimmed(entry?.text) || trimmed(entry?.name));
+  if (typeof value === 'number') return { count: intelCountOf(value) === null ? null : Math.floor(value), top: '' };
+  if (typeof value === 'string') return { count: null, top: trimmed(value) };
+  if (Array.isArray(value)) return { count: value.length, top: pick(value[0]) };
+  if (value && typeof value === 'object') {
+    const items = intelList(value.items);
+    const count = [value.count, value.total, value.n].find(item => intelCountOf(item) !== null);
+    return { count: count === undefined ? (items.length || null) : Math.floor(count), top: trimmed(value.top) || trimmed(value.text) || trimmed(value.sample) || pick(value.top) || pick(items[0]) };
+  }
+  return { count: null, top: '' };
+}
+// The banks in short: how many of each, the top one, and a link to that bank in the Brand library when the library has it.
+function intelBanksPanel(intel, ctx) {
+  const summary = intelObject(intel.banksSummary);
+  const cards = INTEL_BANKS.map(bank => {
+    const row = intelBank(summary[bank.key]);
+    const linked = ctx.libraryKinds.has(bank.kind);
+    return `<div class="intel-bank"><div class="intel-bank-title"><span>${esc(bank.title)}</span>${row.count !== null ? `<span class="count num">${row.count}</span>` : ''}</div>${row.top || !row.count ? `<p class="intel-bank-top">${esc(row.top || 'None saved yet.')}</p>` : ''}${linked ? `<button type="button" class="intel-bank-link" data-intel-act="bank" data-intel-arg="${esc(bank.kind)}" data-intel-focus="bank:${esc(bank.kind)}" aria-label="${esc(`Open ${bank.title.toLowerCase()} in the Brand library`)}">Open in Brand library</button>` : ''}</div>`;
+  }).join('');
+  return `<p class="intel-intro">What your customers say, in their words, and what you can say back. The full lists are in the Brand library.</p><div class="intel-banks">${cards}</div>`;
+}
+
+function intelTabs(slug, name, current) {
+  const buttons = INTEL_TABS.map(tab => `<button type="button" role="tab" id="intel-tab-${esc(slug)}-${tab.id}" aria-selected="${tab.id === current}"${tab.id === current ? ` aria-controls="intel-panel-${esc(slug)}"` : ''} tabindex="${tab.id === current ? 0 : -1}" data-intel-act="tab" data-intel-arg="${tab.id}" data-intel-focus="tab:${tab.id}">${esc(tab.label)}</button>`).join('');
+  return `<div class="intel-tabs" role="tablist" aria-label="${esc(`Brand intelligence for ${name}`)}">${buttons}</div>`;
+}
+function intelRunningBody(intel) {
+  const steps = intelSteps(intel);
+  if (!steps.length) return '<p class="muted">Claude is starting the research. The steps show here as they begin.</p>';
+  const done = steps.filter(step => step.state === 'done').length;
+  const percent = Math.round((done / steps.length) * 100);
+  const rows = steps.map(step => `<li class="is-${step.state}"><span class="intel-dot" aria-hidden="true"></span><span class="intel-step-text">${esc(step.label)}<span class="visually-hidden">${esc(` (${INTEL_STEP_WORDS[step.state]})`)}</span>${step.detail ? `<span class="intel-step-detail">${esc(step.detail)}</span>` : ''}</span></li>`).join('');
+  return `<div class="intel-progress"><span class="intel-progress-line">${esc(`${done} of ${steps.length} steps done`)}</span><div class="intel-bar" role="progressbar" aria-label="Research progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="--intel-pct:${percent}%"></i></div></div><ol class="intel-steps">${rows}</ol><p class="muted intel-foot">You can keep working. The Director tells you here when it is ready.</p>`;
+}
+
+/**
+ * The brand's intelligence panel: a folded panel in the style of the Brand library. ui: the brand's page state (freshIntelState);
+ * opts: open (the panel is open), now, hint (how to copy by hand), libraryKinds (the kinds of bank the Brand library has, for the links),
+ * badPictures (the picture addresses that did not load).
+ * Nothing is drawn for a brand without intelligence.
+ */
+export function brandIntelligence(brand, ui = freshIntelState(), { open = false, now = Date.now(), hint = '', libraryKinds = new Set(), badPictures = null } = {}) {
+  const intel = intelOf(brand);
+  const slug = trimmed(brand?.slug);
+  if (!intel || !slug) return '';
+  const name = trimmed(brand.name) || slug;
+  const running = intelIsRunning(intel);
+  const steps = intelSteps(intel);
+  const updated = intelDay(intel.updatedAt, now);
+  const line = running
+    ? [name, steps.length ? `${steps.filter(step => step.state === 'done').length} of ${steps.length} steps done` : 'Starting'].join(' · ')
+    : [name, updated ? `Updated ${updated}` : ''].filter(Boolean).join(' · ');
+  const summary = `<summary><span class="library-head"><span class="doc-summary-title">Brand intelligence</span><span class="library-counts">${esc(line)}</span></span><span class="pill ${running ? 'running' : 'ready'}">${running ? 'Research running' : 'Ready'}</span></summary>`;
+  const ctx = { hint, now, bad: badPictures, libraryKinds: libraryKinds instanceof Set ? libraryKinds : new Set() };
+  // A refresh of research that already finished keeps the tabs under its checklist; a first run shows the checklist alone.
+  let body = running ? intelRunningBody(intel) : '';
+  if (!running || intelPlan(intel).rows.length) {
+    const tab = INTEL_TABS.some(item => item.id === ui.tab) ? ui.tab : 'plan';
+    const panel = tab === 'plan' ? intelPlanPanel(intel, ui)
+      : tab === 'own' ? intelOwnPanel(intel, ui, ctx)
+        : tab === 'subtopics' ? intelSubtopicsPanel(intel, ui, now)
+          : tab === 'competitors' ? intelCompetitorsPanel(intel, ui, ctx)
+            : tab === 'viral' ? intelViralPanel(intel, ui, ctx)
+              : intelBanksPanel(intel, ctx);
+    const fresh = intel.newBrand ? '<p class="intel-note">You are new on social, so Your winners is empty for now. The subtopics and the plan come from your competitors, what is viral in your niche and your website. Once you post, your own results start ranking formats and subtopics.</p>' : '';
+    body += `${fresh}${intelTabs(slug, name, tab)}<div class="intel-panel" role="tabpanel" id="intel-panel-${esc(slug)}" aria-labelledby="intel-tab-${esc(slug)}-${tab}" tabindex="0" data-intel-panel="${esc(slug)}">${panel}</div>`;
+  }
+  return `<details class="panel doc-panel brand-intel" data-open-key="brand-intel:${esc(slug)}" data-intel-brand="${esc(slug)}"${open ? ' open' : ''}>${summary}<div class="doc-body">${body}</div></details>`;
+}
+
+/**
+ * What the Director says on the brand page about this brand's intelligence, as chat messages for `onboardAgentsPanel`: the best post found
+ * so far while the research runs, and, once it is ready, the question whether the 6 subtopics look right (with the buttons that answer it).
+ * Returns {messages, waiting, first}; nothing to say is an empty list.
+ */
+export function intelDirectorNotes(brand, ui = freshIntelState(), now = Date.now()) {
+  const none = { messages: [], waiting: 0, first: '' };
+  const intel = intelOf(brand);
+  const slug = trimmed(brand?.slug);
+  if (!intel || !slug) return none;
+  const say = (key, inner) => `<div class="msg-r a" data-intel-note="${key}"><div class="bub">${inner}</div></div>`;
+  if (intelIsRunning(intel)) {
+    const best = intelRecords(intel.own).filter(post => trimmed(post.title)).sort((a, b) => (intelCountOf(b.views) ?? intelCountOf(b.likes) ?? -1) - (intelCountOf(a.views) ?? intelCountOf(a.likes) ?? -1))[0];
+    if (!best) return none;
+    const numbers = intelCountOf(best.views) !== null ? `, ${intelCount(best.views)} views` : intelCountOf(best.likes) !== null ? `, ${intelCount(best.likes)} likes` : '';
+    return { messages: [say('best', `<p>Your best post so far: &ldquo;${esc(trimmed(best.title))}&rdquo;${esc(numbers)}.</p>`)], waiting: 0, first: '' };
+  }
+  const items = intelSubtopics(intel);
+  if (intelObject(intel.subtopics).status === 'confirmed' || !items.length) return none;
+  const sent = intelSentPending(intel, ui?.sent, now);
+  const opener = intel.newBrand ? 'You are new on social, so I built your plan from what works for your competitors and your niche.' : 'Your brand intelligence is ready.';
+  const names = `<ul class="intel-note-list">${items.map(item => `<li>${esc(item.name)}</li>`).join('')}</ul>`;
+  const on = `data-intel-brand="${esc(slug)}"`;
+  if (sent) return { messages: [say('subtopics-sent', `<p>${esc(opener)} Your subtopics are sent. I save them and update this board.</p>`)], waiting: 0, first: '' };
+  const exact = items.length === INTEL_SUBTOPIC_COUNT;
+  const question = exact ? `Do these ${INTEL_SUBTOPIC_COUNT} subtopics look right? Every job takes its topic from them.` : `I found ${items.length} subtopics and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Please adjust them.`;
+  const buttons = `<div class="bub-act">${exact ? `<button type="button" class="sm primary" data-intel-act="note-confirm" ${on}>Looks right</button>` : ''}<button type="button" class="sm" data-intel-act="note-edit" ${on}>Edit</button></div>`;
+  return { messages: [say('subtopics', `<p>${esc(opener)} ${esc(question)}</p>${names}${buttons}`)], waiting: 1, first: question };
+}
+// The Director's own messages with the intelligence notes after them.
+export function intelAsks(asks, notes) {
+  const extra = intelList(notes?.messages);
+  if (!extra.length) return asks;
+  return { messages: [...intelList(asks?.messages), ...extra], waiting: (asks?.waiting || 0) + (Number.isFinite(notes.waiting) ? notes.waiting : 0), first: asks?.first || trimmed(notes.first) };
 }
 
 // @module transport
@@ -6443,10 +7022,16 @@ export function requestComment(operation, args = {}) {
       return `Metricool brand for ${args?.brandName || 'this brand'} set to ${args?.label || 'a different brand'}.`;
     case 'bank_remove':
       return 'Remove an item from the brand library.';
+    case 'subtopics_confirm':
+      return `Confirm the ${Array.isArray(args?.items) ? `${args.items.length} ` : ''}subtopics for ${args?.brand || 'this brand'}.`;
+    case 'plan_cell_start':
+      return `Start a post from the 6x5 plan for ${args?.brand || 'this brand'}.`;
     case 'brand_folder_add': {
       const name = trimmed(args?.label) || String(args?.folder || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
       return name ? `Add the folder "${truncateText(name, 80)}" to the brand's footage.` : "Add a folder to the brand's footage.";
     }
+    case 'brand_folder_pick':
+      return "Open a folder picker on my computer to add a folder to the brand's footage.";
     case 'choose_publish_route':
       return `Posts will go out this way: ${PUBLISH_ROUTE_WORDS[args?.route] || 'a different route'}.`;
     case 'choose_post_type':
@@ -6807,7 +7392,7 @@ if (typeof document !== 'undefined') {
   // the pick and last error per brand.
   const metricoolUi = { open: new Set(), busy: new Set(), picks: new Map(), errors: new Map() };
   // The Brand library: the items whose removal was sent (kept dimmed until the library no longer lists them), and the last error per item.
-  const libraryUi = { removing: new Set(), errors: new Map() };
+  const libraryUi = { removing: new Set(), errors: new Map(), copy: { copied: null, fallback: null, hint: '', timer: null } };
   // Per-job page state: the intake draft and the review choice, comment and
   // request status, kept across re-renders and reset when the job moves on.
   const jobUi = new Map();
@@ -7453,8 +8038,9 @@ if (typeof document !== 'undefined') {
       const listed = [...(Array.isArray(library?.yours) ? library.yours : [])].some(item => item?.id === key.slice(at + 1));
       if (!listed) libraryUi.removing.delete(key);
     }
-    const libraries = brands.map(brand => brandLibrarySection(brand, { open: openKeys.has(`brand-library:${brand.slug}`), removing: libraryUi.removing, errors: libraryUi.errors, openKeys })).join('');
-    return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div>${libraries ? `<div class="brand-libraries">${libraries}</div>` : ''}</section>`;
+    const libraries = brands.map(brand => brandLibrarySection(brand, { open: openKeys.has(`brand-library:${brand.slug}`), removing: libraryUi.removing, errors: libraryUi.errors, openKeys, copy: libraryUi.copy })).join('');
+    const intelligence = brands.map(brand => intelPanelFor(brand)).join('');
+    return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div>${intelligence ? `<div class="brand-intels">${intelligence}</div>` : ''}${libraries ? `<div class="brand-libraries">${libraries}</div>` : ''}</section>`;
   }
   // Remove one of the person's own items from a brand's library: a board request (`bank_remove`) that Claude lands with brand_bank_save.
   async function submitBankRemove(slug, id) {
@@ -7495,7 +8081,7 @@ if (typeof document !== 'undefined') {
     inboxQuestions.clear();
     inboxDecisions.clear();
     inboxBriefs.clear();
-    const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo() });
+    const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo(), notes: onboardBrand ? intelDirectorNotes(onboardBrand, intelState(onboardBrand.slug)) : null });
     if (!agentsPanel) onboardChat = undefined;
     const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
@@ -7624,6 +8210,7 @@ if (typeof document !== 'undefined') {
     if (inline) inline.kitFocus = null;
     app.querySelectorAll('.sb-strip').forEach((strip, index) => { if (stripScroll[index]) strip.scrollLeft = stripScroll[index]; });
     restorePaneScroll(paneScroll);
+    loadKitFonts();
     restoreJobFocus(jobFocus);
     announceAgents(project);
     // A caption that fits in its two lines has nothing to open, so it shows no Show all control.
@@ -7772,7 +8359,7 @@ if (typeof document !== 'undefined') {
   // waiting. Each is a `brand_folder_add` board request that Claude applies; the row stays until the brand's footage lists the folder.
   function folderUiOf(create = false) {
     if (!inline || inline.kind !== 'onboard') return null;
-    if (create) return (ensureInlineKit().folders ||= { path: '', label: '', rights: '', error: '', busy: false, pending: [] });
+    if (create) return (ensureInlineKit().folders ||= { path: '', label: '', rights: '', error: '', busy: false, pasteOpen: false, pending: [] });
     return inline.kit?.folders || null;
   }
   function stopFolderWatch(entry) {
@@ -7788,7 +8375,7 @@ if (typeof document !== 'undefined') {
       const status = String(acknowledgement.status || receipt.status || 'requested');
       if (status === 'applied') {
         const result = acknowledgement.result || receipt.result || {};
-        Object.assign(entry, { status: 'applied', folderId: typeof result.folderId === 'string' ? result.folderId : null, appliedAt: Date.now(), message: '' });
+        Object.assign(entry, { status: 'applied', folderId: typeof result.folderId === 'string' ? result.folderId : null, appliedAt: Date.now(), message: '', ...(entry.kind === 'pick' && typeof result.name === 'string' && result.name.trim() ? { name: result.name.trim().slice(0, 120) } : {}) });
         stopFolderWatch(entry);
         void refresh();
       } else if (status === 'declined') {
@@ -7822,6 +8409,33 @@ if (typeof document !== 'undefined') {
       ui.error = e.message || 'Could not send that.';
     } finally {
       ui.busy = false;
+      render();
+    }
+  }
+  // "Choose a folder...": the request carries the person's answer on whose files these are, never a path. Claude opens the operating system's folder
+  // dialog on this computer (the board cannot see local paths), imports the folder it gets back and answers with the same receipt as a typed path.
+  async function submitFolderPick() {
+    const ui = folderUiOf(true);
+    const slug = inline?.brand;
+    if (!transport || !ui || !slug || ui.busy) return;
+    captureInlineValues();
+    const checked = folderPickArgs(ui);
+    if (checked.error) { ui.error = checked.error; inline.kitFocus = kitFocusSelector('rights-folder'); render(); return; }
+    const requestId = randomId(globalThis);
+    const entry = { requestId, kind: 'pick', name: checked.name, rights: checked.args.rights, status: 'sent', message: '' };
+    ui.error = ''; ui.busy = true; render();
+    try {
+      const result = await transport.call('brand_folder_pick', { requestId, brand: slug, ...checked.args });
+      entry.status = 'waiting';
+      ui.pending.push(entry);
+      Object.assign(ui, { label: '', rights: '' });
+      watchFolderAdd(entry);
+      notify(result?.message || 'Request saved. Claude will open a folder picker on your computer.');
+    } catch (e) {
+      ui.error = e.message || 'Could not send that.';
+    } finally {
+      ui.busy = false;
+      inline.kitFocus = kitFocusSelector('rights-folder');
       render();
     }
   }
@@ -7904,6 +8518,77 @@ if (typeof document !== 'undefined') {
     captureInlineValues();
     inline.kitFocus = kitFocusSelector('replace-logo');
     render();
+  }
+  // Fonts: the kit keeps a font by its family name, so an uploaded font file is read right here (its name from the file, as the folder digest reads it
+  // on the computer) and its bytes are loaded as a FontFace so the specimen shows the real letters. The file is not saved or sent anywhere.
+  let uploadedFontCount = 0;
+  async function loadUploadedFont(family, bytes) {
+    if (typeof FontFace !== 'function' || !document.fonts) return null;
+    const alias = `sc-upload-${++uploadedFontCount}`;
+    try {
+      const face = new FontFace(alias, bytes.slice(0));
+      await face.load();
+      document.fonts.add(face);
+      uploadedFonts.set(fontKey(family), alias);
+      return alias;
+    } catch { return null; }
+  }
+  async function handleFontFile(file) {
+    const kit = ensureInlineKit();
+    if (!file) return;
+    captureInlineValues();
+    Object.assign(kit, { fontError: '', fontStatus: '' });
+    const brandForKit = inline?.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
+    const current = (Array.isArray(kit.fonts) ? kit.fonts : (brandForKit?.kit?.fonts || [])).map(font => ({ ...font }));
+    const finish = () => { captureInlineValues(); inline.kitFocus = kitFocusSelector('upload-font'); render(); };
+    const problem = fontFileProblem(file);
+    if (problem) { kit.fontError = problem; finish(); return; }
+    try {
+      const bytes = await file.arrayBuffer();
+      const family = (await fontFamilyFromBytes(bytes)) || fontFamilyFromFileName(file.name);
+      if (!family) { kit.fontError = 'Could not read a font name from that file. Add the font by typing its name instead.'; finish(); return; }
+      const known = current.some(font => fontKey(font.family) === fontKey(family));
+      if (!known && current.length >= KIT_LIMITS.maxFonts) { kit.fontError = `The kit holds up to ${KIT_LIMITS.maxFonts} fonts. Remove one first.`; finish(); return; }
+      const alias = await loadUploadedFont(family, bytes);
+      if (!known) current.push({ family, use: nextFontUse(current) });
+      kit.fonts = current;
+      kit.fontStatus = (known ? `${family} is already in your fonts.` : `Added ${family} from ${file.name}.`) + (alias ? '' : ' This browser could not show a preview of the file.');
+    } catch { kit.fontError = 'That font file could not be read. Try another file.'; }
+    finish();
+  }
+  // Fonts of the kit: ask Google Fonts for each family shown in a font row, once, so the specimen shows the real letters. A family Google does not
+  // know and this computer does not have is marked, and its row says the preview is unavailable instead of passing off the fallback letters.
+  const askedFonts = new Set();
+  function fontIsInstalled(family) {
+    try {
+      const context = document.createElement('canvas').getContext('2d');
+      const width = font => { context.font = `40px ${font}`; return context.measureText('mmmmmmmmmmlli 0123').width; };
+      return ['monospace', 'serif', 'sans-serif'].some(base => width(`'${family}', ${base}`) !== width(base));
+    } catch { return false; }
+  }
+  function markFontMissing(key) {
+    fontPreview.missing.add(key);
+    app.querySelectorAll(`.kit-font-row[data-font-key="${CSS.escape(key)}"]`).forEach(row => {
+      if (uploadedFonts.has(key)) return;
+      row.classList.add('is-fallback');
+      const note = row.querySelector('[data-font-note]');
+      if (note) note.textContent = 'Preview unavailable';
+    });
+  }
+  function loadKitFonts() {
+    app.querySelectorAll('.kit-font-row[data-font-key]').forEach(row => {
+      const key = row.dataset.fontKey;
+      const family = row.querySelector('.kit-font-name')?.value || '';
+      if (!key || askedFonts.has(key) || uploadedFonts.has(key)) return;
+      askedFonts.add(key);
+      const href = googleFontHref(family);
+      if (!href) { if (!fontIsInstalled(family)) markFontMissing(key); return; }
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.addEventListener('error', () => { if (!fontIsInstalled(family)) markFontMissing(key); });
+      document.head.append(link);
+    });
   }
   // Optional photos of the brand's world, added at setup. Each one goes through the same
   // downscale and asset-store upload as a product photo (preparePhotoFile below), and rides
@@ -8255,10 +8940,19 @@ if (typeof document !== 'undefined') {
   }
   const hasFiles = event => [...(event.dataTransfer?.types || [])].includes('Files');
   const dropZoneOf = target => target?.closest?.('[data-ref-drop]') || null;
-  app.addEventListener('dragenter', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); } });
-  app.addEventListener('dragover', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); } });
-  app.addEventListener('dragleave', event => { const zone = dropZoneOf(event.target); if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove('is-dragover'); });
+  const logoDropOf = target => target?.closest?.('[data-kit-drop]') || null;
+  app.addEventListener('dragenter', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); return; } const logo = logoDropOf(event.target); if (logo && hasFiles(event)) { event.preventDefault(); if (!logo.closest('fieldset:disabled')) logo.classList.add('is-dragover'); } });
+  app.addEventListener('dragover', event => { const zone = dropZoneOf(event.target); if (zone && hasFiles(event)) { event.preventDefault(); zone.classList.add('is-dragover'); return; } const logo = logoDropOf(event.target); if (logo && hasFiles(event)) { event.preventDefault(); if (!logo.closest('fieldset:disabled')) logo.classList.add('is-dragover'); } });
+  app.addEventListener('dragleave', event => { const zone = dropZoneOf(event.target) || logoDropOf(event.target); if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove('is-dragover'); });
   app.addEventListener('drop', event => {
+    const logo = logoDropOf(event.target);
+    if (logo) {
+      event.preventDefault();
+      logo.classList.remove('is-dragover');
+      const picked = event.dataTransfer?.files?.[0];
+      if (picked && !logo.closest('fieldset:disabled')) void handleLogoFile(picked);
+      return;
+    }
     const zone = dropZoneOf(event.target);
     if (!zone) return;
     event.preventDefault();
@@ -8320,8 +9014,15 @@ if (typeof document !== 'undefined') {
       render();
     }
   }
+  app.addEventListener('error', event => {
+    const picture = event.target;
+    if (!(picture instanceof HTMLImageElement) || picture.dataset.postThumb === undefined) return;
+    failedPostThumbs.add(picture.getAttribute('src'));
+    picture.remove();
+  }, true);
   app.addEventListener('toggle', event => {
     if (event.target?.matches?.('details.new-refs')) newRefsOf().open = event.target.open;
+    if (event.target?.matches?.('details[data-kit-paste]')) { const ui = folderUiOf(true); if (ui) ui.pasteOpen = event.target.open; }
   }, true);
   app.addEventListener('input', event => {
     const name = event.target?.name;
@@ -8390,6 +9091,8 @@ if (typeof document !== 'undefined') {
     if(target.dataset.postTimeCancel!==undefined){const shown=current();if(shown)openPostTime(shown,target.dataset.postTimeCancel,false);return;}
     if(target.dataset.postAnswer!==undefined){const shown=current();if(shown)void submitResolvePost(shown,target.dataset.postId,target.dataset.postAnswer);return;}
     if(target.dataset.kitDownloadAll!==undefined){[...app.querySelectorAll('.posting-kit a.kit-download')].forEach((link,at)=>setTimeout(()=>link.click(),at*350));return;}
+    if(target.dataset.postCopy!==undefined){void copyPostLink(target.dataset.postCopy,target.dataset.postUrl||'');return;}
+    if(target.dataset.postCopyDone!==undefined){closePostFallback(target.dataset.postCopyDone);return;}
     if(target.dataset.kitCopy!==undefined){const shown=current();const at=target.dataset.kitCopy.lastIndexOf(':');if(shown&&at>0)void copyKitText(shown,target.dataset.kitCopy.slice(0,at),target.dataset.kitCopy.slice(at+1));return;}
     if(target.dataset.kitFallbackClose!==undefined){const shown=current();const at=target.dataset.kitFallbackClose.lastIndexOf(':');if(shown&&at>0)closeKitFallback(shown,target.dataset.kitFallbackClose.slice(0,at),target.dataset.kitFallbackClose.slice(at+1));return;}
     if(target.dataset.kitMark!==undefined){const shown=current();if(shown)void submitMarkPosted(shown,target.dataset.kitMark);return;}
@@ -8401,6 +9104,8 @@ if (typeof document !== 'undefined') {
       const projected = brandForKit?.kit || {};
       const action = target.dataset.kitAction;
       if (action === 'add-folder') { void submitFolderAdd(); return; }
+      if (action === 'pick-folder') { void submitFolderPick(); return; }
+      if (action.endsWith('-font')) Object.assign(kit, { fontError: '', fontStatus: '' });
       if (action === 'dismiss-folder') { dismissFolder(Number(target.dataset.index)); return; }
       if (action === 'add-color') {
         kit.palette = (Array.isArray(kit.palette) ? kit.palette : (projected.palette || [])).map(c => ({...c}));
@@ -9325,6 +10030,28 @@ if (typeof document !== 'undefined') {
     render();
     focusQuietly(`[data-kit-copy="${CSS.escape(postId + ':' + field)}"]`);
   }
+  // Copy a post link from a Brand library card. The copy starts inside the click, as the clipboard asks. The clipboard may not be allowed inside the
+  // artifact, so a refusal (or no clipboard at all) opens a read-only box with the link already selected, for the person to copy by hand.
+  async function copyPostLink(key, url) {
+    const copy = libraryUi.copy;
+    clearTimeout(copy.timer);
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') { await navigator.clipboard.writeText(url); copied = true; }
+    } catch { copied = false; }
+    copy.hint = copyHint(typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent, Boolean(globalThis.matchMedia?.('(pointer: coarse)')?.matches));
+    Object.assign(copy, copied ? { copied: key, fallback: null } : { copied: null, fallback: key });
+    if (copied) copy.timer = setTimeout(() => { copy.copied = null; copy.timer = null; render(); }, KIT_COPIED_MS);
+    render();
+    if (copied) { focusQuietly(`[data-post-copy="${CSS.escape(key)}"]`); return; }
+    const box = app.querySelector(`[data-post-fallback="${CSS.escape(key)}"]`);
+    if (box) { box.focus({ preventScroll: true }); box.select(); }
+  }
+  function closePostFallback(key) {
+    if (libraryUi.copy.fallback === key) libraryUi.copy.fallback = null;
+    render();
+    focusQuietly(`[data-post-copy="${CSS.escape(key)}"]`);
+  }
   let postWake = null;
   // "It is not in Metricool" opens at checkAfter, so the page is drawn again then.
   function schedulePostWake(project) {
@@ -9800,10 +10527,18 @@ if (typeof document !== 'undefined') {
     const name = field.name || '';
     if (field.dataset?.kitFolder === 'rights') {
       const ui = folderUiOf(true);
-      if (ui) { ui.rights = field.value; if (ui.error) { ui.error = ''; document.getElementById('kit-folder-error')?.remove(); document.getElementById('kit-folder-path')?.removeAttribute('aria-invalid'); } }
+      if (ui) {
+        ui.rights = field.value;
+        if (ui.error) { ui.error = ''; document.getElementById('kit-folder-error')?.remove(); document.getElementById('kit-folder-path')?.removeAttribute('aria-invalid'); }
+        const pickButton = app.querySelector('[data-kit-action="pick-folder"]');
+        if (pickButton) pickButton.disabled = Boolean(ui.busy);
+        const pickHint = app.querySelector('[data-pick-hint]');
+        if (pickHint) pickHint.textContent = KIT_FOLDER_PICK_HINT;
+      }
       return;
     }
     if (name === 'kit_logo_file') { void handleLogoFile(field.files?.[0] || null); return; }
+    if (name === 'kit_font_file') { void handleFontFile(field.files?.[0] || null); return; }
     if (name === 'kit_ref_file') { void handleRefFiles(field.files); return; }
     const colorIndex = /^kit_color_(swatch|hex|role)_(\d+)$/.exec(name);
     if (colorIndex) {
@@ -9870,6 +10605,266 @@ if (typeof document !== 'undefined') {
     const key = event.target?.dataset?.openKey;
     if (!key) return;
     if (event.target.open) openKeys.add(key); else openKeys.delete(key);
+  }, true);
+  // Brand intelligence: the intel module draws the panel, this is its page state and its requests. One record per brand survives every redraw
+  // (the open tab, the subtopic edit, the cell being confirmed, which post card shows Copied). Each control of the panel carries data-intel-act.
+  // Drawing again from a panel control keeps what is typed in the onboarding form (the form is drawn from the draft's values).
+  function redraw() { captureInlineValues(); render(); }
+  const intelStates = new Map();
+  const intelBadPictures = new Set();
+  let intelKeep = null;
+  function intelState(slug) {
+    let state = intelStates.get(slug);
+    if (!state) { state = freshIntelState(); intelStates.set(slug, state); }
+    return state;
+  }
+  const intelBrand = slug => (data.brands || []).find(item => item.slug === slug);
+  const intelHint = () => copyHint(typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent, Boolean(globalThis.matchMedia?.('(pointer: coarse)')?.matches));
+  const intelFocusSelector = id => `[data-intel-focus="${CSS.escape(id)}"]`;
+  // The page is drawn again as a whole, so a redraw would drop the focus (and the caret) of a control inside a panel. Drawing a panel runs
+  // before the old page is replaced: it notes which control has focus, and a microtask puts it back once the new page is in.
+  function restoreIntelFocus() {
+    const keep = intelKeep;
+    intelKeep = null;
+    if (!keep) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && app.contains(active)) return;
+    const element = app.querySelector(intelFocusSelector(keep.id));
+    if (!element) return;
+    element.focus({ preventScroll: true });
+    if (keep.start !== null && typeof element.setSelectionRange === 'function') { try { element.setSelectionRange(keep.start, keep.end ?? keep.start); } catch { /* Not every control has a selection. */ } }
+  }
+  // One brand's panel. It opens by itself the first time it is shown in a state: while the research runs, for the brand on the onboarding page,
+  // and for the only brand that has one; after that it stays as the person left it.
+  function intelPanelFor(brand) {
+    const intel = intelOf(brand);
+    if (!intel || !brand.slug) return '';
+    const active = document.activeElement;
+    const keepId = active?.dataset?.intelFocus && active.closest?.('.brand-intel,.chat') ? active.dataset.intelFocus : '';
+    if (keepId) { intelKeep = { id: keepId, start: typeof active.selectionStart === 'number' ? active.selectionStart : null, end: typeof active.selectionEnd === 'number' ? active.selectionEnd : null }; queueMicrotask(restoreIntelFocus); }
+    const state = intelState(brand.slug);
+    if (intelSentLanded(intel, state.sent)) state.sent = null;
+    const key = `brand-intel:${brand.slug}`;
+    const here = inline?.kind === 'onboard' && inline.brand === brand.slug;
+    const phase = `${key}:${intelIsRunning(intel) ? 'running' : 'ready'}:${here ? 'here' : 'away'}`;
+    if (!gateSeen.has(phase)) {
+      gateSeen.add(phase);
+      if (intelIsRunning(intel) || here || (data.brands || []).filter(item => intelOf(item)).length === 1) openKeys.add(key);
+    }
+    const kinds = new Set((Array.isArray(brand.library?.banks) ? brand.library.banks : []).filter(bank => bank && Array.isArray(bank.items) && bank.items.some(item => item && !item.removed && trimmed(item.text))).map(bank => bank.kind));
+    return brandIntelligence(brand, state, { open: openKeys.has(key), now: Date.now(), hint: intelHint(), libraryKinds: kinds, badPictures: intelBadPictures });
+  }
+  function setIntelTab(slug, tab) {
+    if (!INTEL_TABS.some(item => item.id === tab)) return;
+    Object.assign(intelState(slug), { tab, copied: '', fallback: '' });
+    redraw();
+    focusQuietly(intelFocusSelector(`tab:${tab}`));
+  }
+  // The subtopic edit: the rows start as the draft's subtopics, the person renames, removes or adds up to 8, and saves exactly 6.
+  function startIntelEdit(slug, { add = false, jump = false } = {}) {
+    const intel = intelOf(intelBrand(slug));
+    if (!intel) return;
+    const state = intelState(slug);
+    if (!state.editing) state.rows = intelSubtopics(intel).map(item => ({ id: item.id, name: item.name }));
+    if (add && state.rows.length < INTEL_SUBTOPIC_MAX) state.rows.push({ name: '' });
+    Object.assign(state, { editing: true, error: '', sent: null, tab: 'subtopics' });
+    openKeys.add(`brand-intel:${slug}`);
+    redraw();
+    if (jump) jumpTo(`[data-intel-panel="${CSS.escape(slug)}"]`);
+    focusQuietly(intelFocusSelector(`row:${add ? state.rows.length - 1 : 0}`));
+  }
+  function cancelIntelEdit(slug) {
+    Object.assign(intelState(slug), { editing: false, rows: [], error: '' });
+    redraw();
+    focusQuietly(intelFocusSelector('edit'));
+  }
+  function addIntelRow(slug) {
+    const state = intelState(slug);
+    if (state.rows.length >= INTEL_SUBTOPIC_MAX) return;
+    state.rows.push({ name: '' });
+    state.error = '';
+    redraw();
+    focusQuietly(intelFocusSelector(`row:${state.rows.length - 1}`));
+  }
+  function removeIntelRow(slug, at) {
+    const state = intelState(slug);
+    if (!Number.isInteger(at) || at < 0 || at >= state.rows.length) return;
+    state.rows.splice(at, 1);
+    state.error = '';
+    redraw();
+    focusQuietly(intelFocusSelector(state.rows.length ? `row:${Math.min(at, state.rows.length - 1)}` : 'add'));
+  }
+  // Save the subtopics: every one of the list, so the request replaces the draft whole. A subtopic the person added has no id.
+  async function submitSubtopics(slug, rows, { focusEdit = false } = {}) {
+    const state = intelState(slug);
+    if (state.busy) return;
+    const problem = intelSubtopicsProblem(rows);
+    if (problem) { state.error = problem; redraw(); return; }
+    if (!transport) { state.error = 'The board is not connected to Claude yet. Try again in a moment.'; redraw(); return; }
+    state.busy = true;
+    state.error = '';
+    redraw();
+    try {
+      const result = await transport.call('subtopics_confirm', { requestId: randomId(globalThis), brand: slug, items: intelSubtopicItems(rows) });
+      Object.assign(state, { sent: { rows: rows.map(row => ({ id: row.id, name: String(row.name).trim() })), at: Date.now() }, editing: false, rows: [], error: '' });
+      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      await refresh();
+    } catch (e) {
+      state.error = e.message || 'Could not send that.';
+    } finally {
+      state.busy = false;
+      redraw();
+    }
+    if (focusEdit && !state.error) focusQuietly(intelFocusSelector('edit'));
+  }
+  function confirmIntelSubtopics(slug, options) {
+    const intel = intelOf(intelBrand(slug));
+    if (intel) void submitSubtopics(slug, intelSubtopics(intel).map(item => ({ id: item.id, name: item.name })), options);
+  }
+  // A plan cell: the first click opens the confirm step under the table (a second click on the same cell closes it); only that step's button
+  // sends plan_cell_start for the subtopic and format of the cell.
+  function chooseIntelCell(slug, subtopic, format) {
+    const state = intelState(slug);
+    const same = Boolean(state.cell) && state.cell.subtopic === subtopic && state.cell.format === format;
+    Object.assign(state, { cell: same ? null : { subtopic, format }, cellError: '', cellSent: '' });
+    redraw();
+    if (same) { focusQuietly(`[data-intel-sub="${CSS.escape(subtopic)}"][data-intel-fmt="${CSS.escape(format)}"]`); return; }
+    const box = focusQuietly(intelFocusSelector('cell-confirm'));
+    const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    box?.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+  }
+  function cancelIntelCell(slug) {
+    const state = intelState(slug);
+    const cell = state.cell;
+    Object.assign(state, { cell: null, cellError: '' });
+    redraw();
+    if (cell) focusQuietly(`[data-intel-sub="${CSS.escape(cell.subtopic)}"][data-intel-fmt="${CSS.escape(cell.format)}"]`);
+  }
+  async function startIntelCell(slug) {
+    const state = intelState(slug);
+    const cell = state.cell;
+    if (!cell || state.cellBusy) return;
+    if (!transport) { state.cellError = 'The board is not connected to Claude yet. Try again in a moment.'; redraw(); return; }
+    state.cellBusy = true;
+    state.cellError = '';
+    redraw();
+    try {
+      const result = await transport.call('plan_cell_start', { requestId: randomId(globalThis), brand: slug, subtopic: cell.subtopic, format: cell.format });
+      Object.assign(state, { cell: null, cellSent: 'Sent. Claude sets up this post and it shows with your jobs when it is ready.' });
+      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      await refresh();
+    } catch (e) {
+      state.cellError = e.message || 'Could not send that.';
+    } finally {
+      state.cellBusy = false;
+      redraw();
+    }
+    if (state.cellSent && !state.cell) focusQuietly(intelFocusSelector('cell-sent'));
+  }
+  // Copy link: the clipboard is asked inside the click itself. A refusal (or no clipboard at all) opens a read-only box with the link selected.
+  function copyIntelLink(button) {
+    const url = safeHttpsLink(button.dataset.intelUrl || '');
+    const key = button.dataset.intelArg || '';
+    const slug = button.closest('[data-intel-brand]')?.dataset.intelBrand;
+    if (!url || !key || !slug) return;
+    const state = intelState(slug);
+    clearTimeout(state.copyTimer);
+    let attempt;
+    try { attempt = typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function' ? navigator.clipboard.writeText(url) : Promise.reject(new Error('No clipboard')); } catch (e) { attempt = Promise.reject(e); }
+    attempt.then(() => {
+      Object.assign(state, { copied: key, fallback: '' });
+      state.copyTimer = setTimeout(() => { state.copied = ''; state.copyTimer = null; redraw(); }, KIT_COPIED_MS);
+      notify('Link copied.');
+      redraw();
+    }, () => {
+      Object.assign(state, { copied: '', fallback: key });
+      redraw();
+      const box = app.querySelector(`[data-intel-fallback="${CSS.escape(key)}"]`);
+      if (box) { box.focus({ preventScroll: true }); box.select(); }
+    });
+  }
+  // A bank in the summary opens that bank in the Brand library, which opens with it.
+  function openIntelBank(slug, kind) {
+    openKeys.add(`brand-library:${slug}`);
+    openKeys.add(`brand-library:${slug}:${kind}`);
+    redraw();
+    jumpTo(`details.library-bank[data-open-key="${CSS.escape(`brand-library:${slug}:${kind}`)}"]`);
+  }
+  app.addEventListener('click', event => {
+    const control = event.target.closest?.('[data-intel-act]');
+    const slug = control?.closest('[data-intel-brand]')?.dataset.intelBrand;
+    if (!control || !slug) return;
+    const arg = control.dataset.intelArg;
+    switch (control.dataset.intelAct) {
+      case 'tab': setIntelTab(slug, arg); break;
+      case 'cell': chooseIntelCell(slug, control.dataset.intelSub || '', control.dataset.intelFmt || ''); break;
+      case 'cell-go': void startIntelCell(slug); break;
+      case 'cell-cancel': cancelIntelCell(slug); break;
+      case 'copy': copyIntelLink(control); break;
+      case 'copy-done': { const state = intelState(slug); state.fallback = ''; redraw(); focusQuietly(intelFocusSelector(`copy:${arg}`)); break; }
+      case 'confirm': confirmIntelSubtopics(slug, { focusEdit: true }); break;
+      case 'note-confirm': confirmIntelSubtopics(slug); break;
+      case 'edit': startIntelEdit(slug); break;
+      case 'note-edit': startIntelEdit(slug, { jump: true }); break;
+      case 'add-own': startIntelEdit(slug, { add: true }); break;
+      case 'add': addIntelRow(slug); break;
+      case 'remove': removeIntelRow(slug, Number(arg)); break;
+      case 'cancel-edit': cancelIntelEdit(slug); break;
+      case 'bank': openIntelBank(slug, arg); break;
+    }
+  });
+  // The tabs: arrow keys, Home and End move between them (and open the one reached).
+  app.addEventListener('keydown', event => {
+    const field = event.target;
+    if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+    const tab = field.closest?.('[data-intel-act="tab"]');
+    if (tab) {
+      const ids = INTEL_TABS.map(item => item.id);
+      const at = ids.indexOf(tab.dataset.intelArg);
+      const next = event.key === 'ArrowRight' ? (at + 1) % ids.length : event.key === 'ArrowLeft' ? (at + ids.length - 1) % ids.length : event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1 : -1;
+      const slug = tab.closest('[data-intel-brand]')?.dataset.intelBrand;
+      if (next < 0 || at < 0 || !slug) return;
+      event.preventDefault();
+      setIntelTab(slug, ids[next]);
+      return;
+    }
+    // A subtopic box: Escape drops the edit.
+    if (field instanceof HTMLInputElement && field.dataset.intelRow !== undefined && event.key === 'Escape') {
+      const slug = field.closest('[data-intel-brand]')?.dataset.intelBrand;
+      if (slug) { event.preventDefault(); cancelIntelEdit(slug); }
+    }
+  });
+  // Typing in a subtopic box keeps the row and updates the count line and the Save button in place (no redraw, so the caret stays).
+  app.addEventListener('input', event => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement) || field.dataset.intelRow === undefined) return;
+    const slug = field.closest('[data-intel-brand]')?.dataset.intelBrand;
+    const state = slug ? intelStates.get(slug) : null;
+    const row = state?.rows[Number(field.dataset.intelRow)];
+    if (!row) return;
+    row.name = field.value;
+    state.error = '';
+    const form = field.closest('form');
+    const { issue, text } = intelEditStatus(state.rows);
+    const line = form?.querySelector('.intel-count');
+    if (line) { line.textContent = text; line.classList.toggle('is-bad', Boolean(issue)); }
+    const save = form?.querySelector('button[type="submit"]');
+    if (save && !state.busy) save.disabled = Boolean(issue);
+    form?.querySelector('.inline-error')?.remove();
+  });
+  app.addEventListener('submit', event => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.intelForm === undefined) return;
+    event.preventDefault();
+    const slug = form.closest('[data-intel-brand]')?.dataset.intelBrand;
+    if (slug) void submitSubtopics(slug, intelState(slug).rows, { focusEdit: true });
+  });
+  // A picture that does not load (an address that expired, a site that blocks other pages) is dropped, and not asked for again: the card keeps its tile.
+  app.addEventListener('error', event => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.closest('.intel-thumb')) return;
+    intelBadPictures.add(image.getAttribute('src'));
+    image.remove();
   }, true);
   addEventListener('hashchange',()=>{drawer=null;viewer=null;connectorsView=false;render();});
   void refresh();

@@ -26,6 +26,8 @@ for(const name of ['brand_footage_import','brand_footage_status','brand_footage_
 for(const name of ['brand_results_save','brand_results_get'])BRAND_LIBRARY_TOOLS.add(name);
 // And the brand trends tool (server/tools/brand-trends.mjs): what the Trend Scout found rising, kept for a week.
 BRAND_LIBRARY_TOOLS.add('brand_trends_save');
+// And the brand intelligence tools (server/tools/brand-intelligence.mjs): the labelled posts, the six subtopics, the formats ranking and the plan.
+for(const name of ['brand_intelligence_get','brand_intelligence_save'])BRAND_LIBRARY_TOOLS.add(name);
 
 export function assertLegacyExecutionAllowed(root,toolName,args = {}) {
   if(root && /^brand_/.test(toolName) && !BRAND_LIBRARY_TOOLS.has(toolName) && existsSync(join(root,'.social-pipeline','config.json'))) {

@@ -13,6 +13,7 @@ user-invocable: false
 - Handling a board request
 - Reading a comment from the board
 - Land and apply requests
+- Brand intelligence
 - Questions on the board
 - Plain words
 - Agent Box
@@ -285,6 +286,13 @@ Land it and apply it immediately with `pipeline_board_request_apply`: the apply 
 Then publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md` to look at a few files, ask before a full pass and report what was found.
 If the apply refuses it (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
 
+A `brand_folder_pick` request is the person pressing "Choose a folder..." on the onboarding page, after picking who owns the files (its args are `brand`, `rights` and an optional `label`; there is no path, because the board cannot read one, and the rights are their own answer, never change them).
+Land it, then call `pipeline_folder_pick` with its `requestId` and `confirmedBy` set to `board request <requestId>`: it opens the operating system's folder dialog on the person's computer, waits up to 3 minutes and imports the chosen folder exactly like `brand_folder_add`, so do not also call `pipeline_board_request_apply` or `brand_footage_import` for it.
+When its `status` is `applied`, write its `artifactReceipt` to the request's board document, publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md`.
+When it is `cancelled`, `timeout`, `unavailable` or `refused`, the tool has already declined the request with a plain line (the person closed the dialog, left it open too long, no dialog can open on this computer, or the folder was refused): write the `artifactReceipt` it returns, publish the workspace projection and say in one line what happened.
+When it is `handledElsewhere`, another window has the request: say nothing.
+When the call was stopped (`stopped`), the request is still waiting: leave it and land it again on the next pass.
+
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.
 Keep the original request envelope and `args` unchanged for idempotent retries.
 For navigation, a job result contains only `{ jobId }`, and a brand result contains only `{ brand: { id, slug, name, onboardingStatus } }`.
@@ -294,7 +302,7 @@ A `submit_decision` request from the board is the person's approval already, the
 Pass `maxCredits` equal to the request's `args.credits`, the credits the board showed, when approving a concept.
 A price approval carries its own `args.totals`, already matching the saved quote, and needs no `maxCredits`.
 A concept pick arrives as `args.chosen` with the concept letter, and a request for changes carries the person's comment in `args.note`.
-A concept pick's `args.note` can also carry the person's Strategy gate choices: a `Strategy picks:` line (industry, funnel stage, ad style, format, CTA, problem, angle) and `Your own ...` lines for options they added (a problem or angle they add is saved to their brand library by the plugin).
+A concept pick's `args.note` can also carry the person's Strategy gate choices: a `Strategy picks:` line (industry, funnel stage, ad style, format, CTA, problem, angle, subtopic, editing, visual hook) and `Your own ...` lines for options they added (a problem or angle they add is saved to their brand library by the plugin).
 Pass the note on unchanged and never edit or drop those lines: applying the decision saves the person's own options to the brand library, and the agents read the picks from the approval note, where they replace the concept's own fields.
 The tool validates the exact registered file set, hashes, current gate, and revision before applying the decision.
 `confirmedBy` is a local audit label and does not authenticate a Studio user.
@@ -310,6 +318,28 @@ Use the exact request ID; never acknowledge a whole collection or clear newly ar
 If either write fails, keep the local request and result intact and leave the remote request available for retry.
 
 After every apply, list the board's saved `requests` again before moving on to anything else; a click made mid-turn can arrive while this turn is still running, and it must be handled now rather than left for the next comment or session start.
+
+## Brand intelligence
+
+Onboarding builds each brand's intelligence (section 4e of `skills/onboard-brand/SKILL.md`): the posts it took apart and labelled, the six subtopics, the formats that work and a 6 by 5 plan.
+The board draws it from `brand.intelligence` in the workspace projection, so publish the workspace projection after every change to it: the checklist while the pass runs, the subtopic draft, the confirmed subtopics, the plan.
+Two requests come from that panel.
+
+A `subtopics_confirm` request is the person answering "Do these 6 subtopics look right?" (its args are `brand` and `items`: exactly six `{ id?, name }`; a subtopic that was kept carries its `id`, one the person added has none).
+It is their answer and it is already approved: land it and apply it immediately with `pipeline_board_request_apply`, `confirmedBy` set to the board request, with no chat confirmation and without changing a name.
+The apply saves the six as the brand's subtopics, keeps the evidence of the ones that stay, and marks the plan stale when a subtopic changed.
+Then publish the workspace projection, and when the receipt says the plan needs ideas for the new subtopics, follow "When the subtopics change" in section 4e of `skills/onboard-brand/SKILL.md`.
+If the apply refuses it (not exactly six, a name twice), say the refusal's plain line, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
+The same answer typed in chat is applied with `brand_intelligence_save` (action `subtopics_confirm`).
+
+A `plan_cell_start` request is the person clicking a cell of the 6 by 5 plan to start a post (its args are `brand`, `subtopic`, the subtopic's id, and `format`, a format library id, as they are in `plan.cells`).
+It is a new job request like `create_job`, already approved: land it and apply it immediately with `pipeline_board_request_apply`.
+The apply creates an organic post job whose `job.json` carries the pick (an `intelligence` block with the subtopic, the format, the cell's idea, angle and hook, and the brand's best examples of that format) and whose topic is the cell's idea, then queues the job's `continue_job` request, which you handle next like any new job: intake, then the strategist, with the subtopic and the format already chosen (`agents/producer.md`).
+Then publish the workspace projection so the job shows.
+If the apply refuses it (the brand is not ready for jobs, the subtopic or the format is not the brand's), say the plain line, decline the request with `pipeline_board_request_decline` and that line as the reason.
+
+The Strategy gate offers the brand's subtopics, the format library's story structures, editing styles and visual hooks as rows to click, with "+ Add your own".
+The person's choices arrive in the concept pick's `args.note` as `Subtopic: "..."`, `Format: "..."`, `Editing: "..."` and `Visual hook: "..."` in the `Strategy picks:` line, with `Your own subtopic|editing|visual hook: "..."` lines for options they added; pass the note on unchanged like the rest of it, and the plugin saves their own options to the brand library when the decision is applied.
 
 ## Questions on the board
 

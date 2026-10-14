@@ -6,7 +6,7 @@ tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign
 disallowedTools: Agent
 skills: research, source-validation, write-report
 model: claude-sonnet-5-5
-maxTurns: 60
+maxTurns: 120
 color: orange
 ---
 
@@ -38,6 +38,8 @@ Reuse a current artifact when it covers the assigned questions.
 Search only unresolved questions and never add a generic workstream.
 
 Do not repeat a provider probe that the current stage already answered.
+
+Brand onboarding research (the `brand-onboarding` and `viral-teardown` workstreams, defined in `pipeline/skills/research/SKILL.md`) is always the deep pass and has up to 120 turns: the draft contract in the spawn prompt says what to read, take apart and label.
 
 Research serves the direction the person approved.
 Read `topic` and `direction` in `job.json`, and the aim the spawn prompt passes (topic, message, audience, offer, goal).

@@ -7,7 +7,7 @@ model: claude-sonnet-5-5
 tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__brand_library_get
 disallowedTools: Agent
 skills: research, source-validation, write-report
-maxTurns: 60
+maxTurns: 120
 color: orange
 user-invocable: false
 ---
@@ -28,7 +28,10 @@ For the brand-onboarding workstream, follow the draft contract pasted in the spa
 If the spawn prompt has no draft contract, ask for it back in your report rather than guessing the draft shape.
 Use a plain date (YYYY-MM-DD) for every `observedAt`; never invent a clock time.
 For the brand-onboarding workstream, the target market comes from the spawn prompt and is Singapore when none is named.
-For the brand-onboarding workstream, take at most 5 of the top videos apart (3 own, 2 competitors) with `pipeline_video_teardown` and `media_transcribe` as the research skill's "Taking the best videos apart" says, within the budget, and skip a video with a gap line when its download fails.
+For the brand-onboarding workstream, which is always the deep pass, take at most 14 of the top videos apart (the 5 best own, the 2 best of each competitor, 6 in all, and the 3 viral ones of the `viral-teardown` dispatch) with `pipeline_video_teardown` and `media_transcribe` as the research skill's "Taking the best videos apart" says, within the budget, and skip a video with a gap line when its download fails.
+For the brand-onboarding workstream, give every video you take apart its `labels` (format, editing style, visual hook, subtopic, and series when it is one), picked from the format library `pipeline/library/formats.json` as the research skill's "Labels" says, and its `transcriptExcerpt`; the save refuses a breakdown without its labels.
+For the brand-onboarding workstream, the Trend Scout runs beside you: leave what is trending to it and do not search for trends. A dispatch with the workstream `viral-teardown` does only what the research skill's "Viral now" says: it takes apart the first 3 videos of `viralPath` and adds them to the `topPosts` of the draft.
+For the brand-onboarding workstream, give each top post the `thumbnail` the social read returned for it (the post's `thumbnail_url`, exactly as it came), and leave it out when the read gave none.
 For the brand-onboarding workstream, also run the pain points and the hooks, captions and CTAs workstreams that the draft contract describes, after the accounts are read and the best videos taken apart, and write what they found in the draft's `banks` (pains, desires, objections, angles, captions, ctas).
 Quote customers only from pages you saved under `rawDir`, copy every quote exactly, count only what you read, and leave a list empty when nothing was found; the save looks each quote up in its capture.
 For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.

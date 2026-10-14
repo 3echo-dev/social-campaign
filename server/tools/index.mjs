@@ -50,6 +50,7 @@ import { brandLibraryTools } from './brand-library.mjs';
 import { brandFootageTools } from './brand-footage.mjs';
 import { brandResultsTools } from './brand-results.mjs';
 import { brandTrendsTools } from './brand-trends.mjs';
+import { brandIntelligenceTools } from './brand-intelligence.mjs';
 
 /** @type {import('../mcp/registry.mjs').ToolDefinition[][]} */
 export const ALL_TOOL_MODULES = [
@@ -93,6 +94,7 @@ export const ALL_TOOL_MODULES = [
   brandFootageTools,
   brandResultsTools,
   brandTrendsTools,
+  brandIntelligenceTools,
 ];
 
 /**

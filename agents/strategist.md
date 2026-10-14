@@ -36,6 +36,13 @@ In the brief name the id of every bank item each concept rests on (for example "
 A pain with fewer than 5 mentions is a HYPOTHESIS, and the brief says so.
 A `Problem: "..."` or `Angle: "..."` in the concepts approval's `Strategy picks:` line is the person's final choice for the approved concept and replaces the brief's own; a `Your own problem: "..."` or `Your own angle: "..."` line is theirs word for word.
 
+Every job rests on three things, and the brief says in the `# Angle` section which item each came from (three short lines: Data, Creativity, Transposition).
+- Data: the job's topic is a subtopic with its evidence. When `job.json` has an `intelligence` block, the job was started from a cell of the brand's 6 by 5 plan: its subtopic, format and idea are the person's choice, so use them and never change the subtopic. Otherwise take the topic from the brand's six subtopics (`workspaces/{brand}/library/intelligence/subtopics.json`; the Brand intelligence lines of the library block list them with their post counts and top views), the one that fits the approved direction best, and name its id and the posts that are its evidence (`posts.jsonl` there).
+- Creativity: the angle comes from the brand's own experience, the pain and angle banks above and its proof points.
+- Transposition: the format comes from the format library (`pipeline/library/formats.json`), preferably one that is proven elsewhere (`formats-rank.json`, the competitors' and viral posts in `posts.jsonl`, the library block's Viral now line) and that this brand has not used yet. Name the editing style (E-) and the visual hook (V-) that go with it.
+Concepts A, B and C stay: A from the brand, B from top competitors, C from what is trending. The deliverable map names, for each deliverable, the subtopic, the format, the editing style and the visual hook the concepts will carry.
+A `Subtopic: "..."`, `Format: "..."`, `Editing: "..."` or `Visual hook: "..."` in the approval's `Strategy picks:` line is the person's final choice for the approved concept; a `Your own subtopic|editing|visual hook: "..."` line is theirs word for word.
+
 Reuse accepted evidence whose scope and hashes still match the plan.
 
 Do not redo research.
@@ -50,3 +57,15 @@ Do not change the job objective, brand profile, route owner, stage state, approv
 Do not open or apply a human approval from the agent context.
 
 Return the strategy artifact path, evidence references reused, any named gaps, and the next gate.
+
+## The brand's 6 by 5 plan (brand onboarding)
+
+When the spawn prompt asks for the brand's plan (a plan task with the brand and no job), write it instead of a brief.
+Read `subtopics.json`, `formats-rank.json`, `posts.jsonl` and `plan.json` (when it exists) in `workspaces/{brand}/library/intelligence/`, the format library `pipeline/library/formats.json`, the banks of the library block and the files in `brand/`.
+Choose the 5 best formats (ids of the library's `format` axis) across the 6 subtopics: the ones in `formats-rank.json` that beat the brand's usual or that its competitors and the viral videos prove, and a format proven elsewhere that the brand has not used yet; no two nearly alike.
+Write one post idea for every subtopic and format: `{subtopic, format, idea, angle?, hook?}`. The idea is one specific post in plain words, what the viewer sees and learns, 8 to 300 characters; the angle comes from the pain and angle banks and names the pain it answers; the hook is the opening line idea.
+A brand with no posts of its own plans from the competitors' and viral posts and from its website, and the ideas say nothing about that.
+Write the whole plan with Write (you have no Edit tool) to `workspaces/{brand}/library/intelligence/plan-draft.json` as `{"subtopics":[subtopic ids],"formats":[format ids],"cells":[...]}` with one cell for every subtopic and format, and return that path.
+When the spawn prompt passes `problems`, read the draft, fix exactly those and write the whole file again.
+When the spawn prompt names new subtopics, copy the cells of the others from `plan.json` unchanged and write the cells of the new ones.
+Never write `plan.json` yourself: the Director checks the draft and files it.

@@ -42,6 +42,7 @@ analysed_at: YYYY-MM-DD HH:MM {tz}
 | Awareness stage (playbooks/awareness-stages.md) | | |
 | Angle id (playbooks/angles.md) | | |
 | Visual format (playbooks/visual-formats.md) | | |
+| Library labels (pipeline/library/formats.json: format, editing style, visual hook, series, subtopic) | | |
 | Hook family and mechanism (playbooks/hooks.md) | | |
 | Attention mechanic (playbooks/attention-mechanics.md) | | |
 

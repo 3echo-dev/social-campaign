@@ -3,12 +3,14 @@
  *
  *   workspaces/<brand>/library/
  *     bank/yours.jsonl       {id, kind, text, concept?, jobId?, edited?, was?, at, removed?}   the person's own lines
- *     bank/proven.jsonl      {id, kind, text, evidence:{url, views|likes, date}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
+ *     bank/proven.jsonl      {id, kind, text, evidence:{url, views|likes, date, thumbnail?}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
  *                            (the brand intelligence banks sit here too: a pain, desire or objection is the audience's own words, with who says it,
  *                            their awarenessStage, how often it came up (count) and quotes [{text, url, date}]; an angle is a pain matched with a
  *                            proof; a caption has its structure and a cta its ctaType. brand-bank-items.mjs documents the fields and how a second
  *                            sighting of the same words merges: new quotes are added and counted, nothing new changes nothing)
  *                            (evidence counts views; a post whose platform shows none to a signed-out reader, Instagram, counts likes instead)
+ *                            (evidence.thumbnail, when there is one: the https address of the post's thumbnail picture, as the social read returned it
+ *                            in thumbnail_url, so the board can draw the post; thumbnailOf below says what is kept, anything else is dropped without a word)
  *                            (an item learned from the brand's own footage has the file as its evidence, not a link: {file:{fileId, name, kind?, folder?}, date};
  *                            fileId is the footage file's id in the brand's footage library, never a path)
  *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own; what the
@@ -23,10 +25,14 @@
  *     results.jsonl          what a posted video earned, by job (brand-results.mjs scores it against the brand's own usual): bank items
  *                            read ranked, each with { score, uses, label }, and a job that becomes a winner has its opening line
  *                            promoted to bank/proven (promotedFrom: the job id)
- *     trends.jsonl           {id, kind, text, platform, industry, evidence:[{url, views, date}], why, seenAt}   what the Trend Scout found
+ *     trends.jsonl           {id, kind, text, platform, industry, evidence:[{url, views, date, thumbnail?}], why, seenAt}   what the Trend Scout found
  *                            rising, reused for 7 days (brand-trends.mjs documents the file)
  *
- * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel, pain, desire, objection.
+ *     intelligence/         what onboarding learned about the brand's niche (brand-intelligence.mjs documents the files): posts.jsonl (every video taken
+ *                           apart, labelled on the four format library axes), subtopics.json (the six), formats-rank.json, plan.json (the 6 by 5 grid)
+ *
+ * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel, pain, desire, objection, and the Strategy gate's own options
+ * subtopic, editing (an editing style) and visual_hook.
  * A bank file is only ever appended to: an edit appends the item again with the same id and `edited: true, was: <old text>`, a removal
  * appends it again with `removed: true`, and a read keeps the last line of each id. Two writers never overwrite each other.
  * Every write is idempotent: the same item added twice is one item, and filing the same job twice changes nothing.
@@ -73,8 +79,10 @@ import {
 } from './brand-bank-items.mjs';
 // brand-job-banks.mjs imports this file too; the use below is inside a function, never at load time.
 import { ingestJobBanks } from './brand-job-banks.mjs';
+// brand-intelligence.mjs imports this file too; every use below is inside a function, never at load time.
+import { intelligenceLines, labelsOfConcept, refreshFormatsRankQuietly } from './brand-intelligence.mjs';
 
-export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel', 'pain', 'desire', 'objection']);
+export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel', 'pain', 'desire', 'objection', 'subtopic', 'editing', 'visual_hook']);
 export const BANKS = Object.freeze(['yours', 'proven']);
 export const PROVEN_SOURCES = BANK_SOURCES;
 /** Research older than this is refreshed instead of reused: the brand's own and its competitors' for 30 days, trends for 7. */
@@ -215,9 +223,26 @@ function fileRefOf(value) {
   return { fileId: input.fileId, name, ...(kind ? { kind } : {}), ...(folder ? { folder } : {}) };
 }
 
+/** The longest thumbnail address kept on evidence: a signed picture address from a platform is a few hundred characters. */
+export const THUMBNAIL_MAX = 600;
+
+/**
+ * The address of a post's thumbnail picture, or null: an https link with no user name or password, at most THUMBNAIL_MAX characters.
+ * Anything else (http, javascript:, a link with credentials, a longer address, something that is not text) is dropped without a word,
+ * never an error, because a missing picture must not fail a save. Evidence, the Trend Scout's trends and the onboarding top posts all
+ * keep their `thumbnail` through this one check.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function thumbnailOf(value) {
+  const link = typeof value === 'string' ? runtime.webLink(value) : null;
+  return link && link.length <= THUMBNAIL_MAX ? link : null;
+}
+
 /**
  * Evidence counts one measure: {url, views, date}, or {url, likes, date} when the post has likes and no views (Instagram). An item
- * learned from the brand's own footage has the file instead of a link: {file, date}.
+ * learned from the brand's own footage has the file instead of a link: {file, date}. A post's `thumbnail` (see thumbnailOf) rides along
+ * when it has a link and the thumbnail passes the check; the key is not there otherwise, so older evidence keeps its exact shape.
  */
 function evidenceOf(value) {
   const input = value && typeof value === 'object' ? value : {};
@@ -228,13 +253,15 @@ function evidenceOf(value) {
   if (file) return { file, date };
   const views = wholeCount(input.views);
   const likes = views === null ? wholeCount(input.likes) : null;
-  return likes !== null ? { url, likes, date } : { url, views, date };
+  const thumbnail = url ? thumbnailOf(input.thumbnail) : null;
+  const picture = thumbnail ? { thumbnail } : {};
+  return likes !== null ? { url, likes, date, ...picture } : { url, views, date, ...picture };
 }
 
 /**
  * Put one item in a bank, once. Returns { item, saved }: saved is false when the same words are already there (that item is returned).
  * `yours` keeps the person's own lines; an item the person edited from an agent's line carries edited: true and was.
- * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram) and date when known;
+ * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram), date and thumbnail when known;
  * an item learned from the brand's own footage names the footage file instead ({ file: { fileId, name, kind?, folder? }, date }) and is the brand's own.
  * `details` carries what a pain, desire, objection, angle, caption or cta holds besides its words: { who, awarenessStage, count, quotes,
  * pain, painId, proof, structure, ctaType } (brand-bank-items.mjs). A proven pain, desire or objection with quotes needs no `evidence`: the
@@ -362,10 +389,10 @@ const EDITED_LINE = /^Edited opening line \(was "(.*?)"\):\s*"(.*)"\s*$/i;
 const HEAD_LINE = /^Concept\s+([A-Za-z0-9]{1,8})\s*:\s*(.*?)(?:\s+\u00b7\s+Opening line:\s*"(.*)")?\s*$/i;
 // The Strategy gate (strategy-options.mjs): the person's final choices for the approved concept, and the options they added.
 const PICKS_LINE = /^Strategy picks:\s*(.*)$/i;
-const PICK_PART = /(Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle):\s*"(.*?)"(?=\s*\u00b7\s*(?:Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle):|\s*$)/gi;
-const OWN_STRATEGY_LINE = /^Your own (industry|funnel\s+stage|ad\s+style|format|CTA|problem|angle):\s*"(.*)"\s*$/i;
+const PICK_PART = /(Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle|Subtopic|Editing(?:\s+style)?|Visual\s+hook):\s*"(.*?)"(?=\s*\u00b7\s*(?:Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle|Subtopic|Editing(?:\s+style)?|Visual\s+hook):|\s*$)/gi;
+const OWN_STRATEGY_LINE = /^Your own (industry|funnel\s+stage|ad\s+style|format|CTA|problem|angle|subtopic|editing(?:\s+style)?|visual\s+hook):\s*"(.*)"\s*$/i;
 // The Problem row offers the bank's pains and the Angle row its angles, so an option the person adds there goes to the bank as a pain or an angle.
-const STRATEGY_KIND = Object.freeze({ industry: 'industry', 'funnel stage': 'funnel', 'ad style': 'style', format: 'format', cta: 'cta', problem: 'pain', angle: 'angle' });
+const STRATEGY_KIND = Object.freeze({ industry: 'industry', 'funnel stage': 'funnel', 'ad style': 'style', format: 'format', cta: 'cta', problem: 'pain', angle: 'angle', subtopic: 'subtopic', editing: 'editing', 'editing style': 'editing', 'visual hook': 'visual_hook' });
 const strategyKind = label => STRATEGY_KIND[String(label).toLowerCase().replace(/\s+/g, ' ')];
 
 /**
@@ -374,11 +401,13 @@ const strategyKind = label => STRATEGY_KIND[String(label).toLowerCase().replace(
  *   Your own opening line: "<text>"                      (one line each, only when used)
  *   Edited opening line (was "<old>"): "<text>"
  *   Strategy picks: Industry: "<text>" \u00b7 Funnel stage: "<text>" \u00b7 Ad style: "<text>" \u00b7 Format: "<text>" \u00b7 CTA: "<text>" \u00b7 Problem: "<text>" \u00b7 Angle: "<text>"
- *   Your own industry|funnel stage|ad style|format|CTA|problem|angle: "<text>"      (one line per option the person added)
+ *                   \u00b7 Subtopic: "<text>" \u00b7 Editing: "<text>" \u00b7 Visual hook: "<text>"   (the last three from the brand intelligence rows)
+ *   Your own industry|funnel stage|ad style|format|CTA|problem|angle|subtopic|editing|visual hook: "<text>"      (one line per option the person added)
  * Returns { conceptId, title, line, own: [text], edited: [{ was, text }] }; conceptId, title and line are null when the first line has
  * no such part, so an older note still reads. A note with strategy lines also carries strategy: { industry?, funnel?, style?, format?,
- * cta?, pain?, angle? } (the picks, each the person's words; the Problem pick reads as pain) and ownStrategy: [{ kind, text }] (kind is
- * industry, funnel, style, format, cta, pain or angle); a note without them has neither key. The note is not changed: the agents read it
+ * cta?, pain?, angle?, subtopic?, editing?, visual_hook? } (the picks, each the person's words; the Problem pick reads as pain) and
+ * ownStrategy: [{ kind, text }] (kind is industry, funnel, style, format, cta, pain, angle, subtopic, editing or visual_hook); a note without
+ * them has neither key. The note is not changed: the agents read it
  * as it is.
  */
 export function parseConceptNote(note) {
@@ -444,7 +473,7 @@ export function recordConceptDecision({ root, brand, jobId, note, chosen = null,
   for (const text of parsed.own) saved.push(hook(text));
   for (const edit of parsed.edited) saved.push(hook(edit.text, { edited: true, was: edit.was }));
   // The industry belongs to the whole job; the other options to the concept that was approved.
-  for (const added of parsed.ownStrategy ?? []) saved.push(addToBank({ root, brand, bank: 'yours', kind: added.kind, text: added.text, concept: added.kind === 'industry' ? null : conceptId, jobId, now }));
+  for (const added of parsed.ownStrategy ?? []) saved.push(addToBank({ root, brand, bank: 'yours', kind: added.kind, text: added.text, concept: ['industry', 'subtopic'].includes(added.kind) ? null : conceptId, jobId, now }));
   const preference = conceptId
     ? recordPreference({
       root, brand, jobId, stage: 'concept', now,
@@ -590,8 +619,15 @@ function conceptRecord(job) {
   // The parts the concept named, kept so posted results can be tied to them (brand-results.mjs). Left out when the concept does not name one.
   // A format, ad style or CTA the person set on the Strategy gate is what the job used, so it replaces the concept's own.
   // The problem (a pain of the bank) is kept only when the person picked one on the Problem row.
-  const parts = [...Object.entries({ angle: /^angle\b/i, format: /^(?:visual )?format\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
-    .map(([name, pattern]) => [name, parsed.strategy?.[name] || fieldOf(concept, pattern)]), ['pain', parsed.strategy?.pain]].filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
+  // The subtopic, the editing style and the visual hook come the same way (a Strategy pick, else the concept's own line); the format is the format
+  // library's own line first, then the older Visual format line of the stage pairing playbook.
+  const parts = [...Object.entries({ angle: /^angle\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
+    .map(([name, pattern]) => [name, parsed.strategy?.[name] || fieldOf(concept, pattern)]),
+  ['format', parsed.strategy?.format || fieldOf(concept, /^format\b/i) || fieldOf(concept, /^visual format\b/i)],
+  ['pain', parsed.strategy?.pain],
+  ['subtopic', parsed.strategy?.subtopic || fieldOf(concept, /^subtopic\b/i)],
+  ['editing', parsed.strategy?.editing || fieldOf(concept, /^editing(?:\s+style)?\b/i)],
+  ['visualHook', parsed.strategy?.visual_hook || fieldOf(concept, /^visual\s+hook\b/i)]].filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
   return {
     concept: { id, title: concept?.title ?? parsed.title ?? null, source: sourceKind(fieldOf(concept, /^source/i)), hook: hook ? clip(hook, TEXT_LIMIT) : null, ...Object.fromEntries(parts) },
     rubric: rubric ? clip(rubric, 300) : null,
@@ -650,6 +686,8 @@ export function fileJob({ root, brand, jobId, now } = {}) {
     ...(existsSync(kit) ? { styleKit: { path: posix.join('workspaces', brand, 'brand', 'brand-kit.json'), sha256: createHash('sha256').update(readFileSync(kit)).digest('hex') } } : {}),
     media: media.map(item => ({ ...item, path: posix.join('workspaces', brand, 'jobs', jobId, item.path) })),
     ...(rubric ? { rubric } : {}),
+    // What the job used on the format library's axes (format, editing style, visual hook) and its subtopic, so posted results can rank them.
+    ...(labelsOfConcept(concept) ? { labels: labelsOfConcept(concept) } : {}),
   };
   let changed = false;
   if (!previous || stable({ ...previous, filedAt: null }) !== stable({ ...record, filedAt: null })) { writeJson(jobRecordFile(root, brand, jobId), record); changed = true; }
@@ -660,6 +698,7 @@ export function fileJob({ root, brand, jobId, now } = {}) {
     const file = researchFile(root, brand, jobId);
     if (stable(readJson(file)) !== stable(entry)) { writeJson(file, entry); changed = true; }
   }
+  if (changed) refreshFormatsRankQuietly({ root, brand, now });
   return { filed: true, changed, jobId, record };
 }
 
@@ -873,7 +912,7 @@ function bankLines({ own, all, when }) {
  */
 function libraryBlockWithoutFootage({ root, brand, now } = {}) {
   let trends = [];
-  let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = []; let banks = [];
+  let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = []; let banks = []; let intelligence = [];
   try {
     const own = readBank({ root, brand, bank: 'yours' });
     const all = readProven({ root, brand });
@@ -899,8 +938,9 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     research = researchIndex({ root, brand, now }).slice(0, 6);
     choices = readPreferences({ root, brand, limit: 3 });
     trends = trendLines({ root, brand, now });
+    intelligence = intelligenceLines({ root, brand });
   } catch { return null; }
-  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !banks.length && !research.length && !choices.length && !trends.length) return null;
+  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !banks.length && !research.length && !choices.length && !trends.length && !intelligence.length) return null;
   const lines = ['Brand library (what this brand already has; ask brand_library_get for more):'];
   if (industry) lines.push(`Industry (the person's pick): ${clip(industry.text, 120)}`);
   if (winners.length) {
@@ -920,6 +960,7 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", countText(item.evidence), item.evidence?.date, item.evidence?.url, item.evidence?.file ? `learned from the brand's own footage file ${clip(item.evidence.file.name, 80)}` : null].filter(Boolean).join(', ')})`);
   }
   if (banks.length) lines.push(...banks);
+  if (intelligence.length) lines.push(...intelligence);
   if (research.length) {
     lines.push('Research already done. Reuse brand and competitor research under 30 days old and trends under 7 days old; refresh only the rest, and say which you reused:');
     for (const item of research) lines.push(`- ${item.topic || 'research'}: ${item.ageDays === null ? 'date unknown' : `${item.ageDays} ${item.ageDays === 1 ? 'day' : 'days'} old`}${item.fresh === null ? '' : item.fresh ? ', reuse' : ', refresh'} - ${item.path}`);

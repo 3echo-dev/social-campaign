@@ -3,7 +3,7 @@
  * for a week instead of searching again.
  *
  *   workspaces/<brand>/library/trends.jsonl
- *     {id, kind, text, platform, industry, evidence:[{url, views, date}], why, seenAt}
+ *     {id, kind, text, platform, industry, evidence:[{url, views, date, thumbnail?}], why, seenAt}
  *
  * `kind` is topic, format, sound or hashtag (what is rising on a platform), or hook or caption (the opening line and the primary text of
  * an ad that keeps running). `platform` is tiktok, instagram, facebook, youtube and so on. `industry` is the industry the trend was
@@ -11,8 +11,10 @@
  * `views` and `date` when the source displayed them (null otherwise). An ad's evidence also carries, when known, `startedAt` (the day
  * it started, YYYY-MM-DD), `runningDays` (how many days it had run when it was seen), `variants` (how many ads use the same text),
  * `advertiser` and `source` (meta_ad_library, tiktok_top_ads or organic). The ad libraries show no views or spend, so days running and
- * variants stand in for them: 30 days or more is a likely winner. `why` is one line on why it fits the brand, or null. `seenAt` is
- * when the Trend Scout last saw it, as an ISO time.
+ * variants stand in for them: 30 days or more is a likely winner. An entry may also carry `thumbnail`, the https address of the picture of
+ * the post or ad as the social read returned it (thumbnail_url, or an ad's cover), so the board can draw it; an address that fails
+ * thumbnailOf (brand-library.mjs) is dropped without a word, and the key is left off an entry that has none. `why` is one line on why
+ * it fits the brand, or null. `seenAt` is when the Trend Scout last saw it, as an ISO time.
  *
  * The file is only ever appended to. A trend is one kind on one platform with one normalised text (case, punctuation and spacing are
  * ignored, so "#GRWM" and "grwm" are the same hashtag). Seeing it again appends the same record with a new `seenAt`, the new evidence
@@ -36,7 +38,7 @@ import { InvalidInputError } from '../lib/errors.mjs';
 import { appendLines, readLines } from '../lib/jsonl.mjs';
 import * as runtime from './runtime.mjs';
 // brand-library.mjs imports this file too: every use below is inside a function, never at load time.
-import { brandLibraryDir, readBank } from './brand-library.mjs';
+import { brandLibraryDir, readBank, thumbnailOf } from './brand-library.mjs';
 
 export const TREND_KINDS = Object.freeze(['topic', 'format', 'sound', 'hashtag', 'hook', 'caption']);
 /** The kinds that come from ads that keep running: the opening line (hook) and the primary text (caption). */
@@ -128,6 +130,8 @@ const wholeNumber = (value, max) => {
 
 /** The ad fields of an evidence entry, in this order. They are left off an entry that has none, so a post's evidence keeps {url, views, date}. */
 const AD_EVIDENCE_FIELDS = Object.freeze(['startedAt', 'runningDays', 'variants', 'advertiser', 'source']);
+/** Every optional field of an evidence entry, merged the same way: the ad fields, then the thumbnail. */
+const OPTIONAL_EVIDENCE_FIELDS = Object.freeze([...AD_EVIDENCE_FIELDS, 'thumbnail']);
 
 /**
  * One evidence entry, or null when it has no https link. `strict` (a save) refuses a source that is not one of EVIDENCE_SOURCES; a read
@@ -149,6 +153,9 @@ function cleanEvidenceItem(value, { strict = false } = {}) {
     if (EVIDENCE_SOURCES.includes(input.source)) out.source = input.source;
     else if (strict) throw new InvalidInputError(`evidence source has to be one of ${EVIDENCE_SOURCES.join(', ')}.`);
   }
+  // A thumbnail that does not pass the check is dropped, never an error (even in a save): a missing picture must not fail the trend.
+  const thumbnail = thumbnailOf(input.thumbnail);
+  if (thumbnail) out.thumbnail = thumbnail;
   return out;
 }
 
@@ -156,8 +163,8 @@ function cleanEvidenceItem(value, { strict = false } = {}) {
 const evidenceOfLine = list => (Array.isArray(list) ? list : []).map(item => cleanEvidenceItem(item)).filter(Boolean);
 
 /**
- * The newer evidence first, then the older, one entry per link (a number, date or ad field one has and the other lacks is filled in,
- * the newer reading winning), at most MAX_EVIDENCE.
+ * The newer evidence first, then the older, one entry per link (a number, date, ad field or thumbnail one has and the other lacks is
+ * filled in, the newer reading winning), at most MAX_EVIDENCE.
  */
 function mergeEvidence(newer, older) {
   const byUrl = new Map();
@@ -165,7 +172,7 @@ function mergeEvidence(newer, older) {
     const seen = byUrl.get(item.url);
     if (!seen) { byUrl.set(item.url, { ...item }); continue; }
     const merged = { url: item.url, views: seen.views ?? item.views, date: seen.date ?? item.date };
-    for (const field of AD_EVIDENCE_FIELDS) {
+    for (const field of OPTIONAL_EVIDENCE_FIELDS) {
       const found = seen[field] ?? item[field];
       if (found !== undefined) merged[field] = found;
     }

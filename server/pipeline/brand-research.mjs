@@ -20,6 +20,7 @@ import * as runtime from './runtime.mjs';
 import { askQuestion, listQuestions, plainWordsProblem, withdrawQuestion } from './questions.mjs';
 import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mjs';
 import { MAX_BREAKDOWNS, breakdownCounts, fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
+import { fileIntelligence, intelligenceBuilt, startChecklist } from './brand-intelligence.mjs';
 import { banksProblems, existingPainTexts, fileBanks } from './brand-onboarding-banks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,8 @@ const onboardingEvidence = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboardin
 const toolMetrics = require(join(PIPELINE_ROOT, 'scripts', 'lib-tool-metrics.js'));
 
 const REFRESH_FAILED = 'The scheduled research refresh failed';
+/** Said to the person when research that looks current is redone because the brand never had its intelligence built (see fileIntelligence). */
+const INTELLIGENCE_REASON = 'Your brand intelligence was never built from your best posts, your competitors and what is viral in your niche; building it now';
 const BUSY = 'Another Claude window is already using the browser for research. Wait for it to finish, then run it again.';
 const MAX_SOURCES = 12;
 const MAX_EVIDENCE_PER_COMPETITOR = 3;
@@ -198,8 +201,11 @@ export function startBrandResearch({ root, brand }) {
 
   // Research that looks current is still redone once for a brand onboarded before the brand files were written from research:
   // an untouched template, or sources with no saved page behind them. After one good run neither is true, so this is once.
-  const refreshReason = !blankFields.length && existingResearch && existingResearch.current ? brandFiles.upgradeReason(brandDir, existingResearch) : null;
-  if (!blankFields.length && existingResearch && existingResearch.current && !refreshReason) {
+  // The same once for a brand whose intelligence (the labelled best posts, the six subtopics, the plan) was never built: onboarding always runs the deep pass.
+  const looksCurrent = !blankFields.length && existingResearch && existingResearch.current;
+  const refreshReason = (looksCurrent ? brandFiles.upgradeReason(brandDir, existingResearch) : null)
+    || (looksCurrent && !intelligenceBuilt({ root, brand: entry.slug }) ? INTELLIGENCE_REASON : null);
+  if (looksCurrent && !refreshReason) {
     onboardingRun.clearPending(brandDir);
     return {
       status: 'skipped',
@@ -210,10 +216,13 @@ export function startBrandResearch({ root, brand }) {
     };
   }
 
-  // 14 searches, 24 fetches, 60 turns: more than the largest job research (a campaign has 12, 16 and 40). One profile read and one outlier
-  // read for each declared account and each competitor handle, the 5 video teardowns (a fetch each) and the pain points workstream's
-  // reads (2 comment reads, 2 forum threads, 2 review pages, 1 ad search and 1 landing page) would not fit in fewer.
-  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 14, totalFetches: 24, turns: 60 };
+  // 30 searches, 56 fetches, 120 turns: onboarding is always the deep pass, so it needs far more than a job's research (a campaign has 12, 16
+  // and 40). The calls of every agent working inside the run count here, the Trend Scout's too. Fetches: the website and each competitor's
+  // (about 7), a profile read and an outlier read for each declared account and each competitor handle (about 14), the 14 video teardowns
+  // (a fetch each: the brand's 5 best, the top 2 of each of 3 competitors and the 3 most viral), the pain points workstream's reads (2 comment
+  // reads, 2 forum threads, 2 review pages, 1 ad search and 1 landing page) and the Trend Scout's post and ad reads (about 10).
+  // Searches: the competitor and forum searches, and the Trend Scout's niche topic and YouTube searches.
+  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 30, totalFetches: 56, turns: 120 };
   const workspaceId = runtime.readWorkspace({ root }).workspaceId;
   takeBrowser(root, entry.slug);
   const wasStale = onboardingRun.list(brandDir).filter((item) => item.status === 'running' && onboardingRun.isStale(item));
@@ -254,6 +263,8 @@ export function startBrandResearch({ root, brand }) {
   const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
   const alsoFill = brandProfile.blankResearchFields(profile).filter((name) => EXTRA_FILLS.includes(name));
   ensureDraftSkeleton(draftPath, run.runId, [...(run.blankFields || blankFields), ...alsoFill], toFind);
+  // The onboarding checklist the board shows while the pass runs starts with the run; the Director then moves its steps (brand_intelligence_save).
+  if (started.created) startChecklist({ root, brand: entry.slug });
   return {
     status: started.created ? 'started' : 'already_running',
     runId: run.runId,
@@ -267,6 +278,10 @@ export function startBrandResearch({ root, brand }) {
     draftPath,
     rawDir,
     refreshReason,
+    // Where the Trend Scout (spawned beside the researcher) writes what it saw during this run, and the viral videos the researcher then takes apart.
+    trendsPath: join(onboardingRun.runDir(brandDir, run.runId), 'trends.md'),
+    viralPath: join(onboardingRun.runDir(brandDir, run.runId), 'viral-candidates.json'),
+    deep: true,
     draftContract: draftContract(),
     profileRevision: run.profileRevisionAtStart ?? profile.revision,
     researchRevision: run.researchRevisionAtStart ?? researchRevision,
@@ -624,13 +639,15 @@ function draftProblems(draft, ctx) {
   // sources above, so a quote that is not in a saved capture or a post with no views (no likes either, for Instagram) never reaches a file or the bank.
   const filesChecked = brandFiles.validate(draft.brandFiles, { bySource, competitors: expected });
   problems.push(...filesChecked.problems);
-  const postsChecked = topPostsProblems(draft.topPosts, { competitors: expected, now });
+  // Every video taken apart carries its labels (format, editing style, visual hook, subtopic: pipeline/library/formats.json).
+  const postsChecked = topPostsProblems(draft.topPosts, { competitors: expected, now, requireLabels: true });
   problems.push(...postsChecked.problems);
-  if (postsChecked.value.length && ctx.calls && ctx.calls.recorded
+  // A viral post comes from the Trend Scout's finds, not from an account read, so only the brand's and competitors' posts need the read in the log.
+  if (postsChecked.value.some((post) => post.source !== 'viral') && ctx.calls && ctx.calls.recorded
     && !['social_outliers_find', 'social_profile_get', 'chrome'].some((tool) => ctx.calls.byTool[tool] && ctx.calls.byTool[tool].ok > 0)) {
     problems.push({ field: 'topPosts', problem: 'The tool log of this run shows no successful social_outliers_find or social_profile_get call, so these posts were not read from an account. Read the accounts, or remove the posts.' });
   }
-  // A video was taken apart only when the tool log shows the teardown, and a run takes apart 5 videos at most.
+  // A video was taken apart only when the tool log shows the teardown, and a run takes apart 14 videos at most.
   const taken = breakdownCounts(postsChecked.value);
   if (taken.total && ctx.calls && ctx.calls.recorded) {
     const teardowns = ctx.calls.byTool.pipeline_video_teardown;
@@ -639,7 +656,7 @@ function draftProblems(draft, ctx) {
     }
   }
   if (ctx.calls && ctx.calls.recorded && ctx.calls.byTool.pipeline_video_teardown && ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed > MAX_BREAKDOWNS) {
-    problems.push({ field: 'topPosts', problem: `The run took ${ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed} videos apart. A run takes apart at most ${MAX_BREAKDOWNS}: 3 of the brand's own and 2 of its competitors'.` });
+    problems.push({ field: 'topPosts', problem: `The run took ${ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed} videos apart. A run takes apart at most ${MAX_BREAKDOWNS}: 5 of the brand's own, 2 of each competitor's (6 in all) and 3 viral.` });
   }
   // The brand intelligence banks (pains, desires, objections, angles, captions, CTAs): every quote is looked for in the saved capture of
   // its source, and a caption or call to action is found in one of the top posts above or in an ad page's capture, so none reaches the bank unseen.
@@ -918,6 +935,12 @@ function fileResults({ root, entry, brandDir, runId, savedResearch, checked }) {
     out.topPosts = fileTopPosts({ root, brand: entry.slug, posts: checked.topPosts, now });
   } catch (error) {
     warnings.push(`The top posts could not be saved to the brand library: ${error.message}`);
+  }
+  // The brand intelligence: every video taken apart, labelled, in the brand's own store, and the viral ones as trends (brand-intelligence.mjs).
+  try {
+    out.intelligence = fileIntelligence({ root, brand: entry.slug, posts: checked.topPosts, runId, now });
+  } catch (error) {
+    warnings.push(`The brand intelligence could not be saved: ${error.message}`);
   }
   try {
     const filed = fileBanks({ root, brand: entry.slug, banks: checked.banks, now });

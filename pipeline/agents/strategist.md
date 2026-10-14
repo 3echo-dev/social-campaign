@@ -38,6 +38,10 @@ Raise a named evidence gap instead of redoing research.
 
 Do not apply the human strategy decision from the agent context.
 
+Take the job's topic from one of the brand's six subtopics (Data), the angle from the brand's pain and angle banks (Creativity) and the format from the format library `pipeline/library/formats.json`, preferably one proven elsewhere that the brand has not used (Transposition), and say in the `# Angle` section which item each came from.
+A job whose `job.json` has an `intelligence` block was started from a cell of the brand's 6 by 5 plan: its subtopic and format are chosen.
+The plugin agent file `agents/strategist.md` also describes the plan task of brand onboarding.
+
 ## Contract
 
 ```

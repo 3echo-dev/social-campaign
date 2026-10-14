@@ -183,7 +183,7 @@ function postItem(raw, field, kind, ctx, problems) {
   } else if (source === 'competitor') fail('competitor', 'competitor is needed when the source is a competitor.');
   const url = runtime.webLink(raw.url);
   if (!url) fail('url', 'url must be the https address of the post or ad.');
-  // A post of the run's topPosts carries its own views, likes and date; an ad (or any page, in a job) is found in the saved capture.
+  // A post of the run's topPosts carries its own views, likes, date and thumbnail; an ad (or any page, in a job) is found in the saved capture.
   const post = url && Array.isArray(ctx.posts) && source !== 'ad'
     ? ctx.posts.find((item) => evidence.normUrl(item.url) === evidence.normUrl(url) && item.source === source && (source !== 'competitor' || !competitor || String(item.competitor).toLowerCase() === competitor.toLowerCase())) ?? null
     : null;
@@ -192,7 +192,7 @@ function postItem(raw, field, kind, ctx, problems) {
     if (post) {
       const hay = evidence.squash([post.caption, post.text, post.breakdown && post.breakdown.cta, post.breakdown && post.breakdown.spokenHook].filter(Boolean).join(' '));
       if (!evidence.quoteFound(hay, text)) fail('text', `The ${kind === 'caption' ? 'caption' : 'call to action'} is not in that post's caption or call to action. Copy it exactly (use ... to skip words).`);
-      else proof = { url: post.url, ...(Number.isFinite(post.views) ? { views: post.views } : { likes: post.likes }), date: post.date };
+      else proof = { url: post.url, ...(Number.isFinite(post.views) ? { views: post.views } : { likes: post.likes }), date: post.date, ...(post.thumbnail ? { thumbnail: post.thumbnail } : {}) };
     } else if (Array.isArray(ctx.posts) && source !== 'ad') {
       fail('url', `url must be the link of one of the ${source === 'brand' ? 'brand\'s own' : 'competitor\'s'} topPosts you listed.`);
     } else {

@@ -108,7 +108,7 @@ Use it for the competitors and for any market-specific evidence, and never fill 
 | Fetches per section | 2 |
 | Competitors | 3 |
 | Items per competitor | 3 |
-| Brand onboarding totals | 14 searches, 24 fetches, 60 turns (more than a campaign job's budget, because the video teardowns and the pain points reads come on top); a video teardown counts as a fetch, and at most 5 videos are taken apart |
+| Brand onboarding totals | 30 searches, 56 fetches, 120 turns (onboarding is always the deep pass, so it has far more than a campaign job's budget: the video teardowns, the pain points reads and the Trend Scout's reads come on top); a video teardown counts as a fetch, and at most 14 videos are taken apart: 5 own, 2 of each competitor and 3 viral |
 | `simple_post` totals | 6 searches, 8 fetches, 25 turns |
 | `campaign` totals | 12 searches, 16 fetches, 40 turns |
 
@@ -147,7 +147,7 @@ Evidence, citations and run details never belong in a fill; save validates this 
 
 ### Tools
 
-Use these tools, one attempt each, and count every call against the budget in Hard limits (14 searches, 24 fetches, 60 turns; a video teardown is a fetch).
+Use these tools, one attempt each, and count every call against the budget in Hard limits (30 searches, 56 fetches, 120 turns; a video teardown is a fetch).
 `web_crawl` reads the brand's website and each competitor's website, one page per call; `WebFetch` is its one fallback.
 `social_profile_get` reads a declared own account or a competitor handle once: followers, bio and recent posts.
 `social_outliers_find` reads the same account once more: the posts that beat that account's own usual.
@@ -167,7 +167,7 @@ Finding an address and opening it are two jobs: a walled profile page never stop
 The research helper reads a public Instagram account through its stealth reader when that is installed: the coverage is `partial` (followers, bio and recent posts with their dates, then likes and comments per post for the outliers read, and never a view count).
 When the reader is not installed or Instagram refuses it, the coverage is `none`: make the one call anyway, write a gap that names the account, and go on; the person's signed-in Chrome is used for it after the save, not by you.
 For each account that does work, read the profile once and its outliers once, for every declared own account and every competitor handle, within the budget.
-For video posts the rules under "Finding the top N reference videos (discovery ladder)" below apply unchanged; onboarding needs the posts' numbers, not a teardown.
+For video posts the rules under "Finding the top N reference videos (discovery ladder)" below apply unchanged; onboarding reads the posts' numbers first and then takes the best videos apart ("Taking the best videos apart" below).
 
 ### Competitors
 
@@ -276,38 +276,73 @@ A phrase is words a customer or the audience used, taken from comments, reviews 
 
 ### Top posts
 
-`topPosts` lists the best posts `social_outliers_find` showed, at most 3 per declared own account and 2 per competitor.
+`topPosts` lists the best posts `social_outliers_find` showed: at most 5 per declared own account, 2 per competitor, and the viral posts of "Viral now" below, 24 in all.
 Each is `{source, competitor, platform, url, text, views, date}`; an Instagram post carries `likes` in place of `views`, and a video that was taken apart (next section) also carries `caption` and `breakdown`.
-`source` is `brand` or `competitor`, and `competitor` is the competitor's name from `competitorDetails`.
+`source` is `brand`, `competitor` or `viral`, and `competitor` is the competitor's name from `competitorDetails` (only for a competitor's post).
+`platform` is `instagram`, `tiktok`, `facebook` or `youtube`.
 `text` is the post's opening words exactly as its caption has them, `views` is the number shown, and `date` is the day it was published as YYYY-MM-DD.
 Instagram shows no view counts to a signed out reader, so for an Instagram post give `likes` (the number shown on the post, from `social_outliers_find`, which ranks Instagram by likes) and leave `views` out; the library labels it as likes.
 Leave out a post with no caption, no views (no likes for Instagram) or no date, and never fill in or round a figure.
-Save files them in the brand library as proven hooks.
+A post may also carry `outlierRatio`: how many times its account's usual views (likes for Instagram) it got, as `social_outliers_find` shows it; leave it out when the read gave none, and never work it out yourself.
+A post may also carry `thumbnail`: its `thumbnail_url` from the `social_outliers_find` or `social_profile_get` result, copied as it came, so the board can show the post.
+Leave `thumbnail` out when the read gave none, and never build or guess an address; a value that is not an https address is dropped, and the post is still saved.
+Save files the brand's and the competitors' posts in the brand library as proven hooks, each keeping its `thumbnail` in its evidence, and files every post that was taken apart, with its labels, in the brand's intelligence (the viral ones also as trends).
 
 ### Taking the best videos apart
 
-A caption says little about why a video worked, so take the best videos themselves apart, as the last step, once the accounts are read.
-Take apart at most 5: the 3 best own videos by views (likes for Instagram) and the 2 best competitor videos in all, a TikTok or an Instagram Reel first.
+Onboarding is always the deep pass, and a caption says little about why a video worked, so take the best videos themselves apart once the accounts are read.
+Take apart at most 14: the 5 best own videos by views (likes for Instagram) across all the brand's accounts, the 2 best videos of each competitor (6 in all), and the 3 viral videos of "Viral now" below.
+A TikTok or an Instagram Reel comes first.
+A brand with no posts of its own yet (a new company, or accounts with nothing readable) has no own videos to take apart: add one entry to `research.gaps` that says so in plain words, for example "No posts of your own yet, so your plan starts from your competitors and your niche", and carry on with the competitors and the viral videos.
 Each teardown is one fetch of the budget, so do this only with fetches left; with none left, skip it and add one entry to `research.gaps` saying so.
 For each video call `pipeline_video_teardown` with the brand, `jobId` set to `onboarding-<runId>` (the `runId` from the start, so the video and its teardown are saved in the run's own folder) and the post's `url`.
 It downloads the video, finds the cuts, saves frames, and returns the shot list, the cut count, the music title and a timed transcript when the platform has captions.
-Read at most 4 of the frames it returns: the frames at 0 s and 1 s (the hook) and the first two shots.
+Read at most 3 of the frames it returns: the frames at 0 s and 1 s (the hook) and one from the middle of the video (how it is edited).
 When it says `needsTranscription`, or the transcript is empty, call `media_transcribe` with the `path` of the saved video: it uses the free local reader when that is installed, and when it says a paid provider is needed, leave the spoken words out.
 Skip a video cleanly when its download or its teardown fails: leave its `breakdown` out, keep the post as it is, and add one entry to `research.gaps` that says which video and why in plain words, for example "Could not break down the TikTok video of 2026-09-14: the download needs a sign-in".
 Never retry a failed teardown and never take apart a replacement for it.
-Put what you saw in the post's `breakdown`: `{spokenHook, onScreenHook, format, style, shotTypes, cutsPer10s, presenter, sound, cta}`.
+Put what you saw in the post's `breakdown`: `{spokenHook, onScreenHook, format, style, shotTypes, cutsPer10s, presenter, sound, cta, transcriptExcerpt, labels}`.
 `spokenHook` is the first spoken sentence exactly as the transcript has it, and `onScreenHook` is the text shown at the start exactly as the frames show it; leave either out when the video has none.
-`format` is what kind of video it is in a few words, such as "talking head", "screen recording with captions" or "product demo"; it is required.
+`format` is what kind of video it is in a few words, such as "talking head", "screen recording with captions" or "product demo"; it is required (the name of `labels.format` stands in when you leave it out).
 `style` is one short line on how it feels, such as "fast-cut talking head with trending music".
 `shotTypes` is up to 6 short names such as "close up" or "over the shoulder", from the frames you read.
 `cutsPer10s` is the teardown's cut count divided by the video's length in seconds, times 10.
 `presenter` is `true` when a person talks or shows themselves on camera and `false` when none does.
 `sound` is `music`, `voiceover`, `music and voiceover` or `none`, from the teardown's music and the transcript.
 `cta` is the call to action said or shown, exactly as it is, or left out.
+`transcriptExcerpt` is the start of the transcript, copied as the transcript has it, at most 600 characters: the script as it was said. Leave it out when there is no transcript.
+`labels` is described in "Labels" below, and every video taken apart needs it.
 Anything the teardown did not show is left out, never guessed.
 For a post with a breakdown, `text` is the spoken hook when it has one (else the on-screen hook) and the post's caption goes in `caption`; save makes the same swap when the draft puts the caption in `text`.
-Save then files the hook in the proven bank with the caption as its note, files the format, style and call to action there as proven `format`, `style` and `cta` items with the post's link as their evidence, and adds a "What the best videos do" table to the platform playbook.
-Save refuses a breakdown the tool log shows no teardown for, and more than 3 own and 2 competitor breakdowns.
+Save then files the hook in the proven bank with the caption as its note, files the format, style and call to action there as proven `format`, `style` and `cta` items with the post's link as their evidence, adds a "What the best videos do" table to the platform playbook, and files the video with its labels in the brand's intelligence.
+Save refuses a breakdown the tool log shows no teardown for, a breakdown without its labels, and more than 5 own, 6 competitor (2 each) and 3 viral breakdowns.
+The deep pass is long, so write the whole draft file back with Write after each major step (the accounts read, the own videos taken apart, the competitors' videos taken apart, the pain points): what is done is then on disk if you run out of turns, and a second dispatch carries on from the draft.
+
+### Labels
+
+Every video taken apart carries `breakdown.labels`, so any video, the brand's, a competitor's or a viral one, is described the same four ways and the labels can be counted and compared.
+Read the format library, `pipeline/library/formats.json`: four axes, `format`, `editing`, `visualHook` and `series`, each a list of entries with an `id`, a name, a definition and why it works.
+Pick from what the frames and the transcript showed, never from what the caption claims:
+
+```json
+{"format":"F-TUTORIAL","editing":"E-SCREEN-RECORDING","visualHook":"V-RESULT-FIRST","series":"S-TOOL-OF-DAY","subtopic":{"custom":"Private AI"}}
+```
+
+- `format` is the story structure (ids start `F-`): tutorial, listicle, breakdown, story, before and after, myth against fact, comparison, case study, POV, reaction, day in the life, Q and A.
+- `editing` is how it looks on screen (ids start `E-`): talking head, faceless b-roll with voice-over, screen recording, split screen, text-led, cinematic, lo-fi phone, motion graphics.
+- `visualHook` is what the first two seconds show, from the frames at 0 s and 1 s (ids start `V-`).
+- `series` is optional: only when the account clearly posts the video as a repeatable episode (ids start `S-`).
+- `subtopic` is the topic the video is about, in a few words ("private AI", "RAG that cites sources"), always `{"custom": "..."}`; the Director groups these into the brand's six subtopics afterwards, so use the same words for the same topic in every video.
+A label is one library id, or `{"custom": "text"}` when no entry fits; never make up an id, and a library name ("Tutorial") is read as its id.
+`format`, `editing`, `visualHook` and `subtopic` are required.
+
+### Viral now
+
+The Trend Scout runs beside you during onboarding (the Director spawns it with the brand's niche, and it saves the trends it finds) and writes the most viral videos it found to a file, `viralPath`, as a list of `{platform, url, views, date, caption, thumbnail}` ordered by views.
+The Director then sends you a second, short dispatch with the workstream `viral-teardown`, `viralPath`, `draftPath` and `rawDir`.
+In it, read the file and take apart the first 3 videos that can be opened, as "Taking the best videos apart" says (one attempt each, no replacement for one that fails, labels included), and add each to `topPosts` with `source` `viral`, the platform and link it has in the file, and its numbers exactly as the file gives them, with the date it gives (a find from an Instagram topic or a YouTube search has none: leave `date` out, never make one up).
+Read the draft, add those posts to `topPosts`, and write the whole file back with Write; change nothing else in it.
+A viral post needs no account read in the tool log. When the file is missing or lists nothing, add one entry to `research.gaps` that says what is viral could not be found and write the draft back as it was.
 
 ### Pain points
 
@@ -435,6 +470,7 @@ OBSERVATION. {duration}s, {aspect}, {cut count} cuts, average shot {s}s.
 - **Pacing:** cut count, average and shortest shot, where it speeds up or slows down.
 - **Audio:** voice (who, tone, delivery) | music: named sound and artist from the metadata, or "original sound", or "not in metadata"; energy and tempo feel | do the cuts land on the beat (share of cuts on an onset against the chance share the teardown gives) | voice against music level.
 - **Idea parts:** awareness stage, angle id, visual format, hook family and mechanism, attention mechanic, using the ids in `playbooks/awareness-stages.md`, `angles.md`, `visual-formats.md`, `hooks.md` and `attention-mechanics.md`, so the brief and concepts can reuse the breakdown directly. Write `unclear` rather than guess.
+- **Labels:** the video on the format library's four axes, from `pipeline/library/formats.json`: `format` (F- id), `editing` (E- id), `visual hook` (V- id), `series` when it clearly is one (S- id), and the `subtopic` it is about, each a library id or `custom: <words>` when nothing fits, as "Labels" in the brand onboarding workstream says. Write them from the frames and the audio, never the caption; `unclear` rather than guess.
 - **Captions style:** burned-in text: position, size, colour, word by word or whole lines.
 - **CTA:** what it asks for, where, in words.
 - **Why it works:** two sentences, tied to what was seen above. This line is INFERENCE.

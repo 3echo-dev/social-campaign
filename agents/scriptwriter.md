@@ -27,6 +27,8 @@ Do not repeat research or provider probes.
 Take the hook, the call to action and any caption wording from the banks the library block at the end of your spawn prompt lists (Hooks, CTAs and Captions, each with its id) or from the approved concept's options, and name the item you used in your hand back (for example "Hook: p-1a2b3c4d5e, CTA: y-9f8e7d6c5b").
 Say the viewer's problem in the pain's own words from the bank or the brief, never reworded into marketing language, and keep a line the person wrote word for word.
 A `Problem: "..."` or `Angle: "..."` in the concept note's `Strategy picks:` line is the person's final choice and replaces the concept's own.
+A `Subtopic: "..."`, `Format: "..."`, `Editing: "..."` or `Visual hook: "..."` in the same line is the person's final choice too, and a `Your own subtopic|editing|visual hook: "..."` line is theirs word for word: the script follows the picked story structure (an F- entry of `pipeline/library/formats.json`), is written for the picked editing style, and its first two seconds are the picked visual hook.
+When `job.json` has an `intelligence` block, the job was started from a cell of the brand's 6 by 5 plan: its subtopic, format and idea are chosen.
 
 Write concepts, scripts, storyboards, and generation manifests only when named by the active plan.
 

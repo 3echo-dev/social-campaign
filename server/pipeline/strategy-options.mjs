@@ -5,16 +5,24 @@
  *
  *   review.concepts.strategyOptions = {
  *     industry: [Option], funnel: [Option], style: [Option], format: [Option], cta: [Option], pain: [Option], angle: [Option],
+ *     subtopic: [Option], editing: [Option], visualHook: [Option],
  *     industryPick: optionId | null,
  *   }
- *   Option = { id, text, yours?: true, label?: 'winner' | 'weak' | 'early', count?, hint? }
+ *   Option = { id, text, yours?: true, label?: 'winner' | 'weak' | 'early', count?, hint?, legacy?: true }
  *   review.concepts.concepts[n].picks = { funnel, style, format, cta }     the option id each of the concept's own fields names, else null
- *                                                                          (plus pain and angle, only when the concept's Anchor or Angle line names one)
+ *                                                                          (plus pain and angle, only when the concept's Anchor or Angle line names one,
+ *                                                                          and subtopic, editing and visualHook, only when the concept's Subtopic, Editing
+ *                                                                          style or Visual hook line names one)
  *
  * Where the options come from:
  *   - the four playbooks read straight from the plugin (pipeline/playbooks): awareness-stages.md gives funnel (ids like problem_aware),
  *     ad-styles.md style (AS-*), visual-formats.md format (F-*), ctas.md cta (CTA-*). The ids are the first cell of each table row, so
  *     a row added to a playbook shows up on the next read (the parsed rows are cached by file modification time).
+ *   - the brand intelligence rows (brand-intelligence.mjs, format-library.mjs): format is the format library's story structures (F-TUTORIAL ...,
+ *     pipeline/library/formats.json) and then the older playbook containers of visual-formats.md, marked legacy: true so a label or an older concept
+ *     still finds its chip; editing is the library's editing styles (E-*), visualHook its visual hooks (V-*) and subtopic the brand's own six
+ *     (st-*, library/intelligence/subtopics.json, best first). A library chip's text is "<id> <name>" like the playbook rows, and its hint is the
+ *     entry's one-line definition. The brand's own options for these three are its bank/yours.jsonl items of kind editing, visual_hook and subtopic.
  *   - industry is a fixed starter list (the industry tags of ad-styles.md) plus the brand's own.
  *   - pain (the Problem row) and angle (the Angle row) come from the brand's banks (brand-bank-items.mjs): the person's own items first, then
  *     the proven pains that came up most often (count = how many times, hint = who says it, where and how aware they are) and the proven
@@ -35,6 +43,9 @@ import { fileURLToPath } from 'node:url';
 import { readBank, readProven, sameText } from './brand-library.mjs';
 import { rankBank } from './brand-results.mjs';
 import { countOf, sameInsight } from './brand-bank-items.mjs';
+import { findEntry, libraryRow } from './format-library.mjs';
+// brand-intelligence.mjs imports brand-library.mjs too; its use below is inside a function, never at load time.
+import { subtopicOptions } from './brand-intelligence.mjs';
 
 const PLAYBOOK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'playbooks');
 const TEXT_LIMIT = 120;
@@ -65,7 +76,9 @@ const PLAYBOOK_ROWS = Object.freeze({
   format: { file: 'visual-formats.md', id: /^F-[A-Z0-9]+(?:-[A-Z0-9]+)*$/ },
   cta: { file: 'ctas.md', id: /^CTA-[A-Z0-9]+(?:-[A-Z0-9]+)*$/ },
 });
-export const STRATEGY_ROWS = Object.freeze(['industry', 'funnel', 'style', 'format', 'cta', 'pain', 'angle']);
+export const STRATEGY_ROWS = Object.freeze(['industry', 'funnel', 'style', 'format', 'cta', 'pain', 'angle', 'subtopic', 'editing', 'visualHook']);
+/** The row a bank kind belongs to, when its name differs. */
+const ROW_OF_KIND = Object.freeze({ visual_hook: 'visualHook' });
 
 /** How the fields of a concept name the rows, as the concepts template writes them (Awareness stage, Ad style, Visual format, CTA). */
 const CONCEPT_FIELDS = Object.freeze({
@@ -78,6 +91,12 @@ const CONCEPT_FIELDS = Object.freeze({
 const BANK_FIELDS = Object.freeze({
   pain: /^(?:anchor|viewer[\s_-]*problem)\b/i,
   angle: /^angle\b/i,
+});
+/** The brand intelligence rows are picked the same way: only when the concept has a Subtopic, Editing style or Visual hook line that names one. */
+const LIBRARY_FIELDS = Object.freeze({
+  subtopic: /^subtopic\b/i,
+  editing: /^editing(?:[\s_-]*style)?\b/i,
+  visualHook: /^visual[\s_-]*hook\b/i,
 });
 
 // ---------------------------------------------------------------- small helpers
@@ -146,8 +165,9 @@ function ownOptions({ root, brand }) {
   let items = [];
   try { items = readBank({ root, brand, bank: 'yours' }); } catch { return out; }
   for (const item of items) {
-    const list = Object.hasOwn(out, item.kind) ? out[item.kind] : null;
-    if (!list || list.length >= (ROW_LIMITS[item.kind]?.own ?? OWN_LIMIT)) continue;
+    const row = ROW_OF_KIND[item.kind] ?? item.kind;
+    const list = Object.hasOwn(out, row) ? out[row] : null;
+    if (!list || list.length >= (ROW_LIMITS[row]?.own ?? OWN_LIMIT)) continue;
     list.push({ id: item.id, text: clip(item.text, TEXT_LIMIT), yours: true, ...(LABELS.has(item.label) ? { label: item.label } : {}) });
   }
   return out;
@@ -172,9 +192,12 @@ function bankOptions({ root, brand }) {
   return out;
 }
 
-/** What the brand's posted results call each playbook row it used: { style: { 'AS-OFFER': 'winner' }, cta: {...}, format: {...} }. */
+/**
+ * What the brand's posted results call each playbook row it used: { style: { 'AS-OFFER': 'winner' }, cta: {...}, format: {...} }, and the same for
+ * the brand intelligence rows: editing and visualHook by library id, subtopic by its words (the result dimension is keyed by the subtopic's name).
+ */
 function playbookLabels({ root, brand }) {
-  const out = { style: {}, format: {}, cta: {} };
+  const out = { style: {}, format: {}, cta: {}, editing: {}, visualHook: {}, subtopic: {} };
   if (!root || !brand) return out;
   try {
     const ranking = rankBank({ root, brand });
@@ -193,12 +216,14 @@ const CODE_ID = /^[A-Z]{1,4}-|_/;
 const mentions = (text, id) => new RegExp(`(?<![\\w-])${escapeRegExp(id)}(?![\\w-])`, 'i').test(text);
 
 /** The id of an item of the brand's banks (a pain or an angle): such an option answers to its own text alone. */
-const BANK_ID = /^[yp]-[0-9a-f]{10}$/;
+const BANK_ID = /^(?:[yp]-[0-9a-f]{10}|st-[0-9a-f]{8})$/;
 
 /** The words an option answers to: its own text and, for a playbook row, the name in its id. */
 function keysOf(option) {
   if (option.yours || BANK_ID.test(option.id)) return [tokenKey(option.text)];
-  return [tokenKey(option.text), tokenKey(nameOf(option.id)), tokenKey(String(option.id).replace(/[-_]+/g, ' '))];
+  // A format library chip also answers to the entry's own name ("Talking head with captions"), which the id alone would shorten.
+  const library = findEntry(option.id);
+  return [tokenKey(option.text), tokenKey(nameOf(option.id)), tokenKey(String(option.id).replace(/[-_]+/g, ' ')), ...(library ? [tokenKey(library.name)] : [])];
 }
 
 // A hyphen, en dash or em dash with a space each side separates an id from its line ("CTA-SAVE - Save this").
@@ -268,6 +293,15 @@ export function strategyOptionsFor({ root = null, brand = null, summary = [], pl
   for (const kind of Object.keys(PLAYBOOK_ROWS)) {
     rows[kind] = [...own[kind], ...withoutOwn(book[kind], kind).map(option => ({ ...option, ...(labels[kind]?.[option.id] ? { label: labels[kind][option.id] } : {}) }))];
   }
+  // The brand intelligence rows. Format is the library's story structures first, then the older playbook containers (legacy) that a label or an older
+  // concept may still name; editing and visual hook are the library's; the subtopic row is the brand's own six.
+  const labelled = (axis, option) => (labels[axis]?.[option.id] ? { ...option, label: labels[axis][option.id] } : option);
+  rows.format = [...own.format, ...withoutOwn([...libraryRow('format'), ...book.format.map(option => ({ ...option, legacy: true }))], 'format').map(option => labelled('format', { ...option }))];
+  for (const axis of ['editing', 'visualHook']) rows[axis] = [...own[axis], ...withoutOwn(libraryRow(axis), axis).map(option => labelled(axis, { ...option }))];
+  rows.subtopic = [...own.subtopic, ...withoutOwn(subtopicOptions({ root, brand }), 'subtopic').map(option => {
+    const label = labels.subtopic?.[clip(option.text, 60)];
+    return label ? { ...option, label } : { ...option };
+  })];
   // The Problem and Angle rows: the person's own, then the bank's best that the person's own do not already say.
   for (const kind of Object.keys(ROW_LIMITS)) {
     rows[kind] = [...own[kind], ...bank[kind].filter(option => !own[kind].some(mine => sameInsight(mine.text, option.text))).slice(0, ROW_LIMITS[kind].bank)];
@@ -305,7 +339,7 @@ export function conceptPicks(concept, options) {
     picks[kind] = field ? matchOption(field.value, options?.[kind] ?? [], { scan: kind === 'funnel' }) : null;
   }
   // The Problem and Angle picks are there only when the concept's Anchor or Angle line says one of the options word for word.
-  for (const [kind, pattern] of Object.entries(BANK_FIELDS)) {
+  for (const [kind, pattern] of Object.entries({ ...BANK_FIELDS, ...LIBRARY_FIELDS })) {
     const field = Array.isArray(concept?.fields) ? concept.fields.find(item => pattern.test(String(item?.label ?? ''))) : null;
     const found = field ? matchOption(field.value, options?.[kind] ?? []) : null;
     if (found) picks[kind] = found;

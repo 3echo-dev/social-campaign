@@ -153,7 +153,7 @@ small,.muted{color:var(--faint)}
 .library-counts{color:var(--faint);font-size:12px;font-weight:600;overflow-wrap:anywhere}
 .brand-library .doc-body{gap:var(--gap)}
 .library-intro{font-size:12px;line-height:1.45}
-.library-group{display:flex;flex-direction:column;gap:8px}
+.library-group{display:flex;flex-direction:column;gap:10px}
 .library-group h3{display:flex;align-items:center;gap:8px;margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .library-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
 .library-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r2)}
@@ -191,6 +191,23 @@ button.library-remove{flex:none;min-height:30px;padding:3px 10px;border-color:va
 .library-bank[open]>summary .library-bank-top{display:none}
 .library-bank>.library-list,.library-bank>.library-more{margin:0 12px 12px}
 .library-quote{font-style:italic}
+/* A social post in the library (a top post, a competitor's, a fresh trend): the thumbnail on the left (a neutral tile with the platform name and a play mark when
+   there is no picture), then the words, then Open post and Copy link under them with a clear gap. */
+.library-item.library-post{align-items:flex-start;justify-content:flex-start}
+.library-post .library-main{flex:1}
+.post-thumb{position:relative;flex:none;display:grid;place-items:center;width:64px;aspect-ratio:9/12;overflow:hidden;border:1px solid var(--line2);border-radius:var(--r1);background:linear-gradient(160deg,var(--panel3),var(--ink))}
+.post-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--ink)}
+.post-thumb-play{position:relative;z-index:1;width:24px;height:24px;border-radius:50%;background:rgb(0 0 0/.5)}
+.post-thumb-play::before{content:"";position:absolute;left:9px;top:7px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid var(--paper)}
+.post-thumb-plat{position:absolute;left:3px;right:3px;bottom:3px;z-index:1;padding:1px 2px;overflow:hidden;border-radius:999px;background:rgb(0 0 0/.62);color:var(--paper);font-size:9px;font-weight:700;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+.library-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+a.library-open{display:inline-flex;align-items:center;min-height:30px;padding:3px 10px;border:1px solid var(--line2);border-radius:10px;color:var(--wait);font-size:12px;font-weight:700;text-decoration:none}
+button.library-copy{min-height:30px;padding:3px 10px;border-color:var(--line2);color:var(--dim);font-size:12px}
+button.library-copy.is-copied{border-color:var(--go-dim);color:var(--go)}
+@media (hover:hover){a.library-open:hover{border-color:var(--dim);color:var(--paper)}}
+a.library-open:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.library-fallback{margin-top:6px}
+@media(pointer:coarse){a.library-open,button.library-copy{min-height:40px}}
 @media(pointer:coarse){button.library-remove{min-height:40px}}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(245,200,75,.14);color:var(--tape);font-size:13px;font-weight:800}
@@ -349,9 +366,11 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 /* "Logo, colours and fonts": one more section of the onboarding card, not a panel inside
    it. Same ground as the card, the same divider as the card footer (a --line top border)
    with --gap under it, a plain h3 and muted helper line, then the Logo, Colours and Fonts
-   blocks on the form's own three-column grid (.kit-grid shares the .form-grid rule, so the
-   gutters match the fields above). Each block reuses .context-field/.context-field-head,
-   so its label row matches "Audience" exactly. Every other gap here derives from --gap. */
+   cards on the form's own three-column grid (.kit-grid shares the .form-grid rule, so the
+   gutters match the fields above), and Photos and Folders full width under them. Each card
+   reuses .context-field/.context-field-head, so its label row matches "Audience" exactly.
+   A grid or list of items is always followed by its buttons and notes with a clear gap
+   (--stack), never touching. Every other gap here derives from --gap. */
 .start-card .kit-fieldset{display:flex;flex-direction:column;gap:var(--gap);padding-top:var(--gap);border-top:1px solid var(--line)}
 .kit-head{display:flex;flex-direction:column;gap:calc(var(--gap) / 4)}
 /* While research reads the site the grid dims once; disabled buttons and selects inside it
@@ -359,64 +378,123 @@ details.panel>p{padding:0 var(--pad) var(--pad)}
 .kit-fieldset:disabled .kit-grid{opacity:.6}
 .kit-fieldset:disabled .kit-grid :is(button,select):disabled{opacity:1}
 .kit-fieldset:disabled label{cursor:not-allowed}
-.kit-stack{position:relative;display:flex;flex-direction:column;gap:calc(var(--gap) / 2);min-width:0}
-.kit-add{align-self:flex-start}
-@container (min-width:521px) and (max-width:960px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-logo-block{grid-row:span 2}}
-/* Logo. Empty: a dashed upload tile with the inputs' radius and border colour; the whole
-   tile is the label of the visually hidden file input. With a logo: the image on a light,
-   low-contrast checkerboard so transparent and dark marks both read. Tile and preview share
-   one height so the block keeps its size between the two states. */
-.kit-upload,.kit-logo-preview{height:112px;border-radius:var(--radius)}
-.kit-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--gap) / 4);padding:var(--gap);background:var(--ink);border:1px dashed var(--line2);color:var(--dim);text-align:center;cursor:pointer;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-grid{gap:var(--gap)}
+.kit-stack{--stack:calc(var(--gap) * .75);position:relative;display:flex;flex-direction:column;gap:var(--stack);min-width:0}
+.kit-add,.kit-stack>.kit-file-button{align-self:flex-start}
+.kit-card{align-self:start;padding:14px;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r3);gap:10px}
+.kit-card .context-field-head>.kit-label{color:var(--paper);font-size:13px;letter-spacing:.01em}
+.kit-card-note{margin:0;font-size:12px;line-height:1.45}
+.kit-card .field-error{margin:0}
+@container (min-width:521px) and (max-width:960px){.kit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.kit-fonts-block{grid-column:1 / -1}}
+/* Logo. Empty: a dashed drop zone (the whole zone is the label of the visually hidden file input, and a file dragged onto it is read too)
+   with a light and a dark tile ghosted in it. With a logo: the logo on a light and on a dark tile, side by side, so the person can check
+   both; the whole area still takes a dropped file to replace it. */
+.kit-drop{position:relative;display:flex;flex-direction:column;border-radius:var(--r3)}
+.kit-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:150px;padding:16px;background:var(--ink);border:1.5px dashed var(--line2);border-radius:var(--r3);color:var(--dim);text-align:center;cursor:pointer;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-upload u{text-underline-offset:3px}
+.kit-upload-title{color:var(--paper);font-weight:700}
+.kit-upload-hint{color:var(--faint);font-size:12px}
+.kit-file:enabled+.kit-upload:hover,.kit-drop.is-dragover .kit-upload{border-color:var(--tape);background:rgba(245,200,75,.05)}
+.kit-logo-ghosts{display:flex;gap:8px;margin-bottom:4px}
+.kit-logo-ghost{display:grid;place-items:center;width:52px;height:52px;border:1px solid var(--line2);border-radius:var(--r2)}
+.kit-logo-ghost.is-light{background:var(--paper);color:var(--faint)}
+.kit-logo-ghost.is-dark{background:var(--ink);color:var(--dim)}
+.kit-drop-filled{padding:6px;border:1.5px dashed transparent;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-drop-filled.is-dragover{border-color:var(--tape);background:rgba(245,200,75,.05)}
+.kit-logo-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.kit-logo-tile{position:relative;display:flex;align-items:center;justify-content:center;aspect-ratio:1.3;min-height:104px;margin:0;padding:14px 12px 26px;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden}
+.kit-logo-tile.is-light{background:var(--paper)}
+.kit-logo-tile.is-dark{background:var(--ink)}
+.kit-logo-tile img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.kit-logo-tile figcaption{position:absolute;left:9px;bottom:6px;color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.kit-logo-preview{display:flex;align-items:center;justify-content:center;min-height:104px;padding:var(--gap);border:1px solid var(--line2);border-radius:var(--r2);background:var(--ink);color:var(--faint);font-size:12px;overflow:hidden}
+.kit-logo-actions{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
+.kit-file:focus-visible+.kit-upload,.kit-file:focus-visible+.kit-file-button{outline:2px solid var(--tape);outline-offset:2px}
+.kit-file:disabled+.kit-file-button{cursor:not-allowed}
+/* Colours. Each colour is a tile: the swatch itself (a colour input stretched over the block, so clicking it opens the colour picker; a
+   pencil shows on hover and focus), its hex code and its role, and a small remove button over the corner. The dashed tile adds one. */
+.kit-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.kit-row{display:grid;align-items:center;gap:6px calc(var(--gap) / 2)}
+.kit-row .field-error{grid-column:1/-1}
+.kit-color-row{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:6px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r2)}
+.kit-swatch-block{position:relative;display:block;height:56px;border:1px solid rgb(255 255 255/.14);border-radius:6px;background:var(--swatch,#000);cursor:pointer;overflow:hidden;transition:box-shadow 150ms ease}
+.kit-swatch-block.is-invalid{background:repeating-linear-gradient(135deg,var(--panel3) 0 6px,var(--ink) 6px 12px)}
+.kit-swatch{position:absolute;inset:0;width:100%;height:100%;min-height:0;padding:0;border:0;border-radius:0;opacity:0;cursor:pointer}
+.kit-swatch-edit{position:absolute;left:6px;bottom:6px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:rgb(0 0 0/.6);color:#fff;opacity:0;transition:opacity 150ms ease;pointer-events:none}
+.kit-swatch-block:hover .kit-swatch-edit,.kit-swatch-block:focus-within .kit-swatch-edit{opacity:1}
+.kit-swatch-block:focus-within{outline:2px solid var(--tape);outline-offset:2px}
+.kit-hex{min-height:30px;padding:3px 7px;font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:.03em;text-transform:uppercase}
+.kit-color-row select{min-height:30px;padding:3px 6px;font-size:12px}
+.kit-color-row .kit-icon-button{position:absolute;top:10px;right:10px;width:22px;min-height:22px;height:22px;padding:0;border:0;border-radius:50%;background:rgb(0 0 0/.6);color:#fff;opacity:0;transition:opacity 150ms ease}
+.kit-color-row:hover .kit-icon-button,.kit-color-row:focus-within .kit-icon-button{opacity:1}
+@media (hover:none){.kit-color-row .kit-icon-button{opacity:1}}
+@media (hover:hover){.kit-color-row .kit-icon-button:hover{background:var(--hold-dim);color:var(--paper)}}
+.kit-add-swatch{align-self:stretch;flex-direction:column;min-height:112px;border:1.5px dashed var(--line2);border-radius:var(--r2);color:var(--dim)}
+.kit-add-swatch:only-child{grid-column:1 / -1;flex-direction:row;justify-self:start;min-height:40px;padding-inline:16px;white-space:nowrap}
+.kit-icon-button{width:32px;padding:0}
+/* Fonts. Each font is a specimen row: an "Aa" tile and the family name set in the font itself (a Google font, one installed here, or the
+   file the person uploaded), then its use. A family that could not be shown is dimmed and says so. */
+.kit-specimens{display:flex;flex-direction:column;gap:8px}
+.kit-font-row{grid-template-columns:48px minmax(0,1fr) 28px;align-items:center;gap:4px 10px;padding:8px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r2)}
+.kit-font-sample{grid-column:1;grid-row:1 / span 2;display:grid;place-items:center;width:48px;height:48px;overflow:hidden;border:1px solid var(--line2);border-radius:var(--r2);background:var(--panel2);color:var(--paper);font-size:24px;line-height:1;white-space:nowrap}
+.kit-font-name{grid-column:2;grid-row:1;min-height:30px;padding:2px 6px;border-color:transparent;background:transparent;font-size:15px;font-weight:600}
+.kit-font-name:hover{border-color:var(--line2)}
+.kit-font-row select{grid-column:2 / -1;grid-row:2;min-height:30px;padding:3px 6px;font-size:12px}
+.kit-font-row .kit-icon-button{grid-column:3;grid-row:1;width:28px;min-height:28px;height:28px}
+.kit-font-note{grid-column:2 / -1;font-size:11px}
+.kit-font-note:empty{display:none}
+.kit-font-row.is-fallback .kit-font-sample{opacity:.55}
+.kit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.kit-actions .kit-add{align-self:auto}
 .kit-photos-block{grid-column:1 / -1}
 .kit-photos{display:flex;flex-wrap:wrap;gap:var(--gap)}
 .kit-photo{position:relative;width:96px;height:96px;border-radius:var(--radius);overflow:hidden;background:var(--ink);border:1px solid var(--line2)}
 .kit-photo img{display:block;width:100%;height:100%;object-fit:cover}
 .kit-photo .kit-icon-button{position:absolute;top:2px;right:2px;background:var(--ink)}
-/* Folders of videos, photos and fonts: a full-width block like Photos of your world. The rows are the library's own list rows; the add control is two
-   labelled boxes (the path, an optional name) beside each other, the three rights answers under them and the button last, all spaced by --gap. */
+/* Folders of videos, photos and fonts: a full-width card. A "Choose a folder..." button (off until the person says who owns the files) opens the
+   folder dialog on their computer; the three owner cards ask the question; a quiet "Or paste a path" fallback opens the path box; the folders
+   added so far follow as the library's own list rows. */
 .kit-folders-block{grid-column:1 / -1}
+.kit-folders-block .kit-stack{gap:var(--gap)}
 .kit-folder-list,.kit-folder-fonts{margin:0}
+.kit-folder{align-items:center;justify-content:flex-start}
+.kit-folder .library-main{flex:1}
+.kit-folder-icon{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:var(--r2);background:rgba(245,200,75,.1);color:var(--tape)}
 .kit-folder.is-pending .library-text{color:var(--dim)}
 .kit-folder.is-failed{border-color:rgba(242,144,138,.4)}
+.kit-folder.is-failed .kit-folder-icon{background:rgba(242,144,138,.1);color:var(--hold)}
 .kit-folder .quiet{flex:none}
-.kit-folder-add{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap);padding-top:calc(var(--gap) / 2)}
+.kit-folder-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+button.kit-choose{min-height:40px;padding:6px 18px;border-color:rgba(245,200,75,.5);background:rgba(245,200,75,.1);color:var(--tape);font-weight:800}
+@media (hover:hover){button.kit-choose:not(:disabled):hover{border-color:var(--tape);background:rgba(245,200,75,.18);color:var(--tape-hi)}}
+button.kit-choose:disabled{border-color:var(--line2);background:none;color:var(--faint)}
+.kit-folder-pick-hint{flex:1 1 220px;min-width:0;font-size:12.5px;line-height:1.45}
+.kit-owner{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;border:0;min-width:0}
+.kit-sublabel{padding:0;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.02em}
+.kit-owner-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.kit-owner-card{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:12px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--r3);cursor:pointer;transition:border-color 150ms ease,background-color 150ms ease}
+.kit-owner-card input{flex:none;width:16px;min-height:16px;height:16px;margin:3px 0 0;padding:0;accent-color:var(--tape)}
+.kit-owner-card input:focus-visible{outline:none}
+.kit-owner-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.kit-owner-title{color:var(--paper);font-weight:700}
+.kit-owner-hint{color:var(--dim);font-size:12.5px;line-height:1.4}
+.kit-owner-card:has(input:checked){border-color:var(--tape);background:rgba(245,200,75,.06)}
+.kit-owner-card:has(input:focus-visible){outline:2px solid var(--tape);outline-offset:2px}
+@media (hover:hover){.kit-owner-card:hover{border-color:var(--dim)}.kit-owner-card:has(input:checked):hover{border-color:var(--tape)}}
+.kit-owner:disabled .kit-owner-card,.kit-fieldset:disabled .kit-owner-card{cursor:not-allowed;opacity:.6}
+.kit-paste{display:flex;flex-direction:column}
+.kit-paste>summary{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;padding:4px 0;color:var(--dim);font-size:12.5px;font-weight:600;list-style:none;cursor:pointer}
+.kit-paste>summary::-webkit-details-marker{display:none}
+.kit-paste>summary::before{content:"";flex:none;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform 150ms ease}
+.kit-paste[open]>summary::before{transform:rotate(45deg)}
+@media (hover:hover){.kit-paste>summary:hover{color:var(--paper)}}
+.kit-paste[open]>summary{margin-bottom:var(--gap)}
+.kit-folder-add{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap)}
 .kit-folder-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:var(--gap);width:100%}
 .kit-folder-field{display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.02em}
 .kit-folder-field input{font-size:14px;font-weight:400;letter-spacing:normal}
-.kit-rights{display:flex;flex-wrap:wrap;align-items:center;gap:calc(var(--gap) / 2) var(--gap)}
-.kit-sublabel{flex:0 0 100%;color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.02em}
-.kit-radio{display:inline-flex;align-items:center;gap:calc(var(--gap) / 2);color:var(--paper);cursor:pointer}
-.kit-radio input{flex:none;width:14px;min-height:14px;margin:0;padding:0;accent-color:var(--tape)}
-.kit-radio input:disabled+span,.kit-fieldset:disabled .kit-radio{color:var(--dim);cursor:not-allowed}
 @media(max-width:720px){.kit-folder-fields{grid-template-columns:1fr}}
-.kit-upload-title{color:var(--paper);font-weight:700}
-.kit-upload-hint{color:var(--faint);font-size:12px}
-.kit-file:enabled+.kit-upload:hover{border-color:var(--dim);background:rgba(255,255,255,.04)}
-.kit-file:focus-visible+.kit-upload,.kit-file:focus-visible+.kit-file-button{outline:2px solid var(--tape);outline-offset:2px}
-.kit-file:disabled+.kit-file-button{cursor:not-allowed}
-.kit-logo-preview{border:1px solid var(--line2);background:repeating-conic-gradient(#e2e6ed 0 25%,#f1f3f7 0 50%) 50% / 16px 16px}
-.kit-logo-preview{display:flex;align-items:center;justify-content:center;padding:var(--gap);overflow:hidden}
-.kit-logo-preview img{display:block;max-width:100%;max-height:100%;object-fit:contain}
-.kit-logo-preview.kit-logo-preview-none{background:var(--ink);color:var(--faint);font-size:12px}
-.kit-logo-actions{display:flex;align-items:center;gap:calc(var(--gap) / 2);flex-wrap:wrap}
-/* Colour and font rows. Swatch and remove button are 32px (the board's button height); the
-   text input keeps at least 88px (a whole #RRGGBB) and the select grows to 124px (its
-   longest option, "Background"), so one row fits a third of the desktop card and a 375px
-   phone alike without a separate mobile layout. */
-.kit-row{display:grid;align-items:center;gap:6px calc(var(--gap) / 2)}
-.kit-row .field-error{grid-column:1/-1}
-.kit-color-row{grid-template-columns:32px minmax(88px,1fr) minmax(0,124px) 32px}
-.kit-font-row{grid-template-columns:minmax(88px,1fr) minmax(0,124px) 32px 32px}
-@container (max-width:520px){.kit-font-row{grid-template-columns:minmax(0,1fr) 32px 32px}.kit-font-row>input{grid-column:1/-1}}
-/* On a narrow card the role select would shrink below the width of "Background", so it drops under the hex field and the remove button stays on the swatch row. */
-@container (max-width:290px){.kit-color-row{grid-template-columns:32px minmax(0,1fr) 32px}.kit-color-row>select{grid-column:2;grid-row:2}.kit-color-row>.kit-icon-button{grid-column:3;grid-row:1}}
-.kit-swatch{width:32px;height:32px;min-height:0;padding:0;border-radius:50%;background:none;cursor:pointer}
-.kit-swatch::-webkit-color-swatch-wrapper{padding:0}
-.kit-swatch::-webkit-color-swatch{border:0;border-radius:50%}
-.kit-swatch::-moz-color-swatch{border:0;border-radius:50%}
-.kit-icon-button{width:32px;padding:0}
-.kit-font-sample{display:flex;align-items:center;justify-content:center;height:32px;overflow:hidden;color:var(--paper);font-size:18px;line-height:1;white-space:nowrap}
+@media(max-width:520px){.kit-card{padding:12px}.kit-logo-tile{min-height:92px}.kit-swatches{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}button.kit-choose{width:100%}}
 /* @file job */
 /* Job page panels share one structure: a .panel with its section head, then content stacked
    on --gap. Every inner gap derives from --gap; every inner card uses --pad. */
@@ -1586,3 +1664,103 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .take figcaption{font-weight:700;font-size:var(--t2)}
 .take audio{width:100%}
 @media(max-width:720px){.takes{grid-template-columns:1fr}}
+/* @file intel */
+/* Brand intelligence under the brand chips: one folded panel per brand. While the research runs it holds a checklist with a progress
+   bar; when it is ready it holds six tabs (plan, winners, subtopics, competitors, viral, banks). Every block inside the panel body is a
+   child of one flex column, so a grid, a note and a row of buttons always keep the same gap. */
+.brand-intels{display:flex;flex-direction:column;gap:8px;width:100%}
+.brand-intel>summary{gap:10px}
+.brand-intel .library-head{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.brand-intel .doc-summary-title{font-size:var(--t4)}
+.brand-intel>summary>.pill{flex:none}
+.brand-intel .doc-body{gap:var(--gap)}
+.intel-progress{display:flex;flex-direction:column;gap:6px}
+.intel-progress-line{color:var(--dim);font-size:12px;font-weight:600}
+.intel-bar{height:6px;border-radius:99px;background:var(--panel3);overflow:hidden}
+.intel-bar>i{display:block;width:var(--intel-pct,0%);height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--indigo),var(--tape));transition:width 400ms var(--ease-out)}
+.intel-steps{display:flex;flex-direction:column;gap:9px;margin:0;padding:0;list-style:none}
+.intel-steps li{display:flex;align-items:flex-start;gap:10px;color:var(--faint);font-size:13px;line-height:1.45}
+.intel-steps li.is-done{color:var(--dim)}
+.intel-steps li.is-running{color:var(--paper);font-weight:600}
+.intel-dot{flex:none;width:9px;height:9px;margin-top:5px;border-radius:50%;background:var(--line2)}
+.intel-steps .is-done>.intel-dot{background:var(--go)}
+.intel-steps .is-running>.intel-dot{background:var(--tape);animation:pill-blink 1.2s ease-in-out infinite}
+.intel-step-text{min-width:0;overflow-wrap:anywhere}
+.intel-step-detail{display:block;color:var(--faint);font-size:12px;font-weight:400}
+.intel-foot{font-size:12px}
+.intel-tabs{display:flex;flex-wrap:wrap;gap:4px}
+.intel-tabs button{flex:none;border-color:transparent;color:var(--faint);white-space:nowrap}
+.intel-tabs button[aria-selected=true]{background:var(--paper);color:var(--ink)}
+@media (hover:hover){
+  .intel-tabs button:not([aria-selected=true]):hover{border-color:var(--line2);color:var(--paper)}
+  .intel-tabs button[aria-selected=true]:hover{background:var(--paper);color:var(--ink)}
+}
+.intel-panel{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.intel-panel:focus-visible{outline:2px solid var(--tape);outline-offset:4px;border-radius:var(--r2)}
+.intel-intro{max-width:75ch;color:var(--dim);font-size:13px;line-height:1.5}
+.intel-note{margin:0;padding:8px 12px;border-left:3px solid var(--tape);border-radius:0 var(--r2) var(--r2) 0;background:var(--panel2);color:var(--dim);font-size:13px;line-height:1.5}
+.intel-empty{margin:0;padding:14px;border:1px dashed var(--line2);border-radius:var(--r2);color:var(--faint);font-size:13px}
+.intel-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.intel-scroll{overflow-x:auto;border:1px solid var(--line2);border-radius:var(--r2);background:var(--ink)}
+.intel-plan{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;font-size:12px}
+.intel-plan th,.intel-plan td{padding:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+.intel-plan tr>:last-child{border-right:0}
+.intel-plan tbody tr:last-child>*{border-bottom:0}
+.intel-plan thead th{padding:9px 10px;background:var(--panel2);color:var(--paper);font-size:12px;font-weight:700}
+.intel-plan tbody th{position:sticky;left:0;z-index:1;width:132px;min-width:132px;padding:10px;background:var(--panel2);color:var(--paper);font-weight:700;overflow-wrap:anywhere}
+.intel-plan thead th:first-child{position:sticky;left:0;z-index:2}
+button.intel-cell{display:block;width:100%;min-height:72px;padding:10px;border:0;border-radius:0;background:none;color:var(--paper);font-size:12px;font-weight:400;line-height:1.4;text-align:left}
+@media (hover:hover){button.intel-cell:hover{background:var(--tint)}}
+button.intel-cell[aria-pressed=true]{background:rgba(245,200,75,.1);box-shadow:inset 0 0 0 2px var(--tape)}
+button.intel-cell:focus-visible{outline-offset:-3px}
+.intel-cell-empty{display:block;padding:10px;color:var(--faint)}
+.intel-confirm{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line2);border-left:3px solid var(--tape);border-radius:0 var(--r2) var(--r2) 0;background:var(--panel2)}
+.intel-confirm:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.intel-confirm p{margin:0}
+.intel-idea{color:var(--paper)}
+.intel-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.intel-card{display:flex;flex-direction:column;min-width:0;border:1px solid var(--line2);border-radius:var(--r3);background:var(--panel2);overflow:hidden}
+.intel-thumb{position:relative;display:grid;place-items:center;aspect-ratio:9/11;overflow:hidden;background:linear-gradient(160deg,var(--panel3),var(--ink))}
+.intel-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--ink)}
+.intel-plat{position:absolute;left:8px;top:8px;z-index:1;max-width:calc(100% - 16px);padding:2px 8px;overflow:hidden;border-radius:999px;background:rgb(0 0 0/.62);color:var(--paper);font-size:11px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.intel-play{position:relative;z-index:1;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:rgb(0 0 0/.5)}
+.intel-play::before{content:"";margin-left:3px;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:12px solid var(--paper)}
+.intel-card-body{display:flex;flex:1;flex-direction:column;gap:8px;min-width:0;padding:12px}
+.intel-title{display:-webkit-box;margin:0;overflow:hidden;color:var(--paper);font-size:13.5px;font-weight:700;line-height:1.4;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+.intel-num{margin:0;color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.intel-tags{display:flex;flex-wrap:wrap;gap:4px}
+.intel-tags .pill,.intel-card-body>.pill{min-height:20px;padding:2px 8px;font-size:11px;line-height:1.25;white-space:normal}
+.pill.intel-comp{align-self:flex-start;color:var(--wait);background:rgba(143,178,255,.08);border-color:var(--wait-dim)}
+.intel-links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;padding-top:4px}
+a.intel-open{display:inline-flex;align-items:center;min-height:30px;padding:3px 10px;border:1px solid var(--line2);border-radius:10px;color:var(--wait);font-size:12px;font-weight:700;text-decoration:none}
+@media (hover:hover){a.intel-open:hover{border-color:var(--dim);color:var(--paper)}}
+a.intel-open:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+button.intel-copy{min-height:30px;padding:3px 10px;color:var(--dim);font-size:12px}
+button.intel-copy.is-copied{border-color:var(--go-dim);color:var(--go)}
+.intel-fallback{margin-top:2px}
+.intel-subs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:0;padding:0;list-style:none}
+.intel-sub{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:12px;border:1px solid var(--line2);border-radius:var(--r3);background:var(--panel2)}
+.intel-sub strong{color:var(--paper);overflow-wrap:anywhere}
+.intel-sub-meta{color:var(--faint);font-size:12px}
+.intel-sub .pill{min-height:20px;padding:2px 8px;font-size:11px}
+.intel-edit{display:flex;flex-direction:column;gap:var(--gap);margin:0}
+.intel-edit-rows{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.intel-edit-row{display:flex;align-items:center;gap:8px}
+.intel-edit-row input{flex:1 1 auto;min-width:0}
+.intel-edit-row button{flex:none}
+.intel-count{margin:0;color:var(--dim);font-size:12px}
+.intel-count.is-bad{color:var(--tape)}
+.intel-banks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.intel-bank{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;padding:12px;border:1px solid var(--line2);border-radius:var(--r3);background:var(--panel2)}
+.intel-bank-title{display:flex;align-items:center;gap:8px;color:var(--paper);font-weight:700}
+.intel-bank-top{margin:0;color:var(--dim);font-size:12.5px;line-height:1.45;overflow-wrap:anywhere}
+button.intel-bank-link{min-height:28px;margin-top:auto;padding:3px 10px;color:var(--wait);font-size:12px}
+.intel-note-list{margin:0;padding-left:18px;color:var(--dim);font-size:12.5px}
+@media(pointer:coarse){a.intel-open,button.intel-copy,button.intel-bank-link{min-height:40px}}
+@media(max-width:520px){
+  .intel-cards{grid-template-columns:1fr}
+  .intel-card{flex-direction:row}
+  .intel-thumb{flex:none;width:96px;aspect-ratio:auto;min-height:150px}
+  .intel-play{width:32px;height:32px}
+  .intel-play::before{margin-left:2px;border-top-width:6px;border-bottom-width:6px;border-left-width:10px}
+}

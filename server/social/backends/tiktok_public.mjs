@@ -233,6 +233,8 @@ export class TikTokPublicBackend {
           media_kind: 'video',
           caption: typeof video.desc === 'string' ? video.desc : null,
           metrics: { views: video.playCount },
+          // The embed's own cover picture for the video, when it lists one.
+          thumbnail_url: typeof video.coverUrl === 'string' ? video.coverUrl : null,
           source_type: 'public_platform',
           source_ref: sourceRef,
           observed_at: fetched.fetched_at,

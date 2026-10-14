@@ -16,7 +16,8 @@ const durable = require('./lib-durable.js');
 const STAGE = 'BRAND_RESEARCH';
 const STAGE_ID = 'brand-research';
 const STAGE_LABEL = 'Brand research';
-const STALE_MS = 3600000;
+// Two hours: onboarding is always the deep pass (14 video teardowns, three agents), which can run well past the hour a plain research read needed.
+const STALE_MS = 7200000;
 const PENDING_MS = 600000;
 const RETRY_MS = 180000;
 const KIND = 'brand_onboarding_research';

@@ -35,7 +35,9 @@ import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingC
 import { normaliseCombine, recordCombine } from './combine.mjs';
 import { boardLibrary, fileJobQuietly, readBank, recordConceptDecision, removeBankItem } from './brand-library.mjs';
 import { checkFolderRequest } from './brand-footage.mjs';
+import { FOLDER_PICK_TIMEOUT_MS, pickFolder } from '../lib/folder-pick.mjs';
 import { importAndDigest } from './brand-footage-digest.mjs';
+import { SUBTOPIC_COUNT, boardIntelligence, confirmSubtopics, planCell, slimIntelligence } from './brand-intelligence.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -1618,7 +1620,9 @@ export function boardSnapshot({ root } = {}) {
     const brandFiles = brandFileList(brandFilesOf(brand.path, raw), referencePreview(root), brandFileState);
     // The brand library: counts, the person's own items, the proven ones and the last jobs filed (brand-library.mjs).
     const library = boardLibrary({ root, brand: brand.slug });
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,library,...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
+    // Brand intelligence (brand-intelligence.mjs): the posts taken apart and labelled, the six subtopics, the 6 by 5 plan and the onboarding checklist. Left out when the brand has none.
+    const intelligence = boardIntelligence({ root, brand: brand.slug });
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,library,...(intelligence ? { intelligence } : {}),...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -1694,6 +1698,8 @@ export function boardSnapshot({ root } = {}) {
   const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
   // Reference pictures are the first thing to go when the board is near its size limit.
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) { projection.projects = withoutReferenceThumbs(projection.projects); projection.brands = projection.brands.map(brand => (brand.brandFiles ? { ...brand, brandFiles: brand.brandFiles.map(({ thumb, ...rest }) => rest) } : brand)); }
+  // Then the brand intelligence's pictures and most of its posts (the checklist, the subtopics and the plan stay).
+  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.intelligence ? { ...brand, intelligence: slimIntelligence(brand.intelligence) } : brand));
   // Then the brand library's lists (the counts stay), then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.library ? { ...brand, library: { ...brand.library, yours: [], proven: [], recentJobs: [] } } : brand));
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
@@ -1763,7 +1769,7 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','brand_folder_add',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','subtopics_confirm','plan_cell_start','brand_folder_add','brand_folder_pick',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
@@ -1775,7 +1781,10 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
   if (operation === 'bank_remove') checkBankRemove(root, args);
+  if (operation === 'subtopics_confirm') checkSubtopicsConfirm(root, args);
+  if (operation === 'plan_cell_start') checkPlanCellStart(root, args);
   if (operation === 'brand_folder_add') checkFolderAdd(root, args, { live: false });
+  if (operation === 'brand_folder_pick') checkFolderPick(root, args);
   if (operation === 'add_reference') validateAddReference(root, args);
   if (operation === 'remove_reference') validateRemoveReference(root, args);
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
@@ -2031,6 +2040,56 @@ function checkBankRemove(root, args) {
   throw new Error('That item could not be found in any brand library.');
 }
 
+// The six subtopics as the person left them on the board: { requestId, brand, items: [{ id?, name }], workspaceId? }. Exactly six, each a name of 2 to 80
+// characters (an id, when there is one, is a subtopic of the draft), no name twice. Applying it confirms them (confirmSubtopics in brand-intelligence.mjs).
+const SUBTOPICS_CONFIRM_FIELDS = new Set(['requestId', 'brand', 'items', 'workspaceId']);
+function checkSubtopicsConfirm(root, args) {
+  if (!plainObject(args) || Object.keys(args).some(key => !SUBTOPICS_CONFIRM_FIELDS.has(key))) throw new Error('Confirming the subtopics names only the brand and the six subtopics.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  const brand = typeof args.brand === 'string' ? args.brand.trim() : '';
+  if (!runtime.listBrands({ root }).some(item => item.slug === brand)) throw new Error('That brand could not be found.');
+  if (!Array.isArray(args.items) || args.items.length !== SUBTOPIC_COUNT) throw new Error(`Keep exactly ${SUBTOPIC_COUNT} subtopics${Array.isArray(args.items) ? ` (there are ${args.items.length})` : ''}.`);
+  const seen = new Set();
+  const items = args.items.map(item => {
+    if (!plainObject(item) || Object.keys(item).some(key => !['id', 'name'].includes(key))) throw new Error('Each subtopic is a name, and the id it had when it came from the list.');
+    const name = typeof item.name === 'string' ? item.name.replace(/\s+/g, ' ').trim() : '';
+    if (name.length < 2 || name.length > 80) throw new Error('Each subtopic is a name of 2 to 80 characters.');
+    if (item.id !== undefined && !(typeof item.id === 'string' && /^st-[0-9a-f]{8}$/.test(item.id))) throw new Error('That subtopic is not one from the list.');
+    if (seen.has(name.toLowerCase())) throw new Error(`"${name}" is listed twice.`);
+    seen.add(name.toLowerCase());
+    return { ...(item.id ? { id: item.id } : {}), name };
+  });
+  return { brand, items };
+}
+
+// A cell of the brand's 6 by 5 plan the person clicked to start a post: { requestId, brand, subtopic, format, workspaceId? }. subtopic is the subtopic's id
+// and format a format library id (pipeline/library/formats.json). The brand has to be ready for jobs, and both have to be the brand's own (planCell). Applying it
+// creates an organic post job with those picks, the way a new job from the form is created, and wakes the Director to carry on with intake.
+const PLAN_CELL_FIELDS = new Set(['requestId', 'brand', 'subtopic', 'format', 'workspaceId']);
+function checkPlanCellStart(root, args) {
+  if (!plainObject(args) || Object.keys(args).some(key => !PLAN_CELL_FIELDS.has(key))) throw new Error('Starting a post from the plan names only the brand, the subtopic and the format.');
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+  const brand = typeof args.brand === 'string' ? args.brand.trim() : '';
+  const found = runtime.listBrands({ root }).find(item => item.slug === brand);
+  if (!found) throw new Error('That brand could not be found.');
+  if (!found.readyForJobs) {
+    throw new Error(found.onboardingStatus !== 'complete'
+      ? `Complete brand onboarding before starting a job for ${found.name}.`
+      : `Review the logo, colours and fonts for ${found.name} on the board and click Save and continue before starting a job.`);
+  }
+  if (typeof args.subtopic !== 'string' || !args.subtopic.trim() || typeof args.format !== 'string' || !args.format.trim()) throw new Error('Say which subtopic and which format.');
+  return { brand, cell: planCell({ root, brand, subtopic: args.subtopic.trim(), format: args.format.trim() }) };
+}
+
+// What a post started from a plan cell says in its own words: the idea (else the subtopic and the format), then the subtopic, the format, the angle and the hook idea.
+function planCellBrief(cell) {
+  const lines = [cell.idea || `A post about ${cell.subtopic.name} as a ${cell.format.name}.`];
+  lines.push(`Subtopic: ${cell.subtopic.name}. Format: ${cell.format.name}.`);
+  if (cell.angle) lines.push(`Angle: ${cell.angle}`);
+  if (cell.hook) lines.push(`Opening idea: ${cell.hook}`);
+  return lines.join('\n').slice(0, BRIEF_LIMIT);
+}
+
 // A folder of the brand's videos, pictures and fonts the person typed on the onboarding page: { requestId, brand, folder, rights, label?, workspaceId? }.
 // The folder is a full path on the person's computer and rights is their own answer (ours, client_ask or never; never defaulted). Saved
 // as it is typed; when it is applied the folder is looked at, and a folder that is not there, is too broad, or is already added with other
@@ -2042,6 +2101,95 @@ function checkFolderAdd(root, args, { live = true } = {}) {
   if (typeof args.folder !== 'string' || !args.folder.trim() || args.folder.length > 1000) throw new Error('Say which folder, with its full path on this computer.');
   if (args.label !== undefined && (typeof args.label !== 'string' || args.label.length > 200)) throw new Error('Keep the folder name short.');
   return checkFolderRequest({ root, brand: args.brand.trim(), folder: args.folder, rights: args.rights, label: args.label ?? null, live });
+}
+
+// The same request without the path: the person presses "Choose a folder..." on the onboarding page, and the folder is chosen in the operating
+// system's own dialog on their computer (pipeline_folder_pick), because the board is a browser page and cannot read a local path.
+// { requestId, brand, rights, label?, workspaceId? }: the rights are the person's own answer, as for brand_folder_add. Landing checks only this
+// shape; the chosen folder is checked exactly like a typed one when the request is applied.
+const FOLDER_PICK_FIELDS = new Set(['requestId', 'brand', 'rights', 'label', 'workspaceId']);
+function checkFolderPick(root, args) {
+  if (!plainObject(args) || Object.keys(args).some(key => !FOLDER_PICK_FIELDS.has(key))) throw new Error('A folder pick names only the brand, whose footage it is and an optional name.');
+  if (typeof args.brand !== 'string' || !runtime.listBrands({ root }).some(item => item.slug === args.brand.trim())) throw new Error('That brand could not be found.');
+  if (args.label !== undefined && (typeof args.label !== 'string' || args.label.length > 200)) throw new Error('Keep the folder name short.');
+  return checkFolderRequest({ root, brand: args.brand.trim(), folder: root, rights: args.rights, label: args.label ?? null, live: false });
+}
+
+// What a landed pick comes to once the person has chosen: the pick's own fields plus the folder the dialog gave back, which the pick tool
+// keeps on the request record (picked) and which never comes from the board.
+function pickedAddArgs(record) {
+  const folder = record.picked?.folder;
+  if (typeof folder !== 'string' || !folder) throw new UserFacingError('No folder has been chosen for this request yet.', { code: 'folder_not_chosen', fix: "Call pipeline_folder_pick with this request ID: it opens the folder dialog on the person's computer and applies the request once they choose." });
+  return { ...record.args, folder };
+}
+
+const picksOpen = new Map();
+const PICK_UNAVAILABLE = "A folder picker could not be opened on this computer. Paste the folder's path instead.";
+const PICK_DECLINES = Object.freeze({
+  cancelled: 'No folder was chosen. Nothing was added.',
+  timeout: 'The folder picker was open for too long, so it was closed. Nothing was added.',
+});
+
+/**
+ * Open the operating system's folder dialog for a landed brand_folder_pick request, then import the chosen folder exactly as brand_folder_add
+ * does (the same checks, the person's rights, the same receipt). One window at a time opens the dialog, and a second call for the same request
+ * while it is open waits for the same answer. A dialog the person cancels, leaves open past the time limit or that cannot be shown on this
+ * computer, and a folder the checks refuse, decline the request with a plain line the board shows; nothing is added. Returns
+ * { requestId, status: applied | cancelled | timeout | unavailable | refused | stopped | handledElsewhere, message, folder?, name?, folderId?, artifactReceipt? }.
+ * `pick` is the dialog (a test passes its own).
+ */
+export function pickBoardFolder(args) {
+  const key = `${rootOf(args.root)}|${args.requestId}`;
+  const open = picksOpen.get(key);
+  if (open) return open;
+  const work = pickBoardFolderNow(args).finally(() => picksOpen.delete(key));
+  picksOpen.set(key, work);
+  return work;
+}
+
+async function pickBoardFolderNow({ root, requestId, confirmedBy, pick = pickFolder, timeoutMs = FOLDER_PICK_TIMEOUT_MS, signal }) {
+  root = rootOf(root);
+  if (typeof confirmedBy !== 'string' || !confirmedBy.trim()) throw new Error('Confirm the requester before opening the folder picker for this request.');
+  const file = requestFile(root, requestId);
+  if (!existsSync(file)) throw new UserFacingError('That request could not be found.', { code: 'invalid_input', fix: 'Use the request ID of a landed brand_folder_pick request.' });
+  const record = read(file);
+  if (record.operation !== 'brand_folder_pick') throw new UserFacingError('This request is not a folder pick.', { code: 'invalid_input', fix: 'Use pipeline_board_request_apply for other requests.' });
+  const answer = (status, extra = {}) => ({ requestId, status, ...extra });
+  if (record.status === 'applied') return answer('applied', { message: record.result?.message ?? 'This folder was already added.', folderId: record.result?.folderId ?? null, name: record.result?.name ?? null, artifactReceipt: record.artifactReceipt });
+  if (record.status === 'declined') return answer(record.reason === PICK_DECLINES.timeout ? 'timeout' : 'cancelled', { message: record.reason || PICK_DECLINES.cancelled, artifactReceipt: record.artifactReceipt });
+  if (record.status !== 'requested' || existsSync(`${file}.claim`)) throw new Error('This request cannot open the folder picker now. Reconcile it first.');
+  checkFolderPick(root, record.args);
+  const me = windowSessionId(), claimFile = sessionClaimFile(root, requestId);
+  const taken = takeClaim(claimFile, me, { ttlMs: REQUEST_CLAIM_TTL_MS });
+  if (!taken.claimed) return answer('handledElsewhere', { handledElsewhere: true, heldBy: taken.owner?.sessionId ?? null, message: 'Another window is already handling this request.' });
+  const decline = (status, reason) => {
+    const declined = declineBoardRequestNow({ root, requestId, confirmedBy, reason });
+    return answer(status, { message: reason, artifactReceipt: declined.artifactReceipt });
+  };
+  try {
+    let folder = typeof record.picked?.folder === 'string' && record.picked.folder ? record.picked.folder : null;
+    if (!folder) {
+      let outcome;
+      try { outcome = await pick({ timeoutMs, signal }); } catch { outcome = { status: 'unavailable', reason: PICK_UNAVAILABLE }; }
+      // The call itself was stopped (not the person's doing): leave the request waiting for the next try.
+      if (signal?.aborted) { releaseClaim(claimFile, me); return answer('stopped', { message: 'The folder picker was stopped. The request is still waiting.' }); }
+      if (outcome?.status === 'timeout') return decline('timeout', PICK_DECLINES.timeout);
+      if (outcome?.status === 'unavailable') return decline('unavailable', String(outcome.reason || PICK_UNAVAILABLE).slice(0, 300));
+      if (outcome?.status !== 'chosen' || typeof outcome.folder !== 'string' || !outcome.folder) return decline('cancelled', PICK_DECLINES.cancelled);
+      folder = outcome.folder;
+      try { checkFolderAdd(root, { ...record.args, folder }, { live: true }); }
+      catch (error) { return decline('refused', `${String(error.message || 'That folder cannot be added.').replace(/[.!?]?\s*$/, '.')} Nothing was added.`); }
+      writeJsonAtomic(file, { ...record, picked: { folder, at: new Date().toISOString() } });
+    }
+    const applied = applyBoardRequestNow({ root, requestId, confirmedBy });
+    if (applied.status !== 'applied') return answer('handledElsewhere', { message: applied.message || 'This request is already being handled.' });
+    const result = applied.result || {};
+    return answer('applied', { brand: result.brand, folder, name: result.name, folderId: result.folderId, created: result.created, message: result.message, artifactReceipt: applied.artifactReceipt });
+  } catch (error) {
+    // Nothing was claimed or changed (a check refused before the claim): hand the request back to whichever window tries next.
+    if (!existsSync(`${file}.claim`)) releaseClaim(claimFile, me);
+    throw error;
+  }
 }
 
 /**
@@ -2693,13 +2841,29 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const done = removeBankItem({ root, brand, bank, id: args.id, missingOk: true });
     return { brand, id: args.id, removed: done.removed, message: done.removed ? 'Removed from your brand library.' : 'That item was already gone from your brand library.' };
   }
-  if(operation==='brand_folder_add') {
+  if(operation==='brand_folder_add' || operation==='brand_folder_pick') {
     // The onboarding page's Add a folder: the folder joins the brand's footage and is read in the background (local and free; the
     // originals are not copied or changed). Fonts found go into a kit that has none. The person's rights answer is kept as given.
     const { brand, path, rights, label } = checkFolderAdd(root,args,{ live: true });
     const { folder, created } = importAndDigest({ root, brand, folder: path, rights, label });
     const name = folder.label || basename(path) || 'the folder';
     return { brand, folderId: folder.id, name, rights, created, message: created ? `Reading ${name} now. It is free, and your files are not copied or changed.` : `${name} was already added. Reading it again for anything new.` };
+  }
+  if(operation==='subtopics_confirm') {
+    // The person's answer to "Do these 6 subtopics look right?": the six as they stand are the brand's subtopics from now on. A plan made for other subtopics is marked stale.
+    const { brand, items } = checkSubtopicsConfirm(root,args);
+    const done = confirmSubtopics({ root, brand, items });
+    return { brand, count: done.items.length, planStale: done.planStale, message: done.planStale ? 'Your 6 subtopics are saved. The plan needs ideas for the ones that changed.' : 'Your 6 subtopics are saved. Every post takes its topic from them.' };
+  }
+  if(operation==='plan_cell_start') {
+    // A cell of the 6 by 5 plan: a post job with its subtopic and format already picked, so the work starts from the plan instead of a blank page.
+    const { brand, cell } = checkPlanCellStart(root,args);
+    const title = (cell.idea || `${cell.subtopic.name}: ${cell.format.name}`).replace(/\s+/g,' ').trim().slice(0,TITLE_LIMIT);
+    const intelligence = { source: 'plan_cell', subtopic: cell.subtopic, format: cell.format, ...(cell.idea ? { idea: cell.idea } : {}), ...(cell.angle ? { angle: cell.angle } : {}), ...(cell.hook ? { hook: cell.hook } : {}), ...(cell.examples.length ? { examples: cell.examples } : {}) };
+    createJobFields({ requestId: args.requestId, brand, title, brief: planCellBrief(cell), job: { kind: 'organic_post' } }, root);
+    const result = runtime.createJob({ root, brand, requestId: args.requestId, title, brief: planCellBrief(cell), job: { kind: 'organic_post', topic: title, intelligence }, ownerUserId: null, ownerEmail: null });
+    saveBoardRequest({ root, operation: 'continue_job', args: { requestId: `followup-${digest(args.requestId).slice(0,40)}`, brand: result.brand || brand, jobId: result.jobId }, source: 'local' });
+    return { jobId: result.jobId, brand: result.brand || brand, subtopic: cell.subtopic.name, format: cell.format.name, message: `Post started from your plan: ${cell.subtopic.name}, ${cell.format.name}. Your Claude session can now continue intake.` };
   }
   if(operation==='retry_step') {
     const { job, stuck } = checkRetryStep(root,args);
@@ -2758,7 +2922,11 @@ function safeAppliedResult(operation, result) {
   if (operation === 'agent_message') return result.messageId ? { jobId: result.jobId, agent: result.agent, messageId: result.messageId } : null;
   if (operation === 'retry_step') return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'bank_remove') return result.id ? { brand: result.brand, id: result.id } : null;
+  if (operation === 'subtopics_confirm') return result.brand ? { brand: result.brand, count: result.count } : null;
+  if (operation === 'plan_cell_start') return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'brand_folder_add') return result.folderId ? { brand: result.brand, folderId: result.folderId } : null;
+  // A picked folder has no typed name for the board to show, so its receipt names it (the folder's last part or the person's label, never a path).
+  if (operation === 'brand_folder_pick') return result.folderId ? { brand: result.brand, folderId: result.folderId, ...(typeof result.name === 'string' && result.name ? { name: result.name.slice(0, 120) } : {}) } : null;
   if (HANDOFF_OPERATIONS.includes(operation)) return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
@@ -2777,7 +2945,8 @@ function artifactReceipt(record, { status, appliedAt, declinedAt, result, reason
     const safeResult = safeAppliedResult(record.operation, result);
     if (safeResult) receipt.result = safeResult;
   } else if (status === 'declined') {
-    receipt.message = declineMessage(reason);
+    // A folder the person did not choose is not a refusal from chat: the board shows the line as it is.
+    receipt.message = record.operation === 'brand_folder_pick' && reason ? reason : declineMessage(reason);
     // Declined because the same thing was already decided: the board settles the card ("Already handled") instead of arming the buttons again.
     if (handled === true) receipt.handled = true;
   } else {
@@ -3335,7 +3504,10 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='agent_message') checkAgentMessage(root,record.args);
   if(record.operation==='retry_step') checkRetryStep(root,record.args);
   if(record.operation==='bank_remove') checkBankRemove(root,record.args);
+  if(record.operation==='subtopics_confirm') checkSubtopicsConfirm(root,record.args);
+  if(record.operation==='plan_cell_start') checkPlanCellStart(root,record.args);
   if(record.operation==='brand_folder_add') checkFolderAdd(root,record.args,{ live: true });
+  if(record.operation==='brand_folder_pick') checkFolderAdd(root,pickedAddArgs(record),{ live: true });
   if(record.operation==='remove_reference') validateRemoveReference(root,record.args);
   if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);
@@ -3347,7 +3519,7 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
     ? continueJobResult(runtime.readJobSnapshot({root,brand:record.args.brand,jobId:record.args.jobId}),record.args)
     : record.operation==='answer_question'
       ? answeredQuestion(root,record)
-      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'||record.operation==='create_job'?{...record.args,requestedBy:record.by}:record.args,source:'local'}); }
+      : boardOperation({root,operation:record.operation,args:record.operation==='add_reference'||record.operation==='create_job'?{...record.args,requestedBy:record.by}:record.operation==='brand_folder_pick'?pickedAddArgs(record):record.args,source:'local'}); }
   catch(error) {
     const next = {
       ...record,

@@ -35,6 +35,10 @@
  *   each measure (the likes-only rows come after the others at the same standing) and prints "N likes" where it prints "N views".
  *   A job's score is the average of its posts' scores (grown-up ones when it has any). An item's score (an opening line, a style, a
  *   call to action, a format, an angle) is the average of the scores of the jobs that used it, and `uses` is how many jobs that is.
+ * The dimensions: a filed job is grouped by what it used, and each group is scored and labelled the same way: the concept's source, ad style, call to
+ * action, angle, voice and music, and the brand intelligence axes (pipeline/library/formats.json): format, editing style (editing), visual hook
+ * (visualHook) and subtopic. A job filed with an older Visual format container id (F-TALKING-HEAD) counts toward the editing style and visual hook
+ * that id stands for (legacyFormats in the library).
  * "Early": a post under 48 hours old, with fewer than 100 views (an ad: under 1000 impressions; a likes-only post: under 10 likes), or on a platform where the brand has
  * fewer than 3 grown-up posts to compare with. An early post is scored when there is a baseline, but it never counts toward one, and an
  * item that rests only on early posts is labelled early.
@@ -54,6 +58,9 @@ import { InvalidInputError } from '../lib/errors.mjs';
 import { appendLines, readLines } from '../lib/jsonl.mjs';
 import * as facts from './facts.mjs';
 import * as runtime from './runtime.mjs';
+import { mapLegacyFormat } from './format-library.mjs';
+// brand-intelligence.mjs imports this file too: its use below is inside a function, never at load time.
+import { refreshFormatsRankQuietly } from './brand-intelligence.mjs';
 // brand-library.mjs imports this file too: every use below is inside a function, never at load time.
 import { addToBank, brandLibraryDir, fileJobQuietly, readBank, readFiledJobs, sameText } from './brand-library.mjs';
 
@@ -389,13 +396,17 @@ function statOf(summary, cutoffs) {
 const ID_IN_TEXT = /\b([A-Z]{1,4}(?:-[A-Z0-9]+)+)\b/;
 const idOf = value => ID_IN_TEXT.exec(String(value ?? ''))?.[1] ?? null;
 const lineOf = value => String(value ?? '').replace(/^\s*[A-Z]{1,4}(?:-[A-Z0-9]+)+\s*[-:]?\s*/, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-const TRAIT_KINDS = Object.freeze(['angle', 'style', 'cta', 'format']);
+const TRAIT_KINDS = Object.freeze(['angle', 'style', 'cta', 'format', 'editing', 'visual_hook', 'subtopic']);
+/** The trait a bank kind is matched on, when its name differs. */
+const TRAIT_OF = Object.freeze({ visual_hook: 'visualHook' });
 
 function traitsOf(record) {
   const concept = plain(record?.concept) ? record.concept : {};
   const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
+  const legacy = mapLegacyFormat(idOf(concept.format));
   return {
     hook: text(concept.hook), source: text(concept.source), angle: text(concept.angle), style: text(concept.style), cta: text(concept.cta), format: text(concept.format),
+    editing: text(concept.editing) || legacy?.editing || null, visualHook: text(concept.visualHook) || legacy?.visualHook || null, subtopic: text(concept.subtopic),
     music: text(record?.music?.id) || text(record?.music?.title), voice: text(record?.voice?.id),
     drafts: Array.isArray(record?.captions) ? record.captions.length : 0,
   };
@@ -411,7 +422,7 @@ function hookOf(unit, traits) {
 function matchesItem(item, job, unit) {
   if (item.kind === 'hook') { const line = hookOf(unit, job.traits); return Boolean(line) && sameText(item.text, line); }
   if (!TRAIT_KINDS.includes(item.kind)) return false;
-  const value = job.traits[item.kind];
+  const value = job.traits[TRAIT_OF[item.kind] ?? item.kind];
   if (!value) return false;
   if (sameText(item.text, value) || sameText(item.text, lineOf(value))) return true;
   const mine = idOf(item.text);
@@ -424,6 +435,8 @@ function dimensionKeys(traits) {
   return {
     source, style: traits.style && (idOf(traits.style) || clip(traits.style, 60)), cta: traits.cta && (idOf(traits.cta) || clip(traits.cta, 60)),
     format: traits.format && (idOf(traits.format) || clip(traits.format, 60)), angle: traits.angle && (idOf(traits.angle) || clip(traits.angle, 60)),
+    editing: traits.editing && (idOf(traits.editing) || clip(traits.editing, 60)), visualHook: traits.visualHook && (idOf(traits.visualHook) || clip(traits.visualHook, 60)),
+    subtopic: traits.subtopic && clip(traits.subtopic, 60),
     voice: traits.voice, music: traits.music,
   };
 }
@@ -593,6 +606,8 @@ export function recordResults(options = {}) {
   const saved = saveResults(options);
   if (!readFiledJobs({ root, brand }).some(record => record.jobId === saved.record.jobId)) fileJobQuietly({ root, brand, jobId: saved.record.jobId, now });
   const promotion = promoteWinners({ root, brand, now });
+  // The brand's formats ranking (library/intelligence/formats-rank.json) takes the new numbers in.
+  refreshFormatsRankQuietly({ root, brand, now });
   const job = rankBank({ root, brand }).jobs.find(item => item.jobId === saved.record.jobId) ?? null;
   return { ...saved, job, promoted: promotion.promoted };
 }
@@ -656,7 +671,9 @@ export function recordAdResults({ root, brand, jobId, record, now } = {}) {
   }
   if (!recorded) return { recorded: 0, promoted: [] };
   if (!readFiledJobs({ root, brand }).some(item => item.jobId === jobId)) fileJobQuietly({ root, brand, jobId, now });
-  return { recorded, promoted: promoteWinners({ root, brand, now }).promoted };
+  const promoted = promoteWinners({ root, brand, now }).promoted;
+  refreshFormatsRankQuietly({ root, brand, now });
+  return { recorded, promoted };
 }
 export const recordAdResultsQuietly = options => quietly('ad results', () => (runtime.isGeneralBrand(options?.brand) ? null : recordAdResults(options)));
 
@@ -685,6 +702,8 @@ export function recordObservations({ root, brand, observations, now } = {}) {
   if (!recorded) return { recorded: 0, promoted: [] };
   const jobs = new Set(observations.map(observation => observation.jobId));
   for (const jobId of jobs) if (!readFiledJobs({ root, brand }).some(item => item.jobId === jobId)) fileJobQuietly({ root, brand, jobId, now });
-  return { recorded, promoted: promoteWinners({ root, brand, now }).promoted };
+  const promoted = promoteWinners({ root, brand, now }).promoted;
+  refreshFormatsRankQuietly({ root, brand, now });
+  return { recorded, promoted };
 }
 export const recordObservationsQuietly = options => quietly('results', () => (runtime.isGeneralBrand(options?.brand) ? null : recordObservations(options)));

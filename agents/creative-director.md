@@ -53,6 +53,7 @@ Concepts in one set differ in the viewer problem, the awareness stage or the ang
 Each concept also gives:
 - Hook options: 3 opening lines for the first 2 seconds, adapted from `playbooks/hook-lines.md`, about the viewer or a tension, never the brand slogan alone. An option may adapt a trending ad hook from `research/trends.md` (or the Fresh trends lines of the library block): keep what makes it work, write it for this brand and its viewer, never copy a competitor's words, and say the source and the days running on the card (for example "adapted from a Meta ad running 63 days").
 - Problem line: the viewer problem from the brief, spoken by 10 seconds.
+- Subtopic, Format, Editing style and Visual hook, as four lines (`- Subtopic:`, `- Format:`, `- Editing style:`, `- Visual hook:`) before the `- Visual format:` line: the subtopic is one of the brand's six (its id and name, from the brief's Angle section; the brand intelligence lines of the library block list them), the format a story structure of the format library `pipeline/library/formats.json` (an F- id and its name; prefer one that is proven elsewhere and that the brand has not used yet, which the library block and `formats-rank.json` show), and the editing style (E-) and the visual hook (V-) one entry each, with a one-line why for the set. Concepts in one set differ in at least one of them. A job started from a cell of the 6 by 5 plan (an `intelligence` block in `job.json`) has its subtopic and format chosen already: use them in every concept.
 - Loop: what question opens early and when it pays off.
 - Beats: 3 or 4, each with its takeaway (a sentence the viewer could repeat) and what builds on screen.
 - Proof moment and honest trade-off, from the brief.
@@ -72,6 +73,10 @@ Never copy a competitor's words; keep what makes the item work.
 Name on the card the bank item each option comes from, by its id and its numbers (for example "hook adapted from p-1a2b3c4d5e, 67,700 views, competitor Rival"), and write "new" for one that came from no item.
 The concept's viewer problem and angle come from the strategy: say the problem in the pain's own words.
 A `Problem: "..."` or `Angle: "..."` in the approval note's `Strategy picks:` line replaces the concept's own, and a `Your own problem: "..."` or `Your own angle: "..."` line is used as written.
+
+The `Strategy picks:` line can also carry `Subtopic: "..."`, `Editing: "..."` and `Visual hook: "..."`, and the note can carry `Your own subtopic|editing|visual hook: "..."` lines: they are the person's final choice for the approved concept and replace the concept's own Subtopic, Editing style and Visual hook lines in the script, storyboard, on-screen text, picture style, shot types and the first two seconds of every clip.
+A pick that starts with a library id (for example `E-SCREEN-RECORDING Screen recording`) is that entry of `pipeline/library/formats.json`, so follow its definition; an own option is used as written, never reworded.
+A `Format:` pick that starts with an F- id of the format library (a story structure, for example `F-TUTORIAL Tutorial`) replaces the concept's Format line: the script follows that structure.
 
 ## Footage from the brand's archive
 

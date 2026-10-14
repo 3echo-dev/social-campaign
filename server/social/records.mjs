@@ -383,6 +383,8 @@ export function adRecord(input) {
     // TikTok Top Ads only: the Creative Center's industry (a name, not a label code) and campaign objective.
     ...(text(input.industry) ? { industry: text(input.industry) } : {}),
     ...(text(input.objective) ? { objective: text(input.objective) } : {}),
+    // The ad's cover picture when the library gave one (TikTok Top Ads): an image address, unlike media_urls, which may also hold the video file.
+    ...(text(input.thumbnail_url) ? { thumbnail_url: text(input.thumbnail_url) } : {}),
     ...provenance({ source_type: 'ad_library', ...input }, input.library_url ?? input.url),
   };
 }

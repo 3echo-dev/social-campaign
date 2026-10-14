@@ -47,6 +47,7 @@ user-invocable: false
 | Awareness stage | `playbooks/awareness-stages.md` stage, or `unclear` |
 | Angle id | `playbooks/angles.md` id (`A-*`), or `A-OTHER` |
 | Visual format | `playbooks/visual-formats.md` id (`F-*`) |
+| Library labels | `pipeline/library/formats.json`: format (`F-*`), editing style (`E-*`), visual hook (`V-*`), series (`S-*`) when it is one, and the subtopic in a few words; an id, or `custom: <words>` when nothing fits |
 | Hook family | `playbooks/hooks.md` family (`H-*`) and mechanism |
 | Attention mechanic | `playbooks/attention-mechanics.md` id (`M-*`), or `M-NONE` |
 

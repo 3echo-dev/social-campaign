@@ -12,7 +12,8 @@
  *     30-day rule applies and a newer job's file of the same topic takes over;
  *   - saves the top posts the run found on the brand's own accounts and on each competitor's as proven bank items
  *     (source brand or competitor, with the competitor's name and the post's link, views and date; an Instagram post, which
- *     shows no views to a signed-out reader, carries its likes instead), the same call
+ *     shows no views to a signed-out reader, carries its likes instead; a post that came with a `thumbnail` keeps it in its
+ *     evidence), the same call
  *     brand_bank_save makes, so saving the same run twice adds nothing.
  *   - for the few top videos the run took apart (pipeline_video_teardown, with media_transcribe for the words), a post also
  *     carries a `breakdown` of what the video shows: the spoken opening line, the on-screen text hook, its format, shot types,
@@ -36,7 +37,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { addToBank, brandLibraryDir, countText } from './brand-library.mjs';
+import { addToBank, brandLibraryDir, countText, thumbnailOf } from './brand-library.mjs';
+import { cleanLabels, labelName } from './format-library.mjs';
 import * as runtime from './runtime.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,17 +46,25 @@ const require = createRequire(import.meta.url);
 const durable = require(join(HERE, '..', '..', 'pipeline', 'scripts', 'lib-durable.js'));
 const evidence = require(join(HERE, '..', '..', 'pipeline', 'scripts', 'lib-onboarding-evidence.js'));
 
-export const TOP_POST_PLATFORMS = Object.freeze(['instagram', 'tiktok', 'facebook']);
-export const MAX_TOP_POSTS = 12;
-/** The videos a run takes apart: the brand's own best and the competitors' best, 5 in all (each teardown is one fetch of the run's budget). */
-export const MAX_OWN_BREAKDOWNS = 3;
-export const MAX_COMPETITOR_BREAKDOWNS = 2;
-export const MAX_BREAKDOWNS = MAX_OWN_BREAKDOWNS + MAX_COMPETITOR_BREAKDOWNS;
+export const TOP_POST_PLATFORMS = Object.freeze(['instagram', 'tiktok', 'facebook', 'youtube']);
+/** Whose post it is: one of the brand's own, one of a competitor's, or one that is viral in the niche now (what the Trend Scout found). */
+export const POST_SOURCES = Object.freeze(['brand', 'competitor', 'viral']);
+export const MAX_TOP_POSTS = 24;
+/**
+ * The videos an onboarding run takes apart (it is always the deep pass): the brand's 5 best, the top 2 of each of its 3 competitors and
+ * the 3 most viral in the niche now, 14 in all. Each teardown is one fetch of the run's budget.
+ */
+export const MAX_OWN_BREAKDOWNS = 5;
+export const MAX_COMPETITOR_BREAKDOWNS = 6;
+export const MAX_VIRAL_BREAKDOWNS = 3;
+export const MAX_BREAKDOWNS = MAX_OWN_BREAKDOWNS + MAX_COMPETITOR_BREAKDOWNS + MAX_VIRAL_BREAKDOWNS;
 export const BREAKDOWN_SOUNDS = Object.freeze(['music', 'voiceover', 'music and voiceover', 'none']);
-const POST_FIELDS = Object.freeze(['source', 'competitor', 'platform', 'url', 'text', 'caption', 'views', 'likes', 'date', 'breakdown']);
-const BREAKDOWN_FIELDS = Object.freeze(['spokenHook', 'onScreenHook', 'format', 'style', 'shotTypes', 'cutsPer10s', 'presenter', 'sound', 'cta']);
-const OWN_PER_PLATFORM = 3;
+const POST_FIELDS = Object.freeze(['source', 'competitor', 'platform', 'url', 'text', 'caption', 'views', 'likes', 'date', 'thumbnail', 'outlierRatio', 'breakdown']);
+const BREAKDOWN_FIELDS = Object.freeze(['spokenHook', 'onScreenHook', 'format', 'style', 'shotTypes', 'cutsPer10s', 'presenter', 'sound', 'cta', 'labels', 'transcriptExcerpt']);
+const OWN_PER_PLATFORM = 5;
 const PER_COMPETITOR = 2;
+const VIRAL_POSTS = 5;
+const EXCERPT_MAX = 600;
 const POST_TEXT_MAX = 600;
 const DAY_MS = 86400000;
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -78,11 +88,14 @@ const sameWords = (a, b) => plain(a).toLowerCase().replace(/^["'\u201c\u2018]+|[
 
 /**
  * Check one post's `breakdown`: what the researcher saw and heard when it took the video apart with pipeline_video_teardown and
- * media_transcribe. { spokenHook?, onScreenHook?, format, style?, shotTypes?: [text], cutsPer10s?, presenter?: boolean, sound?, cta? }.
- * `format` is needed (what kind of video it is); the hooks are the words as they are said or shown, left out when there are none;
- * cutsPer10s is the teardown's cut count over its length, times ten. Returns the cleaned breakdown, or null when it has a problem.
+ * media_transcribe. { spokenHook?, onScreenHook?, format, style?, shotTypes?: [text], cutsPer10s?, presenter?: boolean, sound?, cta?,
+ * labels?, transcriptExcerpt? }. `format` is needed (what kind of video it is, in a few words) unless labels.format names it; the hooks are
+ * the words as they are said or shown, left out when there are none; cutsPer10s is the teardown's cut count over its length, times ten.
+ * `labels` is { format, editing, visualHook, series?, subtopic }, each a format library id (pipeline/library/formats.json) or { custom: "text" }
+ * when nothing fits (format-library.mjs); with `requireLabels` (an onboarding save) the four main ones are needed. `transcriptExcerpt` is a
+ * short excerpt of the transcript, the script as it was said. Returns the cleaned breakdown, or null when it has a problem.
  */
-function breakdownOf(raw, field, fail) {
+function breakdownOf(raw, field, fail, { requireLabels = false } = {}) {
   if (!isObject(raw)) { fail('breakdown', 'breakdown must be an object, or left out for a post that was not taken apart.'); return null; }
   let ok = true;
   const bad = (key, problem) => { ok = false; fail(`breakdown.${key}`, problem); };
@@ -96,11 +109,19 @@ function breakdownOf(raw, field, fail) {
     return words;
   };
   const out = {};
+  let labels = null;
+  if ((raw.labels !== undefined && raw.labels !== null) || requireLabels) {
+    const checked = cleanLabels(raw.labels, { required: requireLabels });
+    for (const item of checked.problems) bad(item.key ? `labels.${item.key}` : 'labels', item.problem);
+    if (Object.keys(checked.value).length) labels = checked.value;
+  }
   const spokenHook = text('spokenHook', 300);
   const onScreenHook = text('onScreenHook', 300);
-  const format = text('format', 120, true);
+  const named = text('format', 120, !(labels && labels.format));
+  const format = named || (labels && labels.format ? labelName(labels.format) : '');
   const style = text('style', 160);
   const cta = text('cta', 160);
+  const excerpt = text('transcriptExcerpt', EXCERPT_MAX);
   if (spokenHook) out.spokenHook = spokenHook;
   if (onScreenHook) out.onScreenHook = onScreenHook;
   if (format) out.format = format;
@@ -128,6 +149,8 @@ function breakdownOf(raw, field, fail) {
     else out.sound = sound;
   }
   if (cta) out.cta = cta;
+  if (excerpt) out.transcriptExcerpt = excerpt;
+  if (labels) out.labels = labels;
   return ok ? out : null;
 }
 
@@ -157,13 +180,15 @@ export function styleOf(breakdown) {
  * `text` is the post's opening words exactly as its caption has them. A post the run took apart (at most 3 of the brand's own and 2 of
  * its competitors') carries a `breakdown` (see breakdownOf); its `text` is then the spoken hook when it has one, else the on-screen
  * hook, and the caption becomes `caption`, so whichever way the draft gives them the checked post has the hook as its text and the
- * caption as its note. A post without a caption, views or date is left out of the
+ * caption as its note. A post may carry the `thumbnail` the read gave it (the post's `thumbnail_url`): an https address with no user
+ * name or password, at most 600 characters (thumbnailOf in brand-library.mjs). Any other value is dropped without a word, never a
+ * problem, and a checked post has the `thumbnail` key only when one stands. A post without a caption, views or date is left out of the
  * draft by the researcher, never filled in or rounded. Instagram shows no view counts to a signed-out reader, so an Instagram post
  * may carry `likes` instead of `views`; a post that has both keeps both, with views as the headline. Every other platform needs views.
  * A checked post always has both keys: `views` and `likes` are a whole number or null.
  * @returns {{ value: object[], problems: {field: string, problem: string}[] }}
  */
-export function topPostsProblems(input, { competitors = [], now = new Date() } = {}) {
+export function topPostsProblems(input, { competitors = [], now = new Date(), requireLabels = false } = {}) {
   const problems = [];
   if (input === undefined || input === null) return { value: [], problems };
   if (!Array.isArray(input)) return { value: [], problems: [{ field: 'topPosts', problem: 'topPosts must be a list.' }] };
@@ -175,15 +200,17 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
   let breakdowns = 0;
   let ownBreakdowns = 0;
   let competitorBreakdowns = 0;
+  let viralBreakdowns = 0;
+  let viralPosts = 0;
   input.slice(0, MAX_TOP_POSTS).forEach((item, index) => {
     const field = `topPosts[${index}]`;
     const fail = (key, problem) => problems.push({ field: `${field}.${key}`, problem });
     if (!isObject(item)) { problems.push({ field, problem: 'Each post must be an object.' }); return; }
     for (const key of Object.keys(item)) {
-      if (!POST_FIELDS.includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views (likes instead of views for Instagram), date, and caption and breakdown for a video that was taken apart.`);
+      if (!POST_FIELDS.includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views (likes instead of views for Instagram), date, thumbnail when the read gave one, outlierRatio when it gave that, and caption and breakdown for a video that was taken apart.`);
     }
     const source = item.source;
-    if (source !== 'brand' && source !== 'competitor') fail('source', 'source must be brand (one of the brand\'s own posts) or competitor.');
+    if (!POST_SOURCES.includes(source)) fail('source', 'source must be brand (one of the brand\'s own posts), competitor, or viral (a post that is viral in the niche now).');
     const platform = typeof item.platform === 'string' ? item.platform.trim().toLowerCase() : '';
     if (!TOP_POST_PLATFORMS.includes(platform)) fail('platform', `platform must be one of ${TOP_POST_PLATFORMS.join(', ')}.`);
     const url = runtime.webLink(item.url);
@@ -200,7 +227,7 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
     }
     let breakdown = null;
     if (item.breakdown !== undefined && item.breakdown !== null) {
-      breakdown = breakdownOf(item.breakdown, field, fail);
+      breakdown = breakdownOf(item.breakdown, field, fail, { requireLabels });
       if (breakdown) {
         const hook = breakdown.spokenHook || breakdown.onScreenHook || '';
         // The hook that was said (else shown) is the item's text; the caption it replaces is kept as a note.
@@ -209,7 +236,14 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
         breakdowns += 1;
         if (item.source === 'brand') ownBreakdowns += 1;
         if (item.source === 'competitor') competitorBreakdowns += 1;
+        if (item.source === 'viral') viralBreakdowns += 1;
       }
+    }
+    // How many times its account's usual a post got: optional, a plain number from the outlier read.
+    let outlierRatio = null;
+    if (item.outlierRatio !== undefined && item.outlierRatio !== null) {
+      if (typeof item.outlierRatio !== 'number' || !Number.isFinite(item.outlierRatio) || item.outlierRatio < 0 || item.outlierRatio > 100000) fail('outlierRatio', 'outlierRatio must be a number: how many times the account\'s usual views (likes for Instagram) the post got, as the outlier read shows it. Leave it out when the read did not give it.');
+      else outlierRatio = Math.round(item.outlierRatio * 10) / 10;
     }
     const count = (raw) => (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.round(raw) : null);
     const views = count(item.views);
@@ -222,8 +256,13 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
         : 'views must be the number shown on the post. A post with no readable views is left out. Only an Instagram post may carry likes instead of views, because Instagram shows no views to a signed-out reader.');
     }
     const date = typeof item.date === 'string' ? item.date.trim() : '';
-    if (!PLAIN_DATE.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) fail('date', 'date must be the day the post was published, as YYYY-MM-DD. A post with no readable date is left out.');
+    // A viral find from an Instagram topic or a YouTube search shows no date: it is kept undated, never given one.
+    const undated = source === 'viral' && !date;
+    if (undated) { /* no date to check */ }
+    else if (!PLAIN_DATE.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) fail('date', 'date must be the day the post was published, as YYYY-MM-DD. A post with no readable date is left out.');
     else if (Date.parse(`${date}T00:00:00Z`) > now.getTime() + DAY_MS) fail('date', 'date is in the future.');
+    // A thumbnail that does not pass the check is dropped, never a problem: a missing picture must not fail a research save.
+    const thumbnail = thumbnailOf(item.thumbnail);
     let competitor = null;
     if (source === 'competitor') {
       competitor = known.get(String(item.competitor ?? '').trim().toLowerCase()) ?? null;
@@ -235,27 +274,37 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
       own[platform] = (own[platform] ?? 0) + 1;
       if (own[platform] === OWN_PER_PLATFORM + 1) problems.push({ field: 'topPosts', problem: `Keep at most ${OWN_PER_PLATFORM} posts per own account (${platform} has more).` });
     }
+    if (source === 'viral') {
+      viralPosts += 1;
+      if (viralPosts === VIRAL_POSTS + 1) problems.push({ field: 'topPosts', problem: `Keep at most ${VIRAL_POSTS} viral posts (the Trend Scout's best).` });
+    }
     if (source === 'competitor' && competitor) {
       theirs[competitor] = (theirs[competitor] ?? 0) + 1;
       if (theirs[competitor] === PER_COMPETITOR + 1) problems.push({ field: 'topPosts', problem: `Keep at most ${PER_COMPETITOR} posts per competitor (${competitor} has more).` });
     }
-    value.push({ source, competitor, platform, url, text, ...(caption && caption !== text ? { caption } : {}), views, likes, date, ...(breakdown ? { breakdown } : {}) });
+    value.push({ source, competitor, platform, url, text, ...(caption && caption !== text ? { caption } : {}), views, likes, date: undated ? null : date, ...(thumbnail ? { thumbnail } : {}), ...(outlierRatio !== null ? { outlierRatio } : {}), ...(breakdown ? { breakdown } : {}) });
   });
   if (ownBreakdowns > MAX_OWN_BREAKDOWNS) problems.push({ field: 'topPosts', problem: `Take apart at most ${MAX_OWN_BREAKDOWNS} of the brand's own videos (${ownBreakdowns} have a breakdown).` });
   if (competitorBreakdowns > MAX_COMPETITOR_BREAKDOWNS) problems.push({ field: 'topPosts', problem: `Take apart at most ${MAX_COMPETITOR_BREAKDOWNS} competitor videos in all (${competitorBreakdowns} have a breakdown).` });
+  if (viralBreakdowns > MAX_VIRAL_BREAKDOWNS) problems.push({ field: 'topPosts', problem: `Take apart at most ${MAX_VIRAL_BREAKDOWNS} viral videos (${viralBreakdowns} have a breakdown).` });
   return { value, problems };
 }
 
-/** How many of the checked posts carry a breakdown, and how many of them are the brand's own. */
+/** How many of the checked posts carry a breakdown, and how many of them are the brand's own, a competitor's or viral in the niche. */
 export function breakdownCounts(posts) {
   const list = (Array.isArray(posts) ? posts : []).filter((post) => post && post.breakdown);
-  return { total: list.length, own: list.filter((post) => post.source === 'brand').length, competitor: list.filter((post) => post.source === 'competitor').length };
+  const viral = list.filter((post) => post.source === 'viral').length;
+  return { total: list.length, own: list.filter((post) => post.source === 'brand').length, competitor: list.filter((post) => post.source === 'competitor').length, ...(viral ? { viral } : {}) };
 }
 
-/** The evidence a post leaves in the proven bank: {url, likes, date} for a post with likes and no views (Instagram), {url, views, date} otherwise. */
+/**
+ * The evidence a post leaves in the proven bank: {url, likes, date} for a post with likes and no views (Instagram), {url, views, date}
+ * otherwise, plus its `thumbnail` when it has one.
+ */
 function evidenceOfPost(post) {
   const likesOnly = !Number.isFinite(post.views) && Number.isFinite(post.likes);
-  return likesOnly ? { url: post.url, likes: post.likes, date: post.date } : { url: post.url, views: post.views, date: post.date };
+  const picture = post.thumbnail ? { thumbnail: post.thumbnail } : {};
+  return likesOnly ? { url: post.url, likes: post.likes, date: post.date, ...picture } : { url: post.url, views: post.views, date: post.date, ...picture };
 }
 
 /**
@@ -287,6 +336,8 @@ export function fileTopPosts({ root, brand, posts, now }) {
   let skipped = 0;
   const breakdowns = { videos: 0, saved: 0, existing: 0 };
   for (const post of Array.isArray(posts) ? posts : []) {
+    // A viral post is not the brand's or a competitor's: it is filed with the intelligence (brand-intelligence.mjs) and as a trend, not as a proven line.
+    if (post.source === 'viral') continue;
     const common = { root, brand, bank: 'proven', evidence: evidenceOfPost(post), source: post.source, competitor: post.source === 'competitor' ? post.competitor : null, now };
     try {
       const out = addToBank({ ...common, kind: 'hook', text: post.text, note: post.caption ? `The post's caption: ${post.caption}` : null });
@@ -327,7 +378,13 @@ function post(item) {
   return [head, ...more].join('\n');
 }
 
-/** What a breakdown found, in one line: format, pacing, presenter, sound, call to action and the shots. */
+/** The labels of a video in words: "format Tutorial, editing Screen recording, visual hook Result first, subtopic Private AI". */
+function labelsWords(labels) {
+  const words = { format: 'format', editing: 'editing', visualHook: 'visual hook', series: 'series', subtopic: 'subtopic' };
+  return Object.entries(words).filter(([key]) => labels && labels[key]).map(([key, word]) => `${word} ${labelName(labels[key])}`).join(', ');
+}
+
+/** What a breakdown found, in one line: format, pacing, presenter, sound, call to action, the shots and the labels. */
 export function videoFacts(breakdown) {
   const parts = [
     breakdown.format,
@@ -337,6 +394,7 @@ export function videoFacts(breakdown) {
     Array.isArray(breakdown.shotTypes) && breakdown.shotTypes.length ? `shots: ${breakdown.shotTypes.join(', ')}` : null,
     breakdown.onScreenHook ? `on screen: "${clip(breakdown.onScreenHook, 120)}"` : null,
     breakdown.cta ? `call to action: "${clip(breakdown.cta, 120)}"` : null,
+    breakdown.labels ? `labels: ${labelsWords(breakdown.labels)}` : null,
   ].filter(Boolean);
   return parts.join('; ');
 }
@@ -383,6 +441,8 @@ export function researchMarkdown({ name, runId, date, record, profile, posts, ba
   if (ownRows.length) own.push('## What the pages show', '', ...ownRows.slice(0, 20).map(evidenceLine), '');
   const ownPosts = posts.filter((item) => item.source === 'brand');
   if (ownPosts.length) own.push('## The brand\'s best posts', '', ...ownPosts.map(post), '');
+  const viralPosts = posts.filter((item) => item.source === 'viral');
+  if (viralPosts.length) own.push('## Viral in the niche now', '', ...viralPosts.map(post), '');
   const ownSources = sources.filter((source) => !String(source.kind || '').startsWith('competitor'));
   if (ownSources.length) own.push('## Sources', '', ...ownSources.map((source) => sourceLine(source, base)), '');
   const ownGaps = gaps.filter((line) => !details.some((detail) => line.toLowerCase().includes(String(detail.name).toLowerCase())));

@@ -37,7 +37,7 @@ export const brandLibraryTools = [
     name: 'brand_library_get',
     description: [
       'Read one brand\'s library: what the brand already has, so a job starts from it instead of from nothing. Changes nothing.',
-      'Returns counts, industry (the person\'s industry pick, or null), yours (the person\'s own lines, to use word for word), proven (what worked, each with its evidence: link, views (or likes for Instagram, which shows a signed-out reader no views), date, and whether it came from the brand or a competitor),',
+      'Returns counts, industry (the person\'s industry pick, or null), yours (the person\'s own lines, to use word for word), proven (what worked, each with its evidence: link, views (or likes for Instagram, which shows a signed-out reader no views), date, a thumbnail picture address when the post had one, and whether it came from the brand or a competitor),',
       'research (the research files already done, newest per topic, each with its age in days and whether it is young enough to reuse: brand and competitor research under 30 days, trends under 7),',
       'recentJobs (the last jobs filed, with their concept, opening line, how many approved media files and, once posted, their results: score, label and views), and preferences (what the person chose lately and what they passed on).',
       'Once posts have results, yours and proven come best first, each item with score (1.0 is the brand\'s usual), uses (how many jobs it rests on) and label (winner, average, weak or early; null when there are no results). Prefer winners, say their numbers, and avoid weak ones unless the person asks.',
@@ -81,7 +81,7 @@ export const brandLibraryTools = [
     name: 'brand_bank_save',
     description: [
       'Add to, edit or remove an item in a brand\'s bank. Two banks: "yours" (the default) holds the person\'s own lines and picks, such as an opening line they wrote, their industry or a call to action they like;',
-      '"proven" holds what worked, and every proven item needs the https link of the post it comes from, with its views (or likes for Instagram) and date when known (evidence), and whether it came from the brand\'s own posts or a competitor\'s (source).',
+      '"proven" holds what worked, and every proven item needs the https link of the post it comes from, with its views (or likes for Instagram), date and thumbnail picture when known (evidence), and whether it came from the brand\'s own posts or a competitor\'s (source).',
       'An item learned from a file in the brand\'s own footage library (brand_footage_analysis_save feeds these by itself) names that file in evidence.file instead of a link.',
       'Save to "yours" only what the person said or chose, or when they ask you to; never invent their words. Saving the same words twice keeps one item.',
       'action add needs kind and text. action edit needs id and the new text (the old words are kept as "was"). action remove needs id; it is also how a board request to remove an item is carried out.',
@@ -115,6 +115,7 @@ export const brandLibraryTools = [
             likes: { type: 'number', description: 'How many likes it had. Only for an Instagram post, which shows no views to a signed-out reader; leave out when views are given.' },
             date: { ...string, description: 'When it was posted, as YYYY-MM-DD. posted_at is accepted too.' },
             posted_at: { ...string, description: 'Same as date.' },
+            thumbnail: { ...string, description: 'The https address of the thumbnail picture of the post, as a social read returned it in thumbnail_url, so the board can draw the post. Leave it out when the read gave none; an address that is not https, carries a user name or password, or is over 600 characters is dropped.' },
           },
           additionalProperties: false,
         },

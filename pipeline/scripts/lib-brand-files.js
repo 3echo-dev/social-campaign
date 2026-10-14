@@ -414,7 +414,7 @@ function videoRows(videos) {
   return videos.map(item => {
     const breakdown = item.breakdown || {};
     return [
-      item.source === 'competitor' ? cell(item.competitor, 'competitor') : 'the brand',
+      item.source === 'competitor' ? cell(item.competitor, 'competitor') : item.source === 'viral' ? 'viral in the niche' : 'the brand',
       cell(item.platform),
       cell(breakdown.format, 'unknown'),
       cell(breakdown.spokenHook, ''),
@@ -423,7 +423,7 @@ function videoRows(videos) {
       breakdown.presenter === true ? 'yes' : breakdown.presenter === false ? 'no' : 'unknown',
       cell(breakdown.sound, 'unknown'),
       cell(breakdown.cta, ''),
-      cell(`${item.url} (posted ${item.date})`),
+      cell(item.date ? `${item.url} (posted ${item.date})` : item.url),
     ];
   });
 }
