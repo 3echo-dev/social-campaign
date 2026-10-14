@@ -20,6 +20,7 @@ import * as runtime from './runtime.mjs';
 import { askQuestion, listQuestions, plainWordsProblem, withdrawQuestion } from './questions.mjs';
 import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mjs';
 import { MAX_BREAKDOWNS, breakdownCounts, fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
+import { banksProblems, existingPainTexts, fileBanks } from './brand-onboarding-banks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = join(HERE, '..', '..', 'pipeline');
@@ -172,6 +173,7 @@ function draftSkeleton(runId, blankFields, toFind) {
     research: { sources: [], evidenceMatrix: [], competitorDetails: [], findings: {}, gaps: [] },
     brandFiles: {},
     topPosts: [],
+    banks: { pains: [], desires: [], objections: [], angles: [], captions: [], ctas: [] },
     budget: { searches: 0, fetches: 0, stopReason: '' },
   };
 }
@@ -208,9 +210,10 @@ export function startBrandResearch({ root, brand }) {
     };
   }
 
-  // The same budget as the largest job research (a campaign): 12 searches, 16 fetches, 40 turns. One profile read and one outlier
-  // read for each declared account and each competitor handle would not fit in fewer.
-  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 12, totalFetches: 16, turns: 40 };
+  // 14 searches, 24 fetches, 60 turns: more than the largest job research (a campaign has 12, 16 and 40). One profile read and one outlier
+  // read for each declared account and each competitor handle, the 5 video teardowns (a fetch each) and the pain points workstream's
+  // reads (2 comment reads, 2 forum threads, 2 review pages, 1 ad search and 1 landing page) would not fit in fewer.
+  const limits = { ...researchBudgets.HARD_LIMITS, totalSearches: 14, totalFetches: 24, turns: 60 };
   const workspaceId = runtime.readWorkspace({ root }).workspaceId;
   takeBrowser(root, entry.slug);
   const wasStale = onboardingRun.list(brandDir).filter((item) => item.status === 'running' && onboardingRun.isStale(item));
@@ -356,7 +359,7 @@ const CONSTRAINT_TAG = /^\s*(?:[-*\u2022]\s*)?[\[(]?(?:confirmed|inferred)\b/i;
 const CONTENT_PILLARS_MIN = brandProfile.RESEARCH_PILLAR_MIN;
 const CONTENT_PILLARS_MAX = brandProfile.RESEARCH_PILLAR_MAX;
 const CONTENT_PILLAR_ITEM_MAX = brandProfile.CONTENT_PILLAR_ITEM_MAX;
-const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'brandFiles', 'topPosts', 'budget']);
+const DRAFT_KEYS = Object.freeze(['version', 'runId', 'fills', 'suggested', 'research', 'brandFiles', 'topPosts', 'banks', 'budget']);
 const RESEARCH_KEYS = Object.freeze(['scope', 'sources', 'evidenceMatrix', 'competitorDetails', 'findings', 'gaps', 'competitors']);
 const RESEARCH_LISTS = Object.freeze(['sources', 'evidenceMatrix', 'competitorDetails', 'gaps', 'competitors']);
 const FILL_BANNED_PATTERNS = Object.freeze([
@@ -638,6 +641,15 @@ function draftProblems(draft, ctx) {
   if (ctx.calls && ctx.calls.recorded && ctx.calls.byTool.pipeline_video_teardown && ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed > MAX_BREAKDOWNS) {
     problems.push({ field: 'topPosts', problem: `The run took ${ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed} videos apart. A run takes apart at most ${MAX_BREAKDOWNS}: 3 of the brand's own and 2 of its competitors'.` });
   }
+  // The brand intelligence banks (pains, desires, objections, angles, captions, CTAs): every quote is looked for in the saved capture of
+  // its source, and a caption or call to action is found in one of the top posts above or in an ad page's capture, so none reaches the bank unseen.
+  const bankSource = (url) => bySource.get(onboardingEvidence.normUrl(url)) || null;
+  const banksChecked = banksProblems(draft.banks, {
+    captureFor: (url) => (bankSource(url) ? bankSource(url).capture : null),
+    observedDay: (url) => (bankSource(url) && typeof bankSource(url).source.observedAt === 'string' ? bankSource(url).source.observedAt.slice(0, 10) : null),
+    posts: postsChecked.value, competitors: expected, painTexts: ctx.root ? existingPainTexts({ root: ctx.root, brand: ctx.slug }) : [], now,
+  });
+  problems.push(...banksChecked.problems);
   const shapeCount = problems.length;
   let needsAudience = false;
   if (ctx.audienceBlank && !filled(safeFills.audience) && !ctx.audienceUnavailable) {
@@ -646,7 +658,7 @@ function draftProblems(draft, ctx) {
   }
   return {
     problems, shapeCount, suggested, needsAudience, fills: safeFills, researchDraft: isObject(researchDraft) ? researchDraft : {},
-    bySource, expected, brandFiles: filesChecked.value, topPosts: postsChecked.value,
+    bySource, expected, brandFiles: filesChecked.value, topPosts: postsChecked.value, banks: banksChecked.value,
   };
 }
 
@@ -773,7 +785,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
   };
   const ownSocial = ['instagram', 'tiktok', 'facebook'].filter((name) => profile && profile.channels && profile.channels[name] && profile.channels[name].status === 'provided').length;
   const checked = draftProblems(draft, {
-    slug: entry.slug, market, place, audienceBlank, audienceUnavailable: audienceUnavailable === true,
+    root, slug: entry.slug, market, place, audienceBlank, audienceUnavailable: audienceUnavailable === true,
     rawDir: onboardingRun.rawDir(brandDir, runId), now: new Date(), calls, declared: run.declaredCompetitors, ownSocial,
   });
   const { fills, researchDraft, suggested } = checked;
@@ -906,6 +918,12 @@ function fileResults({ root, entry, brandDir, runId, savedResearch, checked }) {
     out.topPosts = fileTopPosts({ root, brand: entry.slug, posts: checked.topPosts, now });
   } catch (error) {
     warnings.push(`The top posts could not be saved to the brand library: ${error.message}`);
+  }
+  try {
+    const filed = fileBanks({ root, brand: entry.slug, banks: checked.banks, now });
+    if (filed.saved || filed.merged || filed.existing || filed.skipped) out.banks = filed;
+  } catch (error) {
+    warnings.push(`The pain points, angles, captions and calls to action could not be saved to the brand library: ${error.message}`);
   }
   if (warnings.length) out.warnings = warnings;
   return out;

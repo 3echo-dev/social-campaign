@@ -175,6 +175,22 @@ button.library-remove{flex:none;min-height:30px;padding:3px 10px;border-color:va
 .pill.result-weak{color:var(--hold);background:rgba(242,144,138,.07);border-color:var(--hold-dim)}
 .pill.result-early{color:var(--tape);background:rgba(245,200,75,.06);border-color:rgba(245,200,75,.45)}
 .library-job-results{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
+/* The banks of the library: one folded group per kind, with its count and its top item showing before it opens. */
+.library-banks{gap:6px}
+.library-bank{border:1px solid var(--line);border-radius:var(--radius)}
+/* The prefix keeps these ahead of the generic details.panel and .doc-panel summary rules, since the banks sit inside the library panel. */
+.brand-library .library-bank>summary{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:40px;padding:8px 12px;cursor:pointer;list-style:none;color:var(--dim);font-weight:400}
+.brand-library .library-bank>summary::-webkit-details-marker{display:none}
+.brand-library .library-bank>summary::after{content:"";flex:none;width:7px;height:7px;margin-left:auto;margin-right:3px;border-right:1.5px solid var(--dim);border-bottom:1.5px solid var(--dim);transform:rotate(45deg);transition:transform 150ms ease}
+.brand-library .library-bank[open]>summary::after{transform:rotate(-135deg)}
+.brand-library .library-bank>summary .count{margin-left:0}
+.brand-library .library-bank>summary:hover .library-bank-title{color:var(--tape)}
+.library-bank-title{flex:none;color:var(--paper);font-size:13px;font-weight:700}
+.library-bank-yours{flex:none;color:var(--faint);font-size:11px;font-weight:600}
+.library-bank-top{flex:1 1 0;min-width:0;overflow:hidden;color:var(--faint);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.library-bank[open]>summary .library-bank-top{display:none}
+.library-bank>.library-list,.library-bank>.library-more{margin:0 12px 12px}
+.library-quote{font-style:italic}
 @media(pointer:coarse){button.library-remove{min-height:40px}}
 .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .avatar{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(245,200,75,.14);color:var(--tape);font-size:13px;font-weight:800}
@@ -574,6 +590,7 @@ button.sb-cell-body:active{transform:none}
 .pick-chip-text{min-width:0;overflow-wrap:anywhere}
 .pick-tag{flex:none;padding:0 6px;border:1px solid var(--go-dim);border-radius:999px;color:var(--go);font-size:10px;font-weight:700;line-height:1.3}
 .pick-tag.is-winner{background:rgba(126,217,160,.08)}
+.pick-tag.is-count{color:var(--dim);border-color:var(--line2)}
 .pick-tag.is-weak{color:var(--hold);border-color:var(--hold-dim);background:rgba(242,144,138,.07)}
 .pick-tag.is-early{color:var(--tape);border-color:rgba(245,200,75,.45);background:rgba(245,200,75,.06)}
 .pick-add{min-height:28px;padding:3px 10px;border-style:dashed;border-radius:14px;color:var(--dim);font-size:12px}

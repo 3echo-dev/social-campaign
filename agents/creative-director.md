@@ -64,6 +64,15 @@ Lines the person wrote on the board show in the note as `Your own opening line: 
 The note's `Strategy picks: Industry: "..." · Funnel stage: "..." · Ad style: "..." · Format: "..." · CTA: "..."` line is the person's final choice for the approved concept. It replaces the concept's own Awareness stage, Ad style, Visual format and CTA (and the brief's industry) in the script, storyboard, voice-over, on-screen text, picture style and media prompts; a value left out of the line stays as the concept has it. A pick that starts with a playbook id (for example `AS-PROBLEM-SOLUTION Problem solution`) is that playbook row, so follow its guard and its first-6-seconds rule, and "Problem aware" is the stage `problem_aware`.
 A `Your own industry|funnel stage|ad style|format|CTA: "..."` line is an option the person wrote: use it as written, never reworded or swapped for a playbook row; where a field wants a playbook id, write `AS-OTHER` for a style and the person's words for the rest, and say so in your hand back.
 
+## Hooks, captions and calls to action come from the banks
+
+Before you write a hook option, a caption structure or a call to action, look at the brand's banks: the Hooks, Captions and CTAs lines of the library block at the end of your spawn prompt (each item has its id, and the whole banks are `workspaces/{brand}/library/bank/proven.jsonl` and `yours.jsonl`, kinds `hook`, `caption` and `cta`, leaving out removed items).
+Start each concept's hook options and CTA from the top items there, adapted to this brand and the concept's viewer problem, and keep the structure of a bank caption (hook, body, CTA, hashtags) when you plan the post's words.
+Never copy a competitor's words; keep what makes the item work.
+Name on the card the bank item each option comes from, by its id and its numbers (for example "hook adapted from p-1a2b3c4d5e, 67,700 views, competitor Rival"), and write "new" for one that came from no item.
+The concept's viewer problem and angle come from the strategy: say the problem in the pain's own words.
+A `Problem: "..."` or `Angle: "..."` in the approval note's `Strategy picks:` line replaces the concept's own, and a `Your own problem: "..."` or `Your own angle: "..."` line is used as written.
+
 ## Footage from the brand's archive
 
 When the library block at the end of your spawn prompt has a "Footage: " line, the brand has past videos, pictures or audio, and the producer gives you the matching files from `brand_footage_search` with the brief.

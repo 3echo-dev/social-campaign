@@ -6,7 +6,7 @@ tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign
 disallowedTools: Agent
 skills: research, source-validation, write-report
 model: claude-sonnet-5-5
-maxTurns: 40
+maxTurns: 60
 color: orange
 ---
 

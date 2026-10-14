@@ -21,6 +21,9 @@
  *     same bank as proven `format`, `style` and `cta` items with the post's link as their evidence, and the breakdowns are
  *     written into brand/platform-playbook.md (brand-files.js) and the research files.
  *
+ * The draft's `banks` (the audience's pains, desires and objections in their own words, the angles that match a pain with a proof, and the
+ * best captions and calls to action) are checked and filed by brand-onboarding-banks.mjs, which reads the checked top posts above.
+ *
  * The industry the person picks afterwards is not saved here: the onboard-brand skill saves it with brand_bank_save as an
  * `industry` item of the `yours` bank, which the Strategy gate's industry row (strategy-options.mjs) pre-selects.
  *

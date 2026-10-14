@@ -4,10 +4,15 @@
  *   workspaces/<brand>/library/
  *     bank/yours.jsonl       {id, kind, text, concept?, jobId?, edited?, was?, at, removed?}   the person's own lines
  *     bank/proven.jsonl      {id, kind, text, evidence:{url, views|likes, date}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
+ *                            (the brand intelligence banks sit here too: a pain, desire or objection is the audience's own words, with who says it,
+ *                            their awarenessStage, how often it came up (count) and quotes [{text, url, date}]; an angle is a pain matched with a
+ *                            proof; a caption has its structure and a cta its ctaType. brand-bank-items.mjs documents the fields and how a second
+ *                            sighting of the same words merges: new quotes are added and counted, nothing new changes nothing)
  *                            (evidence counts views; a post whose platform shows none to a signed-out reader, Instagram, counts likes instead)
  *                            (an item learned from the brand's own footage has the file as its evidence, not a link: {file:{fileId, name, kind?, folder?}, date};
  *                            fileId is the footage file's id in the brand's footage library, never a path)
- *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own)
+ *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own; what the
+ *                            audience said comes from 'community' (forums, comments), 'review' or 'ad', and 'starter' is the plugin's own line)
  *                            (note, when there is one: a line about the item, for example the caption of the post whose spoken hook it holds)
  *     research/<jobId>.json  {jobId, at, files:[{path, sha256, topic, at}], industry?}   the research a job left, by path
  *     jobs/<jobId>.json      the filed job record (below)
@@ -21,7 +26,7 @@
  *     trends.jsonl           {id, kind, text, platform, industry, evidence:[{url, views, date}], why, seenAt}   what the Trend Scout found
  *                            rising, reused for 7 days (brand-trends.mjs documents the file)
  *
- * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel.
+ * `kind` is one of hook, angle, style, cta, caption, format, industry, funnel, pain, desire, objection.
  * A bank file is only ever appended to: an edit appends the item again with the same id and `edited: true, was: <old text>`, a removal
  * appends it again with `removed: true`, and a read keeps the last line of each id. Two writers never overwrite each other.
  * Every write is idempotent: the same item added twice is one item, and filing the same job twice changes nothing.
@@ -37,7 +42,8 @@
  *   - applying the concepts decision (board.mjs) calls recordConceptDecision: the opening lines the person wrote or edited, and the
  *     industry, funnel stage, ad style, format and CTA options they added on the Strategy gate (strategy-options.mjs), go to
  *     bank/yours.jsonl, and the pick goes to preferences.jsonl.
- *   - the final media approval, the final post approval and closing a job (board.mjs) call fileJob.
+ *   - the final media approval, the final post approval and closing a job (board.mjs) call fileJob, which also files what the job's
+ *     researchers learned about the audience (research/banks-*.json, brand-job-banks.mjs) in the banks.
  *   - pipeline_agent_brief appends libraryBlock; the board's brand page reads boardLibrary (brand.library).
  *
  * Board request (for the board's Brand library panel): operation `bank_remove`, args `{ requestId, id, brand?, bank? }` where `id` is
@@ -62,10 +68,15 @@ import { applyRanking, describeStat, jobResults } from './brand-results.mjs';
 // brand-trends.mjs imports this file too; each use below is inside a function, never at load time.
 import { boardTrends, freshTrends, trendLines } from './brand-trends.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
+import {
+  BANK_SOURCES, COMPETITOR_SOURCES, INSIGHT_KINDS, byMentions, countOf, detailsOf, isInsightKind, mergeDetails, sameInsight,
+} from './brand-bank-items.mjs';
+// brand-job-banks.mjs imports this file too; the use below is inside a function, never at load time.
+import { ingestJobBanks } from './brand-job-banks.mjs';
 
-export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel']);
+export const BANK_KINDS = Object.freeze(['hook', 'angle', 'style', 'cta', 'caption', 'format', 'industry', 'funnel', 'pain', 'desire', 'objection']);
 export const BANKS = Object.freeze(['yours', 'proven']);
-export const PROVEN_SOURCES = Object.freeze(['brand', 'competitor']);
+export const PROVEN_SOURCES = BANK_SOURCES;
 /** Research older than this is refreshed instead of reused: the brand's own and its competitors' for 30 days, trends for 7. */
 export const RESEARCH_MAX_AGE_DAYS = Object.freeze({ brand: 30, competitor: 30, trend: 7 });
 
@@ -225,32 +236,56 @@ function evidenceOf(value) {
  * `yours` keeps the person's own lines; an item the person edited from an agent's line carries edited: true and was.
  * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram) and date when known;
  * an item learned from the brand's own footage names the footage file instead ({ file: { fileId, name, kind?, folder? }, date }) and is the brand's own.
+ * `details` carries what a pain, desire, objection, angle, caption or cta holds besides its words: { who, awarenessStage, count, quotes,
+ * pain, painId, proof, structure, ctaType } (brand-bank-items.mjs). A proven pain, desire or objection with quotes needs no `evidence`: the
+ * first quote's page is its proof. Those kinds (and the angle) compare their words without case or punctuation, and the same words seen
+ * again fold their new quotes into the item and count them ({ item, saved: false, merged: true }); a proven item the person removed is not
+ * brought back ({ saved: false, removed: true }). A proven item from the plugin's own starter lines (source starter) needs no link.
  */
-export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, note = null, now } = {}) {
+export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, note = null, details = null, now } = {}) {
   checkBank(bank);
   checkKind(kind);
   const words = clip(text, TEXT_LIMIT);
   if (!words) throw new InvalidInputError('Say the words to save.');
   requireBrand(root, brand);
-  const same = readBank({ root, brand, bank, kind, ranked: false }).find(item => sameText(item.text, words));
-  if (same) return { item: same, saved: false };
+  const extra = details && typeof details === 'object' ? detailsOf(details) : {};
+  const sameWords = isInsightKind(kind) ? sameInsight : sameText;
+  const same = readBank({ root, brand, bank, kind, ranked: false }).find(item => sameWords(item.text, words));
+  if (same) {
+    // The same words seen again: a quote or a fact the item lacks is folded in (and counted); anything else changes nothing.
+    const merged = Object.keys(extra).length ? mergeDetails(same, extra) : null;
+    if (!merged || !merged.changed) return { item: same, saved: false };
+    const item = { ...merged.item, at: isoOf(now) };
+    appendLine(bankFile(root, brand, bank), item);
+    return { item, saved: false, merged: true };
+  }
+  // What the person removed from what research found stays removed: the next run does not bring it back.
+  if (bank === 'proven' && isInsightKind(kind)) {
+    const gone = readBank({ root, brand, bank, kind, includeRemoved: true, ranked: false }).find(item => item.removed && sameWords(item.text, words));
+    if (gone) return { item: gone, saved: false, removed: true };
+  }
   const at = isoOf(now);
   const id = `${bank === 'yours' ? 'y' : 'p'}-${randomUUID().replace(/-/g, '').slice(0, 10)}`;
   let item;
   if (bank === 'proven') {
-    const proof = evidenceOf(evidence);
-    if (!proof.url && !proof.file) throw new InvalidInputError('A proven item needs the link to the post it comes from, or the footage file it was learned from.', { fix: 'Pass evidence with an https url, and its views (likes for Instagram) and date when you know them, or evidence.file with the footage fileId and name.' });
-    if (source !== null && source !== undefined && !PROVEN_SOURCES.includes(source)) throw new InvalidInputError('The source is brand (one of the brand\'s own posts) or competitor.');
+    // A pain, desire or objection that came with its quotes is proven by the first quote's page.
+    const basis = evidence && typeof evidence === 'object' ? evidence : (extra.quotes?.[0] ? { url: extra.quotes[0].url, date: extra.quotes[0].date } : null);
+    const proof = evidenceOf(basis);
+    if (!proof.url && !proof.file && source !== 'starter') throw new InvalidInputError('A proven item needs the link to the post it comes from, or the footage file it was learned from.', { fix: 'Pass evidence with an https url, and its views (likes for Instagram) and date when you know them, or evidence.file with the footage fileId and name.' });
+    if (source !== null && source !== undefined && !PROVEN_SOURCES.includes(source)) throw new InvalidInputError('The source is brand (one of the brand\'s own posts) or competitor; community, review and ad are for what the audience said, and starter is the plugin\'s own line.');
     if (proof.file && source === 'competitor') throw new InvalidInputError('A file from the brand\'s own footage cannot be a competitor\'s.');
-    const who = source === 'competitor' && typeof competitor === 'string' && competitor.trim() ? clip(competitor, 80) : null;
+    const who = COMPETITOR_SOURCES.includes(source) && typeof competitor === 'string' && competitor.trim() ? clip(competitor, 80) : null;
     const aside = typeof note === 'string' && note.trim() ? clip(note, 300) : null;
-    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), ...(aside ? { note: aside } : {}), at };
+    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...extra, ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), ...(aside ? { note: aside } : {}), at };
   } else {
     item = {
       id, kind, text: words,
+      // The person's own pain, desire or objection says so, next to the sources research gives the proven ones.
+      ...(INSIGHT_KINDS.includes(kind) ? { source: 'yours' } : {}),
       ...(typeof concept === 'string' && concept.trim() ? { concept: clip(concept, 8) } : {}),
       ...(jobId ? { jobId: String(jobId) } : {}),
       ...(edited === true ? { edited: true, ...(was ? { was: clip(was, TEXT_LIMIT) } : {}) } : {}),
+      ...extra,
       at,
     };
   }
@@ -327,9 +362,10 @@ const EDITED_LINE = /^Edited opening line \(was "(.*?)"\):\s*"(.*)"\s*$/i;
 const HEAD_LINE = /^Concept\s+([A-Za-z0-9]{1,8})\s*:\s*(.*?)(?:\s+\u00b7\s+Opening line:\s*"(.*)")?\s*$/i;
 // The Strategy gate (strategy-options.mjs): the person's final choices for the approved concept, and the options they added.
 const PICKS_LINE = /^Strategy picks:\s*(.*)$/i;
-const PICK_PART = /(Industry|Funnel\s+stage|Ad\s+style|Format|CTA):\s*"(.*?)"(?=\s*\u00b7\s*(?:Industry|Funnel\s+stage|Ad\s+style|Format|CTA):|\s*$)/gi;
-const OWN_STRATEGY_LINE = /^Your own (industry|funnel\s+stage|ad\s+style|format|CTA):\s*"(.*)"\s*$/i;
-const STRATEGY_KIND = Object.freeze({ industry: 'industry', 'funnel stage': 'funnel', 'ad style': 'style', format: 'format', cta: 'cta' });
+const PICK_PART = /(Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle):\s*"(.*?)"(?=\s*\u00b7\s*(?:Industry|Funnel\s+stage|Ad\s+style|Format|CTA|Problem|Angle):|\s*$)/gi;
+const OWN_STRATEGY_LINE = /^Your own (industry|funnel\s+stage|ad\s+style|format|CTA|problem|angle):\s*"(.*)"\s*$/i;
+// The Problem row offers the bank's pains and the Angle row its angles, so an option the person adds there goes to the bank as a pain or an angle.
+const STRATEGY_KIND = Object.freeze({ industry: 'industry', 'funnel stage': 'funnel', 'ad style': 'style', format: 'format', cta: 'cta', problem: 'pain', angle: 'angle' });
 const strategyKind = label => STRATEGY_KIND[String(label).toLowerCase().replace(/\s+/g, ' ')];
 
 /**
@@ -337,12 +373,13 @@ const strategyKind = label => STRATEGY_KIND[String(label).toLowerCase().replace(
  *   Concept B: <title> \u00b7 Opening line: "<line>"
  *   Your own opening line: "<text>"                      (one line each, only when used)
  *   Edited opening line (was "<old>"): "<text>"
- *   Strategy picks: Industry: "<text>" \u00b7 Funnel stage: "<text>" \u00b7 Ad style: "<text>" \u00b7 Format: "<text>" \u00b7 CTA: "<text>"
- *   Your own industry|funnel stage|ad style|format|CTA: "<text>"      (one line per option the person added)
+ *   Strategy picks: Industry: "<text>" \u00b7 Funnel stage: "<text>" \u00b7 Ad style: "<text>" \u00b7 Format: "<text>" \u00b7 CTA: "<text>" \u00b7 Problem: "<text>" \u00b7 Angle: "<text>"
+ *   Your own industry|funnel stage|ad style|format|CTA|problem|angle: "<text>"      (one line per option the person added)
  * Returns { conceptId, title, line, own: [text], edited: [{ was, text }] }; conceptId, title and line are null when the first line has
  * no such part, so an older note still reads. A note with strategy lines also carries strategy: { industry?, funnel?, style?, format?,
- * cta? } (the picks, each the person's words) and ownStrategy: [{ kind, text }] (kind is industry, funnel, style, format or cta); a note
- * without them has neither key. The note is not changed: the agents read it as it is.
+ * cta?, pain?, angle? } (the picks, each the person's words; the Problem pick reads as pain) and ownStrategy: [{ kind, text }] (kind is
+ * industry, funnel, style, format, cta, pain or angle); a note without them has neither key. The note is not changed: the agents read it
+ * as it is.
  */
 export function parseConceptNote(note) {
   const lines = String(note ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -393,8 +430,8 @@ function conceptsOf(jobDir) {
 /**
  * The concepts decision, once it is applied: the person's own and edited opening lines go to bank/yours.jsonl (with the concept and the
  * job), and the choice goes to preferences.jsonl (the picked concept and line, the other concepts as passed over). Options the person
- * added on the Strategy gate (`Your own industry|funnel stage|ad style|format|CTA` lines) go to the same bank as kind industry, funnel,
- * style, format or cta, and the picks they set go on the preference record as strategy. Returns { saved, preference }.
+ * added on the Strategy gate (`Your own industry|funnel stage|ad style|format|CTA|problem|angle` lines) go to the same bank as kind industry,
+ * funnel, style, format, cta, pain or angle, and the picks they set go on the preference record as strategy. Returns { saved, preference }.
  */
 export function recordConceptDecision({ root, brand, jobId, note, chosen = null, now } = {}) {
   const parsed = parseConceptNote(note);
@@ -552,8 +589,9 @@ function conceptRecord(job) {
   const rubric = fieldOf(concept, /^rubric/i);
   // The parts the concept named, kept so posted results can be tied to them (brand-results.mjs). Left out when the concept does not name one.
   // A format, ad style or CTA the person set on the Strategy gate is what the job used, so it replaces the concept's own.
-  const parts = Object.entries({ angle: /^angle\b/i, format: /^(?:visual )?format\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
-    .map(([name, pattern]) => [name, parsed.strategy?.[name] || fieldOf(concept, pattern)]).filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
+  // The problem (a pain of the bank) is kept only when the person picked one on the Problem row.
+  const parts = [...Object.entries({ angle: /^angle\b/i, format: /^(?:visual )?format\b/i, style: /^ad style\b/i, cta: /^cta\b/i })
+    .map(([name, pattern]) => [name, parsed.strategy?.[name] || fieldOf(concept, pattern)]), ['pain', parsed.strategy?.pain]].filter(([, value]) => value).map(([name, value]) => [name, clip(value, 160)]);
   return {
     concept: { id, title: concept?.title ?? parsed.title ?? null, source: sourceKind(fieldOf(concept, /^source/i)), hook: hook ? clip(hook, TEXT_LIMIT) : null, ...Object.fromEntries(parts) },
     rubric: rubric ? clip(rubric, 300) : null,
@@ -588,6 +626,10 @@ export function fileJob({ root, brand, jobId, now } = {}) {
   requireBrand(root, brand);
   const job = facts.jobAt(root, brand, jobId);
   if (!job) throw new InvalidInputError('That job could not be found for that brand.', { fix: 'Use the brand and jobId from pipeline_status.' });
+  // What the job's researchers learned about the audience (research/banks-*.json) joins the brand's banks, once: an item whose quote is not in a
+  // page the job saved is left out, and the same job filed again adds nothing. It does not wait for an approval (a research job has none),
+  // and the filing does not depend on it.
+  try { ingestJobBanks({ root, brand, job, now }); } catch { /* the banks are an extra */ }
   const content = latestApproved(job.dir, 'content');
   const media = approvedMedia(job, content);
   const { concept, rubric } = conceptRecord(job);
@@ -664,17 +706,30 @@ const measureSize = evidence => (Number.isFinite(evidence?.views) ? evidence.vie
 
 /** The proven items, ranked by their posted results, then the ones with the most views (evidence), then the ones with the most likes (Instagram), then the newest. */
 export function readProven({ root, brand, kind = null, limit = null } = {}) {
+  // A pain, desire or objection has no views: its bank is ordered by how often it came up.
   const byViews = readBank({ root, brand, bank: 'proven', kind, ranked: false })
-    .sort((a, b) => measureTier(a.evidence) - measureTier(b.evidence) || measureSize(b.evidence) - measureSize(a.evidence) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
+    .sort(INSIGHT_KINDS.includes(kind)
+      ? byMentions
+      : (a, b) => measureTier(a.evidence) - measureTier(b.evidence) || measureSize(b.evidence) - measureSize(a.evidence) || String(b.at ?? '').localeCompare(String(a.at ?? '')));
   const items = applyRanking({ root, brand, items: byViews });
   return Number.isInteger(limit) && limit > 0 ? items.slice(0, limit) : items;
+}
+
+/** How many items of each kind the brand's banks hold, both banks together, removed items left out: { pain: 12, hook: 9, ... } (a kind with none is not there). */
+export function bankKindCounts({ root, brand } = {}) {
+  const out = {};
+  for (const bank of BANKS) for (const item of readBank({ root, brand, bank, ranked: false })) out[item.kind] = (out[item.kind] ?? 0) + 1;
+  return out;
 }
 
 /**
  * The brand page's library: { counts, yours, proven, recentJobs }, small enough to ride in the board document (the person's items,
  * the proven items, the last jobs filed). Items with posted results come first, best score first, each with { score, uses, label };
  * after them the person's newest and the proven items with the most views (then the most likes: Instagram shows no views). A filed job that has results carries them as
- * results: { score, label, early, posts, views, at }. Never throws: a library that cannot be read is an empty one.
+ * results: { score, label, early, posts, views, at }. When the brand has any items, `banks` groups them by kind, one entry per kind that
+ * holds something: { kind, total, yours, proven, items }, where items are the person's first three and then the best proven ones (the pains,
+ * desires and objections that came up most), six at most, each { id, bank, kind, text, source, count?, who?, awarenessStage?, quotes?, ... }.
+ * Never throws: a library that cannot be read is an empty one.
  */
 export function boardLibrary({ root, brand, now } = {}) {
   const empty = { counts: { yours: 0, proven: 0, research: 0, jobs: 0, preferences: 0 }, industry: null, yours: [], proven: [], recentJobs: [] };
@@ -683,6 +738,7 @@ export function boardLibrary({ root, brand, now } = {}) {
     const proven = readProven({ root, brand });
     const jobs = readFiledJobs({ root, brand });
     const results = jobResults({ root, brand });
+    const banks = groupBanks(yours, proven);
     return {
       counts: { ...librarySummary({ root, brand, now }).counts },
       ...footageForBoard({ root, brand }),
@@ -690,21 +746,134 @@ export function boardLibrary({ root, brand, now } = {}) {
       industry: yours.find(item => item.kind === 'industry') || null,
       yours: yours.slice(0, BOARD_LIMITS.yours).map(item => ({ ...item, text: clip(item.text, BOARD_LIMITS.text), ...(item.was ? { was: clip(item.was, BOARD_LIMITS.text) } : {}) })),
       proven: proven.slice(0, BOARD_LIMITS.proven).map(item => ({ ...item, source: item.source || 'brand', text: clip(item.text, BOARD_LIMITS.text) })),
+      ...(banks.length ? { banks } : {}),
       recentJobs: jobs.slice(0, BOARD_LIMITS.jobs).map(record => jobLine(record, results.get(record.jobId))),
     };
   } catch { return empty; }
 }
 
+// ---------------------------------------------------------------- the banks
+/** The order the banks are shown and summarised in: what the audience says first, then what was said to it, then how. */
+export const BANK_ORDER = Object.freeze(['pain', 'desire', 'objection', 'angle', 'hook', 'caption', 'cta', 'format', 'style', 'funnel', 'industry']);
+const BANK_SHOWN = Object.freeze({ own: 3, total: 6, quotes: 2 });
+
+/** One item as the board draws it: the fields the bank row needs, the first two quotes, nothing else. */
+function boardItem(item, bank) {
+  const quotes = (Array.isArray(item.quotes) ? item.quotes : []).slice(0, BANK_SHOWN.quotes).map(quote => ({ text: clip(quote.text, 200), url: quote.url, date: quote.date ?? null }));
+  const count = countOf(item.count);
+  return {
+    id: item.id, bank, kind: item.kind, text: clip(item.text, BOARD_LIMITS.text),
+    source: item.source || (bank === 'yours' ? 'yours' : 'brand'),
+    ...(item.competitor ? { competitor: item.competitor } : {}),
+    ...(count ? { count } : {}),
+    ...(item.who ? { who: item.who } : {}),
+    ...(item.awarenessStage ? { awarenessStage: item.awarenessStage } : {}),
+    ...(quotes.length ? { quotes, quoteCount: item.quotes.length } : {}),
+    ...(item.pain ? { pain: clip(item.pain, 160) } : {}),
+    ...(item.proof ? { proof: clip(item.proof, 160) } : {}),
+    ...(item.ctaType ? { ctaType: item.ctaType } : {}),
+    ...(item.note ? { note: clip(item.note, 160) } : {}),
+    ...(item.evidence ? { evidence: item.evidence } : {}),
+    ...(item.concept ? { concept: item.concept } : {}),
+    ...(item.edited ? { edited: true, ...(item.was ? { was: clip(item.was, BOARD_LIMITS.text) } : {}) } : {}),
+    ...(item.label ? { label: item.label } : {}),
+    ...(Number.isFinite(item.score) ? { score: item.score } : {}),
+    ...(Number.isFinite(item.uses) ? { uses: item.uses } : {}),
+    ...(Number.isFinite(item.views) ? { views: item.views } : {}),
+    ...(item.at ? { at: item.at } : {}),
+  };
+}
+
+/** The banks of a brand by kind, from its ranked yours and proven items: [{ kind, total, yours, proven, items }], in BANK_ORDER, empty kinds left out. */
+function groupBanks(yours, proven) {
+  const groups = [];
+  for (const kind of BANK_ORDER) {
+    const own = yours.filter(item => item.kind === kind);
+    const proof = INSIGHT_KINDS.includes(kind) ? proven.filter(item => item.kind === kind).sort(byMentions) : proven.filter(item => item.kind === kind);
+    if (!own.length && !proof.length) continue;
+    const mine = own.slice(0, BANK_SHOWN.own);
+    groups.push({
+      kind, total: own.length + proof.length, yours: own.length, proven: proof.length,
+      items: [...mine.map(item => boardItem(item, 'yours')), ...proof.slice(0, BANK_SHOWN.total - mine.length).map(item => boardItem(item, 'proven'))],
+    });
+  }
+  return groups;
+}
+
 const quoted = text => `"${clip(text, 160)}"`;
+
+// The banks section of an agent's brief: a few lines per bank, capped, with the id of every item so an agent can name the one it uses.
+const BLOCK_BANKS = Object.freeze([['pain', 'Pains', 4], ['objection', 'Objections', 3], ['angle', 'Angles', 3], ['hook', 'Hooks', 4], ['cta', 'CTAs', 3], ['desire', 'Desires', 3], ['caption', 'Captions', 2], ['format', 'Formats', 2], ['style', 'Styles', 2]]);
+const BLOCK_BANK_KINDS = Object.freeze(BLOCK_BANKS.map(([kind]) => kind));
+const BANK_BLOCK_CAP = 2800;
+const BANK_QUOTED_PAINS = 3;
+
+function bankLine(item, kind, index, when) {
+  const bits = [`id ${item.id}`];
+  const mentions = countOf(item.count);
+  if (mentions) bits.push(`${mentions} ${mentions === 1 ? 'mention' : 'mentions'}`);
+  if (item.yours) bits.push("the person's own, use it word for word");
+  else if (item.source === 'competitor') bits.push(`competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}`);
+  else if (item.source === 'review' || item.source === 'ad') bits.push(`${item.source}${item.competitor ? ` of ${clip(item.competitor, 40)}` : ''}`);
+  else if (item.source === 'community' || item.source === 'starter') bits.push(item.source);
+  else bits.push(INSIGHT_KINDS.includes(kind) ? "heard on the brand's own pages" : "the brand's own");
+  if (INSIGHT_KINDS.includes(kind)) {
+    if (item.who) bits.push(`for ${clip(item.who, 50)}`);
+    if (item.awarenessStage) bits.push(item.awarenessStage);
+    const seen = Date.parse(item.at);
+    if (!item.yours && Number.isFinite(seen)) {
+      const days = Math.max(0, Math.floor((when - seen) / DAY_MS));
+      bits.push(`last seen ${days} ${days === 1 ? 'day' : 'days'} ago, ${days < RESEARCH_MAX_AGE_DAYS.brand ? 'reuse' : 'refresh'}`);
+    }
+  } else if (!item.yours) {
+    bits.push(...[countText(item.evidence), item.evidence?.date, item.evidence?.url].filter(Boolean));
+  }
+  if (kind === 'cta' && item.ctaType) bits.push(item.ctaType);
+  const tail = [];
+  if (kind === 'angle') {
+    if (item.pain) tail.push(`answers the pain ${quoted(clip(item.pain, 90))}`);
+    if (item.proof) tail.push(`proof: ${quoted(clip(item.proof, 90))}`);
+  }
+  const quote = kind === 'pain' && index < BANK_QUOTED_PAINS ? item.quotes?.[0] : null;
+  if (quote) tail.push(`quote: ${quoted(clip(quote.text, 100))} ${quote.url}`);
+  return `  - ${quoted(clip(item.text, 140))} (${bits.join(', ')})${tail.length ? `; ${tail.join('; ')}` : ''}`;
+}
+
+/** The lines of the banks section: per bank its size and top items, until the cap is reached; banks that do not fit are counted in a last line. */
+function bankLines({ own, all, when }) {
+  const lines = [];
+  const left = [];
+  let size = 0;
+  for (const [kind, title, limit] of BLOCK_BANKS) {
+    const mine = own.filter(item => item.kind === kind).map(item => ({ ...item, yours: true }));
+    const proof = INSIGHT_KINDS.includes(kind) ? all.filter(item => item.kind === kind).sort(byMentions) : all.filter(item => item.kind === kind);
+    const total = mine.length + proof.length;
+    if (!total) continue;
+    const rows = [...mine, ...proof].slice(0, limit).map((item, index) => bankLine(item, kind, index, when));
+    const text = [`- ${title} (${total}):`, ...rows].join('\n');
+    if (size + text.length > BANK_BLOCK_CAP) { left.push(`${total} ${title.toLowerCase()}`); continue; }
+    lines.push(text);
+    size += text.length;
+  }
+  if (!lines.length && !left.length) return [];
+  return [
+    'Banks (what this brand knows about its audience and what has worked; name the id of every item you use; brand_library_get with kind returns a whole bank; a pain seen under 30 days ago is reused, an older one refreshed):',
+    ...lines,
+    ...(left.length ? [`- More on file, ask brand_library_get with the kind: ${left.join(', ')}.`] : []),
+  ];
+}
 
 /**
  * A short block for an agent's brief: what the brand's posted results say (winners first with their numbers, weak lines to avoid),
  * the person's own lines, the proven items, the research already on file with its age, and the last choices the person made.
+ * A brand with pains, desires or objections on file gets the banks section in place of the plain proven list: per bank (pains with their
+ * mentions and one quote, objections, angles, hooks with their numbers, CTAs, desires, captions, formats, styles) its size and top items, each with
+ * its id, within a cap of BANK_BLOCK_CAP characters; the banks that do not fit are counted in a last line.
  * null when the library is empty. Kept to a few hundred words.
  */
 function libraryBlockWithoutFootage({ root, brand, now } = {}) {
   let trends = [];
-  let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = [];
+  let industry = null; let yours = []; let proven = []; let research = []; let choices = []; let winners = []; let weak = []; let banks = [];
   try {
     const own = readBank({ root, brand, bank: 'yours' });
     const all = readProven({ root, brand });
@@ -717,13 +886,21 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     winners = once(scored.filter(item => item.label === 'winner').sort((a, b) => likesLast(a, b) || b.score - a.score)).slice(0, 5);
     weak = once(scored.filter(item => item.label === 'weak').sort((a, b) => likesLast(a, b) || a.score - b.score)).slice(0, 4);
     const shown = item => [...winners, ...weak].some(other => other.kind === item.kind && sameText(other.text, item.text));
-    yours = own.filter(item => item.kind !== 'industry' && !shown(item)).slice(0, 6);
-    proven = all.filter(item => !shown(item)).slice(0, 5);
+    // A brand with pains, desires or objections on file has the brand intelligence banks: the banks section lists each bank with the id of
+    // every item (the person's own lines first), so the plain lists of the person's own and proven lines give way to it for those kinds.
+    const banked = [...own, ...all].some(item => INSIGHT_KINDS.includes(item.kind));
+    if (banked) {
+      yours = own.filter(item => item.kind !== 'industry' && !BLOCK_BANK_KINDS.includes(item.kind) && !shown(item)).slice(0, 6);
+      banks = bankLines({ own: own.filter(item => item.kind !== 'industry'), all, when: new Date(isoOf(now)).getTime() });
+    } else {
+      yours = own.filter(item => item.kind !== 'industry' && !shown(item)).slice(0, 6);
+      proven = all.filter(item => !shown(item)).slice(0, 5);
+    }
     research = researchIndex({ root, brand, now }).slice(0, 6);
     choices = readPreferences({ root, brand, limit: 3 });
     trends = trendLines({ root, brand, now });
   } catch { return null; }
-  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !research.length && !choices.length && !trends.length) return null;
+  if (!industry && !winners.length && !weak.length && !yours.length && !proven.length && !banks.length && !research.length && !choices.length && !trends.length) return null;
   const lines = ['Brand library (what this brand already has; ask brand_library_get for more):'];
   if (industry) lines.push(`Industry (the person's pick): ${clip(industry.text, 120)}`);
   if (winners.length) {
@@ -742,6 +919,7 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
     lines.push('Proven, with the post that shows it:');
     for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", countText(item.evidence), item.evidence?.date, item.evidence?.url, item.evidence?.file ? `learned from the brand's own footage file ${clip(item.evidence.file.name, 80)}` : null].filter(Boolean).join(', ')})`);
   }
+  if (banks.length) lines.push(...banks);
   if (research.length) {
     lines.push('Research already done. Reuse brand and competitor research under 30 days old and trends under 7 days old; refresh only the rest, and say which you reused:');
     for (const item of research) lines.push(`- ${item.topic || 'research'}: ${item.ageDays === null ? 'date unknown' : `${item.ageDays} ${item.ageDays === 1 ? 'day' : 'days'} old`}${item.fresh === null ? '' : item.fresh ? ', reuse' : ', refresh'} - ${item.path}`);

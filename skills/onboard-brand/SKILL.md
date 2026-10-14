@@ -166,11 +166,13 @@ When the start result carries a `refreshReason`, say it to the person as one sho
 No field may be blank in that case, and the researcher then fills only the research, the brand files and the top posts.
 After that one run the notes are filled or say research found nothing, so the next start is skipped again.
 
-Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (12 searches, 16 fetches and 40 turns, the budget of a campaign job's research), `draftPath`, and `rawDir`, the folder where it saves the text of every page it reads.
+Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (14 searches, 24 fetches and 60 turns: a campaign job's research budget plus the 5 video teardowns and the pain points reads), `draftPath`, and `rawDir`, the folder where it saves the text of every page it reads.
 The file at `draftPath` already holds the right keys for the researcher to fill in.
 Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and are filed as top posts with their likes in place of views), and keeps a saved capture behind every source.
 It has no Chrome tools; the Instagram look below is yours.
 The researcher also takes at most 5 of the top videos apart (the 3 best own and the 2 best competitor videos, with `pipeline_video_teardown` and `media_transcribe`) and writes what it saw into `topPosts`; a teardown counts as one of its fetches, and a video whose download fails is skipped with a line in the gaps.
+It then runs two more workstreams of the research skill, pain points (the comments on the best own and competitor videos, 2 forum threads, 2 competitor review pages, a competitor ad search and a landing page) and hooks, captions and CTAs, and writes what it found in the draft's `banks`: pains, desires and objections in the customers' own words with quotes from the pages it saved, angles that match a pain with a proof, and the best captions and calls to action.
+The save checks every quote against its saved page, so a problem about a quote goes back to the researcher like any other problem about a source.
 The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
 Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
 In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
@@ -230,6 +232,8 @@ The save filed the research for the next job to reuse (brand and competitor rese
 Do not call `social_outliers_find` again for those accounts, and never guess a handle.
 When the save result's `topPosts.saved` is more than 0, say so in one line, for example "Saved 5 top posts to your brand library."
 When `topPosts.breakdowns.videos` is more than 0, add one line in plain words, for example "I also watched 4 of the best videos and saved how they open, their style and their call to action."
+When the save result's `banks` is there and `banks.saved` is more than 0, add one line in plain words from `banks.kinds`, for example "I also saved 9 customer pain points, 4 objections and 3 angles from comments, forums and reviews." Never name the banks, the kinds or the checks.
+When it is missing, say nothing about it: a brand with no comments or reviews to read simply has none yet, and its pain points fill in from the research of its first jobs.
 When no post was saved and Instagram is not the reason, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
 
 ### Instagram behind a login

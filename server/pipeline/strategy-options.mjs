@@ -4,18 +4,22 @@
  * already says.
  *
  *   review.concepts.strategyOptions = {
- *     industry: [Option], funnel: [Option], style: [Option], format: [Option], cta: [Option],
+ *     industry: [Option], funnel: [Option], style: [Option], format: [Option], cta: [Option], pain: [Option], angle: [Option],
  *     industryPick: optionId | null,
  *   }
- *   Option = { id, text, yours?: true, label?: 'winner' | 'weak' | 'early' }
+ *   Option = { id, text, yours?: true, label?: 'winner' | 'weak' | 'early', count?, hint? }
  *   review.concepts.concepts[n].picks = { funnel, style, format, cta }     the option id each of the concept's own fields names, else null
+ *                                                                          (plus pain and angle, only when the concept's Anchor or Angle line names one)
  *
  * Where the options come from:
  *   - the four playbooks read straight from the plugin (pipeline/playbooks): awareness-stages.md gives funnel (ids like problem_aware),
  *     ad-styles.md style (AS-*), visual-formats.md format (F-*), ctas.md cta (CTA-*). The ids are the first cell of each table row, so
  *     a row added to a playbook shows up on the next read (the parsed rows are cached by file modification time).
  *   - industry is a fixed starter list (the industry tags of ad-styles.md) plus the brand's own.
- *   - the brand's own options are its bank/yours.jsonl items of kind industry, funnel, style, format and cta (id = the bank item id,
+ *   - pain (the Problem row) and angle (the Angle row) come from the brand's banks (brand-bank-items.mjs): the person's own items first, then
+ *     the proven pains that came up most often (count = how many times, hint = who says it, where and how aware they are) and the proven
+ *     angles. A brand with none still gets the rows, empty, so the person can always add their own with "+ Add your own".
+ *   - the brand's own options are its bank/yours.jsonl items of kind industry, funnel, style, format, cta, pain and angle (id = the bank item id,
  *     yours: true), best first. Both a brand's own item and a playbook row carry `label` when the brand's posted results call it
  *     (brand-results.mjs). Chips are named `<id> <Name>` for a style, format or CTA ("AS-PROBLEM-SOLUTION Problem solution"), so the
  *     playbook row stays exact in the approval note; a funnel stage is its name ("Problem aware").
@@ -28,12 +32,15 @@ import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readBank, sameText } from './brand-library.mjs';
+import { readBank, readProven, sameText } from './brand-library.mjs';
 import { rankBank } from './brand-results.mjs';
+import { countOf, sameInsight } from './brand-bank-items.mjs';
 
 const PLAYBOOK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'playbooks');
 const TEXT_LIMIT = 120;
 const OWN_LIMIT = 12;
+/** The Problem and Angle rows hold fewer chips: the person's own first, then the bank's best (a pain or an angle is a whole sentence). */
+const ROW_LIMITS = Object.freeze({ pain: { own: 4, bank: 8 }, angle: { own: 3, bank: 5 } });
 const LABELS = new Set(['winner', 'weak', 'early']);
 
 /** The industry tags of playbooks/ad-styles.md, as the person reads them. ('other' is left out: "+ Add your own" covers it.) */
@@ -58,7 +65,7 @@ const PLAYBOOK_ROWS = Object.freeze({
   format: { file: 'visual-formats.md', id: /^F-[A-Z0-9]+(?:-[A-Z0-9]+)*$/ },
   cta: { file: 'ctas.md', id: /^CTA-[A-Z0-9]+(?:-[A-Z0-9]+)*$/ },
 });
-export const STRATEGY_ROWS = Object.freeze(['industry', 'funnel', 'style', 'format', 'cta']);
+export const STRATEGY_ROWS = Object.freeze(['industry', 'funnel', 'style', 'format', 'cta', 'pain', 'angle']);
 
 /** How the fields of a concept name the rows, as the concepts template writes them (Awareness stage, Ad style, Visual format, CTA). */
 const CONCEPT_FIELDS = Object.freeze({
@@ -66,6 +73,11 @@ const CONCEPT_FIELDS = Object.freeze({
   style: /^ad[\s_-]*style\b/i,
   format: /^(?:visual[\s_-]*)?format\b/i,
   cta: /^cta\b/i,
+});
+/** The Problem and Angle rows are matched to the concept's Anchor (the pain in the audience's words) and Angle lines, and only when one names an option. */
+const BANK_FIELDS = Object.freeze({
+  pain: /^(?:anchor|viewer[\s_-]*problem)\b/i,
+  angle: /^angle\b/i,
 });
 
 // ---------------------------------------------------------------- small helpers
@@ -135,8 +147,27 @@ function ownOptions({ root, brand }) {
   try { items = readBank({ root, brand, bank: 'yours' }); } catch { return out; }
   for (const item of items) {
     const list = Object.hasOwn(out, item.kind) ? out[item.kind] : null;
-    if (!list || list.length >= OWN_LIMIT) continue;
+    if (!list || list.length >= (ROW_LIMITS[item.kind]?.own ?? OWN_LIMIT)) continue;
     list.push({ id: item.id, text: clip(item.text, TEXT_LIMIT), yours: true, ...(LABELS.has(item.label) ? { label: item.label } : {}) });
+  }
+  return out;
+}
+
+/**
+ * The proven pains and angles of the brand's banks as options: [{ id, text, count?, hint? }], the pains that came up most often first. A pain's
+ * hint says who has it, where it was heard and how aware they are, so the chip's tooltip tells the person where it comes from.
+ */
+function bankOptions({ root, brand }) {
+  const out = { pain: [], angle: [] };
+  if (!root || !brand) return out;
+  for (const kind of Object.keys(out)) {
+    let items = [];
+    try { items = readProven({ root, brand, kind, limit: 30 }); } catch { continue; }
+    for (const item of items) {
+      const count = countOf(item.count);
+      const hint = [count ? `${count} ${count === 1 ? 'mention' : 'mentions'}` : '', item.source && item.source !== 'brand' ? item.source : '', item.who || '', item.awarenessStage ? item.awarenessStage.replace(/_/g, ' ') : ''].filter(Boolean).join(', ');
+      out[kind].push({ id: item.id, text: clip(item.text, TEXT_LIMIT), ...(count ? { count } : {}), ...(hint ? { hint: clip(hint, 120) } : {}), ...(LABELS.has(item.label) ? { label: item.label } : {}) });
+    }
   }
   return out;
 }
@@ -161,9 +192,12 @@ const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CODE_ID = /^[A-Z]{1,4}-|_/;
 const mentions = (text, id) => new RegExp(`(?<![\\w-])${escapeRegExp(id)}(?![\\w-])`, 'i').test(text);
 
+/** The id of an item of the brand's banks (a pain or an angle): such an option answers to its own text alone. */
+const BANK_ID = /^[yp]-[0-9a-f]{10}$/;
+
 /** The words an option answers to: its own text and, for a playbook row, the name in its id. */
 function keysOf(option) {
-  if (option.yours) return [tokenKey(option.text)];
+  if (option.yours || BANK_ID.test(option.id)) return [tokenKey(option.text)];
   return [tokenKey(option.text), tokenKey(nameOf(option.id)), tokenKey(String(option.id).replace(/[-_]+/g, ' '))];
 }
 
@@ -225,6 +259,7 @@ const summaryValue = (summary, pattern) => (Array.isArray(summary) ? summary.fin
 export function strategyOptionsFor({ root = null, brand = null, summary = [], playbookDir = PLAYBOOK_DIR } = {}) {
   const book = playbookOptions({ dir: playbookDir });
   const own = ownOptions({ root, brand });
+  const bank = bankOptions({ root, brand });
   const labels = playbookLabels({ root, brand });
   const withoutOwn = (list, kind) => list.filter(option => !own[kind].some(mine => sameText(mine.text, option.text)));
   const rows = {
@@ -232,6 +267,10 @@ export function strategyOptionsFor({ root = null, brand = null, summary = [], pl
   };
   for (const kind of Object.keys(PLAYBOOK_ROWS)) {
     rows[kind] = [...own[kind], ...withoutOwn(book[kind], kind).map(option => ({ ...option, ...(labels[kind]?.[option.id] ? { label: labels[kind][option.id] } : {}) }))];
+  }
+  // The Problem and Angle rows: the person's own, then the bank's best that the person's own do not already say.
+  for (const kind of Object.keys(ROW_LIMITS)) {
+    rows[kind] = [...own[kind], ...bank[kind].filter(option => !own[kind].some(mine => sameInsight(mine.text, option.text))).slice(0, ROW_LIMITS[kind].bank)];
   }
   // The industry the strategy names. A value that is none of the options is shown as one more, so the card never hides what it says.
   let industryPick = null;
@@ -264,6 +303,12 @@ export function conceptPicks(concept, options) {
   for (const [kind, pattern] of Object.entries(CONCEPT_FIELDS)) {
     const field = Array.isArray(concept?.fields) ? concept.fields.find(item => pattern.test(String(item?.label ?? ''))) : null;
     picks[kind] = field ? matchOption(field.value, options?.[kind] ?? [], { scan: kind === 'funnel' }) : null;
+  }
+  // The Problem and Angle picks are there only when the concept's Anchor or Angle line says one of the options word for word.
+  for (const [kind, pattern] of Object.entries(BANK_FIELDS)) {
+    const field = Array.isArray(concept?.fields) ? concept.fields.find(item => pattern.test(String(item?.label ?? ''))) : null;
+    const found = field ? matchOption(field.value, options?.[kind] ?? []) : null;
+    if (found) picks[kind] = found;
   }
   return picks;
 }

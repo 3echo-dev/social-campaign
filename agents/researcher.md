@@ -7,7 +7,7 @@ model: claude-sonnet-5-5
 tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign_core__social_post_get, mcp__plugin_social-campaign_core__social_comments_get, mcp__plugin_social-campaign_core__social_search, mcp__plugin_social-campaign_core__social_profile_get, mcp__plugin_social-campaign_core__social_outliers_find, mcp__plugin_social-campaign_core__social_ad_search, mcp__plugin_social-campaign_core__web_crawl, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__pipeline_reference_search, mcp__plugin_social-campaign_core__pipeline_reference_from_url, mcp__plugin_social-campaign_core__pipeline_references_list, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__brand_library_get
 disallowedTools: Agent
 skills: research, source-validation, write-report
-maxTurns: 40
+maxTurns: 60
 color: orange
 user-invocable: false
 ---
@@ -29,6 +29,8 @@ If the spawn prompt has no draft contract, ask for it back in your report rather
 Use a plain date (YYYY-MM-DD) for every `observedAt`; never invent a clock time.
 For the brand-onboarding workstream, the target market comes from the spawn prompt and is Singapore when none is named.
 For the brand-onboarding workstream, take at most 5 of the top videos apart (3 own, 2 competitors) with `pipeline_video_teardown` and `media_transcribe` as the research skill's "Taking the best videos apart" says, within the budget, and skip a video with a gap line when its download fails.
+For the brand-onboarding workstream, also run the pain points and the hooks, captions and CTAs workstreams that the draft contract describes, after the accounts are read and the best videos taken apart, and write what they found in the draft's `banks` (pains, desires, objections, angles, captions, ctas).
+Quote customers only from pages you saved under `rawDir`, copy every quote exactly, count only what you read, and leave a list empty when nothing was found; the save looks each quote up in its capture.
 For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.
 The draft file at `draftPath` already holds the right keys, so read it, fill in its values and write the whole file back with Write (you have no Edit tool), and never add, rename or remove a key.
 When the spawn prompt passes `problems`, read the draft file, change exactly those, rewrite the whole file with Write, copying each quote exactly from its capture, and finish.
@@ -63,6 +65,12 @@ Reuse brand and competitor research that is under 30 days old and trend research
 Say in the research file which parts you reused, from which earlier job and how many days old, and which you refreshed.
 
 End `research/audience.md` with a **Problem bank**: 3 to 5 problem lines in the viewer's role and words, each with its source and date, labelled FACT, INFERENCE or HYPOTHESIS, and the one you recommend.
+Write the same problems for the brand library in `research/banks-audience.json`, and the captions and calls to action you find in competitors' posts and ads in `research/banks-competitors.json`, in the `banks` shape of the research skill's "Banks from a job's research": every pain in the customer's own words, with `who`, `awarenessStage`, `count`, `source` and `quotes` copied exactly from a page you saved under `research/raw/` (its first line is the page address).
+You have no tool that writes the bank and need none: the plugin files these files when the job is filed, and leaves out any quote it cannot find in a saved page.
+The library block lists the pains on file with their ids, how often each came up and when it was last seen, and `brand_library_get` with `kind` `pain`, `desire` or `objection` returns a whole bank.
+A pain last seen under 30 days ago is reused: build the Problem bank from it, cite its quotes, links and dates, and search only what the bank lacks.
+A competitor finding (captions, calls to action, ads) under 30 days old is reused the same way, and you say in the research file which you reused and which you refreshed.
+Write to the file only new pains, new quotes for a pain already listed (copy its text exactly, so the quotes and the count are added to it) and new captions and calls to action.
 End `research/product-evidence.md` with a **Number and proof bank**: every concrete number on the brand's own pages and files (counts, durations, prices, steps), every artefact that can be shown working, and what the person must supply to make proof real.
 
 Return the artifact path, covered questions, reused evidence, new sources, unresolved gaps, and observed date.

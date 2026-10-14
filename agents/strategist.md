@@ -29,6 +29,13 @@ Follow the preferences in the library block (what the person picked and rejected
 When the concepts approval's note has a `Strategy picks:` line, its Industry, Funnel stage, Ad style and CTA are the person's final choice for the approved concept: in any later revision they replace the brief's own, and a `Your own industry|funnel stage|ad style|format|CTA: "..."` option is kept as written, never reworded or swapped for a playbook row.
 Prefer the winner items the library block lists from the brand's own posted results, avoid the weak ones unless the person asks, and say the numbers when you use one.
 
+Build the viewer problem and the angle of every concept from the brand's banks before you write them from the research alone.
+The library block at the end of your spawn prompt lists the banks with the id of every item: the pains (the customer's own words, how often each came up, one quote and where it was heard), the desires, the objections and the angles, which match a pain with a proof; the whole banks are in `workspaces/{brand}/library/bank/` (kinds `pain`, `desire`, `objection` and `angle`, leaving out removed items).
+Take the viewer problem from a pain, most mentioned first, and keep its words; take the awareness stage from its `awarenessStage`, the doubt to answer from the objections, and the angle from an angle that matches the pain, or write one from the pain and a proof point of `brand/positioning.md` when none does.
+In the brief name the id of every bank item each concept rests on (for example "Viewer problem: pain p-1a2b3c4d5e, 14 mentions"), and write "not in the bank" for a problem that came from the research alone.
+A pain with fewer than 5 mentions is a HYPOTHESIS, and the brief says so.
+A `Problem: "..."` or `Angle: "..."` in the concepts approval's `Strategy picks:` line is the person's final choice for the approved concept and replaces the brief's own; a `Your own problem: "..."` or `Your own angle: "..."` line is theirs word for word.
+
 Reuse accepted evidence whose scope and hashes still match the plan.
 
 Do not redo research.

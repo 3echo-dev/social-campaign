@@ -24,6 +24,10 @@ user-invocable: false
   - Strategic findings
   - Files for the brand
   - Top posts
+  - Taking the best videos apart
+  - Pain points
+  - Hooks, captions and CTAs
+  - The banks in the draft
   - Audience fallback
   - No evidence in a fill
 - Steps
@@ -31,6 +35,7 @@ user-invocable: false
   - Ad research (Meta Ad Library, TikTok Top Ads)
 - Rules
 - Output contract
+- Banks from a job's research
 - Boundary
 - Failure modes
 
@@ -103,7 +108,7 @@ Use it for the competitors and for any market-specific evidence, and never fill 
 | Fetches per section | 2 |
 | Competitors | 3 |
 | Items per competitor | 3 |
-| Brand onboarding totals | 12 searches, 16 fetches, 40 turns (a campaign job's budget); a video teardown counts as a fetch, and at most 5 videos are taken apart |
+| Brand onboarding totals | 14 searches, 24 fetches, 60 turns (more than a campaign job's budget, because the video teardowns and the pain points reads come on top); a video teardown counts as a fetch, and at most 5 videos are taken apart |
 | `simple_post` totals | 6 searches, 8 fetches, 25 turns |
 | `campaign` totals | 12 searches, 16 fetches, 40 turns |
 
@@ -122,11 +127,11 @@ Onboarding research is as good as a job's research: the same tools, the same bud
 Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total.
 The file at `draftPath` already holds the right keys.
 Read it, fill in its values and write the whole file back with Write (the researcher has no Edit tool), and never add, rename or remove a key.
-The keys you add inside `research.findings` and inside `brandFiles` below are the exception.
+The keys you add inside `research.findings` and inside `brandFiles` below are the exception, and so is `banks` when a draft started before it existed lacks it.
 The file looks like this, with only the fields still blank in `fills`:
 
 ```json
-{"version":1,"runId":"...","fills":{"audience":"","market":"","voice":"","contentPillars":[],"competitors":[]},"suggested":[],"research":{"sources":[],"evidenceMatrix":[],"competitorDetails":[],"findings":{},"gaps":[]},"brandFiles":{},"topPosts":[],"budget":{"searches":0,"fetches":0,"stopReason":""}}
+{"version":1,"runId":"...","fills":{"audience":"","market":"","voice":"","contentPillars":[],"competitors":[]},"suggested":[],"research":{"sources":[],"evidenceMatrix":[],"competitorDetails":[],"findings":{},"gaps":[]},"brandFiles":{},"topPosts":[],"banks":{"pains":[],"desires":[],"objections":[],"angles":[],"captions":[],"ctas":[]},"budget":{"searches":0,"fetches":0,"stopReason":""}}
 ```
 
 An empty value means not filled.
@@ -142,14 +147,15 @@ Evidence, citations and run details never belong in a fill; save validates this 
 
 ### Tools
 
-Use these tools, one attempt each, and count every call against the budget in Hard limits (12 searches, 16 fetches, 40 turns; a video teardown is a fetch).
+Use these tools, one attempt each, and count every call against the budget in Hard limits (14 searches, 24 fetches, 60 turns; a video teardown is a fetch).
 `web_crawl` reads the brand's website and each competitor's website, one page per call; `WebFetch` is its one fallback.
 `social_profile_get` reads a declared own account or a competitor handle once: followers, bio and recent posts.
 `social_outliers_find` reads the same account once more: the posts that beat that account's own usual.
 Both read TikTok, Instagram and YouTube (a channel's Shorts). Posts are ranked by views; Instagram shows a signed out reader no view count at all, so there they are ranked by likes against that account's own median likes (the read opens up to 8 posts one by one, so it takes about 20 seconds).
 A TikTok profile read can take up to 75 seconds, and the tool reloads an empty video list once by itself; that is inside the one attempt, never yours to repeat. An answer of `empty_page` with the profile facts means the videos could not be listed: write the gap and go on.
 `social_post_get` reads one post you want to quote.
-`social_comments_get` reads the comments on one top post, once, for the audience's own words.
+`social_comments_get` reads the comments on one top post, once, for the audience's own words (the pain points below).
+`social_ad_search` reads a competitor's ads once (the Meta Ad Library or TikTok Top Ads), for the hooks, captions and calls to action of ads that keep running.
 `social_search` finds posts on one platform, at most once per platform.
 `WebSearch` only finds addresses: competitors, their handles, coverage of the brand.
 A search result is never a source, and a page you did not read is never cited.
@@ -184,7 +190,7 @@ Save the text of every page you read before you cite it.
 Write one file per page under the `rawDir` of the spawn prompt, at `<rawDir>/<YYYY-MM-DD>/<slug>.md`.
 Its first line is the page address, then the date and the tool, then the text the tool returned.
 Name that file in the source as `captureRef`, as a path from the run folder, such as `raw/2026-10-13/acme-about.md`.
-`provider` is the tool that read the page: `web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_comments_get`, `social_search`, `WebFetch` or `chrome`.
+`provider` is the tool that read the page: `web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_comments_get`, `social_search`, `social_ad_search`, `WebFetch` or `chrome`.
 `kind` is exactly one of the following, and it sets how long the source stays fresh:
 
 | kind | what it is | fresh for |
@@ -302,6 +308,74 @@ Anything the teardown did not show is left out, never guessed.
 For a post with a breakdown, `text` is the spoken hook when it has one (else the on-screen hook) and the post's caption goes in `caption`; save makes the same swap when the draft puts the caption in `text`.
 Save then files the hook in the proven bank with the caption as its note, files the format, style and call to action there as proven `format`, `style` and `cta` items with the post's link as their evidence, and adds a "What the best videos do" table to the platform playbook.
 Save refuses a breakdown the tool log shows no teardown for, and more than 3 own and 2 competitor breakdowns.
+
+### Pain points
+
+A second workstream, run after the accounts are read and the best videos taken apart, finds what the audience struggles with, wants and doubts, in their own words.
+It has its own reads inside the totals above: 7 fetches and 3 searches at most, and it never takes a fetch a teardown needs.
+When fetches run short, drop its reads in this order: the landing page, the ad search, the second review page, the second thread.
+Use these sources, one attempt each, and save every page you read as a capture under `rawDir` first (see Evidence):
+
+- Comments: `social_comments_get` once on the best own video and once on the best competitor video you read (provider `social_comments_get`; kind `brand_social` for your own, `competitor_social` for a competitor's).
+- Forums: 2 `WebSearch` searches in the words the audience would use (a question they ask, a complaint, "has anyone"), then `WebFetch` at most 2 of the threads they found, such as a Reddit thread, a forum or a Q and A page (kind `audience`).
+  A refused page is a gap, never a retry.
+- Reviews: 2 review pages of competitors (Google reviews, a review site, the reviews on a course or product page), with `WebFetch` or `web_crawl` (kind `audience`).
+- Competitor ads and a landing page: one `social_ad_search` (Meta or TikTok, whichever has the competitor's ads; provider `social_ad_search`, kind `competitor_social`) and one competitor landing page with `web_crawl` (kind `competitor`).
+  The ad search also feeds "Hooks, captions and CTAs" below, and the whole run makes at most 2 `social_ad_search` calls.
+
+From what you read, write `banks.pains`, `banks.desires` and `banks.objections`.
+A pain is a problem the audience has, a desire is what they want, and an objection is why they hesitate ("too technical", "no time", "is it worth the price").
+Each item is `{text, who, awarenessStage, count, source, competitor, quotes}`:
+
+- `text` is the customer's own words, one problem, want or doubt per item, 8 to 300 characters, the way a customer would say it ("I tried n8n and got stuck"), never marketing language and never a link.
+- Group the comments, reviews and threads that say the same thing into one item: `count` is how many of the ones you read said it, and `quotes` holds up to 5 of them.
+- A quote is `{text, url, date}`.
+  `text` is copied exactly from the saved capture of its page, 12 to 300 characters (use `...` to skip words).
+  `url` is the address of one of your listed sources, because the save looks the quote up in that source's capture.
+  `date` is the day the comment was written as YYYY-MM-DD when the page shows it, else leave it out.
+- `who` says who has it, in a few words ("office workers who use ChatGPT"); `awarenessStage` is one of `unaware`, `problem_aware`, `solution_aware`, `product_aware` or `most_aware` (`playbooks/awareness-stages.md`).
+- `source` is `brand` (comments on the brand's own posts, its FAQ), `competitor` (comments on a competitor's posts, with `competitor` set to its name), `community` (forums and Q and A), `review` (review pages, with `competitor` set when it is a competitor's) or `ad` (an ad or a landing page).
+- Keep at most 12 pains, 8 desires and 8 objections.
+  A pain seen once has `count` 1.
+  Never write a quote you did not read, and leave a list empty when nothing was found.
+
+An angle matches a pain with a proof the brand really has: `{text, pain, proof, proofSource}`.
+`pain` is the `text` of one of your pains, word for word.
+`proof` is a claim, number or result copied exactly from a page of the brand you saved, and `proofSource` is that page's address.
+`text` is the angle in one line ("Your AI makes things up, here is RAG that cites sources").
+Write at most 6, and none for a pain no proof page answers.
+
+### Hooks, captions and CTAs
+
+A third workstream, from reads you have already made, gives the brand its caption and call to action banks, and its hooks beyond the videos you took apart.
+It needs no fetch of its own except the one ad search above.
+
+- Hooks and calls to action of the videos you took apart are filed from their `breakdown` (the spoken hook, the on-screen hook, the format, the style and the `cta`), so do not repeat them.
+- Captions: the best captions of `topPosts` (the brand's own and each competitor's, at most 10 in all) go in `banks.captions` as `{text, source, competitor, url, structure}`.
+  `source` is `brand` or `competitor`, `url` is that post's link from `topPosts`, and `text` is the caption exactly as the post has it.
+  `structure` takes it apart as `{hook, body, cta, hashtags}`; leave out a part the caption does not have.
+- Competitor ads: from the ad search, the ads that keep running longest (the Meta Ad Library shows how long, TikTok Top Ads does not) go in `banks.captions`.
+  Give each `source` `ad`, `url` the ad page you saved, `text` the primary text exactly as the ad has it, `structure.hook` its opening line, and `runningDays` when the library gives the days.
+  The save also files each `structure.hook` as a hook.
+- Calls to action: `banks.ctas` holds the ask exactly as a post, video or ad has it, as `{text, type, source, competitor, url}`, at most 10.
+  `type` is one of `comment keyword`, `link in bio`, `dm`, `follow`, `sign up`, `book a call`, `shop`, `watch`, `save or share` or `other`.
+  Add only the asks the captions, comments and ads show that the breakdowns do not.
+
+### The banks in the draft
+
+`banks` sits at the top of the draft next to `topPosts`, with these lists only (empty when nothing was found):
+
+```json
+{"pains":[{"text":"","who":"","awarenessStage":"problem_aware","count":3,"source":"community","competitor":"","quotes":[{"text":"","url":"","date":""}]}],
+ "desires":[],"objections":[],
+ "angles":[{"text":"","pain":"","proof":"","proofSource":""}],
+ "captions":[{"text":"","source":"","competitor":"","url":"","structure":{"hook":"","body":"","cta":"","hashtags":[""]},"runningDays":30}],
+ "ctas":[{"text":"","type":"","source":"","competitor":"","url":""}]}
+```
+
+Save looks every quote up in the capture of its source, finds each caption and call to action in its post or in the capture of its ad page, and lists a problem for a quote that is not there, a source that is not listed, a competitor that is not one of the three, or an angle whose pain is not in the list.
+It then files the items in the brand's banks through the same call `brand_bank_save` makes, so the same research twice adds nothing, a pain seen again gains its new quotes and count, and an item the person removed stays removed.
+The banks are what every later job starts from: its agents' briefs list the top pains, objections, angles, hooks and calls to action, and the Strategy step offers them as choices.
 
 ### Audience fallback
 
@@ -474,7 +548,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 4. Budget: see Hard limits above.
 5. Quote verbatim with link and date. Report displayed numbers with the date seen, never an estimate.
 6. Record what was not found.
-7. Write nowhere except `research/{workstream}.md`, `research/raw/`, and the brand research record.
+7. Write nowhere except `research/{workstream}.md`, `research/raw/`, `research/banks-{workstream}.json` (see "Banks from a job's research") and the brand research record.
 
 ## Output contract
 
@@ -482,6 +556,16 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 The record contains scope, competitors, evidence URLs and dates, findings, an evidence matrix, freshness, and visible gaps.
 The file has front matter `job`, `brand`, `workstream`, `researched`, `questions`, `sources_consulted`, and `confidence`.
 Its sections are `# Questions`, one `##` per question with answer and labelled claims, `## Not found`, `## Not verified`, and `## Sources`.
+
+## Banks from a job's research
+
+A job's researcher adds what it learned about the audience to the brand's banks by writing one more file next to its research file: `research/banks-{workstream}.json`, for example `research/banks-audience.json`.
+It has the `banks` shape of an onboarding draft (pains, desires, objections, angles, captions, ctas, with the same fields and limits; see "The banks in the draft"), and nothing else.
+The researcher has no tool that writes the bank, and needs none: when the job is filed the plugin reads the file, looks every quote and text up in the pages the job saved under `research/raw/` (each capture begins with its page address), leaves out what it cannot find there, and files the rest in the brand's banks.
+A caption or call to action names the saved page of its post or ad as its `url`, and a quote's `date` is optional.
+Reuse first: a pain the library block lists as seen under 30 days ago is not searched again and not written again.
+Write only new pains, new quotes for a pain already listed (copy its `text` exactly, so the quotes and the count are added to it) and new captions and calls to action.
+The Problem bank at the end of `research/audience.md` holds the same pains in prose, so write the file from it.
 
 ## Boundary
 

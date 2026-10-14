@@ -20,7 +20,7 @@ const research = require('./lib-brand-research.js');
 
 // The tools that read a page. A search finds addresses and snippets; it never makes a source.
 const FETCH_PROVIDERS = Object.freeze([
-  'web_crawl', 'social_profile_get', 'social_outliers_find', 'social_post_get', 'social_search', 'social_comments_get', 'WebFetch', 'chrome',
+  'web_crawl', 'social_profile_get', 'social_outliers_find', 'social_post_get', 'social_search', 'social_comments_get', 'social_ad_search', 'WebFetch', 'chrome',
 ]);
 const SEMANTICS = Object.freeze(['FACT', 'OBSERVATION', 'INFERENCE', 'HYPOTHESIS']);
 const SOCIAL_KINDS = Object.freeze(['brand_social', 'competitor_social']);

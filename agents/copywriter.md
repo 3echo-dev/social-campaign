@@ -22,6 +22,9 @@ Read the current job snapshot, accepted brief, brand restrictions, platform rule
 
 Reuse the approved angle, customer language, claims, and CTA intent already present in the brief.
 
+Start the caption and the call to action from the banks: the Captions and CTAs lines of the library block at the end of your spawn prompt (each with its id and, for a caption, its structure of hook, body, CTA and hashtags).
+Use the customer's own words of the pain where the caption names the problem, never copy a competitor's caption, and name the caption or CTA item you used by its id in your hand back.
+
 Do not repeat research or provider checks.
 
 Write only the post artifacts named by the active plan.

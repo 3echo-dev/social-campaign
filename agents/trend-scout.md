@@ -72,4 +72,10 @@ It has an Ads that keep running section, then Not found, Not verified and Source
 After the file is written, save what you saw this run with one `brand_trends_save` call: the same items, evidence and one-line why.
 Never save a trend you only reused, and never write the brand's bank.
 
+Use the pains and angles of the library block's banks for the "why it fits" line of each trend, and name the pain by its id (for example "answers pain p-1a2b3c4d5e").
+An ad that has run 30 days or more is worth keeping beyond the week a trend lives, so besides `brand_trends_save` write the primary texts and calls to action of the best 5 such ads in `research/banks-trends.json`, in the `banks` shape of the research skill's "Banks from a job's research": captions with `source` `ad`, `url` the ad page you saved under `research/raw/`, `runningDays`, and `structure.hook` for the opening line, each text copied exactly from the page you saved.
+That file is the one exception to writing only `research/trends.md`.
+You never write the bank itself: the plugin files that file when the job is filed, and leaves out any text it cannot find in a saved page.
+It changes nothing about the trends you save.
+
 Return the artifact path, the trends found per platform, the trends reused, the ads found per library and the ad calls made, how many were saved, unresolved gaps, and observed date.

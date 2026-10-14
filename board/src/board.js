@@ -1474,10 +1474,16 @@ export function brandChip(brand, metricool = {}) {
   return `<div class="brand-chip"><span class="avatar">${esc((brand.name || 'BR').slice(0,2).toUpperCase())}</span><span class="brand-chip-body"><span class="brand-chip-name"><strong>${esc(brand.name)}</strong><small>${esc(ready ? 'Ready for jobs' : 'Onboarding in progress')}</small>${note}${brandStudioWorkspaceLine(brand)}${brandMetricoolLine(brand, metricool)}${brandAdAccountsLine(brand)}</span><span class="brand-chip-state"><span class="pill ${state}">${esc(humanize(state))}</span>${pillars}</span>${action}</span></div>`;
 }
 
-// The Brand library: what this brand keeps for every next job, from `brand.library` ({counts, yours, proven, recentJobs}, which the
-// server adds when the brand has a library): the person's own items (each with a Remove that asks Claude to take it out), the proven
-// items with the post that proves them, and the jobs filed most recently. Nothing is drawn for a brand with no library.
-const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: 'Call to action', caption: 'Caption', format: 'Format', industry: 'Industry', funnel: 'Funnel stage' });
+// The Brand library: what this brand keeps for every next job, from `brand.library` ({counts, yours, proven, banks, recentJobs}, which the
+// server adds when the brand has a library): the banks, one folded group per kind (pain points, desires, objections, angles, opening lines,
+// captions, calls to action, formats, ad styles) with its count and its top items, the person's own items among them each with a Remove that
+// asks Claude to take it out; a library without `banks` (an older server) draws the person's items and the proven items as two lists. The
+// jobs filed most recently follow. Nothing is drawn for a brand with no library.
+const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: 'Call to action', caption: 'Caption', format: 'Format', industry: 'Industry', funnel: 'Funnel stage', pain: 'Pain point', desire: 'Desire', objection: 'Objection' });
+const LIBRARY_BANK_TITLES = Object.freeze({ pain: 'Pain points', desire: 'Desires', objection: 'Objections', angle: 'Angles', hook: 'Opening lines', caption: 'Captions', cta: 'Calls to action', format: 'Formats', style: 'Ad styles', funnel: 'Funnel stages', industry: 'Industry' });
+// Where a banked item came from, in the words of the person: what the audience said, a competitor's, an ad, or the plugin's own starter line.
+const LIBRARY_SOURCE_WORDS = Object.freeze({ competitor: 'From a competitor', community: 'From forums and comments', review: 'From reviews', ad: 'From an ad', starter: 'Starter line' });
+const LIBRARY_STAGE_WORDS = Object.freeze({ unaware: 'Unaware', problem_aware: 'Problem aware', solution_aware: 'Solution aware', product_aware: 'Product aware', most_aware: 'Most aware' });
 const LIBRARY_GROUP_LIMIT = 50;
 export const libraryKey = (slug, id) => `${slug}:${id}`;
 const libraryDay = value => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '');
@@ -1558,16 +1564,37 @@ function libraryItem(item, brand, { removing, errors }) {
   const kind = LIBRARY_KIND_WORDS[item.kind] || humanize(item.kind || 'item');
   const evidence = item.evidence && typeof item.evidence === 'object' ? item.evidence : null;
   const link = evidence ? safeHttpsLink(evidence.url) : null;
-  const views = Number.isFinite(evidence?.views) ? `${Math.round(evidence.views).toLocaleString('en-US')} views` : '';
-  const where = item.source === 'competitor' ? 'From a competitor' : '';
-  const meta = [item.concept ? `Concept ${item.concept}` : '', item.edited ? 'edited' : '', where, views, libraryDay(evidence?.date) || libraryDay(item.at)].filter(Boolean).map(esc).join(' &middot; ');
+  const views = Number.isFinite(evidence?.views) ? `${Math.round(evidence.views).toLocaleString('en-US')} views` : Number.isFinite(evidence?.likes) ? `${Math.round(evidence.likes).toLocaleString('en-US')} likes` : '';
+  const named = (item.source === 'review' || item.source === 'ad') && trimmed(item.competitor) ? ` of ${trimmed(item.competitor)}` : '';
+  const where = LIBRARY_SOURCE_WORDS[item.source] ? `${LIBRARY_SOURCE_WORDS[item.source]}${named}` : '';
+  const mentions = Number.isFinite(item.count) && item.count > 0 ? plural(Math.floor(item.count), 'mention') : '';
+  const meta = [item.concept ? `Concept ${item.concept}` : '', item.edited ? 'edited' : '', where, mentions, trimmed(item.who), LIBRARY_STAGE_WORDS[item.awarenessStage] || '', trimmed(item.ctaType), views, libraryDay(evidence?.date) || libraryDay(item.at)].filter(Boolean).map(esc).join(' &middot; ');
+  // The words of a customer behind a pain, desire or objection (the first quote, with the page it came from), and what an angle rests on.
+  const quote = Array.isArray(item.quotes) ? item.quotes.find(entry => entry && typeof entry === 'object' && trimmed(entry.text)) : null;
+  const quoteLink = quote ? safeHttpsLink(quote.url) : null;
+  const moreQuotes = Number.isFinite(item.quoteCount) && item.quoteCount > 1 ? ` (+${item.quoteCount - 1} more)` : '';
+  const said = quote ? `<span class="library-hook library-quote">&ldquo;${esc(quote.text)}&rdquo;${quoteLink ? ` <a class="post-link library-proof" href="${esc(quoteLink)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See where this was said: ${quote.text}`)}">See where</a>` : ''}${esc(moreQuotes)}</span>` : '';
+  const matched = item.kind === 'angle' && (trimmed(item.pain) || trimmed(item.proof)) ? `<span class="library-hook">${[trimmed(item.pain) ? `Answers: ${esc(item.pain)}` : '', trimmed(item.proof) ? `Proof: ${esc(item.proof)}` : ''].filter(Boolean).join(' &middot; ')}</span>` : '';
   const proof = link ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the post behind: ${item.text}`)}">See the post</a>` : '';
   const pending = removing.has(key);
   const problem = errors.get(key);
   const action = !item.id ? '' : pending
     ? '<span class="library-pending" role="status">Removal sent to Claude</span>'
     : item.proven ? '' : `<button type="button" class="quiet library-remove" data-bank-remove="${esc(item.id)}" data-bank-brand="${esc(brand.slug)}" aria-label="${esc(`Remove from your library: ${item.text}`)}">Remove</button>`;
-  return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
+  return `<li class="library-item${pending ? ' is-removing' : ''}"><div class="library-main"><span class="library-kind">${esc(kind)}</span><span class="library-text">${esc(item.text)}</span>${libraryResult(item)}${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${item.edited && trimmed(item.was) ? `<span class="library-meta">Was: ${esc(item.was)}</span>` : ''}${said}${matched}${problem ? `<span class="field-error" role="alert">${esc(problem)}</span>` : ''}</div>${action}</li>`;
+}
+// One bank of the library, folded: its name, how many items it holds (and how many are the person's own), the top item as a preview, and
+// when opened the top items, the person's own with their Remove. The rest stay on the computer for Claude to read with the bank's kind.
+function libraryBankGroup(bank, brand, { removing, errors, openKeys }) {
+  const items = (Array.isArray(bank?.items) ? bank.items : []).filter(item => item && typeof item === 'object' && !item.removed && trimmed(item.text));
+  if (!items.length) return '';
+  const total = Number.isFinite(bank.total) && bank.total >= items.length ? Math.floor(bank.total) : items.length;
+  const yours = Number.isFinite(bank.yours) && bank.yours > 0 ? Math.floor(bank.yours) : 0;
+  const title = LIBRARY_BANK_TITLES[bank.kind] || humanize(bank.kind || 'items');
+  const key = `brand-library:${brand.slug}:${bank.kind}`;
+  const rows = items.map(item => libraryItem({ ...item, proven: item.bank !== 'yours' }, brand, { removing, errors })).join('');
+  const more = total > items.length ? `<p class="muted library-more">${plural(total - items.length, 'more item')} on this computer. Ask Claude to show the whole bank.</p>` : '';
+  return `<details class="library-bank" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary><span class="library-bank-title">${esc(title)}</span><span class="count">${total}</span>${yours ? `<span class="library-bank-yours">${esc(`${yours} yours`)}</span>` : ''}<span class="library-bank-top">${esc(items[0].text)}</span></summary><ul class="library-list">${rows}</ul>${more}</details>`;
 }
 // Fresh trends (`library.trends`, which the server adds when the Trend Scout saw something under 7 days ago): what is rising now in the brand's
 // industry, each with the platform, when it was seen and the post that shows it. They are not the person's own items, so there is no Remove.
@@ -1595,7 +1622,7 @@ function libraryJob(job) {
   const meta = [concept.id ? `Concept ${concept.id}${trimmed(concept.title) ? `: ${concept.title}` : ''}` : '', source?.label || '', libraryDay(job.filedAt) ? `filed ${libraryDay(job.filedAt)}` : ''].filter(Boolean).map(esc).join(' &middot; ');
   return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title) || 'Finished job')}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${trimmed(concept.hook) ? `<span class="library-hook">Opening line: ${esc(concept.hook)}</span>` : ''}${libraryJobResults(job.results)}</div></li>`;
 }
-export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map() } = {}) {
+export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map(), openKeys = new Set() } = {}) {
   const library = brand?.library;
   if (!library || typeof library !== 'object' || Array.isArray(library) || !brand.slug) return '';
   const group = (title, id, list, row, note = '') => {
@@ -1610,7 +1637,10 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   const proven = libraryItems(library.proven).map(item => ({ ...item, proven: true }));
   const jobs = (Array.isArray(library.recentJobs) ? library.recentJobs : []).filter(job => job && typeof job === 'object');
   const footage = libraryFootage(library);
-  const body = group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state)) + group('Fresh trends', 'trends', trends, libraryTrend, trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
+  const banks = (Array.isArray(library.banks) ? library.banks : []).map(bank => libraryBankGroup(bank, brand, { ...state, openKeys })).filter(Boolean);
+  const bankSection = banks.length ? `<section class="library-group library-banks" aria-labelledby="library-${esc(brand.slug)}-banks"><h3 id="library-${esc(brand.slug)}-banks">Banks <span class="count">${banks.length}</span></h3>${banks.join('')}</section>` : '';
+  const lists = banks.length ? bankSection : group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state));
+  const body = lists + group('Fresh trends', 'trends', trends, libraryTrend, trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
   const key = `brand-library:${brand.slug}`;
   const empty = body ? '' : '<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
   return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
@@ -2837,21 +2867,27 @@ function hookPicks(concept, field, { hooks, own, edited, edit, disabled }) {
 // Claude files it.
 export const PICK_TEXT_LIMIT = 60;
 export const PICK_OWN_LIMIT = 5;
+// Problem and Angle are the bank's pains and angles (the brand's banks), whole sentences, so the person may type as much as the note carries.
 const PICK_ROWS = Object.freeze([
   { field: 'industry', title: 'Industry', noun: 'industry', picked: 'Industry', own: 'industry' },
   { field: 'funnel', title: 'Funnel stage', noun: 'funnel stage', picked: 'Funnel stage', own: 'funnel stage' },
   { field: 'style', title: 'Ad style', noun: 'ad style', picked: 'Ad style', own: 'ad style' },
   { field: 'format', title: 'Format', noun: 'format', picked: 'Format', own: 'format' },
   { field: 'cta', title: 'Call to action', noun: 'call to action', picked: 'CTA', own: 'CTA' },
+  { field: 'pain', title: 'Problem', noun: 'problem', picked: 'Problem', own: 'problem', limit: HOOK_LINE_LIMIT },
+  { field: 'angle', title: 'Angle', noun: 'angle', picked: 'Angle', own: 'angle', limit: HOOK_LINE_LIMIT },
 ].map(row => Object.freeze(row)));
 const PICK_ROW_OF = Object.freeze(Object.fromEntries(PICK_ROWS.map(row => [row.field, row])));
-const CONCEPT_PICK_FIELDS = Object.freeze(['funnel', 'style', 'format', 'cta']);
-// How a concept's own fields name the four rows (as the concepts template writes them, and as the server matches them to a default).
+const CONCEPT_PICK_FIELDS = Object.freeze(['funnel', 'style', 'format', 'cta', 'pain', 'angle']);
+const pickLimit = field => PICK_ROW_OF[field]?.limit ?? PICK_TEXT_LIMIT;
+// How a concept's own fields name the rows (as the concepts template writes them, and as the server matches them to a default).
 const PICK_FIELD_LABELS = Object.freeze({
   funnel: /^(?:awareness|funnel)[\s_-]*stage\b/i,
   style: /^ad[\s_-]*style\b/i,
   format: /^(?:visual[\s_-]*)?format\b/i,
   cta: /^(?:cta\b|call[\s_-]*to[\s_-]*action\b)/i,
+  pain: /^(?:anchor|viewer[\s_-]*problem)\b/i,
+  angle: /^angle\b/i,
 });
 export const pickRowKey =(conceptId, field) => (field === 'industry' ? 'industry' : `${conceptId}:${field}`);
 /** The concept and field a row key names (the industry row belongs to the job, so its id is null), or null for anything else. */
@@ -2885,7 +2921,7 @@ function pickOptionsList(value) {
     const text = cleanHookLine(item.text);
     if (!id || !text || seen.has(id)) continue;
     seen.add(id);
-    list.push({ id, text, ...(item.yours === true ? { yours: true } : {}), ...(Object.prototype.hasOwnProperty.call(RESULT_PILLS, item.label) ? { label: item.label } : {}) });
+    list.push({ id, text, ...(item.yours === true ? { yours: true } : {}), ...(Object.prototype.hasOwnProperty.call(RESULT_PILLS, item.label) ? { label: item.label } : {}), ...(Number.isFinite(item.count) && item.count > 1 ? { count: Math.floor(item.count) } : {}), ...(trimmed(item.hint) ? { hint: trimmed(item.hint) } : {}) });
   }
   return list;
 }
@@ -2921,7 +2957,7 @@ export function applyPickEdit(state, options, concept = null) {
   const noun = PICK_ROW_OF[parts.field].noun;
   const text = cleanHookLine(edit.text);
   if (!text) return { error: `Type your own ${noun} first.` };
-  if (text.length > PICK_TEXT_LIMIT) return { error: `Keep it to ${PICK_TEXT_LIMIT} characters or fewer.` };
+  if (text.length > pickLimit(parts.field)) return { error: `Keep it to ${pickLimit(parts.field)} characters or fewer.` };
   const row = pickRowOf(options, parts.field, edit.row, pickFallback(options, parts.field, concept), { chosen: state.strategyPicks, added: state.strategyOwn });
   if (!row) return { error: 'That row is no longer here.' };
   const same = row.options.find(item => item.text.toLowerCase() === text.toLowerCase() || pickShown(item).toLowerCase() === text.toLowerCase());
@@ -2983,17 +3019,18 @@ export function strategyNoteLines(options, concept, { chosen = {}, added = {} } 
   return lines;
 }
 
-function pickEditForm(rowKey, edit, label) {
+function pickEditForm(rowKey, edit, label, limit = PICK_TEXT_LIMIT) {
   const errorId = `pick-error-${rowKey}`.replace(/\s+/g, '-');
   const problem = edit.error ? `<span class="field-error" id="${esc(errorId)}" role="alert">${esc(edit.error)}</span>` : '';
-  return `<span class="hook-form pick-form"><input type="text" class="hook-input" name="pick_edit_${esc(rowKey)}" data-pick-input="${esc(rowKey)}" value="${esc(edit.text || '')}" maxlength="${PICK_TEXT_LIMIT}" autocomplete="off" enterkeyhint="done" aria-label="${esc(label)}"${edit.error ? ` aria-invalid="true" aria-describedby="${esc(errorId)}"` : ''}><span class="hook-form-actions"><button type="button" class="hook-save" data-pick-save="${esc(rowKey)}">Save</button><button type="button" class="quiet" data-pick-cancel="${esc(rowKey)}">Cancel</button></span>${problem}</span>`;
+  return `<span class="hook-form pick-form"><input type="text" class="hook-input" name="pick_edit_${esc(rowKey)}" data-pick-input="${esc(rowKey)}" value="${esc(edit.text || '')}" maxlength="${limit}" autocomplete="off" enterkeyhint="done" aria-label="${esc(label)}"${edit.error ? ` aria-invalid="true" aria-describedby="${esc(errorId)}"` : ''}><span class="hook-form-actions"><button type="button" class="hook-save" data-pick-save="${esc(rowKey)}">Save</button><button type="button" class="quiet" data-pick-cancel="${esc(rowKey)}">Cancel</button></span>${problem}</span>`;
 }
 
 function pickChip(option, rowKey, picked, disabled, noun = '') {
   const result = option.label ? RESULT_PILLS[option.label] : null;
-  const tags = `${option.yours ? '<span class="pick-tag">yours</span>' : ''}${result ? `<span class="pick-tag is-${option.label}" title="${esc(result.hint)}">${result.word.toLowerCase()}</span>` : ''}`;
+  const tags = `${option.yours ? '<span class="pick-tag">yours</span>' : ''}${result ? `<span class="pick-tag is-${option.label}" title="${esc(result.hint)}">${result.word.toLowerCase()}</span>` : ''}${option.count ? `<span class="pick-tag is-count" title="How many times this came up in the research">${esc(plural(option.count, 'mention'))}</span>` : ''}`;
   const shown = pickShown(option);
-  const chip = `<label class="pick-chip"${shown === option.text ? '' : ` title="${esc(option.text)}"`}><input type="radio" class="visually-hidden" name="pick_${esc(rowKey)}" value="${esc(option.id)}" ${picked === option.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="pick-chip-body"><span class="pick-chip-text">${esc(shown)}</span>${tags}</span></label>`;
+  const tip = [shown === option.text ? '' : option.text, trimmed(option.hint)].filter(Boolean).join(' - ');
+  const chip = `<label class="pick-chip"${tip ? ` title="${esc(tip)}"` : ''}><input type="radio" class="visually-hidden" name="pick_${esc(rowKey)}" value="${esc(option.id)}" ${picked === option.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="pick-chip-body"><span class="pick-chip-text">${esc(shown)}</span>${tags}</span></label>`;
   // An option added in this review can be taken back with a small x; one the document lists (the brand's saved ones too) cannot.
   return option.added
     ? `<span class="pick-own">${chip}<button type="button" class="pick-drop" data-pick-drop="${esc(rowKey)}" data-pick-id="${esc(option.id)}" aria-label="${esc(`Remove your own ${noun}: ${option.text}`)}" title="Remove" ${disabled ? 'disabled' : ''}><span aria-hidden="true">×</span></button></span>`
@@ -3007,7 +3044,7 @@ function pickRowHtml(row, { concept = null, edit = null, disabled = false } = {}
   const chips = row.options.length ? `<div class="pick-chips" role="radiogroup" aria-labelledby="${esc(labelId)}">${row.options.map(option => pickChip(option, row.rowKey, row.picked, disabled, `${spec.noun}${forConcept}`)).join('')}</div>` : '';
   const editing = edit && edit.row === row.rowKey ? edit : null;
   const adder = editing
-    ? pickEditForm(row.rowKey, editing, `Your own ${spec.noun}${forConcept}`)
+    ? pickEditForm(row.rowKey, editing, `Your own ${spec.noun}${forConcept}`, spec.limit ?? PICK_TEXT_LIMIT)
     : row.room ? `<button type="button" class="pick-add" data-pick-add="${esc(row.rowKey)}" aria-label="${esc(`Add your own ${spec.noun}${forConcept}`)}" ${disabled ? 'disabled' : ''}>+ Add your own</button>` : '';
   return `<div class="pick-row"><span class="pick-label" id="${esc(labelId)}">${esc(spec.title)}${concept ? `<span class="visually-hidden"> for concept ${esc(concept.id)}</span>` : ''}</span><div class="pick-line">${chips}${adder}</div></div>`;
 }
@@ -7416,7 +7453,7 @@ if (typeof document !== 'undefined') {
       const listed = [...(Array.isArray(library?.yours) ? library.yours : [])].some(item => item?.id === key.slice(at + 1));
       if (!listed) libraryUi.removing.delete(key);
     }
-    const libraries = brands.map(brand => brandLibrarySection(brand, { open: openKeys.has(`brand-library:${brand.slug}`), removing: libraryUi.removing, errors: libraryUi.errors })).join('');
+    const libraries = brands.map(brand => brandLibrarySection(brand, { open: openKeys.has(`brand-library:${brand.slug}`), removing: libraryUi.removing, errors: libraryUi.errors, openKeys })).join('');
     return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div>${libraries ? `<div class="brand-libraries">${libraries}</div>` : ''}</section>`;
   }
   // Remove one of the person's own items from a brand's library: a board request (`bank_remove`) that Claude lands with brand_bank_save.

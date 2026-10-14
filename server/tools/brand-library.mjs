@@ -10,8 +10,9 @@ import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import {
-  BANKS, BANK_KINDS, PROVEN_SOURCES, addToBank, boardLibrary, editBankItem, fileJob, readBank, readFiledJobs, readPreferences, readProven, removeBankItem, researchIndex,
+  BANKS, BANK_KINDS, PROVEN_SOURCES, addToBank, bankKindCounts, boardLibrary, editBankItem, fileJob, readBank, readFiledJobs, readPreferences, readProven, removeBankItem, researchIndex,
 } from '../pipeline/brand-library.mjs';
+import { AWARENESS_STAGES, CTA_TYPES } from '../pipeline/brand-bank-items.mjs';
 import { jobResults } from '../pipeline/brand-results.mjs';
 import { freshTrends } from '../pipeline/brand-trends.mjs';
 
@@ -41,13 +42,15 @@ export const brandLibraryTools = [
       'recentJobs (the last jobs filed, with their concept, opening line, how many approved media files and, once posted, their results: score, label and views), and preferences (what the person chose lately and what they passed on).',
       'Once posts have results, yours and proven come best first, each item with score (1.0 is the brand\'s usual), uses (how many jobs it rests on) and label (winner, average, weak or early; null when there are no results). Prefer winners, say their numbers, and avoid weak ones unless the person asks.',
       'trends lists what the Trend Scout found in the last 7 days (each with its kind, platform, industry, evidence links with views and dates, and when it was seen; empty when there are none): rising topics, formats, sounds and hashtags, and the hooks and captions of ads that keep running, whose evidence carries days running and variants because the ad libraries show no views. Reuse them for Concept C and the hook options instead of searching again.',
-      'Pass kind to see only one kind of item (hook, angle, style, cta, caption, format, industry or funnel); trends are then left out.',
+      'Pass kind to see one whole bank: hook, caption, cta, format, style, angle, industry, funnel, or the audience banks pain, desire and objection. yours and proven then hold every item of that kind (up to limit), and trends are left out.',
+      'The audience banks hold what the audience says in its own words (text), who says it (who), how aware of the problem they are (awarenessStage), how often it came up (count) and quotes ([{ text, url, date }] with the page each came from); the pains that came up most come first. An angle is a pain matched with a proof (pain, proof). A caption has its structure and a cta its ctaType. Every item has a source: brand, competitor, community, review, ad or starter (the person\'s own lines are in yours).',
+      'kinds counts the items of each kind in both banks, so you know which banks to ask for. Name the id of every item you use.',
     ].join(' '),
     inputSchema: {
       type: 'object',
       properties: {
         brand: { ...string, description: 'The brand slug.' },
-        kind: { type: 'string', enum: BANK_KINDS, description: 'Only items of this kind.' },
+        kind: { type: 'string', enum: BANK_KINDS, description: 'Only items of this kind: the whole bank of that kind.' },
         limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Most items to return from each list. Defaults to 50.' },
       },
       required: ['brand'],
@@ -63,6 +66,7 @@ export const brandLibraryTools = [
       return {
         brand,
         counts: boardLibrary({ root, brand }).counts,
+        kinds: bankKindCounts({ root, brand }),
         industry: readBank({ root, brand, bank: 'yours', kind: 'industry', limit: 1 })[0] ?? null,
         yours: readBank({ root, brand, bank: 'yours', kind, limit }),
         proven: proven.slice(0, limit).map(item => ({ ...item, source: item.source || 'brand' })),
@@ -81,7 +85,10 @@ export const brandLibraryTools = [
       'An item learned from a file in the brand\'s own footage library (brand_footage_analysis_save feeds these by itself) names that file in evidence.file instead of a link.',
       'Save to "yours" only what the person said or chose, or when they ask you to; never invent their words. Saving the same words twice keeps one item.',
       'action add needs kind and text. action edit needs id and the new text (the old words are kept as "was"). action remove needs id; it is also how a board request to remove an item is carried out.',
-      'Kinds: hook, angle, style, cta, caption, format, industry, funnel. Returns the item and whether anything changed, plus the bank counts.',
+      'Kinds: hook, angle, style, cta, caption, format, industry, funnel, and the audience banks pain, desire and objection (the problem, want or doubt in the customer\'s own words).',
+      'A proven pain, desire or objection carries who (who has it), awarenessStage (unaware, problem_aware, solution_aware, product_aware or most_aware), count (how many times it came up) and quotes ([{ text, url, date }]: words copied from a page you read, with its https link); it needs no evidence, because its first quote is its proof, and its source is community (a forum or comments), review, ad, competitor or brand.',
+      'An angle is a pain matched with a proof: text is the line, pain the pain it answers (painId when that pain is in the bank) and proof the claim that backs it. A caption can carry its structure ({ hook, body, cta, hashtags }) and a cta its ctaType.',
+      'Saving the same words again adds the new quotes to the item and counts them, and changes nothing when there is nothing new. Returns the item and whether anything changed, plus the bank counts.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -111,8 +118,32 @@ export const brandLibraryTools = [
           },
           additionalProperties: false,
         },
-        source: { type: 'string', enum: PROVEN_SOURCES, description: 'Proven items only: brand (one of the brand\'s own posts, the default) or competitor.' },
-        competitor: { ...string, description: 'Proven items from a competitor: the competitor\'s name.' },
+        source: { type: 'string', enum: PROVEN_SOURCES, description: 'Proven items only: brand (one of the brand\'s own posts, the default), competitor, community (a forum, comments), review, ad, or starter (the plugin\'s own line, needs no link).' },
+        competitor: { ...string, description: 'Proven items from a competitor, a review of one or one of its ads: the competitor\'s name.' },
+        who: { ...string, description: 'Pain, desire and objection items: who has it, in a few words, for example office workers who use ChatGPT.' },
+        awarenessStage: { type: 'string', enum: AWARENESS_STAGES, description: 'Pain, desire and objection items: how aware of the problem the people are.' },
+        count: { type: 'integer', minimum: 1, maximum: 9999, description: 'Pain, desire and objection items: how many comments, reviews or posts you read that said it.' },
+        quotes: {
+          type: 'array',
+          maxItems: 5,
+          description: 'Pain, desire and objection items: words copied from pages you read, each with the https link of its page.',
+          items: {
+            type: 'object',
+            properties: { text: { ...string, description: 'The words, exactly as the page has them.' }, url: { ...string, description: 'The https link of the page.' }, date: { ...string, description: 'When it was written, as YYYY-MM-DD, if the page shows it.' } },
+            required: ['text', 'url'],
+            additionalProperties: false,
+          },
+        },
+        pain: { ...string, description: 'Angle items: the text of the pain the angle answers.' },
+        painId: { ...string, description: 'Angle items: the id of that pain in the bank, when it is there.' },
+        proof: { ...string, description: 'Angle items: the claim, number or result that backs the angle.' },
+        structure: {
+          type: 'object',
+          description: 'Caption items: how the caption is built.',
+          properties: { hook: string, body: string, cta: string, hashtags: { type: 'array', items: string, maxItems: 8 } },
+          additionalProperties: false,
+        },
+        ctaType: { type: 'string', enum: CTA_TYPES, description: 'Cta items: what kind of ask it is.' },
         concept: { ...string, description: 'Yours items only: the concept letter the line came from, for example B.' },
         jobId: { ...string, description: 'The job the item came from, if any.' },
         was: { ...string, description: 'Yours items only: the words this was edited from.' },
@@ -129,8 +160,12 @@ export const brandLibraryTools = [
         const out = addToBank({
           root, brand, bank, kind: args.kind, text: args.text, concept: args.concept ?? null, jobId: args.jobId ?? null, evidence: args.evidence ?? null,
           source: args.source ?? null, competitor: args.competitor ?? null, edited: typeof args.was === 'string' && args.was.trim() !== '', was: args.was ?? null,
+          details: {
+            who: args.who, awarenessStage: args.awarenessStage, count: args.count, quotes: args.quotes, pain: args.pain, painId: args.painId,
+            proof: args.proof, structure: args.structure, ctaType: args.ctaType,
+          },
         });
-        return { brand, bank, action: 'add', item: out.item, changed: out.saved, counts: counts(root, brand) };
+        return { brand, bank, action: 'add', item: out.item, changed: out.saved || out.merged === true, counts: counts(root, brand) };
       }
       if (!args.id) throw new InvalidInputError('Say which item, with the id from brand_library_get.');
       if (args.action === 'edit') {
@@ -146,7 +181,7 @@ export const brandLibraryTools = [
     description: [
       'File a job in its brand\'s library once its final media is approved: a record that points at the job\'s approved pictures and videos, script, captions, music and voice, the research it left, and the concept it used. Nothing is copied.',
       'Safe to call again: filing the same job twice changes nothing, and filing it after more was approved updates the record. The board does this itself when the final media or the final post is approved and when a job is closed, so call it only to be sure.',
-      'A job with nothing approved yet is not filed, and the reply says so. Returns filed, changed, jobId and the record.',
+      'A job with nothing approved yet is not filed, and the reply says so. Filing also adds what the job\'s researchers learned about the audience (the research/banks-*.json files they wrote) to the brand\'s banks, each quote checked against the pages the job saved, even when nothing else is approved. Returns filed, changed, jobId and the record.',
     ].join(' '),
     inputSchema: {
       type: 'object',
