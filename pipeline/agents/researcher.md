@@ -40,6 +40,7 @@ Search only unresolved questions and never add a generic workstream.
 Do not repeat a provider probe that the current stage already answered.
 
 Brand onboarding research (the `brand-onboarding` and `viral-teardown` workstreams, defined in `pipeline/skills/research/SKILL.md`) is always the deep pass and has up to 120 turns: the draft contract in the spawn prompt says what to read, take apart and label.
+It runs as parallel workers, one for each part (`website`, `own`, `competitors` or `competitor-1` to `competitor-3`, `pains` and `viral`): the run's 30 searches, 56 fetches and 120 turns are split between the parts, each worker reads its own contract file (`contractPath`) and writes only its own part file (`partPath`, with `status` done in its last write), and the server merges the part files when the Director saves ("Working in parts" in the research skill).
 
 Research serves the direction the person approved.
 Read `topic` and `direction` in `job.json`, and the aim the spawn prompt passes (topic, message, audience, offer, goal).

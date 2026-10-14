@@ -220,6 +220,16 @@ export function kitImageSrc(value) {
   if (/^data:image\/(png|jpeg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(value)) return value;
   return safePreviewUrl(value);
 }
+// The picture on a post card of the Brand library and the Brand intelligence panel: one helper for both. This page may only load pictures that travel
+// inside it (data: and blob: addresses and its own files), so the https address a platform gave for a post's picture never draws here. The plugin keeps
+// a small WebP of each post on this computer and carries it in the board as a data URI in the brand's `thumbs`, under the key the card names in `thumb`;
+// a card with no picture keeps its platform tile. A record that still holds a safe `thumbnail` of its own is drawn from that.
+export function postThumbSrc(post, thumbs) {
+  const key = typeof post?.thumb === 'string' ? post.thumb : '';
+  const held = key && thumbs && typeof thumbs === 'object' && !Array.isArray(thumbs) && Object.hasOwn(thumbs, key) ? thumbs[key] : null;
+  const own = typeof held === 'string' && /^data:image\/(webp|jpeg);base64,/i.test(held) ? safePreviewUrl(held) : null;
+  return own || safePreviewUrl(post?.thumbnail);
+}
 
 const ARTIFACT_WORKSPACE_DOC = 'socialCampaign/workspace';
 const JOB_DOCUMENT_COLLECTION = 'jobDocs';
@@ -345,7 +355,8 @@ export function contextPrefill(values = {}) {
 // brand (a brand-new draft) yields the same empty shape onboardDraft and
 // inlineOnboardingForm already expect.
 export function profileFormValues(brand) {
-  const profile = brand?.profile || {};
+  // Before research starts there is no profile yet: the details the person saved on the brand's page stand in for it.
+  const profile = brand?.profile || brand?.details || {};
   const channels = profile.channels || {};
   const values = { name: brand?.name || '' };
   for (const name of CHANNEL_NAMES) {
@@ -437,10 +448,12 @@ function competitorLines(raw) {
   return String(raw ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 }
 
-export function validateProfile(values = {}, prefilled = {}, unlocked = {}) {
+export function validateProfile(values = {}, prefilled = {}, unlocked = {}, { partial = false } = {}) {
   const errors = {};
   if (!String(values.name || '').trim()) errors.name = 'Enter a brand name.';
   for (const name of CHANNEL_NAMES) {
+    // On the brand's details page an empty channel is fine (it is "not answered yet"); a channel that is filled in must still be a real link.
+    if (partial && !normalizeChannelInput(name, values[name])) continue;
     const error = channelFieldError(name, values[name], Boolean(values[name + '_unavailable']));
     if (error) errors[name] = error;
   }
@@ -458,6 +471,42 @@ export function validateProfile(values = {}, prefilled = {}, unlocked = {}) {
   if (competitors.length > CONTEXT_LIMITS.competitorsMax) errors.competitors = 'List up to 3 competitors, one per line.';
   else if (competitors.some(item => item.length > CONTEXT_LIMITS.competitorItemMax)) errors.competitors = `Keep each competitor to ${CONTEXT_LIMITS.competitorItemMax} characters or fewer.`;
   return errors;
+}
+
+// Brand onboarding in three steps. The new-brand form asks only for the name and sends `create_brand` { requestId, name }. The brand's own page
+// then holds the details and sends `save_brand_details` { requestId, brand, profile, kit? } as often as the person saves (no research), and
+// `start_research` { requestId, brand, profile, kit?, metricoolBlogId? } when they press Start research. `brand_rename` { requestId, brand, name }
+// changes the display name. The old single `onboard_brand` request still works and is what a brand that already did research uses to Save and continue.
+export const BRAND_NAME_LIMIT = 160;
+export const RESEARCH_MINIMUM_NOTE = 'Add a website or at least one social account to start research.';
+export const RESEARCH_READY_HINT = 'Research uses everything you have entered above.';
+
+// Every field on the details page, so a save always matches what is shown: a channel left empty is '' (not answered yet), "We don't have one" is
+// 'Not available', and an empty context field clears whatever was saved for it.
+export function detailsProfile(values = {}) {
+  const channels = {};
+  for (const name of CHANNEL_NAMES) channels[name] = values[name + '_unavailable'] ? 'Not available' : normalizeChannelInput(name, values[name]);
+  const profile = { channels, targetMarket: normalizeTargetMarket(values.targetMarket) };
+  for (const field of CONTEXT_FIELDS) {
+    const text = String(values[field.name] ?? '').replace(/\r\n/g, '\n').trim();
+    profile[field.name] = field.name === 'contentPillars' || field.name === 'competitors' ? text.split(/\r?\n/).map(item => item.trim()).filter(Boolean) : text;
+  }
+  return profile;
+}
+
+// Whether Start research can be pressed: the name, and a website or at least one social account (a channel marked "We don't have one" does not count).
+export function researchMinimum(values = {}) {
+  if (!String(values.name ?? '').trim()) return { ok: false, message: 'Give the brand a name.' };
+  const given = CHANNEL_NAMES.some(name => !values[name + '_unavailable'] && normalizeChannelInput(name, values[name]));
+  return given ? { ok: true, message: '' } : { ok: false, message: RESEARCH_MINIMUM_NOTE };
+}
+
+// The name for a new brand or a rename, or { error }: not empty, not over the limit.
+export function brandNameArgs(raw) {
+  const name = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!name) return { error: 'Enter a brand name.' };
+  if (name.length > BRAND_NAME_LIMIT) return { error: `Keep the brand name under ${BRAND_NAME_LIMIT} characters.` };
+  return { name };
 }
 
 function channelField(name, values = {}, fieldErrors = null) {
@@ -517,7 +566,29 @@ export const KIT_LIMITS = Object.freeze({ maxColors: 8, maxFonts: 4 });
 // Optional real photos of the brand's world (the place, the people, the product in use), added at setup.
 export const KIT_PHOTOS_MAX = 5;
 export const KIT_PHOTOS_NOTE = 'Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
-const KIT_SOCIAL_PLATFORMS = Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
+export const KIT_PHOTOS_LATER = 'These photos are saved when you press Start research.';
+const KIT_SOCIAL_PLATFORMS =Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
+
+// What the kit suggests from the brand's own places: a logo from its website or its profile pictures, colours from that logo or from frames of its
+// videos, and a typeface that looks like the text in them. Only suggestions: the person says Use this or Not this, edits the rest, and an upload always wins.
+const KIT_SUGGEST_ACCOUNTS = Object.freeze({ tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube' });
+const KIT_SUGGEST_SITE = Object.freeze({ website: 'website logo', website_header: 'website logo', website_icon: 'website icon', website_og: 'website sharing image' });
+const KIT_COLOUR_ORIGINS = Object.freeze({ logo: 'your logo', videos: 'your videos' });
+const wordsAnd = items => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+
+// Where a suggested logo was found, in the person's words: "TikTok profile picture", "website logo and Instagram profile picture".
+export function suggestedLogoPlaces(sources = []) {
+  const list = Array.isArray(sources) ? sources : [];
+  const site = [...new Set(list.map(source => KIT_SUGGEST_SITE[source]).filter(Boolean))];
+  const accounts = [...new Set(list.map(source => KIT_SUGGEST_ACCOUNTS[source]).filter(Boolean))];
+  return wordsAnd([...site, ...(accounts.length ? [`${wordsAnd(accounts)} profile picture${accounts.length > 1 ? 's' : ''}`] : [])]);
+}
+
+// "From your logo", "From your videos" or "From your logo and your videos" for colours the kit suggested; empty for any other palette.
+export function suggestedColoursNote(palette = []) {
+  const origins = [...new Set((Array.isArray(palette) ? palette : []).map(color => KIT_COLOUR_ORIGINS[color?.from]).filter(Boolean))];
+  return origins.length ? `From ${wordsAnd(origins)}.` : '';
+}
 
 // Folders of the brand's own videos, photos and fonts, added on the onboarding page. The board runs in a browser and cannot read a folder on this
 // computer, so the person presses "Choose a folder..." (the board request `brand_folder_pick`): Claude opens the operating system's own folder
@@ -532,7 +603,7 @@ export const KIT_FOLDER_RIGHTS = Object.freeze([
 ]);
 export const KIT_FOLDER_OWNER_QUESTION = 'Who owns the files in this folder?';
 export const KIT_FOLDER_PICK_HINT = 'A folder picker opens on your computer, like saving a file. No need to copy a path.';
-export const KIT_FOLDER_PICK_WAIT = 'First choose who owns the files below.';
+export const KIT_FOLDER_PICK_WAIT = 'First choose who owns the files above.';
 export const KIT_FOLDER_PICK_OPENED = 'A folder picker opened on your computer';
 const KIT_FOLDER_KINDS = Object.freeze([['video', 'video', 'videos'], ['image', 'photo', 'photos'], ['audio', 'audio file', 'audio files'], ['font', 'font', 'fonts']]);
 const KIT_FOLDER_STATES = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
@@ -728,10 +799,12 @@ function kitPhase(brand, held = false) {
   if (held) return 'loading';
   if (!brand) return 'new';
   const researchPhase = brandResearchPhase(brand);
+  // Before research starts the card stays open even while the brand's website and accounts are being read: what that finds arrives as
+  // suggestions the person can take or leave, so there is nothing to lock.
+  if (researchPhase === 'new') return 'new';
   const captureStatus = brand.kit?.capture?.status;
   if (captureStatus === 'waiting' || captureStatus === 'running') return 'loading';
   if (researchPhase === 'running' && !CAPTURE_SETTLED.has(captureStatus)) return 'loading';
-  if (researchPhase === 'new') return 'new';
   return 'ready';
 }
 
@@ -767,6 +840,9 @@ export function kitPayload(brand, kit = {}) {
   } else if (logoState.action === 'asset' && logoState.assetId) {
     logo = { action: 'asset', assetId: logoState.assetId, mimeType: logoState.mimeType, width: logoState.width ?? null, height: logoState.height ?? null };
     if (logoState.thumbAssetId) { logo.thumbAssetId = logoState.thumbAssetId; logo.thumbMimeType = logoState.thumbMimeType || logoState.mimeType; }
+  } else if (logoState.action === 'suggested' && logoState.id) {
+    // A logo the person took from the suggestions: only its id travels, the picture is already on this computer.
+    logo = { action: 'suggested', id: logoState.id };
   } else if (logoState.action === 'remove') {
     logo = { action: 'remove' };
   } else {
@@ -793,7 +869,8 @@ export function kitPayload(brand, kit = {}) {
 // in it.
 export function kitKickoffArgs(kit = {}) {
   const hasLogo = (kit.logo?.action === 'upload' && Boolean(kit.logo?.dataBase64))
-    || (kit.logo?.action === 'asset' && Boolean(kit.logo?.assetId));
+    || (kit.logo?.action === 'asset' && Boolean(kit.logo?.assetId))
+    || (kit.logo?.action === 'suggested' && Boolean(kit.logo?.id));
   const hasPalette = Array.isArray(kit.palette) && kit.palette.length > 0;
   const hasFonts = Array.isArray(kit.fonts) && kit.fonts.length > 0;
   const hasPhotos = Array.isArray(kit.references) && kit.references.some(photo => photoPayload(photo));
@@ -1238,6 +1315,9 @@ export function kitFocusSelector(action, index, count) {
   if (action === 'remove-color') return count > 0 ? `[name="kit_color_hex_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-color"]';
   if (action === 'remove-font') return count > 0 ? `[name="kit_font_family_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-font"]';
   if (action === 'remove-logo' || action === 'replace-logo') return '#kit-logo-file';
+  // Taking a suggested logo leaves the logo's own controls; turning one down moves to the next suggestion's button, else the upload.
+  if (action === 'use-logo') return '#kit-logo-file';
+  if (action === 'pass-logo') return '[data-kit-action="use-logo"], #kit-logo-file';
   if (action === 'remove-ref' || action === 'add-ref') return '#kit-ref-file';
   if (action === 'add-folder') return '#kit-folder-path';
   if (action === 'pick-folder') return '[data-kit-action="pick-folder"]';
@@ -1305,11 +1385,12 @@ function kitFolderPending(entry, index) {
   return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><span class="kit-folder-icon" aria-hidden="true">${KIT_ICONS.folder}</span><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta"${live}>${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Claude could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
 }
 
-// The "Your videos, photos and fonts" block of the kit: a "Choose a folder..." button that opens the folder dialog on the person's computer, the
-// question of who owns the files (three cards, none picked until the person picks one), a small "or paste a path" fallback, then the folders added
-// so far with their status and counts (the brand's footage list, plus requests still waiting for Claude). `folders` is the draft's own state:
-// { path, label, rights, error, busy, pasteOpen, pending: [{ requestId, kind?, name, rights, status, message, folderId, appliedAt }] }. Without a
-// brand (before onboarding has started) there is nowhere to keep a folder yet, so the controls wait.
+// The "Your videos, photos and fonts" block of the kit: the question of who owns the files (three cards, none picked until the person picks one),
+// then a "Choose a folder..." button that opens the folder dialog on the person's computer (on as soon as an owner card is picked), a small "or
+// paste a path" fallback, then the folders added so far with their status and counts (the brand's footage list, plus requests still waiting for
+// Claude). `folders` is the draft's own state: { path, label, rights, error, busy, pasteOpen, pending: [{ requestId, kind?, name, rights, status,
+// message, folderId, appliedAt }] }. The block lives on the brand's own page, so the brand exists and the controls work at once. Without a brand
+// (the form never draws it then) there is nowhere to keep a folder yet, so the controls wait.
 export function kitFolders(brand, folders = {}, disabled = false, now = Date.now()) {
   const state = folders && typeof folders === 'object' ? folders : {};
   const footage = brand?.library?.footage && typeof brand.library.footage === 'object' ? brand.library.footage : null;
@@ -1333,7 +1414,7 @@ export function kitFolders(brand, folders = {}, disabled = false, now = Date.now
   const intro = `<p class="muted">${esc(waiting ? 'Folders can be added as soon as onboarding has started.' : KIT_FOLDER_NOTE)}</p>`;
   const found = fonts.length ? `<p class="muted kit-folder-fonts">Fonts found: ${fonts.map(esc).join(', ')}</p>` : '';
   const list = rows ? `<ul class="library-list kit-folder-list">${rows}</ul>` : '';
-  return kitBlock('folders', 'Your videos, photos and fonts (optional)', `${intro}${pick}${owner}${problem}${paste}${list}${found}`, '', 'kit-card kit-folders-block');
+  return kitBlock('folders', 'Your videos, photos and fonts (optional)', `${intro}${owner}${pick}${problem}${paste}${list}${found}`, '', 'kit-card kit-folders-block');
 }
 
 export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
@@ -1349,7 +1430,9 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const palette = Array.isArray(kit.palette) ? kit.palette : (projected.palette || []);
   const fonts = Array.isArray(kit.fonts) ? kit.fonts : (projected.fonts || []);
   const removed = logoState.action === 'remove';
-  const ownUpload = logoState.action === 'upload' || logoState.action === 'asset';
+  // A suggested logo the person took (Use this) is shown like an upload they made: from its preview, until it is saved.
+  const chosen = logoState.action === 'suggested';
+  const ownUpload = logoState.action === 'upload' || logoState.action === 'asset' || chosen;
   const preview = kitImageSrc(removed ? null : ownUpload ? (logoState.previewDataUrl || null) : projected.logo?.thumb || null);
   const hasLogo = !removed && Boolean(preview || ownUpload || projected.logo);
   const savedLogo = !logoState.action && Boolean(projected.logo);
@@ -1359,10 +1442,24 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   // The same logo on a light and on a dark tile, so the person can check both. The second image is a decoration (the first carries the alt text).
   const tiles = src => `<div class="kit-logo-tiles"><figure class="kit-logo-tile is-light"><img src="${esc(src)}" alt="${esc(logoAlt)}"><figcaption>On light</figcaption></figure><figure class="kit-logo-tile is-dark"><img src="${esc(src)}" alt=""><figcaption>On dark</figcaption></figure></div>`;
   const ghostTiles = `<span class="kit-logo-ghosts" aria-hidden="true"><span class="kit-logo-ghost is-light">${KIT_ICONS.image}</span><span class="kit-logo-ghost is-dark">${KIT_ICONS.image}</span></span>`;
+  // Logos the kit suggests from the brand's own places (its website, its profile pictures), each one looked at by Claude first. The best is offered
+  // with Use this / Not this and the others as small pictures; the upload below them is always there, and the person's own file always wins.
+  const passedLogos = new Set(Array.isArray(kit.logoPassed) ? kit.logoPassed : []);
+  const offers = !hasLogo && !removed ? (Array.isArray(projected.suggested?.logos) ? projected.suggested.logos : []).filter(item => item?.id && !passedLogos.has(item.id) && kitImageSrc(item.thumb)) : [];
+  const placesOf = item => suggestedLogoPlaces(Array.isArray(item.sources) && item.sources.length ? item.sources : [item.source]);
+  const logoPlaces = chosen ? trimmed(logoState.places) : provided.logoSource ? suggestedLogoPlaces([provided.logoSource]) : '';
+  const offerBody = () => {
+    const [first, ...others] = offers;
+    const thumbs = others.map(item => `<button type="button" class="kit-suggest-thumb" data-kit-action="use-logo" data-id="${esc(item.id)}" aria-label="${esc(`Use the logo suggested from your ${placesOf(item)}`)}" title="${esc(`From your ${placesOf(item)}`)}" ${dis}><img src="${esc(kitImageSrc(item.thumb))}" alt=""></button>`).join('');
+    return `<div class="kit-drop kit-drop-filled">${tiles(kitImageSrc(first.thumb))}</div><p class="kit-suggest-note" role="status">Suggested from your ${esc(placesOf(first))}. Is this your logo?</p><div class="kit-logo-actions"><button type="button" class="kit-choose" data-kit-action="use-logo" data-id="${esc(first.id)}" ${dis}>Use this</button><button type="button" class="quiet" data-kit-action="pass-logo" data-id="${esc(first.id)}" ${dis}>Not this</button></div>${thumbs ? `<div class="kit-suggest-others" role="group" aria-label="Other logo suggestions"><span class="muted kit-card-note">Other suggestions</span>${thumbs}</div>` : ''}`;
+  };
   const logoBody = hasLogo
     ? `<div class="kit-drop kit-drop-filled" data-kit-drop="logo">${preview ? tiles(preview) : `<div class="kit-logo-preview kit-logo-preview-none"><span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span></div>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div><p class="muted kit-card-note">${preview ? 'Shown on light and dark so you can check both. ' : ''}Drop a new file on the logo to replace it.</p>`
-    : `<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload" for="kit-logo-file">${ghostTiles}<span class="kit-upload-title">Drop your logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div><p class="muted kit-card-note">Shown on light and dark so you can check both.</p>`;
-  const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, showTags && provided.logo ? tag : '', 'kit-card kit-logo-block');
+    : offers.length
+      ? `${offerBody()}<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload is-compact" for="kit-logo-file"><span class="kit-upload-title">Or drop your own logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div>`
+      : `<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload" for="kit-logo-file">${ghostTiles}<span class="kit-upload-title">Drop your logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div><p class="muted kit-card-note">Shown on light and dark so you can check both.</p>`;
+  const logoTag = logoPlaces && (chosen || (showTags && provided.logo)) ? `<span class="pill">From your ${esc(logoPlaces)}</span>` : showTags && provided.logo ? tag : '';
+  const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, logoTag, 'kit-card kit-logo-block');
 
   const removeButton = (action, index, label) => `<button type="button" class="quiet kit-icon-button" data-kit-action="${action}" data-index="${index}" aria-label="${label}" ${dis}>${KIT_ICONS.remove}</button>`;
   // Each colour is a tile: the swatch itself (a colour input the whole block opens), its hex code and its role.
@@ -1375,7 +1472,9 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   }).join('');
   const settled = phase === 'ready' && CAPTURE_SETTLED.has(projected.capture?.status) && !(projected.palette || []).length;
   const socialPlatform = KIT_SOCIAL_PLATFORMS[projected.paletteSource];
-  const paletteNote = socialPlatform && !provided.palette && palette.length ? `<p class="muted">From your ${socialPlatform} profile picture.</p>` : '';
+  // Colours read from the brand's logo or from frames of its videos say so ("From your logo"); they are suggestions the person edits like any other.
+  const suggestedColours = !provided.palette ? suggestedColoursNote(projected.palette) : '';
+  const paletteNote = socialPlatform && !provided.palette && palette.length ? `<p class="muted">From your ${socialPlatform} profile picture.</p>` : suggestedColours && palette.length ? `<p class="muted">${esc(suggestedColours)}</p>` : '';
   const emptyColours = settled ? 'We could not read your colours. Add them here.' : 'No colours yet';
   const paletteFull = loading || palette.length >= KIT_LIMITS.maxColors;
   const addColor = `<button type="button" class="kit-add kit-add-swatch" data-kit-action="add-color" ${paletteFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
@@ -1402,9 +1501,12 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const fontsFull = loading || fonts.length >= KIT_LIMITS.maxFonts;
   const fontActions = `<div class="kit-actions"><button type="button" class="kit-add" data-kit-action="add-font" ${fontsFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add font</span></button><input type="file" id="kit-font-file" class="kit-file visually-hidden" name="kit_font_file" accept="${KIT_FONT_ACCEPT}" aria-label="Upload a font file" ${fontsFull ? 'disabled' : ''}><label class="kit-file-button kit-upload-font" for="kit-font-file">${KIT_ICONS.upload}<span>Upload a font file</span></label></div>`;
   const fontFeedback = `${kit.fontError ? `<p class="field-error" role="alert">${esc(kit.fontError)}</p>` : ''}${kit.fontStatus ? `<p class="muted kit-card-note" role="status">${esc(kit.fontStatus)}</p>` : ''}`;
-  const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${fontRows ? `<div class="kit-specimens">${fontRows}</div>` : '<p class="muted">No fonts yet</p>'}${fontFeedback}${fontActions}`;
-  const readFonts = showTags && !provided.fonts && !Array.isArray(kit.fonts) && fonts.length;
-  const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : readFonts ? readTag : '', 'kit-card kit-fonts-block');
+  // Fonts guessed from the on-screen text of the brand's videos say "looks like": a close Google font, never a sure match.
+  const looksLike = projected.fontsSource === 'looks_like' && !provided.fonts && fonts.length > 0;
+  const looksLikeNote = looksLike ? '<p class="muted kit-card-note">Looks like the text in your videos. A close match from Google Fonts, not a sure one, so please check it.</p>' : '';
+  const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${looksLikeNote}${fontRows ? `<div class="kit-specimens">${fontRows}</div>` : '<p class="muted">No fonts yet</p>'}${fontFeedback}${fontActions}`;
+  const readFonts = showTags && !provided.fonts && !Array.isArray(kit.fonts) && fonts.length && !looksLike;
+  const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : looksLike ? '<span class="pill">Suggested, please check</span>' : readFonts ? readTag : '', 'kit-card kit-fonts-block');
 
   const photos = Array.isArray(kit.references) ? kit.references : [];
   const savedPhotos = Number(brand?.referencePhotos) || 0;
@@ -1417,7 +1519,8 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const photoAdd = photoLeft > 0
     ? `<input type="file" id="kit-ref-file" class="kit-file visually-hidden" name="kit_ref_file" accept="image/png,image/jpeg,image/webp" multiple aria-label="Add photos" ${dis}><label class="kit-file-button" for="kit-ref-file">${KIT_ICONS.upload}<span>Add photos</span></label>`
     : '';
-  const photosBody = `<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photoState}${photoThumbs ? `<div class="kit-photos">${photoThumbs}</div>` : ''}${kit.referencesError ? `<p class="field-error" role="alert">${esc(kit.referencesError)}</p>` : ''}${photoAdd}`;
+  const photosLater = brand && phase === 'new' && photos.length ? `<p class="muted kit-card-note">${esc(KIT_PHOTOS_LATER)}</p>` : '';
+  const photosBody = `<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photosLater}${photoState}${photoThumbs ? `<div class="kit-photos">${photoThumbs}</div>` : ''}${kit.referencesError ? `<p class="field-error" role="alert">${esc(kit.referencesError)}</p>` : ''}${photoAdd}`;
   const photosBlock = kitBlock('photos', 'Photos of your world', photosBody, '', 'kit-card kit-photos-block');
   const foldersBlock = kitFolders(brand, kit.folders, loading);
 
@@ -1436,13 +1539,27 @@ export function brandReady(brand) {
   return brand?.onboardingStatus === 'complete';
 }
 
-// The onboarding card: title "Brand profile" (promoted from the former
-// eyebrow), the "First step"/"Continue" tag, the brand name and four
-// channels, then the five context fields directly below them as normal
-// labelled fields (no collapsible wrapper, no "optional" language). `state`
-// is the inline draft this form renders for; passing it
-// explicitly, instead of reading a module-level variable, keeps this
-// function usable from outside the browser runtime closure.
+// The brand's name on its own page: the name with a pencil that turns it into an input (Enter saves, Esc cancels, and Save / Cancel buttons for a
+// touch screen). Renaming changes the display name only; the brand's folder keeps its original name. `state.rename` is { open, value, busy, error }.
+const RENAME_PENCIL = '<svg aria-hidden="true" viewBox="0 0 16 16" width="13" height="13"><path d="M11.3 1.3a1 1 0 0 1 1.4 0l2 2a1 1 0 0 1 0 1.4l-8 8-3.6.9.9-3.6 8-8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+export const BRAND_RENAME_HINT = "Press Enter to save or Esc to cancel. The brand's folder keeps its original name.";
+export function brandNameBlock(brand, state = {}) {
+  const rename = state.rename && typeof state.rename === 'object' ? state.rename : {};
+  const name = brand?.name || '';
+  if (!rename.open) {
+    const done = state.renamedNote ? `<p class="muted brand-name-note" role="status">${esc(state.renamedNote)}</p>` : '';
+    return `<div class="field-wide brand-name"><span class="brand-name-label" id="brand-name-label">Brand name</span><div class="brand-name-row"><strong class="brand-name-value" aria-labelledby="brand-name-label">${esc(name)}</strong><button type="button" class="field-edit" data-brand-rename="open" aria-label="${esc(`Rename ${name}`)}">${RENAME_PENCIL}<span>Rename</span></button></div>${done}</div>`;
+  }
+  const busy = Boolean(rename.busy);
+  return `<div class="field-wide brand-name is-editing"><label class="brand-name-label" for="brand-rename-input">Brand name</label><div class="brand-name-row"><input id="brand-rename-input" class="brand-name-input" type="text" data-brand-rename-input maxlength="${BRAND_NAME_LIMIT}" value="${esc(rename.value ?? name)}" autocomplete="organization" aria-invalid="${rename.error ? 'true' : 'false'}" aria-describedby="brand-rename-hint" ${busy ? 'disabled' : ''}><span class="brand-name-actions"><button type="button" class="quiet" data-brand-rename="save" ${busy ? 'disabled' : ''}>${busy ? 'Renaming...' : 'Save'}</button><button type="button" class="quiet" data-brand-rename="cancel" ${busy ? 'disabled' : ''}>Cancel</button></span></div><p class="muted brand-name-note" id="brand-rename-hint">${esc(BRAND_RENAME_HINT)}</p>${rename.error ? `<p class="field-error" role="alert">${esc(rename.error)}</p>` : ''}</div>`;
+}
+
+// The brand page, in three steps. Before the brand exists the card asks only for its name ("Create brand"). Once it exists the same card is
+// the brand's own page: the name (with a pencil to rename it), the links, the details, the logo, colours and fonts, the folders and the photos,
+// with "Save details" (any number of times, nothing starts) and "Start research" (on once there is a website or one social account). A brand
+// that already did research keeps the old "Save and continue" page. `state` is the inline draft this form renders for; passing it explicitly,
+// instead of reading a module-level variable, keeps this function usable from outside the browser runtime closure. `state.action` says which
+// button the request in flight came from: 'create', 'details', 'start' or 'finish'.
 export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool = {}) {
   const existing = Boolean(brand);
   const prefilled = state.prefilled || contextPrefill(existing ? profileFormValues(brand) : {});
@@ -1452,6 +1569,8 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   const fieldErrors = state.fieldErrors || null;
   const phase = brandResearchPhase(brand, state);
   const pending = state.submitted || state.needsReconciliation;
+  const step = !existing ? 'create' : phase === 'new' ? 'details' : 'profile';
+  const minimum = researchMinimum({ ...values, name: values.name || brand?.name });
   const note = state.declined
     ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
     : pending
@@ -1460,18 +1579,46 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
         ? '<div class="notice" role="status"><span>Claude is researching this brand. The empty fields fill in when it is done.</span></div>'
         : phase === 'failed'
           ? '<div class="notice" role="status"><span>Research could not finish. Fill in what you know, then save.</span></div>'
-          : phase === 'new'
-            ? `<p class="muted">Add the brand's links and anything you already know. Claude researches the rest.</p>`
-            : '';
+          : step === 'create'
+            ? '<p class="muted">Start with the name. You add the details next, and press Start research when you are ready.</p>'
+            : step === 'details'
+              ? '<p class="muted">Add the brand\'s links and anything you already know, then save. Start research needs a website or at least one social account, and uses everything you have entered. Claude researches the rest.</p>'
+              : '';
+  const heading = step === 'create' ? 'New brand' : step === 'details' ? 'Brand details' : 'Brand profile';
+  const tag = step === 'create' ? 'Step 1 of 3' : step === 'details' ? 'Step 2 of 3' : phase === 'running' ? 'Step 3 of 3' : 'Continue';
+  // The brand was just created and the board has not read it back yet: the form waits instead of offering to create it again.
+  const reading = !existing && Boolean(state.brand);
+  const inFlight = Boolean(state.busy || pending || reading);
+  const nameBlock = existing
+    ? `<input type="hidden" name="name" value="${esc(brand.name)}">${brandNameBlock(brand, state)}`
+    : `<label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="${BRAND_NAME_LIMIT}" placeholder="e.g. Acme Goods" autocomplete="organization" required ${inFlight ? 'readonly' : ''} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label>`;
+  const head = `<div class="start-head"><div><h2>${heading}</h2></div><span class="stage-tag">${tag}</span></div>`;
+  const problem = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
+  const hidden = `<input type="hidden" name="brand" value="${esc(brand?.slug || '')}">`;
+  const open = `<section class="start-card onboarding${step === 'create' ? ' is-create' : ''}">${head}${note}<form id="inline-form" class="start-form" data-onboard-step="${step}" novalidate>${hidden}<div class="form-grid">${nameBlock}</div>`;
+  if (step === 'create') {
+    const label = state.busy || reading ? 'Creating...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Create brand';
+    return `${open}${problem}<div class="start-foot"><button class="primary" type="submit" ${inFlight ? 'disabled' : ''}>${label}</button></div></form></section>`;
+  }
+  const details = step === 'details';
+  const kit = kitSection(brand, state.kit || {}, state.kitErrors || null, false);
+  // What was typed on the details page is the person's own and stays editable (nothing is locked behind a pencil); a brand that already has a
+  // saved profile keeps the locked fields it always had.
+  const editable = details && !brand.profile;
+  const fields = `<div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, editable ? {} : prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${problem}`;
+  if (details) {
+    const doing = state.action;
+    const saveLabel = state.busy && doing === 'details' ? 'Saving...' : state.submitted && doing === 'details' ? 'Waiting for Claude' : state.needsReconciliation && doing === 'details' ? 'Needs Claude attention' : 'Save details';
+    const startLabel = state.busy && doing === 'start' ? 'Starting...' : state.submitted && doing === 'start' ? 'Waiting for Claude' : state.needsReconciliation && doing === 'start' ? 'Needs Claude attention' : 'Start research';
+    const hint = minimum.ok ? RESEARCH_READY_HINT : minimum.message;
+    return `${open}${fields}<div class="start-foot"><p class="muted start-foot-hint" id="start-research-hint" data-start-hint>${esc(hint)}</p><span class="start-foot-actions"><button type="submit" ${inFlight ? 'disabled' : ''}>${saveLabel}</button><button class="primary" type="button" data-action="start-research" aria-describedby="start-research-hint" ${inFlight || !minimum.ok ? 'disabled' : ''}>${startLabel}</button></span></div></form></section>`;
+  }
   const buttonLabel = state.busy ? 'Saving...'
     : state.submitted ? 'Waiting for Claude'
     : state.needsReconciliation ? 'Needs Claude attention'
     : phase === 'running' ? 'Researching...'
-    : phase === 'new' ? 'Start onboarding'
     : 'Save and continue';
-  const buttonDisabled = state.busy || pending || phase === 'running';
-  const kit = kitSection(existing ? brand : null, state.kit || {}, state.kitErrors || null, !existing && phase === 'running');
-  return `<section class="start-card onboarding"><div class="start-head"><div><h2>Brand profile</h2></div><span class="stage-tag">${existing ? 'Continue' : 'First step'}</span></div>${note}<form id="inline-form" class="start-form" novalidate><input type="hidden" name="brand" value="${esc(brand?.slug || '')}"><div class="form-grid"><label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="160" placeholder="e.g. Acme Goods" autocomplete="organization" ${existing ? 'readonly' : 'required'} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label></div><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : ''}<div class="start-foot"><button class="primary" type="submit" ${buttonDisabled ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
+  return `${open}${fields}<div class="start-foot"><button class="primary" type="submit" ${inFlight || phase === 'running' ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
 }
 
 // Which Metricool brand posts as this brand, asked once on the onboarding form when Metricool is connected and its brands are
@@ -1764,8 +1911,9 @@ export function postPlatformOf(href) {
 }
 // Pictures that would not load (a scraped address that expired or refuses other sites): drawn as the neutral tile from then on.
 export const failedPostThumbs = new Set();
-function libraryPost({ href, thumbnail, platform, key, title, ad = false, copy = {} }) {
-  const src = safePreviewUrl(thumbnail);
+// `post` is the record the picture belongs to (a bank item's or a trend's evidence: its `thumb` key or its own safe `thumbnail`), `thumbs` the brand's pictures (postThumbSrc).
+function libraryPost({ href, post, thumbs, platform, key, title, ad = false, copy = {} }) {
+  const src = postThumbSrc(post, thumbs);
   const picture = src && !failedPostThumbs.has(src) ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-post-thumb>` : '';
   const word = ad ? 'ad' : 'post';
   const shown = copy.copied === key;
@@ -1796,7 +1944,7 @@ function libraryItem(item, brand, { removing, errors, copy = {} }) {
   const said = quote ? `<span class="library-hook library-quote">&ldquo;${esc(quote.text)}&rdquo;${quoteLink ? ` <a class="post-link library-proof" href="${esc(quoteLink)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See where this was said: ${quote.text}`)}">See where</a>` : ''}${esc(moreQuotes)}</span>` : '';
   const matched = item.kind === 'angle' && (trimmed(item.pain) || trimmed(item.proof)) ? `<span class="library-hook">${[trimmed(item.pain) ? `Answers: ${esc(item.pain)}` : '', trimmed(item.proof) ? `Proof: ${esc(item.proof)}` : ''].filter(Boolean).join(' &middot; ')}</span>` : '';
   const platform = link ? postPlatformOf(link) : '';
-  const postBits = link && !evidence?.file && (platform || safePreviewUrl(evidence?.thumbnail)) ? libraryPost({ href: link, thumbnail: evidence?.thumbnail, platform, key: `post:${key}`, title: item.text, ad: item.source === 'ad', copy }) : null;
+  const postBits = link && !evidence?.file && (platform || postThumbSrc(evidence, brand.thumbs)) ? libraryPost({ href: link, post: evidence, thumbs: brand.thumbs, platform, key: `post:${key}`, title: item.text, ad: item.source === 'ad', copy }) : null;
   const proof = link && !postBits ? `<a class="post-link library-proof" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`See the post behind: ${item.text}`)}">See the post</a>` : '';
   const pending = removing.has(key);
   const problem = errors.get(key);
@@ -1835,7 +1983,7 @@ function libraryTrend(trend, brand, copy = {}) {
   const variants = Number.isFinite(evidence?.variants) && evidence.variants >= 1 ? plural(Math.floor(evidence.variants), 'variant') : '';
   const ad = Boolean(TREND_SOURCE_WORDS[evidence?.source]);
   const meta = [platform, trimmed(trend.industry), TREND_SOURCE_WORDS[evidence?.source] || '', trimmed(evidence?.advertiser), running ? `running ${running}` : '', variants, seen ? `seen ${seen}` : '', views].filter(Boolean).map(esc).join(' &middot; ');
-  const postBits = link ? libraryPost({ href: link, thumbnail: evidence?.thumbnail, platform: platform || postPlatformOf(link), key: `trend:${brand?.slug || ''}:${trend.id || trend.text}`, title: trend.text, ad, copy }) : null;
+  const postBits = link ? libraryPost({ href: link, post: evidence, thumbs: brand?.thumbs, platform: platform || postPlatformOf(link), key: `trend:${brand?.slug || ''}:${trend.id || trend.text}`, title: trend.text, ad, copy }) : null;
   const proof = '';
   return `<li class="library-item${postBits ? ' library-post' : ''}">${postBits ? postBits.thumb : ''}<div class="library-main"><span class="library-kind">${esc(TREND_KIND_WORDS[trend.kind] || humanize(trend.kind || 'trend'))}</span><span class="library-text">${esc(trend.text)}</span>${meta || proof ? `<span class="library-meta">${meta}${meta && proof ? ' &middot; ' : ''}${proof}</span>` : ''}${trimmed(trend.why) ? `<span class="library-hook">Why it fits: ${esc(trend.why)}</span>` : ''}${postBits ? postBits.links + postBits.box : ''}</div></li>`;
 }
@@ -6664,18 +6812,18 @@ function intelNumbers(post, now) {
   return [first, intelDay(post.date, now)].filter(Boolean).join(' · ');
 }
 // A picture that failed to load once is not asked for again (`bad` holds those addresses): the card keeps its platform tile.
-function intelThumb(post, bad) {
-  const src = safePreviewUrl(post.thumbnail);
+function intelThumb(post, bad, thumbs) {
+  const src = postThumbSrc(post, thumbs);
   const picture = src && !(bad && bad.has(src)) ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '';
   return `<div class="intel-thumb">${picture}<span class="intel-plat">${esc(intelPlatform(post.platform))}</span><span class="intel-play" aria-hidden="true"></span></div>`;
 }
 /**
  * One post, taken apart: a picture (or a platform tile with a play mark when there is no safe picture), the title, the numbers, the labels,
  * the competitor's name when it is one's, and Open post (a real https link, new tab) with Copy link.
- * opts: {section, index, competitor, copied, fallback, hint, now, bad}; `copied` and `fallback` are the card key that shows Copied or the
- * hand-copy box (the key is `section:id`); `bad` is the set of picture addresses that did not load.
+ * opts: {section, index, competitor, copied, fallback, hint, now, bad, thumbs}; `copied` and `fallback` are the card key that shows Copied or the
+ * hand-copy box (the key is `section:id`); `bad` is the set of picture addresses that did not load; `thumbs` is the brand's pictures (postThumbSrc).
  */
-export function intelPostCard(post, intel, { section = 'post', index = 0, competitor = '', copied = '', fallback = '', hint = '', now = Date.now(), bad = null } = {}) {
+export function intelPostCard(post, intel, { section = 'post', index = 0, competitor = '', copied = '', fallback = '', hint = '', now = Date.now(), bad = null, thumbs = null } = {}) {
   const key = `${section}:${intelId(post.id) || index}`;
   const title = trimmed(post.title) || 'Untitled post';
   const href = safeHttpsLink(post.url);
@@ -6688,10 +6836,10 @@ export function intelPostCard(post, intel, { section = 'post', index = 0, compet
   const box = href && fallback === key
     ? `<div class="kit-fallback intel-fallback"><p class="kit-fallback-status" role="status">${esc(KIT_COPY_REFUSED.replace('the text', 'the link'))}</p><label class="visually-hidden" for="intel-fallback-${esc(section)}-${index}">Link to this post</label><input id="intel-fallback-${esc(section)}-${index}" type="text" readonly value="${esc(href)}" data-intel-fallback="${esc(key)}" aria-describedby="intel-fallback-hint-${esc(section)}-${index}"><div class="kit-fallback-foot"><span class="muted" id="intel-fallback-hint-${esc(section)}-${index}">${esc(hint || copyHint(''))}</span><button type="button" class="quiet" data-intel-act="copy-done" data-intel-arg="${esc(key)}">Done</button></div></div>`
     : '';
-  return `<article class="intel-card" data-intel-post="${esc(key)}">${intelThumb(post, bad)}<div class="intel-card-body">${maker ? `<span class="pill intel-comp">${esc(maker)}</span>` : ''}<h3 class="intel-title" title="${esc(title)}">${esc(title)}</h3><p class="intel-num">${esc(intelNumbers(post, now))}</p>${pills ? `<div class="intel-tags">${pills}</div>` : ''}<div class="intel-links">${links}</div>${box}</div></article>`;
+  return `<article class="intel-card" data-intel-post="${esc(key)}">${intelThumb(post, bad, thumbs)}<div class="intel-card-body">${maker ? `<span class="pill intel-comp">${esc(maker)}</span>` : ''}<h3 class="intel-title" title="${esc(title)}">${esc(title)}</h3><p class="intel-num">${esc(intelNumbers(post, now))}</p>${pills ? `<div class="intel-tags">${pills}</div>` : ''}<div class="intel-links">${links}</div>${box}</div></article>`;
 }
 function intelCards(items, intel, ui, section, ctx) {
-  return `<div class="intel-cards">${items.map(({ post, competitor }, index) => intelPostCard(post, intel, { section, index, competitor, copied: ui.copied, fallback: ui.fallback, hint: ctx.hint, now: ctx.now, bad: ctx.bad })).join('')}</div>`;
+  return `<div class="intel-cards">${items.map(({ post, competitor }, index) => intelPostCard(post, intel, { section, index, competitor, copied: ui.copied, fallback: ui.fallback, hint: ctx.hint, now: ctx.now, bad: ctx.bad, thumbs: ctx.thumbs })).join('')}</div>`;
 }
 
 // The 6 by 5 plan: the subtopics down, the formats across, an idea in every cell. A cell is a button; the one chosen opens a confirm step
@@ -6818,7 +6966,7 @@ export function brandIntelligence(brand, ui = freshIntelState(), { open = false,
     ? [name, steps.length ? `${steps.filter(step => step.state === 'done').length} of ${steps.length} steps done` : 'Starting'].join(' · ')
     : [name, updated ? `Updated ${updated}` : ''].filter(Boolean).join(' · ');
   const summary = `<summary><span class="library-head"><span class="doc-summary-title">Brand intelligence</span><span class="library-counts">${esc(line)}</span></span><span class="pill ${running ? 'running' : 'ready'}">${running ? 'Research running' : 'Ready'}</span></summary>`;
-  const ctx = { hint, now, bad: badPictures, libraryKinds: libraryKinds instanceof Set ? libraryKinds : new Set() };
+  const ctx = { hint, now, bad: badPictures, thumbs: brand.thumbs, libraryKinds: libraryKinds instanceof Set ? libraryKinds : new Set() };
   // A refresh of research that already finished keeps the tabs under its checklist; a first run shows the checklist alone.
   let body = running ? intelRunningBody(intel) : '';
   if (!running || intelPlan(intel).rows.length) {
@@ -6995,6 +7143,14 @@ export function requestComment(operation, args = {}) {
       if (!args?.brand || args.start) return `Start onboarding for ${name}.`;
       return args.kit ? `Brand profile and kit saved for ${name}.` : `Brand profile saved for ${name}.`;
     }
+    case 'create_brand':
+      return `Create the brand ${truncateText(args?.name, 80) || 'with this name'}.`;
+    case 'save_brand_details':
+      return args?.kit ? "Save the brand's details and kit." : "Save the brand's details.";
+    case 'start_research':
+      return 'Start research for this brand with the details saved on its page.';
+    case 'brand_rename':
+      return `Rename the brand to ${truncateText(args?.name, 80) || 'this name'}.`;
     case 'create_job': {
       const what = newJobWord(args?.kind);
       return args?.brandName
@@ -9062,6 +9218,7 @@ if (typeof document !== 'undefined') {
     const card=event.target.closest('[data-card-job]');
     if(card&&!event.target.closest('a,button,input,textarea,select,label,form,video,[data-view-media]')){location.hash='#/project/'+encodeURIComponent(card.dataset.cardJob);return;}
     const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-ref-role],[data-ref-brand],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send],[data-ref-open],[data-ref-remove],[data-ref-keep],[data-ref-confirm],[data-ref-unqueue]');if(!target)return;
+    if(target.dataset.brandRename!==undefined){brandRenameAction(target.dataset.brandRename);return;}
     if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
     if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
     if(target.dataset.qrefSend!==undefined){void sendUploadedReference('qref',target);return;}
@@ -9141,6 +9298,15 @@ if (typeof document !== 'undefined') {
       } else if (action === 'remove-logo') {
         kit.logo = { action: 'remove' };
         inline.kitFocus = kitFocusSelector('remove-logo');
+      } else if (action === 'use-logo') {
+        // Use this: a logo the kit suggested from the brand's own places becomes the logo. Only its id is sent; the picture is already on this computer.
+        const pick = (Array.isArray(projected.suggested?.logos) ? projected.suggested.logos : []).find(item => item?.id === target.dataset.id);
+        if (pick) kit.logo = { action: 'suggested', id: pick.id, previewDataUrl: pick.thumb || null, places: suggestedLogoPlaces(Array.isArray(pick.sources) && pick.sources.length ? pick.sources : [pick.source]), error: null };
+        inline.kitFocus = kitFocusSelector('use-logo');
+      } else if (action === 'pass-logo') {
+        // Not this: the suggestion is set aside for this visit, and the next one (if any) is offered.
+        kit.logoPassed = [...(Array.isArray(kit.logoPassed) ? kit.logoPassed : []), target.dataset.id];
+        inline.kitFocus = kitFocusSelector('pass-logo');
       } else if (action === 'remove-ref') {
         kit.references = (Array.isArray(kit.references) ? kit.references : []).filter((_, at) => at !== Number(target.dataset.index));
         inline.kitFocus = kitFocusSelector('remove-ref');
@@ -9206,6 +9372,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.reportDownload){void saveReport(target.dataset.reportDownload);return;}
     switch(target.dataset.action){
       case'refresh':await refresh();break;
+      case'start-research':await submitInline(null,'start');break;
       case'close':close();break;
       case'new':openInline(newJobDraft());break;
       case'brand':{const brand=(data.brands || []).find(item=>!brandReady(item));openInline(onboardDraft(brand || null));break;}
@@ -9226,6 +9393,24 @@ if (typeof document !== 'undefined') {
   // in sync so a later render() does not resurrect a message the person
   // already fixed.
   function fieldErrorId(name) { return name === 'name' ? 'field-name-error' : `channel-${name}-error`; }
+  // On the brand's details page an empty channel is fine (it is not answered yet), so the live check only flags a link that is filled in wrongly.
+  function liveChannelError(name, value, unavailable) {
+    const onDetails = app.querySelector('#inline-form')?.dataset.onboardStep === 'details';
+    if (onDetails && !normalizeChannelInput(name, value)) return null;
+    return channelFieldError(name, value, unavailable);
+  }
+  // Start research turns on as soon as the page has a name and a website or one social account, and says what is missing until then.
+  function syncStartResearch() {
+    const button = app.querySelector('[data-action="start-research"]');
+    const form = app.querySelector('#inline-form');
+    if (!button || !form) return;
+    const values = Object.fromEntries(new FormData(form));
+    form.querySelectorAll('input[type="checkbox"]').forEach(field => { values[field.name] = field.checked; });
+    const minimum = researchMinimum(values);
+    button.disabled = !minimum.ok || Boolean(inline?.busy || inline?.submitted || inline?.needsReconciliation);
+    const hint = app.querySelector('[data-start-hint]');
+    if (hint) hint.textContent = minimum.ok ? RESEARCH_READY_HINT : minimum.message;
+  }
   function updateFieldErrorUI(name, message) {
     if (inline?.fieldErrors) {
       if (message) inline.fieldErrors[name] = message;
@@ -9265,7 +9450,8 @@ if (typeof document !== 'undefined') {
     if (!CHANNEL_NAMES.includes(field.name)) return;
     const normalized = normalizeChannelInput(field.name, field.value);
     if (normalized !== field.value) field.value = normalized;
-    updateFieldErrorUI(field.name, channelFieldError(field.name, field.value, field.disabled));
+    updateFieldErrorUI(field.name, liveChannelError(field.name, field.value, field.disabled));
+    syncStartResearch();
   }, true);
   function stopRequestWatch(active) {
     if (typeof active?.requestUnsubscribe === 'function') active.requestUnsubscribe();
@@ -9285,17 +9471,17 @@ if (typeof document !== 'undefined') {
         stopRequestWatch(active);
         active.busy = false;
         if (active.kind === 'onboard' && !active.finalizingOnboarding) {
-          // The kickoff save (channels and whatever was already known): keep this
-          // same card open through research instead of closing it, so its button
-          // and notice can move through Researching... to Save and continue.
-          // Capture the brand's slug (a brand-new draft had none yet) so the
-          // eventual finishing save updates this same brand, and clear this
-          // request's own bookkeeping so the pending notice steps aside for the
-          // research-phase one.
+          // The three steps keep this same card open: creating the brand turns the
+          // name form into the brand's own page, saving details leaves it as it is,
+          // and starting research moves its button and notice through Researching...
+          // to Save and continue. Capture the brand's slug (a brand-new draft had
+          // none yet) so the later saves update this same brand, and clear this
+          // request's own bookkeeping so the pending notice steps aside.
+          const action = active.action || 'start';
+          if (!active.brand && inlineDrafts.get('onboard:new') === active) inlineDrafts.delete('onboard:new');
           active.brand = result.brand?.slug || active.brand;
-          active.researchRequested = true;
-          active.edited = {};
-          active.unlocked = {};
+          if (action === 'start') active.researchRequested = true;
+          if (action === 'create') { active.edited = {}; active.unlocked = {}; }
           active.submitted = false;
           active.needsReconciliation = false;
           active.requestId = null;
@@ -9305,8 +9491,20 @@ if (typeof document !== 'undefined') {
           active.reminding = false;
           active.operation = null;
           active.args = null;
-          notify(acknowledgement.message || receipt.message || result.message || 'Saved. Claude is researching this brand.');
-          void refresh();
+          active.action = null;
+          notify(acknowledgement.message || receipt.message || result.message || (action === 'create' ? 'Brand created. Add its details.' : action === 'details' ? 'Details saved.' : 'Saved. Claude is researching this brand.'));
+          if (action === 'details') {
+            // What was typed is saved: once the board has read it back, the form follows the saved copy again, and the kit edits
+            // (logo, colours, fonts) are the saved ones. The photos wait for Start research, so they stay.
+            void refresh().then(() => {
+              active.edited = {}; active.unlocked = {};
+              if (active.kit) { delete active.kit.logo; delete active.kit.palette; delete active.kit.fonts; }
+              if (inline === active) render();
+            });
+          } else {
+            if (action === 'start') { active.edited = {}; active.unlocked = {}; }
+            void refresh();
+          }
           if (isCurrent) render();
         } else {
           inlineDrafts.delete(draftKey(active));
@@ -9414,11 +9612,19 @@ if (typeof document !== 'undefined') {
     const saved = brand?.publishing?.optedOut ? NO_METRICOOL : brand?.publishing && brand.publishing.found !== false ? brand.publishing.blogId : '';
     return picked && picked !== saved && (picked === NO_METRICOOL || (data.metricoolBrands || []).some(item => item.id === picked)) ? { metricoolBlogId: picked } : {};
   }
-  async function submitInline(event) {
-    event.preventDefault();
+  // Whether the person touched the logo, colours or fonts on this page (or added photos): only then does a request carry a kit.
+  function kitTouched(kit, { photos = true } = {}) {
+    return Boolean(kit && (kit.logo?.action || Array.isArray(kit.palette) || Array.isArray(kit.fonts) || (photos && Array.isArray(kit.references) && kit.references.length)));
+  }
+  // The brand's page in three steps (see inlineOnboardingForm): `mode` is 'start' when Start research was pressed; a plain submit of the details
+  // page saves the details. The new-brand form sends `create_brand`; a brand that already did research keeps `onboard_brand` (Save and continue).
+  async function submitInline(event, mode = null) {
+    event?.preventDefault();
     const active = inline;
-    const values = Object.fromEntries(new FormData(event.target));
-    event.target.querySelectorAll('input[type="checkbox"]').forEach(field => { values[field.name] = field.checked; });
+    const form = event?.target instanceof HTMLFormElement ? event.target : app.querySelector('#inline-form');
+    if (!form) return;
+    const values = Object.fromEntries(new FormData(form));
+    form.querySelectorAll('input[type="checkbox"]').forEach(field => { values[field.name] = field.checked; });
     if (active?.kind === 'onboard') {
       for (const name of CHANNEL_NAMES) values[name] = normalizeChannelInput(name, values[name]);
     }
@@ -9427,18 +9633,33 @@ if (typeof document !== 'undefined') {
     const currentBrand = active.kind === 'onboard' && active.brand ? (data.brands || []).find(item => item.slug === active.brand) : null;
     const researchPhase = active.kind === 'onboard' ? brandResearchPhase(currentBrand, active) : null;
     if (researchPhase === 'running') { active.error = 'Claude is still researching this brand.'; render(); return; }
+    if (active.kind === 'onboard' && active.brand && !currentBrand) return;
+    let action = null;
     if (active.kind === 'onboard') {
-      const fieldErrors = validateProfile(values, active.prefilled, active.unlocked);
-      if (Object.keys(fieldErrors).length) { active.values = values; active.fieldErrors = fieldErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
-      active.fieldErrors = null;
-      // A submit while the phase is already complete or failed is the finishing
-      // save (see watchRequest's applied branch): once that one is applied, the
-      // card closes and the board moves on, rather than staying open for a
-      // research pass that already ran its course.
-      active.finalizingOnboarding = researchPhase === 'complete' || researchPhase === 'failed';
-      const kitErrors = validateKit(active.kit || {});
-      if (Object.keys(kitErrors).length) { active.values = values; active.kitErrors = kitErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
-      active.kitErrors = null;
+      action = !currentBrand ? 'create' : researchPhase === 'new' ? (mode === 'start' ? 'start' : 'details') : 'finish';
+      if (action === 'create') {
+        const named = brandNameArgs(values.name);
+        if (named.error) { active.values = values; active.fieldErrors = { name: named.error }; active.error = ''; render(); return; }
+        active.fieldErrors = null;
+        active.finalizingOnboarding = false;
+        values.name = named.name;
+      } else {
+        const fieldErrors = validateProfile(values, active.prefilled, active.unlocked, { partial: action !== 'finish' });
+        if (Object.keys(fieldErrors).length) { active.values = values; active.fieldErrors = fieldErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
+        active.fieldErrors = null;
+        if (action === 'start') {
+          const minimum = researchMinimum(values);
+          if (!minimum.ok) { active.values = values; active.error = minimum.message; render(); return; }
+        }
+        // A submit while the phase is already complete or failed is the finishing
+        // save (see watchRequest's applied branch): once that one is applied, the
+        // card closes and the board moves on, rather than staying open for a
+        // research pass that already ran its course.
+        active.finalizingOnboarding = action === 'finish';
+        const kitErrors = validateKit(active.kit || {});
+        if (Object.keys(kitErrors).length) { active.values = values; active.kitErrors = kitErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
+        active.kitErrors = null;
+      }
     } else {
       const checked = newJobArgs(values, { brands: data.brands || [], requestId: 'pending' });
       if (checked.errors) {
@@ -9455,14 +9676,25 @@ if (typeof document !== 'undefined') {
       }
     }
     const requestId = active.requestId ||= randomId(globalThis);
-    const operation = active.kind === 'onboard' ? 'onboard_brand' : 'create_job';
-    const kitArgs = active.kind === 'onboard'
-      ? (active.finalizingOnboarding ? { kit: kitPayload(currentBrand, active.kit || {}) } : { start: true, ...kitKickoffArgs(active.kit || {}) })
-      : {};
-    const args = active.kind === 'onboard'
-      ? {requestId, name:String(values.name).trim(), ...(active.brand ? {brand:active.brand} : {}), profile:buildProfile(values, active.prefilled, active.unlocked), ...metricoolPickArgs(values, currentBrand), ...kitArgs}
-      : newJobArgs(values, { brands: data.brands || [], requestId }).args;
-    active.operation = operation; active.args = args;
+    const operation = active.kind !== 'onboard' ? 'create_job'
+      : action === 'create' ? 'create_brand'
+      : action === 'details' ? 'save_brand_details'
+      : action === 'start' ? 'start_research'
+      : 'onboard_brand';
+    let args;
+    if (active.kind !== 'onboard') args = newJobArgs(values, { brands: data.brands || [], requestId }).args;
+    else if (action === 'create') args = { requestId, name: values.name };
+    else if (action === 'details') {
+      // Photos are not saved with the details: they go in with Start research.
+      const kit = kitTouched(active.kit, { photos: false }) ? kitPayload(currentBrand, { ...active.kit, references: [] }) : null;
+      if (kit) delete kit.references;
+      args = { requestId, brand: active.brand, profile: detailsProfile(values), ...(kit ? { kit } : {}) };
+    } else if (action === 'start') {
+      args = { requestId, brand: active.brand, profile: detailsProfile(values), ...metricoolPickArgs(values, currentBrand), ...(kitTouched(active.kit) ? { kit: kitPayload(currentBrand, active.kit || {}) } : {}) };
+    } else {
+      args = { requestId, name: String(values.name).trim(), ...(active.brand ? { brand: active.brand } : {}), profile: buildProfile(values, active.prefilled, active.unlocked), ...metricoolPickArgs(values, currentBrand), kit: kitPayload(currentBrand, active.kit || {}) };
+    }
+    active.operation = operation; active.args = args; active.action = action;
     active.values = values; active.pendingName = values.name; active.busy = true; active.error = ''; active.declined = false; render();
     try {
       if (active.kind !== 'onboard' && active.refs?.items?.length) args.references = await encodeNewRefs(active.refs);
@@ -9497,6 +9729,44 @@ if (typeof document !== 'undefined') {
       await refresh();
       if (result?.jobId) location.hash = '#/project/' + encodeURIComponent(result.jobId);
     } catch (e) { active.busy = false; active.error = e.message; inline = active; render(); }
+  }
+  // The pencil next to the brand's name: the name becomes an input; Enter or Save sends `brand_rename`, Esc or Cancel puts it back. Only the display
+  // name changes (the folder keeps its original name), and the page shows that once Claude has applied it.
+  function renameStateOf() { return inline && inline.kind === 'onboard' ? (inline.rename ||= { open: false, value: '', busy: false, error: '' }) : null; }
+  function brandRenameAction(kind) {
+    const state = renameStateOf();
+    const brand = inline?.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
+    if (!state || !brand) return;
+    captureInlineValues();
+    if (kind === 'open') { Object.assign(state, { open: true, value: brand.name, error: '' }); inline.renamedNote = ''; render(); app.querySelector('#brand-rename-input')?.focus(); app.querySelector('#brand-rename-input')?.select?.(); return; }
+    if (state.busy) return;
+    if (kind === 'cancel') { Object.assign(state, { open: false, error: '' }); render(); app.querySelector('[data-brand-rename="open"]')?.focus(); return; }
+    if (kind === 'save') void submitBrandRename(brand, state);
+  }
+  async function submitBrandRename(brand, state) {
+    const named = brandNameArgs(state.value);
+    if (named.error) { state.error = named.error; render(); app.querySelector('#brand-rename-input')?.focus(); return; }
+    if (named.name === brand.name) { Object.assign(state, { open: false, error: '' }); render(); return; }
+    if (!transport) return;
+    state.error = ''; state.busy = true; render();
+    const requestId = randomId(globalThis);
+    const done = (patch, note = '') => { Object.assign(state, { busy: false, ...patch }); if (inline) inline.renamedNote = note; render(); };
+    try {
+      const result = await transport.call('brand_rename', { requestId, brand: brand.slug, name: named.name });
+      notify(result?.message || 'Request saved. Claude will rename the brand.');
+      let unsubscribe = null;
+      const stop = () => { if (typeof unsubscribe === 'function') unsubscribe(); unsubscribe = null; };
+      unsubscribe = transport.subscribeRequest?.(requestId, receipt => {
+        if (!receipt) return;
+        const acknowledgement = receipt.artifactReceipt || receipt;
+        const status = String(acknowledgement.status || receipt.status || 'requested');
+        if (status === 'applied') { stop(); done({ open: false, error: '' }, "Renamed. The brand's folder keeps its original name."); void refresh(); }
+        else if (status === 'declined') { stop(); done({ error: String(acknowledgement.message || receipt.message || 'Claude did not rename the brand.').replace(/^Declined in chat\. Nothing was changed\.\s*/i, '') || 'Claude did not rename the brand.' }); }
+        else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) { stop(); done({ error: acknowledgement.message || receipt.message || 'Claude could not rename the brand. It needs checking before another try.' }); }
+      }, () => {});
+    } catch (e) {
+      done({ error: e.message || 'Could not send that.' });
+    }
   }
   function readIntakeForm(form) {
     const formData = new FormData(form);
@@ -10291,6 +10561,14 @@ if (typeof document !== 'undefined') {
   }
   app.addEventListener('input', event => {
     const field = event.target;
+    if (field.dataset?.brandRenameInput !== undefined) {
+      const state = renameStateOf();
+      if (state) {
+        state.value = field.value;
+        if (state.error) { state.error = ''; field.setAttribute('aria-invalid', 'false'); field.closest('.brand-name')?.querySelector('.field-error')?.remove(); }
+      }
+      return;
+    }
     const answerForm = field.closest?.('[data-inbox-form]');
     if (answerForm) { questionState(answerForm.dataset.inboxForm).draft = field.value; return; }
     if (field.closest?.('[data-ab-form]') && field.name === 'text') {
@@ -10313,6 +10591,7 @@ if (typeof document !== 'undefined') {
     if (intakeEdit(field)) return;
     if (inline?.kind === 'onboard' && field.closest?.('#inline-form')) {
       markContextEdited(inline, field.name);
+      if (CHANNEL_NAMES.includes(field.name)) syncStartResearch();
       const limit = CONTEXT_LIMITS.text[field.name];
       const counter = limit ? document.getElementById(`context-${field.name}-count`) : null;
       if (counter) {
@@ -10355,6 +10634,12 @@ if (typeof document !== 'undefined') {
   });
   app.addEventListener('keydown', event => {
     const field = event.target;
+    if (field instanceof HTMLInputElement && field.dataset.brandRenameInput !== undefined) {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); brandRenameAction('save'); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); brandRenameAction('cancel'); }
+      return;
+    }
     if (field instanceof HTMLInputElement && (field.dataset.kitFolder === 'path' || field.dataset.kitFolder === 'label')) {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); void submitFolderAdd(); }
       return;
@@ -10532,8 +10817,9 @@ if (typeof document !== 'undefined') {
     } else {
       field.disabled = false;
       field.value = inline.values[name] || '';
-      updateFieldErrorUI(name, channelFieldError(name, field.value, false));
+      updateFieldErrorUI(name, liveChannelError(name, field.value, false));
     }
+    syncStartResearch();
   });
   app.addEventListener('change', event => {
     const field = event.target;

@@ -20,7 +20,9 @@
  *     jobs/<jobId>.json      the filed job record (below)
  *     footage/               the brand's imported archive of past videos, pictures and audio: links to the originals with rights, plus
  *                            thumbnails and what was seen in each file (brand-footage.mjs documents the files)
- *     preferences.jsonl      {at, jobId, stage, picked, rejected[], note?, strategy?}   what the person chose, and what they passed on
+ *     thumbs/                the small picture of each post the library shows (<postId>.webp, <postId>.s.webp, index.json): the board page cannot
+ *                            load a picture from the platform's own address, so the board carries these instead (post-thumbs.mjs documents the files)
+ *     preferences.jsonl     {at, jobId, stage, picked, rejected[], note?, strategy?}   what the person chose, and what they passed on
  *                            (strategy: the industry, funnel, style, format and cta they set on the Strategy gate, each in their words)
  *     results.jsonl          what a posted video earned, by job (brand-results.mjs scores it against the brand's own usual): bank items
  *                            read ranked, each with { score, uses, label }, and a job that becomes a winner has its opening line

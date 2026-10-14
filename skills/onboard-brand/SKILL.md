@@ -13,10 +13,12 @@ metadata:
 ## Contents
 
 - Talking to the person
+- The three steps
 - 1. Inspect current brands
 - 2. Collect declared brand context
 - 3. Complete the profile
 - 4. Brand research pass
+- 4a. The kit step: a logo, colours and fonts from the brand's own places
 - 4b. Industry and the brand library
 - 4c. Your archive (optional)
 - 4d. Folders added on the board
@@ -44,6 +46,33 @@ The profile is reusable across local jobs.
 
 The local pipeline records the onboarding revision and uses it as the brand gate.
 
+## The three steps
+
+On the board, brand onboarding is three steps, and research starts only on the third.
+Handle each request as board-sync describes, apply it with `pipeline_board_request_apply`, and publish the workspace projection after it.
+
+1. New brand. The person gives only the brand's name, and the board sends `create_brand` with `{ requestId, name }`.
+   Applying it creates the brand and its empty workspace folder and nothing else.
+   Do not start research, do not call `web_brand_kit`, and do not ask about links, folders or the profile with `pipeline_board_ask`.
+   Say it in one plain line, for example "Created Acme Goods. Add its website, social accounts and anything else you know on its page, then press Start research.", and offer the archive there as section 4c says.
+2. Brand details. The brand's own page holds the website and social links, the target market, the five declared context fields (audience, positioning, brand voice, content pillars, competitors), the Metricool pick, the logo, colours and fonts, the folders and the photos.
+   The person saves them as often as they like: each save is `save_brand_details` with `{ requestId, brand, profile, kit? }`.
+   `profile` is everything typed on the page (a link or Not available per channel, an empty value clears a saved one) and `kit` is the logo, colours and fonts; photos and the Metricool pick wait for the next step.
+   Applying a save stores what was typed and starts nothing: no research and no profile revision.
+   When the save added or changed the website or a social link, run the kit step of section 4a for the brand right after the apply, so the page soon shows a suggested logo, colours and fonts; it reads the brand's own pages and costs nothing, and it is not research.
+   Say nothing about a save that worked.
+   When the apply refuses it, decline it with `pipeline_board_request_decline` and the plain line, and say that line once in chat.
+   `brand_rename` with `{ requestId, brand, name }` changes the brand's display name at any time and nothing else: the brand's folder and slug keep their original names.
+   Apply it, and say in one line what the result says, including that the folder keeps its original name.
+3. Start research. The Start research button turns on once the page has the brand's name and a website or at least one social account.
+   The board sends `start_research` with `{ requestId, brand, profile, kit?, metricoolBlogId? }`, everything on the page at that moment.
+   Applying it finishes the profile (a channel left empty is saved as Not available, a context field left blank is filled by research) and marks research as waiting, exactly as the old single form did.
+   If the apply refuses it, for example because there is still no website or social account, decline it with the plain line.
+   Only after a successful `start_research` apply, start the research pass in section 4 at once, with no chat confirmation.
+
+The old single-form `onboard_brand` request (create, details and start in one) still works and counts as all three steps: apply it, then start the research pass.
+A request that arrives for a brand that already started research (a late save, a repeated start) is not a new start: leave it to the apply's own refusal.
+
 ## 1. Inspect current brands
 
 Reuse a fresh pipeline_status snapshot supplied by the caller.
@@ -58,23 +87,24 @@ When a brand is opened or chosen this way, call `pipeline_brand_tidy_check` once
 Quietly rewrite any research-filled field it flags into a short plain statement within the limits (audience and positioning under 400 characters, voice under 300 characters, 1 to 8 short content pillars of 60 characters or fewer; research itself fills 3 to 5) with `pipeline_brand_tidy_save`, keeping sources and evidence in the research file.
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
-If the artifact board is ready, direct the user to its single inline Brand onboarding form and wait for one `onboard_brand` request.
-The form collects the brand name, the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors) in one submission.
+If the artifact board is ready, direct the user to its Brand onboarding card and wait for its requests, one per step (see "The three steps"): `create_brand` with only the name, `save_brand_details` as the person fills the brand's page in, and `start_research` when they press Start research.
+The brand's page collects the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors).
 Any of those five fields left blank is filled in by research.
 A blank target market means Singapore, and research never fills it.
-A field the person did not change is omitted from the submission, so a value research already filled in is kept.
-Do not call `pipeline_brand_create` first, ask for a name-only draft, or repeat the form as a chat questionnaire.
+A channel the person leaves empty is saved as Not available when research starts.
+Do not call `pipeline_brand_create` yourself for a board brand, or repeat the page as a chat questionnaire.
 
-Use the request's stable `requestId` for the entire create-and-complete operation.
-Retrying that request with the same payload returns the same brand and onboarding receipt without creating a duplicate.
+Use each request's stable `requestId` for its own operation.
+Retrying a request with the same payload returns the same receipt without creating a duplicate or starting research twice.
+The old single `onboard_brand` request, which carries the whole profile and start, is still handled the same way as before.
 
 If the user explicitly supplies the complete profile in chat or asks to use chat intake, call `pipeline_brand_onboard` with `{ requestId, name, brand?, profile }`.
 Use `brand` only when updating an existing draft or ready brand.
 
 ## 2. Collect declared brand context
 
-Use the inline board fields when the artifact is ready.
-The board collects the brand name, the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors) in one submission.
+Use the brand page's fields when the artifact is ready.
+The board collects the brand name (step 1), then on the brand's page the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors), saved as the person goes (step 2) and sent with Start research (step 3).
 For explicit chat intake, ask for the website URL.
 
 For explicit chat intake, ask for the Facebook URL or the exact value Not available.
@@ -102,7 +132,7 @@ Use only stable asset references without credentials.
 
 Each brand posts only through its own Metricool brand, picked once during onboarding and changeable later.
 When Metricool is connected, read its brands with `getBrandSettings` (unless they were saved in this session) and save them with `pipeline_metricool_brands_save` before the person fills the form, so the form can list them.
-The inline form then shows "Metricool brand for this brand's posts", each option as "Name (Instagram @handle)", with "Choose later" and "Not through Metricool" as the other answers; the pick travels with the `onboard_brand` request as `metricoolBlogId` and is saved with the brand.
+The inline form then shows "Metricool brand for this brand's posts", each option as "Name (Instagram @handle)", with "Choose later" and "Not through Metricool" as the other answers; the pick travels with the `start_research` request (or the old `onboard_brand` request) as `metricoolBlogId` and is saved with the brand.
 For explicit chat intake, after `pipeline_brand_onboard` call `pipeline_metricool_brand_ask` for the brand, and apply a chat answer with `pipeline_metricool_brand_choose`.
 Never pick one for the person, not even when Metricool lists only one brand.
 When Metricool is not connected, or the person chooses later, do not block or delay onboarding: the question is asked in the Inbox once the brands are saved.
@@ -110,9 +140,9 @@ When a ready brand is updated, the same field shows its current Metricool brand 
 
 ## 3. Complete the profile
 
-The default board path submits the `onboard_brand` operation with `{ requestId, name, brand?, profile }` through the board request flow.
+The default board path completes the profile with the `start_research` operation, `{ requestId, brand, profile, kit?, metricoolBlogId? }`, through the board request flow (the old single form used `onboard_brand` with `{ requestId, name, brand?, profile }`, which still works).
 The server validates the complete profile before creating or updating any brand files.
-It returns `{ brand, profile, onboarding, created, idempotent }`.
+Both return `{ brand, profile, onboarding, created, idempotent }`, and `start_research` adds `started: true`.
 
 Keep the legacy two-step `pipeline_brand_create` and `pipeline_brand_complete` path only for an explicitly requested chat fallback or a compatibility caller.
 Call `pipeline_brand_complete` with the brand ID and a profile object only on that legacy path.
@@ -137,29 +167,28 @@ Do not claim that a provider is authenticated because a profile URL was recorded
 
 ## 4. Brand research pass
 
-After any profile save, whether through the board's `onboard_brand` request, `pipeline_brand_onboard`, or the legacy `pipeline_brand_complete` path, call `pipeline_brand_research_start` with the brand right away, with no chat confirmation before starting: the board request (or the chat submission) already carries the person's approval.
+After the profile is completed, whether through the board's `start_research` request, the old `onboard_brand` request, `pipeline_brand_onboard`, or the legacy `pipeline_brand_complete` path, call `pipeline_brand_research_start` with the brand right away, with no chat confirmation before starting: the board request (or the chat submission) already carries the person's approval.
+A `create_brand` or `save_brand_details` request never starts research; only the person pressing Start research does.
 
-The board card lets the person add their logo, colours and fonts before research, and those travel with the Start onboarding click as `kit` on the kickoff `onboard_brand` request.
-If the person offers a logo, colours or fonts in chat before research, ask them to add those on the board card before clicking Start onboarding, where the logo is an upload.
+The brand's page lets the person add their logo, colours and fonts before research: `save_brand_details` stores them as `kit`, and the Start research click sends them again as `kit` on the `start_research` request.
+If the person offers a logo, colours or fonts in chat before research, ask them to add those on the brand's page before pressing Start research, where the logo is an upload or a suggestion they take with Use this.
 Do not call `pipeline_brand_kit_save` before research; it confirms the kit and is only for the review step in chat intake.
 When that kit carries a logo, follow the Handling a board request procedure in `skills/board-sync/SKILL.md` before landing the request.
 
-Right after the `pipeline_brand_research_start` call, even when it returns `skipped`, call `web_brand_kit` with the brand once.
-Never retry `web_brand_kit` against a blocked site.
-Call it only once per onboarding: when research is restarted after a failure, do not call `web_brand_kit` again, because the first capture already stands.
+Right after the `pipeline_brand_research_start` call, even when it returns `skipped`, run the kit step of section 4a for the brand.
+It is the Director's own share of the website and brand-facts work (a worker has no tool for it), so run it straight after spawning the workers and let them carry on meanwhile.
+Run it once for a research start: when research is restarted after a failure, do not run it again, because the first read already stands.
 The card also asks, as an optional extra, for 3 to 5 real photos of the brand's world: the place, the people, the product in use.
-They travel on the same click as `kit.references` and are saved under the brand's `assets/references` folder and listed in the brand profile as reference assets.
+They travel on the Start research click as `kit.references` (a save of the details does not send them) and are saved under the brand's `assets/references` folder and listed in the brand profile as reference assets.
 They are optional.
 A brand finishes onboarding without them; when there are none, say once and gently that real photos make the pictures feel like the brand and can be added any time.
 If the person offers photos in chat, ask them to add them on the board card, or save them with `pipeline_brand_references_save` once they are on this computer.
 Never search the web for them and never make them up.
 
-The logo is upload only: nothing looks for one, so never search a website or a social page for a logo and never offer logo choices.
-`web_brand_kit` reads the website's colours and fonts only, and when the website shows no colours it uses the colours of the brand's social profile picture.
-It returns `{status, brand, captureId, palette, paletteSource, fonts, code, reason, skippedParts}`.
-It skips any part the person already provided and returns `skipped` when colours and fonts were both already provided; do not look for those parts another way.
+A logo comes from the person's upload, or from the brand's own places through the kit step of section 4a, and never from anywhere else.
+Never search the web, an image search or a third-party page for a logo, and never save a logo you found that way.
 
-If the `pipeline_brand_research_start` result is `skipped`, do not dispatch the researcher.
+If the `pipeline_brand_research_start` result is `skipped`, do not dispatch any worker.
 There is nothing blank to fill, or research is already current.
 
 A brand onboarded before research wrote its audience, positioning and platform notes still has them as the empty template, so its research is redone once even when it looks current.
@@ -167,30 +196,53 @@ When the start result carries a `refreshReason`, say it to the person as one sho
 No field may be blank in that case, and the researcher then fills only the research, the brand files and the top posts (each video taken apart with its labels).
 After that one run the notes are filled or say research found nothing, so the next start is skipped again.
 
-Otherwise, dispatch the researcher once with workstream `brand-onboarding`, passing the returned `blankFields` and `alsoFill`, the declared competitors, `toFind`, the returned `market` as the target market, the returned `limits` (30 searches, 56 fetches and 120 turns: onboarding is always the deep pass, so it has far more than a campaign job's research budget), `draftPath`, and `rawDir`, the folder where it saves the text of every page it reads.
-The file at `draftPath` already holds the right keys for the researcher to fill in.
-Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and are filed as top posts with their likes in place of views), and keeps a saved capture behind every source.
-It has no Chrome tools; the Instagram look below is yours.
-The researcher also takes at most 11 of the top videos apart in this dispatch (the 5 best own and the 2 best of each competitor, with `pipeline_video_teardown` and `media_transcribe`), gives each its labels on the format library's axes (format, editing style, visual hook, subtopic) and writes what it saw into `topPosts`; the 3 viral videos come in a second, short dispatch (section 4e); a teardown counts as one of its fetches, and a video whose download fails is skipped with a line in the gaps.
-It then runs two more workstreams of the research skill, pain points (the comments on the best own and competitor videos, 2 forum threads, 2 competitor review pages, a competitor ad search and a landing page) and hooks, captions and CTAs, and writes what it found in the draft's `banks`: pains, desires and objections in the customers' own words with quotes from the pages it saved, angles that match a pain with a proof, and the best captions and calls to action.
-The save checks every quote against its saved page, so a problem about a quote goes back to the researcher like any other problem about a source.
-The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
-Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
-In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
-The researcher uses plain dates (YYYY-MM-DD) for `observedAt` and never invents clock times.
-Put `brand:<slug>` alone on the first line of the researcher's spawn prompt, on every dispatch including a second round, so the board can show the Researcher working.
+Otherwise, research runs as parallel workers, one for each part of the pass, and you spawn them all at once instead of sending one researcher through everything.
+The start result lists them in `parts`: each has its `id`, `label`, whether it is `required`, its `partPath` (the file that worker writes), its `contractPath` (its whole contract, which it reads itself) and its `budget` of searches, fetches and turns.
+The run's 30 searches, 56 fetches and 120 turns (onboarding is always the deep pass, so it has far more than a campaign job's research budget) are split between the parts and add up to the same total, so each worker keeps to its own share.
+The parts are:
 
-Section 4e says what runs beside it (the Trend Scout) and what follows (the viral videos, the six subtopics, the plan), and how the checklist on the brand's page is kept; do those steps with this one.
-Dispatch it in the background, then write the board documents right away (call `pipeline_status` and write its `documents`), so the onboarding page shows the Researcher working while it runs; write them again when it reports back.
-If the researcher stops before it finished (it says it ran out of turns, or its draft lacks what it was asked for), dispatch it once more with the same prompt and say what the draft already holds: it carries on from there.
-After the viral dispatch of section 4e (at once when there is none), call `pipeline_brand_research_save` with the brand and `runId`.
+- `website`: the website and the brand's facts: offer, audience, proof points, voice and content pillars.
+- `own`: the brand's own accounts: each profile and its outliers, and its top 5 videos taken apart and labelled. A brand with no social account has no `own` part.
+- `competitors`: finds or confirms the top 3 competitors, reads their accounts and their outliers, and takes apart the top 2 videos of each, labelled. When `competitorSplit` is true all three are already named, and there is one part for each, `competitor-1`, `competitor-2` and `competitor-3`.
+- `pains`: the pains, desires and objections in the customers' own words with quotes from the pages it saved, the angles that match a pain with a proof, and the best captions and calls to action, from comments, forums, reviews and ads.
+- `viral`: what is viral in the niche now. The Trend Scout finds the videos and a short follow-up takes the first 3 apart (section 4e).
+
+Spawn the researchers of `website`, `own`, `competitors` (or the three `competitor-N`) and `pains` in ONE message, in the background, together with the Trend Scout (section 4e).
+Never send them one after another, and never wait for one before spawning the next: running at the same time is the point.
+When there are workers to spawn, spawn them first and call `web_brand_kit` straight after, so they run while it reads the website.
+Give each Agent call a plain description such as "Researcher: competitors".
+Each researcher's prompt is short, because the worker reads its own contract:
+
+- `brand:<slug>` alone on the first line, so the board shows the Researcher working.
+- The workstream `brand-onboarding`, the part's `id`, the `runId`, the part's `partPath` and `contractPath`, the `rawDir` where it saves the text of every page it reads, and the returned `market` as the target market.
+- The line "Read the file at contractPath first: it is your whole contract."
+- The part's `budget`, as the start result gives it. A `competitor-N` part also gets its competitor's name, and `own` the platforms in its `accounts`.
+- For `website`, the returned `blankFields` and `alsoFill`. For `competitors`, the declared competitors and `toFind`.
+- The block `pipeline_agent_brief` returns for it with the job `onboarding-<runId>`, unchanged, at the end.
+
+Do not paste a contract or restate field formats in your own words; the workers have them in their contract files.
+Each worker writes its part file `<part>.json` in the shape of the draft, for its own keys only, and saves the text of every page it reads under `rawDir`; its last write sets the part's `status` to `done`.
+Research on a brand is as deep as research on a job: the workers read the website and each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and are filed as top posts with their likes in place of views), and keep a saved capture behind every source.
+A researcher reads Instagram only through the research helper. It has no Chrome tools; the Instagram look below is yours.
+Between them the `own` and competitors workers take apart at most 11 of the top videos (the 5 best own and the 2 best of each competitor, with `pipeline_video_teardown` and `media_transcribe`), give each its labels on the format library's axes (format, editing style, visual hook, subtopic) and write what they saw into `topPosts`; the 3 viral videos come in the short follow-up (section 4e); a teardown counts as one of their fetches, and a video whose download fails is skipped with a line in the gaps.
+The save checks every quote against its saved page, so a problem about a quote goes back to the part that wrote it like any other problem about a source.
+In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
+The researchers use plain dates (YYYY-MM-DD) for `observedAt` and never invent clock times.
+
+Section 4e says what runs beside them (the Trend Scout) and what follows (the viral videos, the six subtopics, the plan), and how the checklist on the brand's page is kept; do those steps with this one.
+Right after spawning, write the board documents (call `pipeline_status` and write its `documents`), so the onboarding page shows the workers running; do the same each time a worker reports back, because the steps of the parts move by themselves each time `pipeline_status` runs.
+If a worker stops before it finished (it says it ran out of turns, or its part file still says it is working), dispatch that part once more with the same prompt and say what its part file already holds: it carries on from there.
+When every part is done, and the viral follow-up of section 4e has run (at once when there is none), call `pipeline_brand_research_save` with the brand and `runId`.
+The server merges the part files into the draft and checks it as one.
 
 When the save returns `needs_changes`, never close the run and never tell the person about it.
-Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems`, `draftPath` and `rawDir`, then save again.
-Say this to the researcher in that second dispatch, word for word: "Rewrite the draft file with Write (you have no Edit tool), copying each quote exactly from its capture."
-Never add, change or date a source, URL or piece of evidence yourself: anything about sources, captures, excerpts, competitor handles, or the files and top posts the draft carries goes back to the researcher.
+A part that is missing or not finished comes back alone, before anything else is checked: dispatch only that part again, wait for its worker to report, and save again.
+Otherwise every problem names the `part` it came from (or `candidates`, when it could be any of several), `parts` shows how each part stands, and `redo` lists the parts to dispatch again: dispatch only those, never the parts that had no problem.
+Fix the part file yourself when the fix is only wording or a stray key; otherwise dispatch that part's researcher once more with only the `problems` of that part, its `partPath`, `contractPath` and `rawDir`, then save again.
+Say this to the researcher in that second dispatch, word for word (its draft file is its part file): "Rewrite the draft file with Write (you have no Edit tool), copying each quote exactly from its capture."
+Never add, change or date a source, URL or piece of evidence yourself: anything about sources, captures, excerpts, competitor handles, or the files and top posts a part carries goes back to the researcher of that part.
 Do this for at most two rounds.
-When `needsAudience` is true, the researcher either finds the brand's own audience or suggests one from the top competitors' audiences in the target market.
+When `needsAudience` is true, the problem names the `website` part: dispatch it again, now that the competitors part is done, to find the brand's own audience or to suggest one from the top competitors' audiences in the target market.
 If audience alone still remains after the two rounds, save once more with `audienceUnavailable: true` and tell the person plainly that no audience could be found and that they can add one on the board.
 
 Right after a successful save, tell the person plainly which fields research filled, from the `filled` list, in marketing words such as "Research filled in Audience, Brand voice and Content pillars."
@@ -205,9 +257,9 @@ Never mention file names, tool names or the checks behind `brandFiles`, `library
 Close the run as failed with `pipeline_brand_research_close`, `status: 'failed'` and a reason, only when a tool itself returns an error.
 After a first failure, call `pipeline_brand_research_start` once more to restart the research, without calling `web_brand_kit` again; the board keeps showing that research is under way until the restart ends. A second failure is final.
 
-Publish the board so the colours and fonts `web_brand_kit` proposed are visible.
+Publish the board so the logo suggestion, colours and fonts the kit step proposed are visible.
 
-Tell the person in one sentence to check the colours and fonts on the board, add their logo by uploading it if they have one, add a few real photos of their place, people or product if they have them, and click Save and continue.
+Tell the person in one sentence to check the logo, colours and fonts on the board (a suggested logo has Use this and Not this, and they can upload their own instead), add a few real photos of their place, people or product if they have them, and click Save and continue.
 
 While they do that, follow 4b below.
 
@@ -218,6 +270,37 @@ Apply it immediately: a board click is the approval, so there is no chat confirm
 When that kit carries a logo, follow the same Handling a board request procedure in `skills/board-sync/SKILL.md` before landing and applying it.
 
 For chat intake, show the proposed kit in chat, take any changes the person wants, and call `pipeline_brand_kit_save` with the resulting kit.
+A confirmed logo suggestion the person takes is saved as `logo: { action: "suggested", id }`.
+
+## 4a. The kit step: a logo, colours and fonts from the brand's own places
+
+The kit step fills the brand's logo, colours and fonts from the brand's own places, so the card is not left empty when the brand has no website or the website shows no colours.
+Everything it finds is a suggestion: the person says Use this or Not this to a logo, edits the colours and fonts like any others, and a logo they upload always wins.
+Run it at the start of research, and again when a save of the details adds or changes the website or a social link.
+
+1. Call `web_brand_kit` with the brand.
+   It reads the website's colours, fonts and logo addresses, and the profile pictures of the brand's own TikTok, Instagram, Facebook and YouTube accounts (a YouTube channel the website links to counts too), and it works with no website at all.
+   Logos come from those places only: never search the web, an image search or any other page for a logo, and never save one you found that way.
+   Asked again with nothing new to read, it answers from the first read, and a site that blocks automated readers is not tried again.
+   It returns `{status, brand, captureId, palette, paletteSource, fonts, fontsSource, logoCandidates, toReview, code, reason, skippedParts}`.
+   It skips any part the person already provided and returns `skipped` when the logo, colours and fonts were all provided; do not look for those parts another way.
+2. Look at every logo candidate before it is offered.
+   Each of `logoCandidates` (at most 3) has an `id`, its `source` and a local `path`.
+   Read the picture at `path` and decide whether it shows the brand's own mark, initials or name.
+   An SVG cannot be drawn here, so read it as text: confirm it only when its title, label or words name the brand, and when you cannot tell, turn it down.
+   A photo, a person, a product, another company's mark, a default avatar or a placeholder is not the logo.
+   Then call `web_brand_kit` again with `review`: one entry for each candidate, `{ id, verdict: "brand" }` or `{ id, verdict: "not_brand" }`, with a few words of what you saw as `note`.
+   A candidate you do not confirm is never shown to the person, and one you turn down is deleted and not offered again.
+   Say nothing about this in chat.
+3. What the person then sees: on the Logo card, the best confirmed candidate with "Suggested from your TikTok profile picture" (or the places it was found), Use this and Not this, the other candidates as small pictures, and the upload tile beneath.
+   The same picture on several of the brand's places ranks first, then the website's header logo before its icon.
+   Colours the website gave stay as they are.
+   When it gave none, the colours of the confirmed logo take their place, labelled "From your logo".
+4. Videos. When the research has taken the brand's own top videos apart (section 4e, step 2) and the kit still has no colours or no fonts, call `web_brand_kit` with `videos: true`.
+   It reads the dominant colours of the frames of the brand's own videos (never a competitor's, and never greys, black or white) and adds them as suggestions labelled "From your videos", at most 5 colours in all, and it returns `videos.frames`.
+   When the kit has no fonts (none from the website, the person or the folders), Read those frames: if the on-screen text clearly uses one typeface, call `web_brand_kit` with `fontGuess`, one or two Google fonts that look closest, each `{ family, use }`.
+   They are shown as "Looks like the text in your videos", with low confidence, so never present one as the brand's font; guess nothing when there is no readable on-screen text.
+5. Fonts otherwise come from the website's CSS as always, and from the folder digest (section 4d) when the website names none.
 
 ## 4b. Industry and the brand library
 
@@ -255,11 +338,15 @@ Record the gap in one plain line instead, for example "I could not read your Ins
 
 ## 4c. Your archive (optional)
 
-Once the industry question is asked, offer the brand's archive, once: a folder of past videos, pictures or audio on this computer (a Drive folder pulled to this computer works too).
+The brand's archive is a folder of past videos, pictures or audio on this computer (a Drive folder pulled to this computer works too).
 It is optional. A brand with no archive skips this step and onboards exactly as before; say nothing about it when the person has none.
 
-Ask with `pipeline_board_ask` for the brand, for example "Do you have a folder of past videos or photos I can learn from? Paste its full path, or choose Not now.", with "Not now" as the one button and a typed answer allowed. Do not wait for the answer; carry on with the steps around this one.
-When the person would rather choose the folder than paste it, call `pipeline_folder_pick` with no request ID: it opens the folder dialog on their computer and returns `status` chosen with the `folder`, or cancelled, timeout or unavailable.
+The archive is offered once, while the person is filling in the brand's details (step 2 in "The three steps"), and never after research has started.
+Offer it in the same chat line that tells them the brand is created, by pointing at the brand page: under "Your videos, photos and fonts" they choose who owns the files, then press "Choose a folder..." and a folder picker opens on their computer.
+Do not ask for a typed path, do not post a `pipeline_board_ask` question for it, and do not ask again after research starts; the card stays on the page for as long as the person wants it. A folder they add there arrives as a request that section 4d handles, and the files are read before or after research, whenever they add them.
+
+Only when the person offers a folder in chat (they type or paste a path, or say they have one), take it from there:
+When they would rather choose the folder than paste it, call `pipeline_folder_pick` with no request ID: it opens the folder dialog on their computer and returns `status` chosen with the `folder`, or cancelled, timeout or unavailable.
 When a path arrives, ask who the footage belongs to with `pipeline_board_ask`, in plain words, with three buttons: "Ours, free to use" (rights ours), "Ask me each time before posting" (client_ask) and "Never use it" (never). Never guess the rights and never default them.
 Then call `brand_footage_import` with the brand, the folder, the rights and a short label in the person's words. It reads the folder in the background, skips copies, makes small thumbnails and costs nothing; the files are never copied, moved or changed. Say so in one line, for example "Reading your folder now. It is free and runs in the background."
 A bigger folder takes a while. `brand_footage_status` shows how far it got, and calling `brand_footage_import` again with the same folder carries on after a stop. A folder that moved shows its files as missing: ask the person for the new place and use `brand_footage_folder` with `relink`.
@@ -273,7 +360,8 @@ The person can also add folders themselves on the board, under Logo, colours and
 ## 4d. Folders added on the board
 
 The board's "Logo, colours and fonts" section has a "Your videos, photos and fonts" block.
-The person presses "Choose a folder..." and picks a folder of the brand's videos, photos or fonts in a dialog that opens on their own computer, after answering "Who owns the files in this folder?" with one of three cards: Ours (the rights `ours`), Client work, ask first (`client_ask`) or Reference only (`never`).
+The block sits on the brand's own page, so it works from the moment the brand is created, before research starts (step 2) as well as after.
+The person first answers "Who owns the files in this folder?" with one of three cards: Ours (the rights `ours`), Client work, ask first (`client_ask`) or Reference only (`never`); the "Choose a folder..." button turns on once one is picked, and then they pick a folder of the brand's videos, photos or fonts in a dialog that opens on their own computer.
 The board is a browser page and cannot read a path on this computer, so a pick arrives as a `brand_folder_pick` request with `{ brand, rights, label? }` and no path.
 The person can also open "Or paste a path" and type the full path of a folder, which arrives as a `brand_folder_add` request with `{ brand, folder, rights, label? }`.
 They can add as many folders as they like.
@@ -286,7 +374,9 @@ For a typed path (`brand_folder_add`), land it with `pipeline_board_request_land
 The apply imports the folder exactly as `brand_footage_import` does and starts reading it in the background, which is free; nothing is copied, moved or changed.
 Do not call `brand_footage_import` for it as well.
 If the apply refuses (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line in chat, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
-After a successful apply, publish the workspace projection so the board lists the folder, then do the following in order.
+After a successful apply, publish the workspace projection so the board lists the folder.
+When the folder arrives before research has started (the person is still filling in the brand's page, step 2), stop there: say in one line that the folder is being read, and do the steps below once the person has pressed Start research and the research pass is under way, so a person adding folders on the page is never held up.
+Otherwise do the following in order.
 
 1. Let it read. `brand_footage_status` shows how far each folder got; it carries on without you, so check it only when you have nothing else to do, and carry on with the steps around this one meanwhile.
 2. Look at a few files, without asking: the board click already covers a small first pass. Describe at most 20 files per request, videos first (at most 10) and then pictures, never a file in a `never` folder and never a font. Use `brand_footage_search` with `analysed` none, and describe each as 4c says: for a video its frames and, at no cost, its first spoken words; for a picture, look at it (its `path`, or its `thumbnail`).
@@ -308,13 +398,16 @@ Onboarding always runs the deep pass: there is no quick option and nothing to as
 The person sees it as a checklist on the brand's page, then as the brand intelligence tabs (the board draws `brand.intelligence` by itself).
 It has four pillars, and each feeds a concept: the brand's own winners (Concept A), the top 3 competitors' winners (Concept B), what is viral in the niche now (Concept C), and the six subtopics that tie them together.
 The 6 by 5 plan comes last.
-Every video taken apart is labelled on the format library's axes (format, editing style, visual hook, subtopic) by the researcher; the library is `pipeline/library/formats.json`.
+Every video taken apart is labelled on the format library's axes (format, editing style, visual hook, subtopic) by the researcher that took it apart; the library is `pipeline/library/formats.json`.
+The research itself runs as parallel workers (section 4): the pillars are read at the same time, so the pass takes as long as its slowest worker, not the sum of them.
 
 ### The checklist
 
 Keep the checklist current with `brand_intelligence_save` (action `progress`).
 It starts by itself when `pipeline_brand_research_start` starts a run: the standard steps, the first one running.
-Change one step at a time with `step` (`{ id, state, detail }`) and write the board documents (`pipeline_status`, then its `documents`) after each change, so the page moves.
+The steps of the research parts move by themselves: each time you call `pipeline_status`, the server reads the part files of the open run and shows `website`, `accounts`, `own_top`, `own_teardown`, `competitors`, `rivals_teardown` and `pains` running while their workers go (with the numbers so far, "3 of 5 videos") and done when their part is done, and `viral` once its follow-up has started.
+So call `pipeline_status` and write its `documents` each time a worker reports, and the page shows the parallel progress.
+Change by hand, one step at a time with `step` (`{ id, state, detail }`), only what no part owns: `viral` while the Trend Scout works, `subtopics`, `plan` and `files`, and `newBrand`; write the board documents after each change.
 Keep each detail to plain words with a number ("3 of 5 videos").
 The standard ids are `website`, `accounts`, `own_top`, `own_teardown`, `competitors`, `rivals_teardown`, `viral`, `pains`, `subtopics`, `plan` and `files`.
 The checklist turns ready by itself when every step is done.
@@ -322,19 +415,22 @@ Never mention the tool, the ids or the files in chat.
 
 ### The sequence
 
-1. Right after `pipeline_brand_research_start` and `web_brand_kit`, dispatch the researcher in the background as section 4 says, and at the same moment spawn the Trend Scout in the background.
-   Put `brand:<slug>` alone on the first line of its prompt, then the brand's niche (the industry pick when there is one, else the brand's market and content pillars), the target market, the saved competitor names, `trendsPath` and `viralPath` from the start result, and 30 turns.
+1. Right after `pipeline_brand_research_start` (and straight before `web_brand_kit`), spawn in ONE message, in the background, the researchers of the parts as section 4 says and the Trend Scout, so every pillar starts at the same moment.
+   Put `brand:<slug>` alone on the first line of the Trend Scout's prompt, then the brand's niche (the industry pick when there is one, else the brand's market and content pillars), the target market, the saved competitor names, `trendsPath` and `viralPath` from the start result, and the Trend Scout's share of the budget from the `viral` part (`scout`: 11 searches, 10 fetches and 20 turns).
    Add the block `pipeline_agent_brief` returns for it, unchanged.
    It looks for what is viral in the niche (niche topic search, YouTube search, TikTok Top Ads, Meta ads), saves the trends it finds and writes the most viewed videos to `viralPath`.
    Mark the step `viral` running with a line such as "Looking for what is viral in AI and automation".
-2. When the researcher reports, its draft holds the account reads, the competitors, the top posts of the brand (its 5 best taken apart) and of each competitor (their top 2 each taken apart), every video with its labels, the pain points and the banks.
-   Mark `website`, `accounts`, `own_top`, `own_teardown`, `competitors`, `rivals_teardown` and `pains` done as far as they went, with the numbers ("5 videos taken apart", "6 competitor videos").
-3. When the Trend Scout has reported too, send the researcher a second, short dispatch with the workstream `viral-teardown`.
-   Put `brand:<slug>` on the first line, then `viralPath`, `draftPath`, `rawDir`, the `draftContract` unchanged and `runId`.
-   It takes apart the first 3 viral videos and adds them to the `topPosts` of the draft.
-   When the Trend Scout failed or wrote nothing, skip the dispatch and mark `viral` done with the detail "Nothing viral found yet".
-4. Save with `pipeline_brand_research_save` as section 4 says.
-   The save checks the labels of every video taken apart like any other part of the draft, and a problem goes back to the researcher the same way.
+2. The researchers report one by one, each when its part is done, and the order does not matter.
+   Call `pipeline_status` and write its `documents` each time, so the checklist moves by itself.
+   Together the parts hold the account reads, the competitors, the top posts of the brand (its 5 best taken apart) and of each competitor (their top 2 each taken apart), every video with its labels, the pain points and the banks.
+   A worker that stopped early is dispatched again for its own part only (section 4); the others carry on.
+   When the `own` part reports done and the kit still has no colours or no fonts, run step 4 of the kit step (section 4a) on the frames of the brand's own videos.
+3. As soon as the Trend Scout has reported, without waiting for the other workers, send a researcher a short dispatch with the workstream `viral-teardown`: the `viral` part.
+   Put `brand:<slug>` on the first line, then the part id `viral`, the `runId`, the `viral` part's `partPath` and `contractPath`, `viralPath`, `rawDir` and its `teardown` budget (3 fetches and 6 turns), and the `pipeline_agent_brief` block unchanged.
+   It takes apart the first 3 viral videos and writes them in the `topPosts` of the `viral` part file, with its status done.
+   When the Trend Scout failed or wrote nothing, skip the dispatch and mark `viral` done with the detail "Nothing viral found yet"; the save notes it as a gap by itself.
+4. When every part is done, save with `pipeline_brand_research_save` as section 4 says.
+   The save checks the labels of every video taken apart like any other part of the draft, and a problem goes back to the part that wrote the video the same way.
    It files the posts it took apart in the brand's intelligence (`intelligence.posts.saved`) and the viral ones as trends too.
 5. Subtopics (step `subtopics`): read the posts with `brand_intelligence_get`.
    Cluster their topics (the `subtopic` labels, the hooks and the captions) into six subtopics from all three pillars, a competitor's or a viral post counting as well as the brand's own.

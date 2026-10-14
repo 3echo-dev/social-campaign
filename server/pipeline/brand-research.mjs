@@ -22,6 +22,7 @@ import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mj
 import { MAX_BREAKDOWNS, breakdownCounts, fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
 import { fileIntelligence, intelligenceBuilt, startChecklist } from './brand-intelligence.mjs';
 import { banksProblems, existingPainTexts, fileBanks } from './brand-onboarding-banks.mjs';
+import { MAX_RESEARCH_SOURCES, collectParts, publicParts, redoOf, syncPartsProgress, tagProblems, writePartFiles } from './brand-research-parts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = join(HERE, '..', '..', 'pipeline');
@@ -40,7 +41,8 @@ const REFRESH_FAILED = 'The scheduled research refresh failed';
 /** Said to the person when research that looks current is redone because the brand never had its intelligence built (see fileIntelligence). */
 const INTELLIGENCE_REASON = 'Your brand intelligence was never built from your best posts, your competitors and what is viral in your niche; building it now';
 const BUSY = 'Another Claude window is already using the browser for research. Wait for it to finish, then run it again.';
-const MAX_SOURCES = 12;
+// The parts of a run (brand-research-parts.mjs) share this: 20 sources in all, 3 to 8 for each part.
+const MAX_SOURCES = MAX_RESEARCH_SOURCES;
 const MAX_EVIDENCE_PER_COMPETITOR = 3;
 const REPLACEABLE_FIELDS = ['sources', 'evidenceMatrix', 'findings', 'gaps', 'competitors', 'competitorDetails'];
 
@@ -130,6 +132,18 @@ export function settleStaleResearch({ root }) {
       }
     }
   } catch { /* the board still shows the run as stopped */ }
+}
+
+/**
+ * Move the onboarding checklist along with the part files of the open run, so a board refresh shows the parallel workers' progress as each
+ * part finishes. Run from pipeline_status next to settleStaleResearch. Writes only when a step changed, and never throws.
+ */
+export function syncResearchProgress({ root }) {
+  try {
+    return syncPartsProgress({ root });
+  } catch {
+    return null;
+  }
 }
 
 function blanksAndCompetitors(profile) {
@@ -262,8 +276,20 @@ export function startBrandResearch({ root, brand }) {
   mkdirSync(rawDir, { recursive: true });
   const toFind = brandProfile.MAX_COMPETITORS - declaredCompetitors.length;
   const alsoFill = brandProfile.blankResearchFields(profile).filter((name) => EXTRA_FILLS.includes(name));
-  ensureDraftSkeleton(draftPath, run.runId, [...(run.blankFields || blankFields), ...alsoFill], toFind);
-  // The onboarding checklist the board shows while the pass runs starts with the run; the Director then moves its steps (brand_intelligence_save).
+  const fillNames = [...(run.blankFields || blankFields), ...alsoFill];
+  ensureDraftSkeleton(draftPath, run.runId, fillNames, toFind);
+  // The parts of the run (brand-research-parts.mjs): the Director spawns one worker for each, in one message, and each writes its own part file
+  // in the shape of the draft. Where the Trend Scout (spawned beside the researchers) writes what it saw, and the viral videos a short
+  // follow-up then takes apart, are named here and in the viral part's contract.
+  const runFolder = onboardingRun.runDir(brandDir, run.runId);
+  const trendsPath = join(runFolder, 'trends.md');
+  const viralPath = join(runFolder, 'viral-candidates.json');
+  const plan = writePartFiles({
+    brandDir, runId: run.runId, profile, declared: declaredCompetitors, toFind,
+    fills: draftSkeleton(run.runId, fillNames, toFind).fills, rawDir, viralPath, trendsPath,
+  });
+  // The onboarding checklist the board shows while the pass runs starts with the run; the parts then move their steps by themselves
+  // (syncPartsProgress, from pipeline_status) and the Director moves the others (brand_intelligence_save).
   if (started.created) startChecklist({ root, brand: entry.slug });
   return {
     status: started.created ? 'started' : 'already_running',
@@ -278,9 +304,12 @@ export function startBrandResearch({ root, brand }) {
     draftPath,
     rawDir,
     refreshReason,
-    // Where the Trend Scout (spawned beside the researcher) writes what it saw during this run, and the viral videos the researcher then takes apart.
-    trendsPath: join(onboardingRun.runDir(brandDir, run.runId), 'trends.md'),
-    viralPath: join(onboardingRun.runDir(brandDir, run.runId), 'viral-candidates.json'),
+    // Where the Trend Scout (spawned beside the researchers) writes what it saw during this run, and the viral videos a researcher then takes apart.
+    trendsPath,
+    viralPath,
+    // One entry for each worker to spawn at once: its part file, its contract (it reads it itself) and its share of the budget.
+    parts: publicParts({ brandDir, runId: run.runId, plan, viralPath, trendsPath }),
+    competitorSplit: plan.split,
     deep: true,
     draftContract: draftContract(),
     profileRevision: run.profileRevisionAtStart ?? profile.revision,
@@ -526,7 +555,7 @@ function researchProblems(researchDraft, slug, place, problems, ctx = {}) {
 
   const sources = Array.isArray(researchDraft.sources) ? researchDraft.sources : [];
   if (!sources.length) problems.push({ field: 'research.sources', problem: 'Add at least one dated source the research used.' });
-  if (sources.length > MAX_SOURCES) problems.push({ field: 'research.sources', problem: 'Brand research saves at most 12 sources.' });
+  if (sources.length > MAX_SOURCES) problems.push({ field: 'research.sources', problem: `Brand research saves at most ${MAX_SOURCES} sources.` });
   const boundary = brandResearch.createCapabilityBoundary({});
   sources.forEach((source, index) => {
     if (!isObject(source)) {
@@ -752,8 +781,8 @@ function buildSaveInput({ researchDraft, run, entry, place, runId, previousResea
   return saveInput;
 }
 
-function needsChanges({ runId, entry, draftPath, needsAudience, problems }) {
-  return {
+function needsChanges({ runId, entry, draftPath, needsAudience, problems, parted = null }) {
+  const out = {
     status: 'needs_changes',
     runOpen: true,
     runId,
@@ -762,6 +791,13 @@ function needsChanges({ runId, entry, draftPath, needsAudience, problems }) {
     needsAudience,
     problems,
   };
+  // A run in parts: each problem names its part (or the parts it could be), `parts` says how each stands, and `redo` is what to dispatch again, nothing more.
+  if (parted && parted.active) {
+    out.parts = parted.summary.map((item) => ({ ...item, problems: problems.filter((problem) => problem.part === item.id).length }));
+    out.redo = redoOf(problems, parted.plan);
+    out.mergedPath = parted.mergedPath;
+  }
+  return out;
 }
 
 /**
@@ -769,6 +805,11 @@ function needsChanges({ runId, entry, draftPath, needsAudience, problems }) {
  * write the research record, then close the run as complete. A draft with any
  * problem in its shape or content returns needs_changes with every problem at
  * once, writes nothing and leaves the run open.
+ *
+ * A run in parts (the workers' part files in the run's parts folder, see brand-research-parts.mjs) is merged into the draft first and the
+ * merged draft is checked as one: every rule below holds unchanged, and each problem says which part it came from (`part`, or `candidates`
+ * when it could be several), with `redo` listing the parts to dispatch again. A part that is missing or not finished is reported alone, before
+ * anything else is checked.
  * @returns {object} the `complete` shape, or the `needs_changes` shape.
  */
 export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
@@ -780,7 +821,12 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
     throw new UserFacingError('This brand research run is not active for this brand.', { code: 'onboarding_run_not_active' });
   }
   const draftPath = draftPathFor(brandDir, runId);
-  const read = readDraft(draftPath);
+  // Once a worker has written its part file the draft is the merge of the part files; until then the draft file is saved as it is.
+  const parted = collectParts({ brandDir, runId, basePath: draftPath });
+  if (parted.active && parted.blocked) {
+    return needsChanges({ runId, entry, draftPath, needsAudience: false, problems: parted.problems, parted });
+  }
+  const read = parted.active ? { value: parted.draft } : readDraft(draftPath);
   const profile = brandProfile.read(brandDir);
   const market = brandProfile.targetMarketOf(profile);
   const place = scopePlace(profile);
@@ -818,7 +864,8 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
   const fillInput = { ...fills };
   if (found.length) fillInput.competitors = found;
   let saveInput = null;
-  if (!checked.shapeCount) {
+  const mergeProblems = parted.active ? parted.problems : [];
+  if (!checked.shapeCount && !mergeProblems.length) {
     saveInput = buildSaveInput({ researchDraft, run, entry, place, runId, previousResearch, found, bySource: checked.bySource });
     let dryFill = null;
     try {
@@ -834,8 +881,9 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
       }
     }
   }
-  if (problems.length) {
-    return needsChanges({ runId, entry, draftPath, needsAudience: checked.needsAudience, problems });
+  if (problems.length || mergeProblems.length) {
+    const listed = parted.active ? [...mergeProblems, ...tagProblems(problems, parted.origin, parted.plan)] : problems;
+    return needsChanges({ runId, entry, draftPath, needsAudience: checked.needsAudience, problems: listed, parted });
   }
 
   let fillResult = null;
@@ -899,6 +947,7 @@ export function saveBrandResearch({ root, brand, runId, audienceUnavailable }) {
     gapCount: savedResearch.gaps.length,
     current: savedResearch.current,
     toolCalls: { recorded: calls.recorded, total: calls.total, failed: calls.failed, searches: calls.searches, fetches: calls.fetches, overBudget: measured.overBudget },
+    ...(parted.active ? { parts: parted.summary.map(({ id, status }) => ({ id, status })) } : {}),
     ...filed,
   };
 }

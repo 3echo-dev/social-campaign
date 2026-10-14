@@ -26,11 +26,11 @@ The brand gate is the board's `onboard_brand` request, or `pipeline_brand_onboar
 
 `pipeline_brand_create` and `pipeline_brand_complete` are a compatibility path only.
 
-After a profile save, the research pass runs `pipeline_brand_research_start`, one researcher dispatch for the `brand-onboarding` workstream, and `pipeline_brand_research_save`.
-A save that returns `needs_changes` leaves the run open, so the draft is fixed and saved again, and `pipeline_brand_research_close` is used only when a tool itself fails.
+After a profile save, the research pass runs `pipeline_brand_research_start`, parallel researcher dispatches for the `brand-onboarding` workstream (one worker for each part of the pass, spawned in one message beside the Trend Scout, each writing its own part file, then a short `viral-teardown` dispatch for the viral videos), and `pipeline_brand_research_save`, which merges the part files into the draft.
+A save that returns `needs_changes` leaves the run open, so the parts it names are fixed or dispatched again and saved again, and `pipeline_brand_research_close` is used only when a tool itself fails.
 
-Onboarding also runs `web_brand_kit`, a public, read-only read by the server that returns colours and fonts only, and New job waits for the kit to be saved.
-The logo is upload only.
+Onboarding also runs `web_brand_kit`, a public, read-only read by the server of the brand's own places (its website and its TikTok, Instagram, Facebook and YouTube profile pictures) that suggests a logo, colours and fonts, and New job waits for the kit to be saved.
+A logo is the person's upload or one of those suggestions that Claude looked at and the person took with Use this; a logo is never searched for anywhere else.
 
 Limits: Hard limits table in pipeline/skills/research/SKILL.md.
 

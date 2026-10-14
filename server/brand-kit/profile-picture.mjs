@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
-import { boundedFetch } from '../social/backends/web.mjs';
+import { boundedFetch, extractMeta } from '../social/backends/web.mjs';
+import { StealthBackend } from '../social/backends/stealth.mjs';
 import { PublicPageBackend } from '../social/backends/public_page.mjs';
 import { TikTokPublicBackend, parseEmbedState } from '../social/backends/tiktok_public.mjs';
 import { parseHandle } from '../social/records.mjs';
@@ -13,10 +14,70 @@ const SAMPLE_SIZE = 32;
 const MIN_SHARE = 0.03;
 const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
+/** Where each platform keeps a profile picture. A picture on any other host is not that account's picture. */
+const PICTURE_HOSTS = Object.freeze({
+  tiktok: [/(^|\.)tiktokcdn(-us|-eu)?\.com$/i, /(^|\.)tiktokv\.(com|us|eu)$/i, /(^|\.)ibyteimg\.com$/i, /(^|\.)byteimg\.com$/i, /(^|\.)byteoversea\.com$/i, /(^|\.)muscdn\.com$/i, /(^|\.)ibytedtos\.com$/i, /^[a-z0-9-]*tiktokcdn[a-z0-9-]*\.akamaized\.net$/i, /(^|\.)tiktok\.com$/i],
+  instagram: [/(^|\.)cdninstagram\.com$/i, /(^|\.)fbcdn\.net$/i, /(^|\.)instagram\.com$/i],
+  facebook: [/(^|\.)fbcdn\.net$/i, /(^|\.)facebook\.com$/i, /(^|\.)fbsbx\.com$/i],
+  youtube: [/(^|\.)ggpht\.com$/i, /(^|\.)googleusercontent\.com$/i, /(^|\.)ytimg\.com$/i, /(^|\.)youtube\.com$/i],
+});
+
 /**
- * @param {'instagram'|'tiktok'|'facebook'} platform
+ * Whether an address is on a host the platform serves its own pictures from.
+ * @param {'instagram'|'tiktok'|'facebook'|'youtube'} platform
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isPlatformPictureHost(platform, value) {
+  try {
+    const url = new URL(value);
+    // A platform's own static files (its app icon on a sign-in page) are not an account's picture.
+    if (/^static[.-]/i.test(url.hostname) || /\/rsrc\.php(\/|$)/i.test(url.pathname)) return false;
+    return (url.protocol === 'https:' || url.protocol === 'http:') && (PICTURE_HOSTS[platform] ?? []).some((pattern) => pattern.test(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
+/** The first of these an object holds as an address. */
+function firstAddress(source, keys) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value;
+  }
+  return null;
+}
+
+/**
+ * The picture a page or profile read names for its account: an address on the platform's own picture hosts, or null.
+ * @param {'instagram'|'tiktok'|'facebook'|'youtube'} platform
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function ownPicture(platform, value) {
+  return typeof value === 'string' && value && isPlatformPictureHost(platform, value) ? value : null;
+}
+
+/**
+ * One page through the stealth reader (Chrome's TLS fingerprint, no login), for a profile the plain read is refused for.
+ * Instagram's embedded user carries the picture; the page's og:image is the picture on Facebook and as a fallback.
+ */
+async function pictureViaStealth(platform, url, options) {
+  let stealth = options.stealth;
+  if (!stealth) stealth = new StealthBackend({ workspaceRoot: options.workspaceRoot ?? null });
+  if (typeof stealth.isReady === 'function' && !stealth.isReady()) return null;
+  const out = await stealth.page(url, { timeoutMs: 30_000 });
+  if (!out || out.ok !== true) return null;
+  return ownPicture(platform, out.instagram?.user?.profilePicUrl) ?? ownPicture(platform, out.meta?.['og:image']);
+}
+
+/**
+ * The address of a brand's own profile picture on one platform, read the way the research tools read the profile (no login):
+ * TikTok's profile embed, Instagram and Facebook through their public page and then the stealth reader, YouTube's channel page.
+ * An address on a host the platform does not serve pictures from is never returned.
+ * @param {'instagram'|'tiktok'|'facebook'|'youtube'} platform
  * @param {string} url
- * @param {{allowPrivate?: boolean, pages?: {read: Function}, tiktok?: {get: Function}}} [options]
+ * @param {{allowPrivate?: boolean, pages?: {read: Function}, tiktok?: {get: Function}, stealth?: {page: Function, isReady?: Function, tiktokProfile?: Function}, workspaceRoot?: string|null, fetchHtml?: (url: string) => Promise<string|null>}} [options]
  * @returns {Promise<string|null>}
  */
 export async function profilePictureUrl(platform, url, options = {}) {
@@ -25,16 +86,35 @@ export async function profilePictureUrl(platform, url, options = {}) {
   if (platform === 'instagram' || platform === 'facebook') {
     const pages = options.pages ?? new PublicPageBackend({ allowPrivate: options.allowPrivate });
     const page = await pages.read(target.url, platform);
-    if (!page.ok) return null;
-    const image = page.meta['og:image'];
-    return typeof image === 'string' && image ? image : null;
+    const plain = page.ok ? ownPicture(platform, page.meta['og:image']) : null;
+    if (plain) return plain;
+    return pictureViaStealth(platform, target.url, options);
   }
   if (platform === 'tiktok') {
     const tiktok = options.tiktok ?? new TikTokPublicBackend({ allowPrivate: options.allowPrivate });
     const result = await tiktok.get(`/embed/@${encodeURIComponent(target.handle)}`);
-    if (TikTokPublicBackend.failureOf(result)) return null;
-    const avatar = parseEmbedState(result.body)?.userInfo?.avatarThumbUrl;
-    return typeof avatar === 'string' && avatar ? avatar : null;
+    if (!TikTokPublicBackend.failureOf(result)) {
+      const user = parseEmbedState(result.body)?.userInfo;
+      const avatar = ownPicture(platform, firstAddress(user, ['avatarLargerUrl', 'avatarMediumUrl', 'avatarThumbUrl']));
+      if (avatar) return avatar;
+    }
+    // The embed names only a small picture or none: the profile page itself carries the larger one.
+    let stealth = options.stealth;
+    if (!stealth) stealth = new StealthBackend({ workspaceRoot: options.workspaceRoot ?? null });
+    if (typeof stealth.isReady === 'function' && !stealth.isReady()) return null;
+    if (typeof stealth.tiktokProfile !== 'function') return null;
+    const profile = await stealth.tiktokProfile(target.handle, { limit: 1, timeoutMs: 40_000 });
+    return profile?.ok === true ? ownPicture(platform, profile.profile?.avatar) : null;
+  }
+  if (platform === 'youtube') {
+    const page = target.url.replace(/\/shorts\/?$/, '');
+    let html = null;
+    if (options.fetchHtml) html = await options.fetchHtml(page);
+    else {
+      const fetched = await boundedFetch(page, { allowPrivate: options.allowPrivate, timeoutMs: 12_000, maxBytes: 1024 * 1024 });
+      html = fetched.ok ? fetched.body : null;
+    }
+    return html ? ownPicture(platform, extractMeta(html)['og:image']) : null;
   }
   return null;
 }

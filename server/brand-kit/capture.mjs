@@ -2,12 +2,16 @@
  * Static brand kit capture: reads a page with a plain, bounded HTTP fetch, no
  * browser, and pulls out a plausible colour palette and font list. When the
  * website gives no colour, the palette comes from the brand's social profile
- * picture. The logo is never captured. See docs/BRAND-KIT-SPEC.md section 6.
+ * picture. The logo is never downloaded here: the page's own logo addresses are
+ * returned as `logoRefs` (and a YouTube channel it links to as `youtube`), and
+ * server/brand-kit/logo-candidates.mjs downloads them from the brand's own hosts.
+ * See docs/BRAND-KIT-SPEC.md section 6.
  */
 
 import { boundedFetch, assertPublicHost, parseRobots, robotsAllows, decodeEntities, extractMeta } from '../social/backends/web.mjs';
 import { parseHttpUrl } from '../social/records.mjs';
 import { extractFonts } from './fonts.mjs';
+import { extractSiteLogoRefs, extractSiteYoutube } from './site-logos.mjs';
 import { coloursFromProfilePicture, decodeWithFfmpeg } from './profile-picture.mjs';
 import { imageInfo } from './image-info.mjs';
 
@@ -120,8 +124,10 @@ async function readWebsite(url, allowPrivate) {
 
   const palette = extractPalette(meta, html, css);
   const fonts = extractFonts(css, html);
+  const logoRefs = extractSiteLogoRefs(html, finalUrl, meta);
+  const youtube = extractSiteYoutube(html, finalUrl);
 
-  return { status: 'complete', method: 'static', code: null, reason: null, finalUrl, palette, fonts };
+  return { status: 'complete', method: 'static', code: null, reason: null, finalUrl, palette, fonts, logoRefs, youtube };
 }
 
 /**
@@ -129,7 +135,7 @@ async function readWebsite(url, allowPrivate) {
  */
 function emptyResult({ code, reason, finalUrl = null }) {
   const status = code === 'private_address' || code === 'invalid_url' || code === 'unsupported' || code === 'no_website' ? 'unavailable' : 'failed';
-  return { status, method: 'static', code, reason, finalUrl, palette: [], fonts: [] };
+  return { status, method: 'static', code, reason, finalUrl, palette: [], fonts: [], logoRefs: [], youtube: null };
 }
 
 /** @param {string} html */

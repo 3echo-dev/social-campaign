@@ -10,6 +10,7 @@ import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { EVIDENCE_SOURCES, MAX_EVIDENCE, MAX_RUNNING_DAYS, MAX_TRENDS_PER_SAVE, TREND_KINDS, TREND_MAX_AGE_DAYS, WINNER_RUNNING_DAYS, freshTrends, saveTrends } from '../pipeline/brand-trends.mjs';
+import { backfillBrandThumbs } from '../pipeline/post-thumbs.mjs';
 
 const string = { type: 'string' };
 
@@ -89,6 +90,8 @@ export const brandTrendsTools = [
       const root = local(workspace);
       const brand = knownBrand(root, args.brand);
       const out = saveTrends({ root, brand, items: args.items });
+      // The posts and ads that show the trends get their small picture now, for the board's cards (post-thumbs.mjs).
+      await backfillBrandThumbs({ root, brand, limit: 20, remoteLimit: 16, deadlineMs: 25000 });
       return { brand, ...out, fresh: freshTrends({ root, brand }).length };
     },
   }),

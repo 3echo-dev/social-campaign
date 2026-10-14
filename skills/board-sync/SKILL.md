@@ -90,6 +90,7 @@ Keep the source file path out of the artifact database.
 Follow this procedure for every request before calling `pipeline_board_request_land`.
 Never read plugin source, library code, or test files to work out how to handle a request; the shape below is complete.
 Never print, re-type, or otherwise hand-verify base64 or other bytes from a request; the server validates every byte on land and apply.
+If `args.kit.logo.action` is `suggested`, the person took one of the logo suggestions of the kit step (`skills/onboard-brand/SKILL.md`, section 4a): the picture is already on this computer and the request carries only its id, so there is nothing to download and nothing to delete; land and apply `args` unchanged.
 If `args.kit.logo.action` is `asset`, the board already uploaded the downscaled logo (and its thumb) to the artifact's own asset store instead of inlining it, so the request carries only ids, never bytes.
 Call the Artifact tool's `read` action with `url` set to the board's artifact URL and `path` set to `args.kit.logo.assetId`; it saves the logo to a local file and returns that file's path.
 Call `read` again the same way with `path` set to `args.kit.logo.thumbAssetId` when present, for the thumbnail.
@@ -162,13 +163,22 @@ If the person says no to a request in chat, before or after it lands, call `pipe
 Merge only the returned `artifactReceipt` into that request's artifact document, exactly as for an applied request.
 
 For brand creation, onboarding, new jobs, or local imports, apply immediately with `pipeline_board_request_apply` and the requestId and confirmedBy.
-The default brand request operation is `onboard_brand` and carries the name plus all four channel answers in one profile.
+Brand onboarding on the board is three requests, and research starts only on the third (the steps are in `skills/onboard-brand/SKILL.md`, "The three steps"):
+- `create_brand` (`name`) is the person naming a new brand. Apply it, publish the workspace projection and say in one line that the brand is created and its page is ready for details. Do not start research.
+- `save_brand_details` (`brand`, `profile`, optional `kit`) is the person saving what they typed on the brand's page, as often as they like. Apply it and publish the workspace projection. Do not start research, and say nothing about a save that worked. If the apply refuses it, decline it with the plain line.
+- `start_research` (`brand`, `profile`, optional `kit` and `metricoolBlogId`) is the person pressing Start research. Apply it, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields. If the apply refuses it (it needs a website or at least one social account), decline it with the plain line.
+- `brand_rename` (`brand`, `name`) changes the brand's display name only. Apply it, publish the workspace projection and say in one line what the result says: the name changed and the brand's folder keeps its original name. If the apply refuses it (the name is empty or another brand has it), decline it with the plain line.
+
+A `kit.logo` or `kit.references` on a `save_brand_details` or `start_research` request travels exactly as the procedure above describes for `onboard_brand`: read each asset, pass the saved paths when landing the request, and delete the transit copies after the apply.
+The stable request ID of each request makes a retry return the same receipt, so a retry never creates a second brand or starts research twice.
+
+The old single-form operation `onboard_brand` carries the name plus all four channel answers in one profile and still works, as create, details and start in one request.
 Validate the full profile before applying it, with each channel as a URL or explicit `Not available`.
 The stable request ID covers creation and completion together, so a retry resumes the same brand and never creates a second one.
 After applying `onboard_brand`, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields.
-An `onboard_brand` request that carries `kit` is the Save and continue submission: apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection so the board moves to New job.
+An `onboard_brand` request that carries `kit` and `brand` for a brand that already did research is the Save and continue submission: apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection so the board moves to New job.
 If something about the submitted profile is worth flagging, for example a mismatched region between two channels, say so in chat in one plain sentence once research starts; do not block on it.
-Existing drafts use the safe profile projection to prefill the same inline form.
+Existing drafts use the safe profile projection to prefill the same page (a brand that has not started research shows what was saved with Save details).
 New jobs require a completed brand profile, except for a pipeline whose required inputs in `pipelines_list` do not list a brand (today `research`, `creative_analysis` and `video_breakdown`), which may carry `brand: "no-brand"` or a brand that already exists in the workspace.
 
 A `create_job` request from the board's "What do you want to get done?" box carries the person's own words as `brief`, a `title` made from the first line of them, and `brand` with `brandName` and `sourceRefs` only when the person chose a brand or gave links.

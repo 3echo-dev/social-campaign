@@ -118,16 +118,17 @@ done when:     research/trends.md exists at the absolute path given, every platf
 ## At brand onboarding
 
 Onboarding is always the deep pass, and you are its fourth pillar: what is viral in the brand's niche now.
-You are spawned beside the researcher, with `brand:<slug>` on the first line of the spawn prompt, the niche, the target market, the saved competitor names, `trendsPath` and `viralPath`, and there is no job and no concept.
+You are spawned in the same message as the researchers of the parts of the pass (website, own accounts, competitors, pain points), so you start at once and none of them waits for you, with `brand:<slug>` on the first line of the spawn prompt, the niche, the target market, the saved competitor names, `trendsPath`, `viralPath` and your share of the run's budget, and there is no job and no concept.
+The run's 30 searches, 56 fetches and 120 turns are split between its parts, and your share is 11 searches, 10 fetches and 20 turns; the ad calls and searches count in it, and the total of the whole run is what the save checks against the tool log.
 The rules above hold, with these differences:
 
 - Your one file is `trendsPath`, not `research/trends.md`, and your raw captures go beside it in a `raw` folder. Leave out every line that names a concept or a job.
 - Search the niche, not the brand: the niche's topic keywords as Instagram `#hashtag`s and YouTube Shorts keywords (`social_search`), the niche's leading accounts (`social_outliers_find`), TikTok Top Ads and the Meta ads of the niche, at most 3 ad calls in all. The niche is the spawn prompt's, else the person's industry pick from `brand_library_get`, else the brand's market.
 - Save the trends with `brand_trends_save` as usual.
 - Also write `viralPath`: a JSON list of the 5 most viewed videos you read (posts, never ads; a YouTube Short, a TikTok or an Instagram Reel), most viewed first, each `{"platform": "tiktok", "url": "...", "views": 123000, "date": "YYYY-MM-DD", "caption": "...", "thumbnail": "..."}` with the numbers, the date and the caption exactly as the read showed them. Leave `date` out when the source shows none (an Instagram topic, a YouTube search) and `thumbnail` out when the read gave none; `views` is needed (an Instagram video that shows no views gives `likes` in its place). The researcher takes the first 3 apart afterwards, so list only videos that are public posts on those platforms.
-- Return the path of `trendsPath` and of `viralPath`, how many videos are in it, and the trends saved.
+- Return the path of `trendsPath` and of `viralPath`, how many videos are in it, and the trends saved. Write `viralPath` as soon as you have the videos and return when it is written: the short `viral-teardown` dispatch that takes the first 3 apart starts from your report, and it writes the `viral` part file (you write no part file).
 
-You keep to 30 turns; the ad calls and searches count in the run's budget.
+You keep to 30 turns (20 at onboarding, as your spawn prompt says); the ad calls and searches count in the run's budget.
 
 ## Ads that keep running
 

@@ -7,7 +7,9 @@ const capabilities = require('./lib-research-capabilities.js');
 const budgets = require('./lib-research-budget.js');
 const execution = require('./lib-execution-availability.js');
 
-const MAX_RESEARCH_BYTES = 60000;
+// Onboarding research now comes from parallel workers with up to 20 sources between them, so the saved record is allowed 100 KB.
+const MAX_RESEARCH_BYTES = 100000;
+const MAX_RESEARCH_KB = Math.round(MAX_RESEARCH_BYTES / 1000);
 const POLICY_VERSION = 'research-policy-v2';
 const DEFAULT_FRESHNESS_DAYS = Object.freeze({
   brand_identity: 365,
@@ -678,7 +680,7 @@ function save(dir, input, options = {}) {
     const actual = Number(previous && (previous.revision || previous.researchRevision)) || 0;
     if (expected !== undefined && Number(expected) !== actual) throw staleError(expected, actual);
     const draft = buildDraft(dir, input, options, previous, profile, now);
-    if (Buffer.byteLength(JSON.stringify(draft, null, 2) + '\n', 'utf8') > MAX_RESEARCH_BYTES) throw new Error('Keep research under 60 KB.');
+    if (Buffer.byteLength(JSON.stringify(draft, null, 2) + '\n', 'utf8') > MAX_RESEARCH_BYTES) throw new Error('Keep research under ' + MAX_RESEARCH_KB + ' KB.');
     return draft;
   }
   durable.update(file, raw => {
@@ -688,7 +690,7 @@ function save(dir, input, options = {}) {
     if (expected !== undefined && Number(expected) !== actual) throw staleError(expected, actual);
     saved = buildDraft(dir, input, options, previous, profile, now);
     const text = JSON.stringify(saved, null, 2) + '\n';
-    if (Buffer.byteLength(text, 'utf8') > MAX_RESEARCH_BYTES) throw new Error('Keep research under 60 KB.');
+    if (Buffer.byteLength(text, 'utf8') > MAX_RESEARCH_BYTES) throw new Error('Keep research under ' + MAX_RESEARCH_KB + ' KB.');
     return text;
   }, '');
   return read(dir, { now });

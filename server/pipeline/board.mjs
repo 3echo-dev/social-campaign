@@ -38,6 +38,7 @@ import { checkFolderRequest } from './brand-footage.mjs';
 import { FOLDER_PICK_TIMEOUT_MS, pickFolder } from '../lib/folder-pick.mjs';
 import { importAndDigest } from './brand-footage-digest.mjs';
 import { SUBTOPIC_COUNT, boardIntelligence, confirmSubtopics, planCell, slimIntelligence } from './brand-intelligence.mjs';
+import { boardPostPictures, fillPostThumbs } from './post-thumbs.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -168,6 +169,19 @@ function researchSuggestedFields(profile) {
   const filled = profile.provenance && profile.provenance.researchFilled;
   if (!filled || typeof filled !== 'object') return [];
   return Object.keys(filled).filter(name => filled[name] && filled[name].suggested === true);
+}
+
+// What was typed on the brand's details page before research started (runtime.readBrandDetails), in the same plain shape the form reads a
+// profile in. Null once the brand has a profile of its own, or when nothing was saved.
+function boardBrandDetails(brand) {
+  if (brand.onboardingStatus === 'complete') return null;
+  const saved = runtime.readBrandDetails(brand.path);
+  if (!saved) return null;
+  const safe = { channels: safeArtifactProfileValue(saved.channels || {}, 'channels') };
+  for (const field of ['targetMarket', 'audience', 'market', 'voice', 'contentPillars', 'competitors']) {
+    if (saved[field] !== undefined) safe[field] = safeArtifactProfileValue(saved[field], field);
+  }
+  return safe;
 }
 
 function boardBrandProfile(brand) {
@@ -1603,6 +1617,7 @@ export function boardSnapshot({ root } = {}) {
     let raw = null;
     try { raw = read(join(brand.path, 'brand', 'profile.json')); rawProfiles.set(brand.slug, raw); } catch { /* No saved profile yet. */ }
     const profile = boardBrandProfile(brand);
+    const details = profile ? null : boardBrandDetails(brand);
     const usage = stageMetrics.brandResearchUsage(brand.path, root);
     const kit = libBrandKit.projection(brand.path, { now: new Date() });
     const readyForJobs = Boolean(brand.readyForJobs);
@@ -1619,10 +1634,13 @@ export function boardSnapshot({ root } = {}) {
     const referencePhotos = referenceAssets(raw?.assets).length;
     const brandFiles = brandFileList(brandFilesOf(brand.path, raw), referencePreview(root), brandFileState);
     // The brand library: counts, the person's own items, the proven ones and the last jobs filed (brand-library.mjs).
-    const library = boardLibrary({ root, brand: brand.slug });
+    const rawLibrary = boardLibrary({ root, brand: brand.slug });
     // Brand intelligence (brand-intelligence.mjs): the posts taken apart and labelled, the six subtopics, the 6 by 5 plan and the onboarding checklist. Left out when the brand has none.
-    const intelligence = boardIntelligence({ root, brand: brand.slug });
-    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,library,...(intelligence ? { intelligence } : {}),...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
+    const rawIntelligence = boardIntelligence({ root, brand: brand.slug });
+    // The pictures of the posts they show: the board page cannot load a picture from TikTok, Instagram or YouTube, so the address is taken out and a card
+    // whose post has its small picture on this computer (post-thumbs.mjs) gets the key of it; the pictures themselves are added last, within the room left.
+    const { library, intelligence } = boardPostPictures({ root, brand: brand.slug, library: rawLibrary, intelligence: rawIntelligence });
+    return {id:brand.id,slug:brand.slug,name:brand.name,onboardingStatus:brand.onboardingStatus,profile,...(details ? { details } : {}),usage,kit,readyForJobs,referencePhotos,...(brandFiles.length ? { brandFiles } : {}),voice:brand.voice,pillarsConfirmed,studioWorkspace,publishing,library,...(intelligence ? { intelligence } : {}),...(adAccounts ? { adAccounts } : {}),...(agents ? { agents } : {})};
   });
   const connectors = connectorsSnapshot(root);
   const questionsByJob = openQuestionsByJob(root);
@@ -1703,6 +1721,8 @@ export function boardSnapshot({ root } = {}) {
   // Then the brand library's lists (the counts stay), then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.library ? { ...brand, library: { ...brand.library, yours: [], proven: [], recentJobs: [] } } : brand));
   if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
+  // The post pictures last: they take the room the rest of the board leaves and never push anything out (a card without one keeps its platform tile).
+  projection.brands = fillPostThumbs(projection.brands, { root, room: PROJECTION_BUDGET_BYTES - serializedByteSize(projection) });
   return applyProjectionBudget(projection);
 }
 
@@ -1769,10 +1789,17 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','subtopics_confirm','plan_cell_start','brand_folder_add','brand_folder_pick',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','subtopics_confirm','plan_cell_start','brand_folder_add','brand_folder_pick','save_brand_details','start_research','brand_rename',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
-  if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
+  if ((operation === 'onboard_brand' || operation === 'start_research') && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
+  // A request landed again after it was applied finds its earlier record below, so these checks (which look at the brand as it is now) run only for a new one.
+  if (!existsSync(requestFile(root, requestId))) {
+    if (operation === 'create_brand') checkNewBrand(root, args);
+    if (operation === 'save_brand_details') checkBrandDetails(root, args);
+    if (operation === 'start_research') checkStartResearch(root, args);
+    if (operation === 'brand_rename') checkBrandRename(root, args);
+  }
   if (operation === 'choose_publish_route') validatePublishRoute(root, args);
   if (operation === 'choose_post_type') validatePostType(root, args);
   if (operation === 'choose_post_time') validatePostTime(root, args);
@@ -2088,6 +2115,57 @@ function planCellBrief(cell) {
   if (cell.angle) lines.push(`Angle: ${cell.angle}`);
   if (cell.hook) lines.push(`Opening idea: ${cell.hook}`);
   return lines.join('\n').slice(0, BRIEF_LIMIT);
+}
+
+// Brand onboarding in three steps. Step 1, create_brand { requestId, name, workspaceId? }: the brand and its empty workspace folder, nothing else.
+// Step 2, save_brand_details { requestId, brand, profile?, kit?, workspaceId? }: what the person typed on the brand's page, saved as often as they like,
+// no research. Step 3, start_research { requestId, brand, profile?, kit?, metricoolBlogId?, workspaceId? }: the same details and the minimum (the name
+// plus a website or one social account), then research starts. brand_rename { requestId, brand, name, workspaceId? } changes the display name only.
+// The old onboard_brand request still does all three at once. Each check runs when the request lands and again before it is claimed, so a
+// refusal leaves it unclaimed and it can be declined with the plain line.
+const NEW_BRAND_FIELDS = new Set(['requestId', 'name', 'workspaceId']);
+const BRAND_DETAILS_FIELDS = new Set(['requestId', 'brand', 'profile', 'kit', 'workspaceId']);
+const START_RESEARCH_FIELDS = new Set([...BRAND_DETAILS_FIELDS, 'metricoolBlogId']);
+const BRAND_RENAME_FIELDS = new Set(['requestId', 'brand', 'name', 'workspaceId']);
+
+function ownWorkspaceOnly(root, args) {
+  if (args.workspaceId !== undefined && args.workspaceId !== runtime.readWorkspace({ root }).workspaceId) throw new Error('This request belongs to another workspace, so it was not accepted.');
+}
+
+function checkNewBrand(root, args) {
+  if (!plainObject(args) || Object.keys(args).some(key => !NEW_BRAND_FIELDS.has(key))) throw new Error('A new brand needs only its name.');
+  ownWorkspaceOnly(root, args);
+  return runtime.checkBrandName({ root, name: args.name });
+}
+
+function brandOnPage(root, args, fields, what) {
+  if (!plainObject(args) || Object.keys(args).some(key => !fields.has(key))) throw new Error(`This request carries more than ${what}, so it was not accepted.`);
+  ownWorkspaceOnly(root, args);
+  const slug = typeof args.brand === 'string' ? args.brand.trim() : '';
+  const found = slug ? runtime.listBrands({ root }).find(item => item.slug === slug) : null;
+  if (!found) throw new Error('That brand could not be found.');
+  if (args.profile !== undefined && !plainObject(args.profile)) throw new Error('The brand details must be an object.');
+  if (args.kit !== undefined && !plainObject(args.kit)) throw new Error('The brand kit must be an object.');
+  return found;
+}
+
+function checkBrandDetails(root, args) {
+  const found = brandOnPage(root, args, BRAND_DETAILS_FIELDS, 'the brand details');
+  if (found.onboardingStatus === 'complete') throw new Error('This brand has already started research. Change its details with Save and continue.');
+  return found;
+}
+
+function checkStartResearch(root, args) {
+  const found = brandOnPage(root, args, START_RESEARCH_FIELDS, 'the brand details');
+  if (found.onboardingStatus === 'complete') throw new Error('Research has already started for this brand.');
+  const minimum = runtime.researchStartCheck({ root, brand: found.slug, profile: args.profile });
+  if (!minimum.ok) throw new Error(minimum.message);
+  return found;
+}
+
+function checkBrandRename(root, args) {
+  const found = brandOnPage(root, args, BRAND_RENAME_FIELDS, 'a new name');
+  return { brand: found, name: runtime.checkBrandName({ root, name: args.name, except: found.slug }) };
 }
 
 // A folder of the brand's videos, pictures and fonts the person typed on the onboarding page: { requestId, brand, folder, rights, label?, workspaceId? }.
@@ -2689,15 +2767,18 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
   if(source!=='local') return saveBoardRequest({root,operation,args,source});
   if(operation!=='snapshot' && !REQUEST_ID.test(args.requestId || ''))throw new Error('A stable request ID is required for this action.');
   // Ownership always comes from a future authenticated Studio binding, never browser input.
-  if(operation==='onboard_brand') {
-    const result = runtime.onboardBrand({
-      root,
-      requestId: args.requestId,
-      name: args.name,
-      brand: args.brand,
-      profile: args.profile,
-      kit: args.kit,
-    });
+  if(operation==='onboard_brand' || operation==='start_research') {
+    // onboard_brand is the old single form (create, details and start in one request); start_research is step 3 of the new three.
+    const result = operation==='start_research'
+      ? runtime.startBrandResearch({ root, requestId: args.requestId, brand: args.brand, profile: args.profile, kit: args.kit })
+      : runtime.onboardBrand({
+        root,
+        requestId: args.requestId,
+        name: args.name,
+        brand: args.brand,
+        profile: args.profile,
+        kit: args.kit,
+      });
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
     // The Metricool brand picked on the onboarding form is this brand's link. Without one, the Inbox asks below.
     if (result.brand?.slug && typeof args.metricoolBlogId === 'string' && args.metricoolBlogId.trim()) {
@@ -2707,7 +2788,18 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     reconcileAdAccountChoicesQuietly({root});
     return result;
   }
-  if(operation==='create_brand') return runtime.createBrand({root,name:args.name,requestId:args.requestId});
+  if(operation==='create_brand') {
+    // Step 1: the brand and its empty workspace folder. Nothing is researched and nothing else is asked.
+    const name = runtime.checkBrandName({ root, name: args.name });
+    const result = runtime.createBrand({ root, name, requestId: args.requestId });
+    return { ...result, started: false, message: result.created ? `${name} is created. Add its details, then press Start research.` : `${name} was already created. Add its details, then press Start research.` };
+  }
+  if(operation==='save_brand_details') {
+    // Step 2: the page's details are saved and nothing starts. It can be repeated.
+    const result = runtime.saveBrandDetails({ root, requestId: args.requestId, brand: args.brand, profile: args.profile, kit: args.kit });
+    return { ...result, message: result.minimum?.ok ? 'Details saved. Start research when you are ready.' : `Details saved. ${result.minimum?.message || ''}`.trim() };
+  }
+  if(operation==='brand_rename') return runtime.renameBrand({ root, brand: args.brand, name: args.name });
   if(operation==='complete_onboarding') {
     const result = runtime.completeBrandOnboarding({root,brand:args.brand,profile:args.profile});
     if (result.brand?.slug) recordPillarsConfirmed(root, result.brand.slug, result.profile);
@@ -2898,7 +2990,7 @@ function safeBrandReceipt(brand) {
 
 function safeAppliedResult(operation, result) {
   if (!result || typeof result !== 'object') return null;
-  if (operation === 'onboard_brand' || operation === 'create_brand' || operation === 'complete_onboarding') {
+  if (operation === 'onboard_brand' || operation === 'create_brand' || operation === 'complete_onboarding' || operation === 'save_brand_details' || operation === 'start_research' || operation === 'brand_rename') {
     return { brand: safeBrandReceipt(result.brand) };
   }
   if (operation === 'create_job') return result.jobId ? { jobId: result.jobId } : null;
@@ -3508,6 +3600,10 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='plan_cell_start') checkPlanCellStart(root,record.args);
   if(record.operation==='brand_folder_add') checkFolderAdd(root,record.args,{ live: true });
   if(record.operation==='brand_folder_pick') checkFolderAdd(root,pickedAddArgs(record),{ live: true });
+  if(record.operation==='create_brand') checkNewBrand(root,record.args);
+  if(record.operation==='save_brand_details') checkBrandDetails(root,record.args);
+  if(record.operation==='start_research') checkStartResearch(root,record.args);
+  if(record.operation==='brand_rename') checkBrandRename(root,record.args);
   if(record.operation==='remove_reference') validateRemoveReference(root,record.args);
   if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);

@@ -83,6 +83,9 @@ It changes nothing about the trends you save.
 At brand onboarding (the spawn prompt has `brand:<slug>` on its first line, a `trendsPath` and a `viralPath`, and no job) you are the niche's viral pillar of the deep pass.
 Search the niche, not the brand, write `trendsPath` instead of `research/trends.md`, save the trends with `brand_trends_save` as usual, and also write `viralPath`: a JSON list of the 5 most viewed public videos you read (never ads), most viewed first, each `{platform, url, views, date, caption, thumbnail}` exactly as the read showed them, with `date` and `thumbnail` left out when the read gave none.
 The researcher takes the first 3 apart afterwards.
+At onboarding you are spawned in the same message as the researchers of the parts of the pass (website, own accounts, competitors, pain points), so you start at once and none of them waits for you.
+Your share of the run's budget is in your spawn prompt (11 searches, 10 fetches and 20 turns): keep to it, write `viralPath` as soon as you have the videos, and return when it is written.
+You write no part file; the short `viral-teardown` dispatch that follows your report writes the `viral` part.
 `pipeline/agents/trend-scout.md` has the details under "At brand onboarding".
 
 Return the artifact path, the trends found per platform, the trends reused, the ads found per library and the ad calls made, how many were saved, unresolved gaps, and observed date.

@@ -84,7 +84,8 @@ export function kitState(root, brand) {
   let hasLogo;
   if (draft) {
     const provided = record?.provided;
-    fonts = provided && Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : (record?.proposed?.fonts ?? []);
+    // Fonts a model only guessed from on-screen text ("looks like") are not fonts the kit has: the fonts found in the folders replace them.
+    fonts = provided && Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : (record?.proposed?.fontsSource === 'looks_like' ? [] : (record?.proposed?.fonts ?? []));
     hasLogo = Boolean(provided?.logo);
   } else {
     fonts = record?.confirmed?.fonts ?? profile?.visualIdentity?.fonts ?? [];

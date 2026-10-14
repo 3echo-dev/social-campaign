@@ -266,6 +266,7 @@ def profile_from_universal(data):
         "following": to_int(stats.get("followingCount")),
         "likes": to_int(stats.get("heartCount", stats.get("heart"))),
         "videos": to_int(stats.get("videoCount")),
+        "avatar": next((user[key] for key in ("avatarLarger", "avatarMedium", "avatarThumb") if isinstance(user.get(key), str) and user[key].startswith("http")), None),
     }
 
 
@@ -865,6 +866,18 @@ def merge_media(into, extra):
             into[key] = value
 
 
+def profile_picture_of(node):
+    """The account's profile picture address as the page embeds it (the larger one when it lists both), or None."""
+    hd = node.get("hd_profile_pic_url_info")
+    if isinstance(hd, dict) and isinstance(hd.get("url"), str) and hd["url"].startswith("http"):
+        return hd["url"]
+    for key in ("profile_pic_url_hd", "profile_pic_url"):
+        value = node.get(key)
+        if isinstance(value, str) and value.startswith("http"):
+            return value
+    return None
+
+
 def user_from_node(node):
     if count_or_none(node.get("follower_count")) is None or not ("biography" in node or "full_name" in node):
         return None
@@ -876,6 +889,7 @@ def user_from_node(node):
         "followers": count_or_none(node.get("follower_count")),
         "following": count_or_none(node.get("following_count")),
         "posts": count_or_none(node.get("media_count")),
+        "profilePicUrl": profile_picture_of(node),
     }
 
 

@@ -30,6 +30,7 @@ user-invocable: false
   - The banks in the draft
   - Audience fallback
   - No evidence in a fill
+  - Working in parts
 - Steps
   - One attempt per source
   - Ad research (Meta Ad Library, TikTok Top Ads)
@@ -108,7 +109,7 @@ Use it for the competitors and for any market-specific evidence, and never fill 
 | Fetches per section | 2 |
 | Competitors | 3 |
 | Items per competitor | 3 |
-| Brand onboarding totals | 30 searches, 56 fetches, 120 turns (onboarding is always the deep pass, so it has far more than a campaign job's budget: the video teardowns, the pain points reads and the Trend Scout's reads come on top); a video teardown counts as a fetch, and at most 14 videos are taken apart: 5 own, 2 of each competitor and 3 viral |
+| Brand onboarding totals | 30 searches, 56 fetches, 120 turns (onboarding is always the deep pass, so it has far more than a campaign job's budget: the video teardowns, the pain points reads and the Trend Scout's reads come on top); a video teardown counts as a fetch, and at most 14 videos are taken apart: 5 own, 2 of each competitor and 3 viral; these are the totals of the whole run, split between its parallel workers as "Working in parts" says |
 | `simple_post` totals | 6 searches, 8 fetches, 25 turns |
 | `campaign` totals | 12 searches, 16 fetches, 40 turns |
 
@@ -338,20 +339,22 @@ A label is one library id, or `{"custom": "text"}` when no entry fits; never mak
 
 ### Viral now
 
-The Trend Scout runs beside you during onboarding (the Director spawns it with the brand's niche, and it saves the trends it finds) and writes the most viral videos it found to a file, `viralPath`, as a list of `{platform, url, views, date, caption, thumbnail}` ordered by views.
-The Director then sends you a second, short dispatch with the workstream `viral-teardown`, `viralPath`, `draftPath` and `rawDir`.
+The Trend Scout runs beside the workers during onboarding (the Director spawns it in the same message as them, with the brand's niche, and it saves the trends it finds) and writes the most viral videos it found to a file, `viralPath`, as a list of `{platform, url, views, date, caption, thumbnail}` ordered by views.
+The Director then sends you a second, short dispatch with the workstream `viral-teardown`, `viralPath`, your part file (`partPath`, the `viral` part, which has no other worker) and `rawDir`.
 In it, read the file and take apart the first 3 videos that can be opened, as "Taking the best videos apart" says (one attempt each, no replacement for one that fails, labels included), and add each to `topPosts` with `source` `viral`, the platform and link it has in the file, and its numbers exactly as the file gives them, with the date it gives (a find from an Instagram topic or a YouTube search has none: leave `date` out, never make one up).
-Read the draft, add those posts to `topPosts`, and write the whole file back with Write; change nothing else in it.
-A viral post needs no account read in the tool log. When the file is missing or lists nothing, add one entry to `research.gaps` that says what is viral could not be found and write the draft back as it was.
+Read your part file, add those posts to `topPosts`, and write the whole file back with Write with `status` set to `done`; change nothing else in it.
+A viral post needs no account read in the tool log. When the file is missing or lists nothing, add one entry to `research.gaps` that says what is viral could not be found and write the part file back as it was, with `status` set to `done`.
 
 ### Pain points
 
-A second workstream, run after the accounts are read and the best videos taken apart, finds what the audience struggles with, wants and doubts, in their own words.
-It has its own reads inside the totals above: 7 fetches and 3 searches at most, and it never takes a fetch a teardown needs.
+A second workstream finds what the audience struggles with, wants and doubts, in their own words.
+When the pass runs in parts it is the `pains` part, which starts at once beside the others and does not wait for the accounts to be read.
+It has its own reads inside the totals above: the budget of its part, 10 fetches and 5 searches at most, and it never takes a fetch a teardown needs.
 When fetches run short, drop its reads in this order: the landing page, the ad search, the second review page, the second thread.
 Use these sources, one attempt each, and save every page you read as a capture under `rawDir` first (see Evidence):
 
 - Comments: `social_comments_get` once on the best own video and once on the best competitor video you read (provider `social_comments_get`; kind `brand_social` for your own, `competitor_social` for a competitor's).
+  In parts, take those two videos from the `topPosts` of the own and competitors part files when they already list them, and otherwise find each with one `social_outliers_find` call.
 - Forums: 2 `WebSearch` searches in the words the audience would use (a question they ask, a complaint, "has anyone"), then `WebFetch` at most 2 of the threads they found, such as a Reddit thread, a forum or a Q and A page (kind `audience`).
   A refused page is a gap, never a retry.
 - Reviews: 2 review pages of competitors (Google reviews, a review site, the reviews on a course or product page), with `WebFetch` or `web_crawl` (kind `audience`).
@@ -432,6 +435,89 @@ All of that belongs in `research.sources`, `research.evidenceMatrix` and `resear
 `pipeline_brand_research_save` checks the whole draft before writing anything and returns every problem at once, naming the field and the rule it broke.
 The run stays open and nothing is written; rewrite each named field as plain board content and save again.
 When the spawn prompt passes `problems`, read the file at `draftPath`, change exactly those, rewrite the whole file with Write (you have no Edit tool), copying each quote exactly from its capture, and finish.
+
+### Working in parts
+
+Onboarding research runs as parallel workers, one for each part of the pass, and the server merges their part files when the Director saves.
+`pipeline_brand_research_start` lists the parts and writes, for each, its part file and its contract in the `parts` folder of the run: `<part>.json` and `<part>.contract.md`.
+The Director spawns every worker in one message, so the parts run at the same time and none waits for another.
+Your spawn prompt names your part, your `partPath`, your `contractPath` (the file you are reading), the `rawDir`, the target market and your budget.
+In this contract "the draft" and `draftPath` mean your part file, which holds only the keys of your part.
+A part file starts as the empty shape with `"status": "pending"`; keep every key it has, and keep `runId`, `part` and `competitor` exactly as they are.
+
+The parts, and the keys each fills:
+
+- `website`: the website and the brand's facts. Fills `fills`, `research.findings` and `brandFiles`.
+- `own`: the brand's own accounts. Fills `topPosts` (source `brand`), `brandFiles.platforms` and its captions and calls to action in `banks`.
+- `competitors`: the top 3 competitors, found or confirmed. Fills `competitorDetails`, `fills.competitors`, `topPosts` (source `competitor`) and its captions and calls to action in `banks`. When all three competitors are already named there is one part for each, `competitor-1`, `competitor-2` and `competitor-3`, and each covers its own competitor only.
+- `pains`: the audience's pains, desires and objections, the angles, and the captions and calls to action of ads. Fills `banks` and the customer phrases of `brandFiles.audience`.
+- `viral`: what is viral in the niche now. The Trend Scout finds the videos, then a short `viral-teardown` dispatch takes the first 3 apart. Fills `topPosts` (source `viral`).
+
+Rules for every part:
+
+- Write your part file with Write (the whole file) as soon as you have a first result, with `"status": "working"`, and again after each major step (the accounts read, the videos taken apart, the pain points read). Your last write sets `"status": "done"`, and the server reads nothing as finished before that. A part with nothing to report is still written, with `"status": "done"` and a line in `research.gaps` that says why.
+- Write only your part file and your captures. Never write another part's file or `research-draft.json`.
+- Name each capture `<rawDir>/<YYYY-MM-DD>/<part>-<slug>.md`, with your part id in front, so two workers never write the same file. The captures of other workers are in `rawDir` too: you may quote from them, and a page you can find there need not be read again.
+- Begin every evidence `id` with your part id (`website-1`, `own-2`), so ids from different parts never collide.
+- A source address listed by two parts is kept once, from the first part in this order: `website`, `own`, `competitors`, `pains`. List the pages you read even when another part may have read them too; the merge drops the repeat.
+- Stay inside your budget, which is your share of the run's totals; a video teardown counts as a fetch. Wherever "Tools" or "Hard limits" speak of the run's 30 searches, 56 fetches and 120 turns, your share is what applies to you. When your fetches or searches run out, write what you have and add a gap line for what is left.
+- Keep an evidence row only for a finding that something else uses, and no more than 6 in `website`, 4 in `own`, 3 for each competitor and 4 in `pains`: the saved research record has a size limit.
+- The other workers run beside you and may not be done when you would like their results. Use another part's file only where your part's rules below say so, read it only once it holds what you need (its `status` is `done`, or it already lists what you look for), and otherwise do the one lookup yourself inside your budget.
+- When the spawn prompt passes `problems`, they are what the save found in your part: read your part file, change exactly those, rewrite the whole file with Write, copying each quote exactly from its capture, set `status` to `done` again and finish.
+
+The share of the budget of each part (the run's 30 searches, 56 fetches, 120 turns and 20 sources):
+
+| Part | Searches | Fetches | Turns | Sources |
+| --- | --- | --- | --- | --- |
+| `website` | 2 | 5 | 14 | 3 |
+| `own` | 3 | 12 | 28 | 3 |
+| `competitors` | 9 | 16 | 34 | 8 |
+| `pains` | 5 | 10 | 18 | 6 |
+| `viral` | 11 | 13 | 26 | 0 |
+
+The `viral` row holds the Trend Scout (11 searches, 10 fetches, 20 turns) and the short follow-up that takes the first 3 videos apart (3 fetches, 6 turns).
+When the competitors are split, `competitor-1`, `competitor-2` and `competitor-3` share the `competitors` row between them (3 searches each, 6, 5 and 5 fetches, 12, 11 and 11 turns, 3, 3 and 2 sources).
+
+#### Part website
+
+You read the brand's website: its offer, who it speaks to, what it proves and how it sounds.
+Read the home page and up to 3 more pages that show the offer, the pricing or the proof, with `web_crawl` (one page per call, `WebFetch` as the one fallback), each saved as a capture and listed as a source of kind `brand_identity`, or `product_claims` for what the brand states about its product.
+You fill `fills` (`audience`, `market`, `voice`, `contentPillars`, and `forbiddenClaims` and `examples` when your file has them), `research.findings`, `brandFiles.audience` (`segments`, `notFor` and `objections` from a FAQ), `brandFiles.positioning` (`line`, `category`, `offer`, `offerSource`, `proof`, `switching` and `neverClaim`) and `brandFiles.platforms.pillars`.
+The competitors are not yours: leave `fills.competitors`, `brandFiles.positioning.competitors` and `competitorDetails` to the competitors part.
+The colours and fonts of the website are not yours either: the Director reads them with `web_brand_kit`, and a logo is only ever uploaded.
+The audience is yours.
+When the brand's own pages do not describe it, leave `audience` blank and add a gap line that says so.
+The server then sends you back once the competitors part is done: read the competitors' part files in the `parts` folder and their captures in `rawDir`, suggest an audience from the audiences of the top competitors in the target market as "Audience fallback" says with no new fetch, and list `audience` under `suggested`.
+
+#### Part own
+
+You read the brand's own accounts, the platforms your prompt lists: each once with `social_profile_get` and once with `social_outliers_find`, as "Tools" says, with a source of kind `brand_social` for each account.
+Put the best posts in `topPosts` with `source` `brand`, at most 5 for each account and 10 in all, and take apart the 5 best videos by views (likes for Instagram) across the accounts, labelled, as "Taking the best videos apart" and "Labels" say.
+You fill `brandFiles.platforms` (`cadence` and `notes`, from the dates of the posts you read) and, in `banks`, only `captions` (the best captions of your own posts, at most 3) and `ctas` (at most 2).
+When your file has a `fills` block the brand has no website: fill those fields from its profile bios and posts.
+An account with no readable posts is one gap line that names it; a brand with no readable post at all gets the line "No posts of your own yet, so your plan starts from your competitors and your niche", and the part is written `done`.
+
+#### Part competitors
+
+You find or confirm the top 3 competitors for the brand's product in the target market, as "Competitors" says: the declared ones from your prompt come first and are not tested again.
+Each gets a `competitorDetails` entry (`rationale`, `handles`, `website` and `evidence`), and the names you found go in `fills.competitors` when your file has it.
+For each competitor read its website once with `web_crawl` (source kind `competitor`) and its best account once with `social_profile_get` and once with `social_outliers_find` (kind `competitor_social`), put its best 2 videos in `topPosts` with `source` `competitor` and `competitor` set to its name, and take those 2 apart with their labels.
+In `brandFiles.positioning.competitors` give what each says and how the brand differs, with a source.
+In `banks` you fill only `captions` and `ctas`, at most 4 and 3 in all, or 2 and 1, 1 and 1, 1 and 1 for `competitor-1`, `competitor-2` and `competitor-3`; items past that are dropped from the end, so list the best first.
+A `competitor-N` part covers its one competitor with its share of the budget, and writes `fills.competitors` only when its file has it.
+
+#### Part pains
+
+You find what the audience struggles with, wants and doubts, in their own words, as "Pain points" and "Hooks, captions and CTAs" say, and fill `banks.pains`, `banks.desires`, `banks.objections`, `banks.angles` and the ad `captions` and `ctas` (`source` `ad`, at most 3 captions and 5 calls to action), and the customer `phrases` and `objections` of `brandFiles.audience`.
+You start at once and do not wait for the accounts to be read.
+For the comments you need a best own video and a best competitor video: take them from the `topPosts` of the own and competitors part files when those already list them, and otherwise find each with one `social_outliers_find` call (an own account, and one competitor handle you find with one search).
+For the angles you need a page of the brand that shows a proof: look in `rawDir` for `website-*.md` (Glob), and when the website part saved one, read it and use its address as `proofSource` (list it in your sources too; the merge keeps one entry), and when none is there yet, read the brand's home page once with `web_crawl`.
+A pain's `competitor` is the name of a declared competitor from your prompt, or of one the competitors part already lists.
+
+#### Part viral
+
+This part is written by the short `viral-teardown` dispatch, after the Trend Scout has written `viralPath`; the Trend Scout itself writes no part file.
+Take apart the first 3 videos of `viralPath` as "Viral now" says, and put those posts in `topPosts` of your part file with `source` `viral`.
 
 ## Steps
 

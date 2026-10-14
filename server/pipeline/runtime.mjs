@@ -918,7 +918,7 @@ export function onboardBrand(options = {}) {
     let kitNormalized = null;
     if (hasKit) {
       const kitRecord = brand ? brandKitRuntime.read(brand.path) : null;
-      const kitValidation = brandKitRuntime.validateKitInput(options.kit, { record: kitRecord });
+      const kitValidation = brandKitRuntime.validateKitInput(options.kit, { record: kitRecord, brandDir: brand ? brand.path : null });
       if (!kitValidation.ok) {
         throw new Error(`Fix the brand kit before submitting: ${kitValidation.errors.join(' ')}`);
       }
@@ -982,7 +982,7 @@ export function onboardBrand(options = {}) {
       if (hasKit && !wasComplete) {
         // Kickoff offer, before the brand is complete: stash it as `provided` for later review;
         // the kit gate stays pending until an explicit confirm applies it.
-        brandKitRuntime.recordProvided(brand.path, kitNormalized, { requestId, now: now() });
+        brandKitRuntime.recordProvided(brand.path, kitNormalized, { requestId, now: now(), keepLogo: true });
       }
     }
     // Optional photos of the brand's world. A photo that cannot be saved never stops onboarding.
@@ -1023,6 +1023,198 @@ export function onboardBrand(options = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Brand onboarding in three steps: create the brand (name only), save its details as often as the person likes (no research), then start
+// research. The old single onboarding request (onboardBrand above) still does all three at once.
+// ---------------------------------------------------------------------------
+
+export const BRAND_NAME_LIMIT = 160;
+const DETAIL_CHANNELS = ['website', 'facebook', 'instagram', 'tiktok'];
+const DETAIL_TEXT = ['targetMarket', 'audience', 'market', 'voice'];
+const DETAIL_LISTS = ['contentPillars', 'competitors'];
+const DETAIL_KEYS = new Set(['channels', ...DETAIL_TEXT, ...DETAIL_LISTS]);
+const NOT_AVAILABLE = 'Not available';
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const detailsFile = (brandDir) => join(brandDir, 'brand', 'details-draft.json');
+
+/**
+ * What the person has typed on a brand's details page before research started: { channels: { website?, facebook?, instagram?, tiktok? }
+ * (a link or "Not available"), targetMarket?, audience?, market?, voice?, contentPillars?, competitors? }, or null when nothing was saved.
+ * It lives beside the profile and is replaced by the real profile when research starts.
+ */
+export function readBrandDetails(brandDir) {
+  const record = readJson(detailsFile(brandDir), null);
+  return record && record.version === 1 && record.profile && typeof record.profile === 'object' && !Array.isArray(record.profile) ? record.profile : null;
+}
+
+// The saved details with a save laid over them. A key that is present replaces the saved one and an empty value clears it, so the
+// board can always send everything on the page. Anything the page does not ask for is refused.
+function mergeDetails(saved, incoming) {
+  const merged = { channels: { ...(saved?.channels || {}) } };
+  for (const key of [...DETAIL_TEXT, ...DETAIL_LISTS]) if (saved && saved[key] !== undefined) merged[key] = jsonClone(saved[key]);
+  if (incoming === undefined || incoming === null) return merged;
+  if (typeof incoming !== 'object' || Array.isArray(incoming)) throw new TypeError('The brand details must be an object.');
+  if (Object.keys(incoming).some((key) => !DETAIL_KEYS.has(key))) throw new TypeError('The brand details carry more than the brand page asks for.');
+  if (incoming.channels !== undefined) {
+    if (!incoming.channels || typeof incoming.channels !== 'object' || Array.isArray(incoming.channels)) throw new TypeError('Brand channels must be an object.');
+    for (const name of Object.keys(incoming.channels)) {
+      if (!DETAIL_CHANNELS.includes(name)) throw new TypeError('The brand details carry more than the brand page asks for.');
+      const value = incoming.channels[name];
+      if (value != null && typeof value !== 'string') throw new TypeError(`Give ${name} as a link, or Not available.`);
+      const text = toText(value).trim();
+      if (text) merged.channels[name] = text; else delete merged.channels[name];
+    }
+  }
+  for (const key of DETAIL_TEXT) {
+    if (!hasOwn(incoming, key)) continue;
+    if (incoming[key] != null && typeof incoming[key] !== 'string') throw new TypeError(`The ${key} must be text.`);
+    const text = toText(incoming[key]).replace(/\r\n/g, '\n').trim();
+    if (text) merged[key] = text; else delete merged[key];
+  }
+  for (const key of DETAIL_LISTS) {
+    if (!hasOwn(incoming, key)) continue;
+    if (incoming[key] != null && (!Array.isArray(incoming[key]) || incoming[key].some((item) => typeof item !== 'string'))) throw new TypeError(`The ${key} must be a list of text.`);
+    const items = (incoming[key] || []).map((item) => item.trim()).filter(Boolean);
+    if (items.length) merged[key] = items; else delete merged[key];
+  }
+  return merged;
+}
+
+// The details as a complete profile: a channel the person left empty becomes "Not available", and an empty field is left out so research fills it.
+function detailsProfile(details) {
+  const profile = { channels: Object.fromEntries(DETAIL_CHANNELS.map((name) => [name, details.channels?.[name] || NOT_AVAILABLE])) };
+  for (const key of [...DETAIL_TEXT, ...DETAIL_LISTS]) if (details[key] !== undefined) profile[key] = jsonClone(details[key]);
+  return profile;
+}
+
+/**
+ * Whether research can start: the brand needs its name and at least a website or one social account that is a real link (a channel marked
+ * "Not available" or left empty does not count). Returns { ok, message }.
+ */
+export function researchMinimum(details) {
+  const given = DETAIL_CHANNELS.filter((name) => {
+    const value = toText(details?.channels?.[name]).trim();
+    return value && !/^not available$/i.test(value);
+  });
+  return given.length
+    ? { ok: true, message: '' }
+    : { ok: false, message: 'Add a website or at least one social account before starting research.' };
+}
+
+/** Whether a brand could start research with the details it has saved plus the page's `profile`. Returns { ok, message }. Writes nothing. */
+export function researchStartCheck(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
+  return researchMinimum(mergeDetails(readBrandDetails(brand.path), options.profile));
+}
+
+function stableRequestId(value, what) {
+  const requestId = toText(value).trim();
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error(`A stable ${what} request ID is required.`);
+  return requestId;
+}
+
+/**
+ * A brand's name is free to use: not empty, not longer than the page allows, not kept for work with no brand, and not another brand's
+ * name or folder. `except` is the slug of the brand being renamed. Returns the clean name.
+ */
+export function checkBrandName({ root, name, except = null } = {}) {
+  const { root: workspaceRoot } = assertLocalWorkspace(root);
+  const clean = toText(name).replace(/\s+/g, ' ').trim();
+  if (!clean) throw new Error('Give the brand a name.');
+  if (clean.length > BRAND_NAME_LIMIT) throw new Error(`Keep the brand name under ${BRAND_NAME_LIMIT} characters.`);
+  assertBrandSlugFree(slugify(clean));
+  const clash = listBrands({ root: workspaceRoot, includeGeneral: true }).find((entry) => entry.slug !== except
+    && (entry.name.trim().toLowerCase() === clean.toLowerCase() || entry.slug === slugify(clean)));
+  if (clash) throw new Error('A brand with that name already exists. Choose another name.');
+  return clean;
+}
+
+/**
+ * Step 2: save what the person typed on the brand's details page. Nothing starts: no research, and the brand stays in onboarding. It can
+ * be called as often as the person saves. `profile` is the page's details (see readBrandDetails; every key present replaces the saved one,
+ * an empty value clears it) and `kit` the logo, colours and fonts exactly as the old onboarding request carried them. Photos are not saved
+ * here: they go in with the request that starts research. Returns { brand, saved: true, started: false }.
+ */
+export function saveBrandDetails(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const requestId = stableRequestId(options.requestId, 'details');
+  const release = acquireRequestLock(root);
+  try {
+    const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
+    if (brand.onboardingStatus === 'complete') throw new Error('This brand has already started research. Change its details with Save and continue.');
+    const merged = mergeDetails(readBrandDetails(brand.path), options.profile);
+    const check = brandProfileRuntime.validateComplete(detailsProfile(merged), null);
+    if (!check.valid) throw new Error(`Fix the brand details before saving: ${check.errors.join(' ')}`);
+    let kit = null;
+    if (options.kit !== undefined) {
+      const kitValidation = brandKitRuntime.validateKitInput(options.kit, { record: brandKitRuntime.read(brand.path), brandDir: brand.path });
+      if (!kitValidation.ok) throw new Error(`Fix the brand kit before submitting: ${kitValidation.errors.join(' ')}`);
+      kit = kitValidation.normalized;
+    }
+    writeJsonAtomic(detailsFile(brand.path), { version: 1, savedAt: now(), requestId, profile: merged });
+    if (kit) brandKitRuntime.recordProvided(brand.path, kit, { requestId, now: now(), keepLogo: true });
+    return { brand: brandRecord(root, brand.path), saved: true, started: false, minimum: researchMinimum(merged) };
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Step 3: start research. Lays the page's current details (and kit, and photos) over the saved ones, checks the minimum (the name plus a
+ * website or one social account), then finishes the brand's profile and marks its research as waiting, exactly as the old onboarding
+ * request did. A channel left empty is saved as "Not available". The same request ID again returns the same answer. Returns the onboarding
+ * result with started: true.
+ */
+export function startBrandResearch(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const requestId = stableRequestId(options.requestId, 'research');
+  const prior = requestLookup(root, 'onboard_brand', requestId);
+  if (prior?.status === 'complete' && prior.result) return { ...jsonClone(prior.result), idempotent: true, started: true };
+  const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
+  if (brand.onboardingStatus === 'complete') throw new Error('Research has already started for this brand.');
+  const merged = mergeDetails(readBrandDetails(brand.path), options.profile);
+  const minimum = researchMinimum(merged);
+  if (!minimum.ok) throw new Error(minimum.message);
+  const result = onboardBrand({
+    root,
+    requestId,
+    name: brand.name,
+    brand: brand.slug,
+    profile: detailsProfile(merged),
+    ...(options.kit !== undefined ? { kit: options.kit } : {}),
+  });
+  try { unlinkSync(detailsFile(brand.path)); } catch { /* The saved details are in the profile now; a leftover file is never read once the profile exists. */ }
+  return { ...result, started: true };
+}
+
+/**
+ * Change a brand's display name. The folder and the brand's slug keep their original names: renaming the folder would break the paths,
+ * the job links and the library references that use it. The name is read from workspace.json everywhere (the board, jobs, the posting
+ * plan, the voice file), so one write changes it all. Returns { brand, previousName, name, renamed, folderKept, message }.
+ */
+export function renameBrand(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const release = acquireRequestLock(root);
+  try {
+    const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
+    const name = checkBrandName({ root, name: options.name, except: brand.slug });
+    const file = join(brand.path, 'workspace.json');
+    const config = readJson(file, {});
+    const previousName = toText(config.displayName || config.name).trim() || brand.slug;
+    const folderNote = `The brand's folder keeps its original name, "${brand.slug}", so every path and link to it still works.`;
+    if (previousName === name) return { brand: brandRecord(root, brand.path), previousName, name, renamed: false, folderKept: brand.slug, message: `The brand is already called ${name}. ${folderNote}` };
+    writeJsonAtomic(file, { ...config, name, ...(config.displayName ? { displayName: name } : {}), updatedAt: now() });
+    // The voice file names the brand in its text: write it again so it says the new name.
+    if (existsSync(join(brand.path, 'brand', 'brand-voice.md'))) {
+      try { refreshBrandVoice(brand.path); } catch { /* The name is changed; the voice file catches up the next time the profile is saved. */ }
+    }
+    return { brand: brandRecord(root, brand.path), previousName, name, renamed: true, folderKept: brand.slug, message: `Renamed ${previousName} to ${name}. ${folderNote}` };
+  } finally {
+    release();
+  }
+}
+
 /**
  * Chat-intake confirmation of a brand kit, without the board: same validate-then-commit path as
  * the board's "Save and continue" (a single profile revision, then kit files, brand-kit.json and
@@ -1041,7 +1233,7 @@ export function saveBrandKit(options = {}) {
   try {
     const brand = assertRealBrand(resolveBrand(root, options.brandId || options.brand || options.brandSlug));
     const kitRecord = brandKitRuntime.read(brand.path);
-    const validation = brandKitRuntime.validateKitInput(options.kit, { record: kitRecord });
+    const validation = brandKitRuntime.validateKitInput(options.kit, { record: kitRecord, brandDir: brand.path });
     if (!validation.ok) {
       throw new Error(`Fix the brand kit before submitting: ${validation.errors.join(' ')}`);
     }

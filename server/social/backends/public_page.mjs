@@ -131,6 +131,7 @@ export class PublicPageBackend {
         followers: counts.followers,
         following: counts.following,
         post_count: counts.posts,
+        avatar_url: page.meta['og:image'] ?? null,
         source_ref: page.final_url,
         observed_at: page.fetched_at,
         confidence: 0.8,

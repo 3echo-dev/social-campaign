@@ -446,6 +446,7 @@ export class SocialRouter {
           post_count: p.post_count ?? p.posts ?? p.videoCount ?? p.videos,
           likes_total: p.likes_total ?? p.likes ?? p.heartCount,
           verified: p.verified,
+          avatar_url: p.avatar ?? p.avatar_url ?? null,
           source_ref: `stealth:${target.url}`,
           observed_at: observedAt,
           confidence: 0.85,

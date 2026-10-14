@@ -184,6 +184,7 @@ export function profileFromPage(page, target, observedAt) {
     following,
     post_count: postCount,
     verified: typeof user?.verified === 'boolean' ? user.verified : /(^|\n)Verified(\n|$)/.test(text) ? true : null,
+    avatar_url: user?.profilePicUrl ?? meta['og:image'] ?? null,
     source_ref: sourceRef,
     observed_at: observedAt,
     confidence: 0.85,

@@ -15,6 +15,7 @@ import {
 import { AWARENESS_STAGES, CTA_TYPES } from '../pipeline/brand-bank-items.mjs';
 import { jobResults } from '../pipeline/brand-results.mjs';
 import { freshTrends } from '../pipeline/brand-trends.mjs';
+import { backfillBrandThumbs } from '../pipeline/post-thumbs.mjs';
 
 const string = { type: 'string' };
 
@@ -166,6 +167,8 @@ export const brandLibraryTools = [
             proof: args.proof, structure: args.structure, ctaType: args.ctaType,
           },
         });
+        // A proven item that came from a post gets that post's small picture now, for the board's card (post-thumbs.mjs).
+        if (bank === 'proven' && out.saved && out.item?.evidence?.url) await backfillBrandThumbs({ root, brand, limit: 10, remoteLimit: 6, deadlineMs: 15000 });
         return { brand, bank, action: 'add', item: out.item, changed: out.saved || out.merged === true, counts: counts(root, brand) };
       }
       if (!args.id) throw new InvalidInputError('Say which item, with the id from brand_library_get.');

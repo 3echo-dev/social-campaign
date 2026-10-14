@@ -395,6 +395,8 @@ export class YtDlpBackend {
       bio: info.description ?? null,
       followers: info.channel_follower_count,
       verified: typeof info.channel_is_verified === 'boolean' ? info.channel_is_verified : null,
+      // A channel listing names the channel's picture among its thumbnails (avatar_uncropped, else an avatar of another size).
+      avatar_url: Array.isArray(info.thumbnails) ? (info.thumbnails.find((item) => item?.id === 'avatar_uncropped') ?? info.thumbnails.find((item) => /avatar/i.test(String(item?.id ?? ''))))?.url ?? null : null,
       source_ref: `yt-dlp:${url}`,
       observed_at: observedAt,
     });

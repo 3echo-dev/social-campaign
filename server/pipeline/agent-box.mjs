@@ -970,10 +970,13 @@ export function onboardingAgents({ brandDir, brandName, usage, onboardingStatus,
   const ids = [RESEARCHER, ...runs.map(run => run.agent).filter(id => id !== DIRECTOR)].filter((id, at, all) => all.indexOf(id) === at);
   const others = ids.map(id => {
     const mine = runs.filter(run => run.agent === id);
-    const open = mine.filter(run => isOpen(run) && isFresh(run, clock)).at(-1);
+    const openNow = mine.filter(run => isOpen(run) && isFresh(run, clock));
+    const open = openNow.at(-1);
     const last = mine.at(-1);
     const researcher = id === RESEARCHER;
-    if (open) return card(id, { state: 'working', since: text(open.startedAt) ?? text(open.dispatchedAt), task: researcher ? `Researching ${brand}` : actionOf(id) });
+    // Onboarding research runs as parallel workers (one for each part), so more than one Researcher can be open at once.
+    const researching = openNow.length > 1 ? `Researching ${brand}, ${openNow.length} workers at once` : `Researching ${brand}`;
+    if (open) return card(id, { state: 'working', since: text(open.startedAt) ?? text(open.dispatchedAt), task: researcher ? researching : actionOf(id) });
     if (last?.ended === 'failed') return card(id, { state: 'waiting', task: researcher ? 'Could not finish the research' : actionOf(id) });
     if (last || (researcher && phase === 'complete')) {
       const summary = plainLine(last?.summary, 160);

@@ -218,6 +218,7 @@ export class TikTokPublicBackend {
       post_count: user.videoCount,
       likes_total: user.heartCount,
       verified: typeof user.verified === 'boolean' ? user.verified : null,
+      avatar_url: user.avatarLargerUrl ?? user.avatarMediumUrl ?? user.avatarThumbUrl ?? null,
       source_ref: sourceRef,
       observed_at: fetched.fetched_at,
     });

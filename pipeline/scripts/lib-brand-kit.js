@@ -18,6 +18,11 @@ const LIMITS = Object.freeze({
   logoFileThumbBytes: 64 * 1024,
   paletteMax: 8,
   proposedPaletteMax: 6,
+  // Suggestions read from the brand's own places (profile pictures, website, videos): at most 3 logos, 5 colours and 2 typefaces.
+  suggestedLogosMax: 3,
+  suggestedPaletteMax: 5,
+  suggestedFontsMax: 2,
+  suggestedThumbBytes: 8 * 1024,
   fontsMax: 4,
   thumbProjectionBytes: 12 * 1024,
   svgThumbProjectionBytes: 24 * 1024,
@@ -29,7 +34,12 @@ const LIMITS = Object.freeze({
 const ROLES = Object.freeze(['primary', 'secondary', 'accent', 'background', 'text', 'other']);
 const FONT_USES = Object.freeze(['headings', 'body', 'captions', 'other']);
 const CAPTURE_ID = /^cap-\d{8}T\d{6}Z-[a-f0-9]{6}$/;
-const PALETTE_SOURCES = Object.freeze(['website', 'instagram', 'tiktok', 'facebook']);
+// Where a proposed palette came from: the website, a social profile picture (older records), the suggested logo, or frames of the brand's videos.
+const PALETTE_SOURCES = Object.freeze(['website', 'instagram', 'tiktok', 'facebook', 'youtube', 'logo', 'videos']);
+// Where proposed fonts came from: the website's CSS, or a model's "looks like" guess from on-screen text.
+const FONT_SOURCES = Object.freeze(['website', 'looks_like']);
+// Where a suggested logo came from: an account's profile picture, or the website's header, icon or sharing image.
+const SUGGESTED_SOURCES = Object.freeze(['instagram', 'tiktok', 'facebook', 'youtube', 'website_header', 'website_icon', 'website_og']);
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const FONT_FAMILY = /^[A-Za-z0-9][A-Za-z0-9 ._'-]{0,79}$/;
 const MIME_EXT = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' };
@@ -148,6 +158,8 @@ function recordCapture(brandDir, captureId, result, options = {}) {
       palette: Array.isArray(result && result.palette) ? result.palette.slice(0, LIMITS.proposedPaletteMax) : [],
       paletteSource: result && PALETTE_SOURCES.includes(result.paletteSource) ? result.paletteSource : null,
       fonts: Array.isArray(result && result.fonts) ? result.fonts.slice(0, LIMITS.fontsMax) : [],
+      fontsSource: result && FONT_SOURCES.includes(result.fontsSource) ? result.fontsSource : null,
+      signature: result && typeof result.signature === 'string' ? result.signature : null,
     };
     existing.capture = {
       status: (result && result.status) || 'failed',
@@ -219,7 +231,58 @@ function rasterInfo(buffer) {
   return null;
 }
 
-function validateLogo(logo, record, errors) {
+/** The name a suggested logo's source is saved under: "website" for any part of the website, else the account's platform. */
+function suggestedSourceName(source) {
+  return String(source || '').startsWith('website_') ? 'website' : String(source || 'upload');
+}
+
+/**
+ * A logo the person chose from the suggestions ({action: 'suggested', id}): read from the file the capture saved on this computer,
+ * and only when the model confirmed it shows the brand's mark. From here on it is an 'upload' like any other, so staging, commit and
+ * projection are unchanged; its source and the address it came from are kept on the logo's record.
+ */
+function validateSuggestedLogo(logo, record, brandDir, errors) {
+  const logos = record && record.suggested && Array.isArray(record.suggested.logos) ? record.suggested.logos : [];
+  const found = logos.find((item) => item && item.id === logo.id);
+  if (!found || found.checked !== true) {
+    errors.push('That suggested logo is not available any more.');
+    return undefined;
+  }
+  if (!brandDir) {
+    errors.push('That suggested logo could not be read.');
+    return undefined;
+  }
+  let buffer;
+  try {
+    buffer = fs.readFileSync(path.join(brandDir, 'brand', String(found.src)));
+  } catch {
+    errors.push('That suggested logo could not be read.');
+    return undefined;
+  }
+  if (!buffer.length || buffer.length > LIMITS.captureLogoBytes) {
+    errors.push('That suggested logo is not a usable file.');
+    return undefined;
+  }
+  const info = inspectImage(buffer);
+  if (!info) {
+    errors.push('That suggested logo is not a PNG, WebP, JPEG or SVG picture.');
+    return undefined;
+  }
+  let thumbBuffer = null;
+  let thumbMimeType = null;
+  if (found.thumb) {
+    try {
+      const thumb = inspectImage(fs.readFileSync(path.join(brandDir, 'brand', String(found.thumb))));
+      if (thumb) { thumbBuffer = thumb.buffer; thumbMimeType = thumb.mimeType; }
+    } catch { /* a thumbnail is optional */ }
+  }
+  return {
+    action: 'upload', buffer: info.buffer, mimeType: info.mimeType, width: info.width, height: info.height, thumbBuffer, thumbMimeType,
+    source: suggestedSourceName(found.source), sourceUrl: typeof found.url === 'string' ? found.url : null,
+  };
+}
+
+function validateLogo(logo, record, errors, brandDir) {
   // No logo given (or null) means no change to the logo.
   if (logo === undefined || logo === null) return { action: 'keep' };
   if (!logo || typeof logo !== 'object' || Array.isArray(logo)) {
@@ -328,6 +391,7 @@ function validateLogo(logo, record, errors) {
     }
     return { action: 'upload', buffer, mimeType: info.mimeType, width: info.width, height: info.height, thumbBuffer, thumbMimeType };
   }
+  if (action === 'suggested') return validateSuggestedLogo(logo, record, brandDir, errors);
   if (action === 'asset') {
     errors.push('Download the logo asset first and pass it as a file.');
     return undefined;
@@ -381,7 +445,7 @@ function validateKitInput(kit, options = {}) {
   }
   const record = options.record || null;
   const errors = [];
-  const logo = kit.logo !== undefined ? validateLogo(kit.logo, record, errors) : undefined;
+  const logo = kit.logo !== undefined ? validateLogo(kit.logo, record, errors, options.brandDir || null) : undefined;
   const palette = kit.palette !== undefined ? validatePalette(kit.palette, errors) : undefined;
   const fonts = kit.fonts !== undefined ? validateFonts(kit.fonts, errors) : undefined;
   const ok = errors.length === 0;
@@ -455,7 +519,7 @@ function resolveLogo(brandDir, logo, record) {
   if (logo.action === 'upload') {
     const ext = MIME_EXT[logo.mimeType] || 'png';
     return {
-      asset: assetFromLogo({ file: `assets/logo.${ext}`, source: 'upload' }),
+      asset: assetFromLogo({ file: `assets/logo.${ext}`, source: logo.source || 'upload' }),
       confirmedLogo: null,
       write: () => {
         const destRel = `assets/logo.${ext}`;
@@ -467,7 +531,7 @@ function resolveLogo(brandDir, logo, record) {
           destThumbRel = `assets/logo-thumb.${thumbExt}`;
           writeFileSafe(path.join(brandDir, 'brand', destThumbRel), logo.thumbBuffer);
         }
-        return { file: destRel, thumb: destThumbRel, mimeType: logo.mimeType, width: logo.width ?? null, height: logo.height ?? null, source: 'upload', sourceUrl: null };
+        return { file: destRel, thumb: destThumbRel, mimeType: logo.mimeType, width: logo.width ?? null, height: logo.height ?? null, source: logo.source || 'upload', sourceUrl: logo.sourceUrl || null };
       },
     };
   }
@@ -533,10 +597,14 @@ function writeProvidedLogo(brandDir, logoInput, source) {
     destThumbRel = `assets/provided/logo-thumb.${thumbExt}`;
     writeFileSafe(path.join(brandDir, 'brand', destThumbRel), logoInput.thumbBuffer);
   }
-  return { file: destRel, thumb: destThumbRel, mimeType: logoInput.mimeType, width: logoInput.width ?? null, height: logoInput.height ?? null, source: source || 'upload' };
+  return { file: destRel, thumb: destThumbRel, mimeType: logoInput.mimeType, width: logoInput.width ?? null, height: logoInput.height ?? null, source: source || logoInput.source || 'upload', sourceUrl: logoInput.sourceUrl || null };
 }
 
-/** Kickoff-time storage of a kit offered before the brand is complete. Status stays pending. */
+/**
+ * Kickoff-time storage of a kit offered before the brand is complete. Status stays pending. A save made on the brand's details page
+ * (before research starts) can be repeated: `options.keepLogo` leaves a logo provided earlier in place when this save carries no new
+ * logo file; a logo the person removed (`action: 'remove'`) is cleared either way.
+ */
 function recordProvided(brandDir, normalized, options = {}) {
   const nowIso = toIso(options.now);
   const requestId = options.requestId ? String(options.requestId) : null;
@@ -550,7 +618,9 @@ function recordProvided(brandDir, normalized, options = {}) {
     let existing;
     try { existing = JSON.parse(raw); } catch { existing = null; }
     if (!existing || existing.version !== 1) existing = defaultRecord(brandDir, nowIso);
-    existing.provided = { at: nowIso, requestId, logo: logoRecord, palette, fonts };
+    const removed = Boolean(normalized && normalized.logo && normalized.logo.action === 'remove');
+    const priorLogo = options.keepLogo && !removed && existing.provided ? existing.provided.logo || null : null;
+    existing.provided = { at: nowIso, requestId, logo: logoRecord || priorLogo, palette, fonts };
     record = existing;
     return JSON.stringify(existing, null, 2) + '\n';
   }, '');
@@ -578,7 +648,9 @@ function addProvided(brandDir, parts = {}, options = {}) {
     const next = { ...provided, at: nowIso };
     if (logoRecord) next.logo = logoRecord;
     if (wanted) {
-      const current = Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : ((existing.proposed && existing.proposed.fonts) || []);
+      // Fonts a model only guessed from on-screen text are not fonts the kit has, so the ones given here replace them.
+      const guessed = Boolean(existing.proposed && existing.proposed.fontsSource === 'looks_like');
+      const current = Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : (guessed ? [] : ((existing.proposed && existing.proposed.fonts) || []));
       fonts = current.map((f) => ({ family: f.family, use: f.use }));
       added.length = 0;
       for (const font of wanted) {
@@ -604,6 +676,236 @@ function providedParts(brandDir) {
     palette: Boolean(provided && Array.isArray(provided.palette) && provided.palette.length),
     fonts: Boolean(provided && Array.isArray(provided.fonts) && provided.fonts.length),
   };
+}
+
+// ---------------------------------------------------------------- suggestions from the brand's own places
+// The capture finds up to three logo candidates (the website's header or icon, the brand's profile pictures), colours (from the website, the
+// suggested logo or frames of the brand's videos) and a typeface the model thinks the videos use. They are only proposals: a logo is
+// shown on the board once the model has looked at it and confirmed it shows the brand's mark, the person says Use this or Not this, and an
+// upload always wins. Colours and fonts are proposed in `proposed`, editable like any other.
+
+const HEX_HASH = /^[0-9a-f]{16}$/;
+
+function popcount(value) {
+  let bits = value;
+  let count = 0;
+  while (bits) { count += Number(bits & 1n); bits >>= 1n; }
+  return count;
+}
+
+/** Whether two picture fingerprints are the same picture: equal, or two average hashes at most 6 bits apart. */
+function sameFingerprint(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a === b) return true;
+  if (!HEX_HASH.test(a) || !HEX_HASH.test(b)) return false;
+  return popcount(BigInt(`0x${a}`) ^ BigInt(`0x${b}`)) <= 6;
+}
+
+function suggestedDir(brandDir) {
+  return path.join(assetsDir(brandDir), 'suggested');
+}
+
+// Something was found after all (a confirmed logo, colours read from it, a typeface): a capture that ended with nothing is partial now,
+// with no error to show.
+function liftCapture(existing) {
+  const capture = existing && existing.capture;
+  if (capture && (capture.status === 'failed' || capture.status === 'unavailable')) existing.capture = { ...capture, status: 'partial', code: null, reason: null };
+}
+
+function removeSuggestedFiles(brandDir, logo) {
+  for (const rel of [logo && logo.src, logo && logo.thumb]) {
+    if (!rel || typeof rel !== 'string' || !rel.startsWith('assets/suggested/')) continue;
+    try { fs.unlinkSync(path.join(brandDir, 'brand', rel)); } catch { /* already gone */ }
+  }
+}
+
+/**
+ * Keep the logo candidates a capture found: write each picture (and its small preview) under brand/assets/suggested/ and record
+ * { id, src, thumb, source, sources, url, mimeType, width, height, hash, colours, checked } for it in `suggested.logos`. A candidate is
+ * not shown on the board until reviewSuggestedLogos marks it checked. A picture the model already confirmed stays confirmed, and one it
+ * rejected is not offered again. `candidates` is [{ source, sources, url, buffer, mimeType, width, height, thumbBuffer, thumbMimeType,
+ * hash, colours }], best first. Returns the records kept.
+ */
+function saveSuggestedLogos(brandDir, candidates, options = {}) {
+  const nowIso = toIso(options.now);
+  const prior = read(brandDir);
+  const before = prior && prior.suggested && typeof prior.suggested === 'object' ? prior.suggested : {};
+  const priorLogos = Array.isArray(before.logos) ? before.logos : [];
+  const rejected = Array.isArray(before.rejected) ? before.rejected.filter((item) => typeof item === 'string') : [];
+  const root = suggestedDir(brandDir);
+  try {
+    for (const name of fs.readdirSync(root)) fs.unlinkSync(path.join(root, name));
+  } catch { /* nothing saved yet */ }
+  const logos = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (logos.length >= LIMITS.suggestedLogosMax) break;
+    if (!candidate || !Buffer.isBuffer(candidate.buffer) || !MIME_EXT[candidate.mimeType] || candidate.buffer.length > LIMITS.captureLogoBytes) continue;
+    if (!SUGGESTED_SOURCES.includes(candidate.source)) continue;
+    if (rejected.some((hash) => sameFingerprint(hash, candidate.hash))) continue;
+    const id = `sg${logos.length + 1}`;
+    const src = `assets/suggested/${id}.${MIME_EXT[candidate.mimeType]}`;
+    writeFileSafe(path.join(brandDir, 'brand', src), candidate.buffer);
+    let thumb = null;
+    const thumbLimit = candidate.thumbMimeType === 'image/svg+xml' ? LIMITS.svgThumbProjectionBytes : LIMITS.suggestedThumbBytes;
+    if (Buffer.isBuffer(candidate.thumbBuffer) && MIME_EXT[candidate.thumbMimeType] && candidate.thumbBuffer.length <= thumbLimit) {
+      thumb = `assets/suggested/${id}-thumb.${MIME_EXT[candidate.thumbMimeType]}`;
+      writeFileSafe(path.join(brandDir, 'brand', thumb), candidate.thumbBuffer);
+    }
+    const confirmed = priorLogos.some((item) => item && item.checked === true && sameFingerprint(item.hash, candidate.hash));
+    logos.push({
+      id, src, thumb, source: candidate.source,
+      sources: (Array.isArray(candidate.sources) ? candidate.sources : [candidate.source]).filter((item) => SUGGESTED_SOURCES.includes(item)),
+      url: typeof candidate.url === 'string' ? candidate.url : null,
+      mimeType: candidate.mimeType, width: candidate.width ?? null, height: candidate.height ?? null,
+      hash: typeof candidate.hash === 'string' ? candidate.hash : null,
+      colours: (Array.isArray(candidate.colours) ? candidate.colours : []).filter((hex) => HEX.test(hex)).slice(0, LIMITS.suggestedPaletteMax),
+      checked: confirmed ? true : null,
+    });
+  }
+  let record;
+  durable.update(kitFile(brandDir), (raw) => {
+    let existing = null;
+    try { existing = JSON.parse(raw); } catch { /* not written yet */ }
+    if (!existing || existing.version !== 1) existing = defaultRecord(brandDir, nowIso);
+    existing.suggested = { ...(existing.suggested || {}), at: nowIso, logos, rejected: rejected.slice(-20) };
+    record = existing;
+    return JSON.stringify(existing, null, 2) + '\n';
+  }, '');
+  return { record, logos };
+}
+
+/**
+ * Record what the model decided after looking at each logo candidate: [{ id, verdict: 'brand' | 'not_brand', note? }]. A picture that
+ * shows the brand's mark or name is marked checked (and then shown on the board); one that does not is deleted and never offered again.
+ * Returns { record, accepted: [id], dropped: [id], unknown: [id] }.
+ */
+function reviewSuggestedLogos(brandDir, verdicts, options = {}) {
+  const nowIso = toIso(options.now);
+  const wanted = (Array.isArray(verdicts) ? verdicts : []).filter((item) => item && typeof item.id === 'string' && (item.verdict === 'brand' || item.verdict === 'not_brand'));
+  const accepted = [];
+  const dropped = [];
+  const unknown = [];
+  let record = null;
+  durable.update(kitFile(brandDir), (raw) => {
+    let existing = null;
+    try { existing = JSON.parse(raw); } catch { /* not written yet */ }
+    if (!existing || existing.version !== 1) { wanted.forEach((item) => unknown.push(item.id)); return raw; }
+    const suggested = existing.suggested && typeof existing.suggested === 'object' ? existing.suggested : { logos: [] };
+    const logos = Array.isArray(suggested.logos) ? suggested.logos : [];
+    const rejected = Array.isArray(suggested.rejected) ? suggested.rejected : [];
+    for (const item of wanted) {
+      const at = logos.findIndex((logo) => logo && logo.id === item.id);
+      if (at < 0) { unknown.push(item.id); continue; }
+      if (item.verdict === 'brand') {
+        logos[at].checked = true;
+        if (typeof item.note === 'string' && item.note.trim()) logos[at].note = item.note.trim().slice(0, 200);
+        accepted.push(item.id);
+      } else {
+        removeSuggestedFiles(brandDir, logos[at]);
+        if (logos[at].hash) rejected.push(logos[at].hash);
+        logos.splice(at, 1);
+        dropped.push(item.id);
+      }
+    }
+    existing.suggested = { ...suggested, at: nowIso, logos, rejected: rejected.slice(-20) };
+    if (accepted.length) liftCapture(existing);
+    record = existing;
+    return JSON.stringify(existing, null, 2) + '\n';
+  }, '');
+  return { record: record || read(brandDir), accepted, dropped, unknown };
+}
+
+const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const rgbOf = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+
+/**
+ * Propose colours read from a picture of the brand: `{ from: 'logo' | 'videos', colours: ['#RRGGBB', ...] }` (an empty list takes this
+ * source's colours away again). Colours already proposed from the other source stay, near copies are dropped, at most 5 in all, and
+ * roles run primary, secondary, accent, other. Nothing changes when the person provided colours or the website gave a brand colour.
+ * Returns { applied, reason?, palette, paletteSource }.
+ */
+function suggestPalette(brandDir, input, options = {}) {
+  const nowIso = toIso(options.now);
+  const from = input && (input.from === 'logo' || input.from === 'videos') ? input.from : null;
+  if (!from) return { applied: false, reason: 'unknown_source', palette: [], paletteSource: null };
+  const colours = (Array.isArray(input.colours) ? input.colours : []).filter((hex) => typeof hex === 'string' && HEX.test(hex)).map((hex) => hex.toUpperCase());
+  let result = { applied: false, reason: 'no_record', palette: [], paletteSource: null };
+  durable.update(kitFile(brandDir), (raw) => {
+    let existing = null;
+    try { existing = JSON.parse(raw); } catch { /* not written yet */ }
+    if (!existing || existing.version !== 1) existing = defaultRecord(brandDir, nowIso);
+    const provided = existing.provided;
+    if (provided && Array.isArray(provided.palette) && provided.palette.length) {
+      result = { applied: false, reason: 'provided', palette: provided.palette, paletteSource: null };
+      return raw;
+    }
+    const proposed = existing.proposed && typeof existing.proposed === 'object' ? existing.proposed : {
+      captureId: null, at: nowIso, method: 'static', finalUrl: null, palette: [], paletteSource: null, fonts: [], fontsSource: null, signature: null,
+    };
+    const current = Array.isArray(proposed.palette) ? proposed.palette : [];
+    if (proposed.paletteSource === 'website' && current.some((entry) => entry && entry.role !== 'background')) {
+      result = { applied: false, reason: 'website', palette: current, paletteSource: 'website' };
+      return raw;
+    }
+    const kept = current.filter((entry) => entry && entry.from && entry.from !== from && HEX.test(entry.value));
+    const additions = colours.map((value) => ({ value, from }));
+    const ordered = [...(from === 'logo' ? additions : kept), ...(from === 'logo' ? kept : additions)];
+    const roles = ['primary', 'secondary', 'accent'];
+    const merged = [];
+    for (const entry of ordered) {
+      if (merged.length >= LIMITS.suggestedPaletteMax) break;
+      if (merged.some((other) => distance(rgbOf(other.value), rgbOf(entry.value)) < 52)) continue;
+      merged.push({ value: entry.value, role: roles.shift() || 'other', from: entry.from });
+    }
+    const source = merged.length === 0 ? null : merged.every((entry) => entry.from === 'videos') ? 'videos' : 'logo';
+    existing.proposed = { ...proposed, palette: merged, paletteSource: source };
+    if (merged.length) liftCapture(existing);
+    result = { applied: true, palette: merged, paletteSource: source };
+    return JSON.stringify(existing, null, 2) + '\n';
+  }, '');
+  return result;
+}
+
+/**
+ * Propose the Google fonts that look closest to the on-screen text of the brand's videos: [{ family, use }], at most 2, shown with
+ * "looks like" wording. Nothing changes when the person (or the folders) provided fonts or the website named some.
+ * Returns { applied, reason?, fonts }.
+ */
+function suggestFonts(brandDir, fonts, options = {}) {
+  const nowIso = toIso(options.now);
+  const errors = [];
+  const valid = validateFonts(Array.isArray(fonts) ? fonts.slice(0, LIMITS.suggestedFontsMax) : [], errors);
+  if (errors.length || !valid.length) return { applied: false, reason: 'invalid', fonts: [] };
+  let result = { applied: false, reason: 'no_record', fonts: [] };
+  durable.update(kitFile(brandDir), (raw) => {
+    let existing = null;
+    try { existing = JSON.parse(raw); } catch { /* not written yet */ }
+    if (!existing || existing.version !== 1) existing = defaultRecord(brandDir, nowIso);
+    const provided = existing.provided;
+    if (provided && Array.isArray(provided.fonts) && provided.fonts.length) {
+      result = { applied: false, reason: 'provided', fonts: provided.fonts };
+      return raw;
+    }
+    const proposed = existing.proposed && typeof existing.proposed === 'object' ? existing.proposed : {
+      captureId: null, at: nowIso, method: 'static', finalUrl: null, palette: [], paletteSource: null, fonts: [], fontsSource: null, signature: null,
+    };
+    if (Array.isArray(proposed.fonts) && proposed.fonts.length && proposed.fontsSource !== 'looks_like') {
+      result = { applied: false, reason: 'website', fonts: proposed.fonts };
+      return raw;
+    }
+    existing.proposed = { ...proposed, fonts: valid, fontsSource: 'looks_like' };
+    liftCapture(existing);
+    result = { applied: true, fonts: valid };
+    return JSON.stringify(existing, null, 2) + '\n';
+  }, '');
+  return result;
+}
+
+/** The logo candidates the model confirmed, best first, as { id, source, sources, url, src, thumb, mimeType, width, height, colours }. */
+function checkedSuggestedLogos(brandDir) {
+  const record = read(brandDir);
+  const logos = record && record.suggested && Array.isArray(record.suggested.logos) ? record.suggested.logos : [];
+  return logos.filter((logo) => logo && logo.checked === true);
 }
 
 // The declared mimeType belongs to the confirmed logo record, which is the main image's
@@ -697,6 +999,22 @@ function projection(brandDir, options = {}) {
     }
   }
 
+  // Where the proposed fonts came from, shown only for fonts the person did not give: "looks like" guesses read differently from the website's own.
+  const fontsProvided = Boolean(provided && Array.isArray(provided.fonts) && provided.fonts.length);
+  const fontsSource = st !== 'confirmed' && !fontsProvided && fonts.length ? (proposed && FONT_SOURCES.includes(proposed.fontsSource) ? proposed.fontsSource : 'website') : null;
+  // The logo candidates the model confirmed (a logo the kit already has makes them unnecessary), with their previews inlined.
+  const suggestedLogos = !logo && st !== 'confirmed'
+    ? checkedSuggestedLogos(brandDir).map((item) => ({
+      id: item.id,
+      source: item.source,
+      sources: Array.isArray(item.sources) && item.sources.length ? item.sources : [item.source],
+      thumb: thumbDataUrl(brandDir, item.thumb || item.src, item.mimeType),
+      width: item.width ?? null,
+      height: item.height ?? null,
+    }))
+    : [];
+  const providedLogoSource = provided && provided.logo && provided.logo.source && provided.logo.source !== 'upload' ? provided.logo.source : null;
+
   return {
     status: st,
     kitRevision: record.kitRevision || 0,
@@ -706,10 +1024,13 @@ function projection(brandDir, options = {}) {
     palette,
     paletteSource,
     fonts,
+    ...(fontsSource ? { fontsSource } : {}),
+    ...(suggestedLogos.length ? { suggested: { logos: suggestedLogos } } : {}),
     provided: {
       logo: Boolean(provided && provided.logo),
       palette: Boolean(provided && Array.isArray(provided.palette) && provided.palette.length),
-      fonts: Boolean(provided && Array.isArray(provided.fonts) && provided.fonts.length),
+      fonts: fontsProvided,
+      ...(providedLogoSource ? { logoSource: providedLogoSource } : {}),
     },
   };
 }
@@ -777,6 +1098,11 @@ module.exports = {
   recordProvided,
   addProvided,
   providedParts,
+  saveSuggestedLogos,
+  reviewSuggestedLogos,
+  suggestPalette,
+  suggestFonts,
+  checkedSuggestedLogos,
   projection,
   writeBrandMarks,
   imageInfo,

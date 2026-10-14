@@ -275,6 +275,8 @@ export function profileRecord(input) {
     likes_total: toCount(input.likes_total),
     verified: typeof input.verified === 'boolean' ? input.verified : null,
     links: Array.isArray(input.links) ? input.links.filter((link) => typeof link === 'string') : [],
+    // The account's profile picture address, when the read named one (left out otherwise, so a record without one is unchanged).
+    ...(typeof input.avatar_url === 'string' && /^https?:\/\//i.test(input.avatar_url) ? { avatar_url: input.avatar_url } : {}),
     ...provenance(input, input.url),
   };
 }
