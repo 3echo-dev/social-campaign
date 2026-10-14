@@ -832,6 +832,11 @@ button.sb-cell-body:active{transform:none}
 .cs-more summary::-webkit-details-marker{display:none}
 .cs-more summary::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform 150ms ease}
 .cs-more[open] summary::before{transform:rotate(45deg)}
+.line-more{display:inline-block;margin-left:8px;vertical-align:baseline}
+.line-more-full{display:block;margin-top:6px;color:var(--dim);font-weight:400;max-width:60ch;overflow-wrap:anywhere}
+.page-head .job-line{margin-top:8px;color:var(--dim)}
+.page-head .planned-as{margin-top:8px}
+.step-full{margin:0 0 10px}
 .strategy-fact dd small{display:block;margin-top:4px;color:var(--faint);font-size:12px}
 @media(max-width:720px){.strategy-facts{grid-template-columns:1fr}}
 .strategy-fact{min-width:0}

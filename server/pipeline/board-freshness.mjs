@@ -54,6 +54,7 @@ export const BOARD_TEXT = Object.freeze({
   agents: 'An agent finished since the board was written; call pipeline_board_job_documents for the jobs below and write them.',
   replies: 'The person left a message for the Director on the board. For each job below, answer it with pipeline_agent_reply, then write the documents it returns.',
   chatAsk: 'You asked the person something in chat. Put the same question, with the same options, on the Director card with pipeline_board_ask, publish the board, then stop.',
+  republish: 'Social Campaign was updated and the board page is out of date. Republish it now, without asking the person: call pipeline_board_source with the bound url, read the bound board with the Artifact tool, publish the returned page and files to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true or no pluginVersion, publish nothing and tell the person once to open a new chat.',
   stuck: 'A job is stuck and the person has not been asked yet. For each job below, ask them in one plain line with pipeline_board_ask, say the same line in chat, then carry on.',
 });
 
@@ -302,7 +303,7 @@ export function boardSessionLines(root, sessionId) {
     const lines = [
       `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`,
       boardSourceOutdated(link, root)
-        ? 'The board page is out of date. Before replying, refresh it: call pipeline_board_source with the bound url, read the bound board with the Artifact tool, publish the returned page and files to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true, or no pluginVersion, publish nothing: Social Campaign was just updated, so tell the person once to open a new chat and type /social-campaign to carry on.'
+        ? 'The board page is out of date. Before replying, refresh it: call pipeline_board_source with the bound url, read the bound board with the Artifact tool, publish the returned page and files to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true, or no pluginVersion, publish nothing: Social Campaign was updated and this chat could not switch to it by itself, so tell the person once, in one plain line, to open a new chat.'
         : `Before replying, re-arm its wake-up: read ${link.url} with the Artifact tool, then republish that same page to the same url. Then list the board's saved requests and handle them through board-sync.`,
     ];
     if (waiting) {
@@ -312,6 +313,16 @@ export function boardSessionLines(root, sessionId) {
   } catch {
     return [];
   }
+}
+
+/**
+ * What a status reply adds when the plugin switched versions under a running chat and the board
+ * page on the artifact is older than the new code. Only Claude can publish an artifact, so the
+ * server cannot do it; it tells the Director to do it now, with no question to the person.
+ */
+export function boardRefreshNotice(outdated, version) {
+  if (outdated !== true || version?.swapped !== true || version?.updateWaiting === true) return {};
+  return { boardRefresh: { republishNow: true, ask: false, instruction: BOARD_TEXT.republish } };
 }
 
 export const freshnessPath = root => boardPath(root, 'last-projection.json');

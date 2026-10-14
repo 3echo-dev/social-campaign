@@ -6,85 +6,85 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" session-start.mjs"
           }
         ]
       }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-owner-release.mjs\"", "timeout": 10 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/board-owner-release.mjs", "timeout": 10 }] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-published.mjs\"" }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/board-published.mjs" }] }
     ],
     "PreToolUse": [
       {
         "matcher": "^mcp__(.*(3[Ee]cho|3ECHO|[Tt]hree_?[Ee]cho|THREE_?ECHO|[Ee]leven[_-]?[Ll]abs|ELEVEN[_-]?LABS).*__.+|.+__(create_image_job|create_video_job|creative_[a-z_]+|[a-z_]*studio[a-z_]*|list_workspaces|get_workspace_capabilities|get_upload_capabilities|estimate_image_job|estimate_video_job|wait_for_job|get_job|get_job_result|list_jobs|cancel_job|get_asset|list_assets|fetch_asset_bytes|upload_asset|update_asset_metadata|create_asset_upload_session|complete_asset_upload|import_asset_from_url|import_asset_from_file_reference|get_overlay_track|get_overlay_render|save_overlay_track|render_overlay_track|delete_overlay_track))$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"", "timeout": 20 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/studio-pre.mjs", "timeout": 20 }]
       },
       {
         "matcher": "^mcp__.+__(createScheduledPost|updateScheduledPost|createScheduledPostForReview|sendScheduledPostForReview)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-pre.mjs\"", "timeout": 30 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/publish-pre.mjs", "timeout": 30 }]
       },
       {
         "matcher": "^mcp__.+__(?!.*__)(?:ads_(?=[a-z0-9_]*(?:create|update|activate|delete|pause|duplicate|archive))[a-z0-9_]+|(?!creative_create_asset_upload$)(?:smart_plus_ad_create|(?:campaign|adgroup|ad|smart_plus|creative|file|dmp|pixel|catalog|bc|identity|app|page|custom_conversion|spark)(?:_[a-z0-9]+)*_(?:create|update|delete|upload|status_update|bind|unbind|transfer)))$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/ads-readonly-pre.mjs\"", "timeout": 10 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/ads-readonly-pre.mjs", "timeout": 10 }]
       },
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-pre.mjs\"", "timeout": 20 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/studio-pre.mjs", "timeout": 20 }]
       },
       {
         "matcher": "^(Agent|Task)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "^mcp__.+__(create_image_job|create_video_job|wait_for_job|get_job_result|get_asset|estimate_video_job|creative_generate_speech|creative_generate_in_flow|creative_transcribe_audio|creative_design_voice|creative_get_flow_run_status|creative_show_flow_results)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/studio-post.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/studio-post.mjs" }]
       },
       {
         "matcher": "^mcp__.+__(createScheduledPost|getScheduledPosts|get_asset|complete_asset_upload|list_assets)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/publish-post.mjs", "timeout": 30 }]
       },
       {
         "matcher": "^mcp__plugin_social-campaign_core__(pipeline_job_read|pipeline_job_create|pipeline_review_present|pipeline_decision_apply|pipeline_chat_decision|pipeline_intake_update|pipeline_board_request_apply|pipeline_quote_save|pipeline_generation_land|pipeline_generation_retry|pipeline_inputs_import|pipeline_post_files_add|pipeline_product_photo_attach|pipeline_recipe_choose|pipeline_review_copies_prepare|pipeline_music_add|pipeline_music_choose|pipeline_library_add|pipeline_combine_set|pipeline_combine_takes|pipeline_handoff_post_prepare|pipeline_handoff_post_return)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/session-bind.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/session-bind.mjs" }]
       },
       {
         "matcher": "^(ArtifactData|Artifact|ArtifactComments)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-published.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/board-published.mjs" }]
       },
       {
         "matcher": "^Artifact$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/artifact-assets.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/artifact-assets.mjs" }]
       },
       {
         "matcher": "^(Agent|Task)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }]
       }
     ],
     "PostToolUseFailure": [
       {
         "matcher": "^mcp__.+__(createScheduledPost)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/publish-post.mjs\"", "timeout": 30 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/publish-post.mjs", "timeout": 30 }]
       },
       {
         "matcher": "^(Agent|Task)$",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }]
       }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pipeline-hook.mjs\"" }] },
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/board-stop.mjs\"" }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" pipeline-hook.mjs" }] },
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/board-stop.mjs" }] }
     ],
     "SubagentStart": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }] }
     ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pipeline-hook.mjs\"" }] },
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/agent-run.mjs\"", "timeout": 15 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" pipeline-hook.mjs" }] },
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }] }
     ]
   }
 }

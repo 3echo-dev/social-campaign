@@ -45,6 +45,8 @@ if (!readme.includes(`Current version: ${version}.`)) problems.push(`README.md d
 // Every hook command and every plugin-root path named by the plugin's own files exists.
 const hooks = readFileSync(join(ROOT, 'hooks/hooks.json'), 'utf8');
 for (const match of hooks.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\\\s]+)/g)) if (!existsSync(join(ROOT, match[1]))) problems.push(`hooks/hooks.json runs ${match[1]}, which does not exist`);
+for (const match of hooks.matchAll(/scripts\/hooks\/forward\.mjs\\" ([A-Za-z0-9_\/-]+\.mjs)/g)) if (!existsSync(join(ROOT, 'scripts', match[1]))) problems.push(`hooks/hooks.json forwards to scripts/${match[1]}, which does not exist`);
+if (/\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/(?!hooks\/forward\.mjs)/.test(hooks)) problems.push('hooks/hooks.json runs a script directly: every hook command goes through scripts/hooks/forward.mjs so it follows plugin updates');
 for (const file of files.filter(f => /^(skills|agents)\/.*\.md$/.test(f))) {
   for (const match of readFileSync(join(ROOT, file), 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+[A-Za-z0-9_/-])/g)) {
     if (!existsSync(join(ROOT, match[1]))) problems.push(`${file} points at ${match[1]}, which does not exist`);

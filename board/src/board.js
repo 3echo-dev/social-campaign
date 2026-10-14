@@ -11,6 +11,81 @@ export function humanize(value) {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 export const NO_BRAND = 'no-brand';
+// A routine status line is one short line: past `max` words it shows the start, and the rest sits behind "View details".
+export function shortLine(text, max = 20) {
+  const full = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const words = full.split(' ');
+  if (!full || words.length <= max) return esc(full);
+  const cut = words.slice(0, max).join(' ').replace(/[\s,;:.–—-]+$/, '') + '…';
+  return `${esc(cut)}<details class="cs-more line-more"><summary>View details</summary><span class="line-more-full">${esc(full)}</span></details>`;
+}
+// The same cut with no disclosure, for a line that sits inside a summary.
+export function capWords(text, max = 20) {
+  const full = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const words = full.split(' ');
+  return !full || words.length <= max ? full : words.slice(0, max).join(' ').replace(/[\s,;:.–—-]+$/, '') + '…';
+}
+// Messages the board repeats, said once.
+export const NOTE_TOO_LARGE = 'Too large to show. Open it on your computer.';
+export const NOTE_SHORTENED = 'Shortened. The full file is on your computer.';
+const TXT_SAVED_CLAUDE_WILL_UPDATE = 'Saved. Claude will update the board.';
+const TXT_TYPE_TEXT_OR_CHOOSE = 'Type text or choose a file.';
+const TXT_CHOOSE_AN_OWNER_FIRST = 'Choose an owner first.';
+const TXT_USE_A_FULL_HTTPS = 'Use a full https:// link.';
+const TXT_FORMATS_AND_QUANTITIES = 'Formats and quantities';
+const TXT_CLIENT_WORK_ASK_FIRST = 'Client work, ask first';
+const TXT_READING_THE_FILES = 'Reading the files';
+const TXT_FOLDER_NOT_FOUND = 'Folder not found';
+const TXT_CHOOSE_WHAT_THIS_IS = 'Choose what this is first.';
+const TXT_NO_PREVIEW_YET = 'No preview yet.';
+const TXT_WAITING_FOR_CLAUDE = 'Waiting for Claude';
+const TXT_NEEDS_CLAUDE_ATTENTION = 'Needs Claude attention';
+const TXT_SAVE_AND_CONTINUE = 'Save and continue';
+const TXT_CALL_TO_ACTION = 'Call to action';
+const TXT_WAITING_FOR_CLAUDE_2 = 'Waiting for Claude.';
+const TXT_NOTHING_TO_SAVE = 'Nothing to save.';
+const TXT_THE_PLAN_IS_BEING = 'The plan is being rebuilt.';
+const TXT_PICK_A_CONCEPT_FIRST = 'Pick a concept first.';
+const TXT_SEND_THE_REQUESTED_CHANGES = 'Send the requested changes instead.';
+const TXT_CHOOSE_ONE_OF_THE = 'Choose one of the answers.';
+const TXT_ANSWER_THIS_FIRST = 'Answer this first.';
+const TXT_NOT_STARTED_YET = 'Not started yet';
+const TXT_WAITING_ON_YOU = 'Waiting on you';
+const TXT_COULD_NOT_FINISH = 'Could not finish';
+const TXT_WORKING_ON_IT = 'Working on it';
+const TXT_WHAT_IT_MADE = 'What it made';
+const TXT_OPEN_THIS_BOARD_INSIDE = 'Open this board inside Claude.';
+const TXT_REQUEST_ID_WAS_REUSED = 'Request ID reused with different data.';
+const TXT_NO_JOBS_YET_DESCRIBE = 'No jobs yet. Describe one below.';
+const TXT_NO_JOBS_YET_FINISH = 'No jobs yet. Finish brand onboarding first.';
+export const NOTE_WAITING_SAVE = 'Waiting for Claude to save this.';
+export const NOTE_SAVED_SOON = 'Saved. The board will update shortly.';
+export const NOTE_SAVED = TXT_SAVED_CLAUDE_WILL_UPDATE;
+export const NOTE_DECLINED = 'Declined in chat. Nothing changed.';
+export const NOTE_NEEDS_PRICE = 'Every item needs a price first.';
+export const NOTE_NOT_CONNECTED = 'Not connected yet. Try again shortly.';
+export const NOTE_SEND_FAILED = 'Could not send that.';
+export const NOTE_NEEDS_CHECK = 'Claude must check this first.';
+export const NOTE_PHOTO_TYPE = 'Use a PNG, JPG or WebP.';
+export const NOTE_LOGO_TYPE = 'Use a PNG, JPG, WebP or SVG.';
+export const NOTE_NOTHING_CHANGED = 'Change at least one item first.';
+export const NOTE_CHOOSE_COPY = 'Choose copy for every post first.';
+export const NOTE_TEXT_MISSING = TXT_TYPE_TEXT_OR_CHOOSE;
+export const NOTE_NEEDS_HELP = 'Claude needs your help to carry on';
+export const NOTE_WENT_WRONG = 'Something went wrong';
+export const NOTE_SHARED_COST = 'Shared by all jobs.';
+export const NOTE_FIX_FIELDS = 'Fix the highlighted fields first.';
+export const NOTE_FIX_ANSWERS = 'Fix the highlighted answers first.';
+export const NOTE_DECISION_WAITING = 'A decision is waiting for you.';
+export const NOTE_NAME_LONG = 'Keep the name under 120 characters.';
+export const NOTE_OWNER_FIRST = TXT_CHOOSE_AN_OWNER_FIRST;
+export const NOTE_FORMAT_UNSAVABLE = 'This format can\'t be saved here.';
+export const NOTE_NOTIFY_FAILED = 'Claude could not be notified.';
+export const NOTE_SAVING = 'Saving. Claude will confirm.';
+export const NOTE_HAS_ANSWER = 'Claude has your answer.';
+export const NOTE_BRAND_NAME = 'Enter a brand name.';
+export const NOTE_SAY_CHANGE = 'Say what should change.';
+export const NOTE_NO_RENAME = 'Claude did not rename the brand.';
 // The job-type words the board shows (a kind's pipeline name, its short label, whether it is a report, the word in a
 // "new job" line) come from the pipeline catalogue this page was built with (scripts/build-board.mjs puts it in the page
 // config), so a new kind needs no constant here. Until configurePipelines runs, a lookup finds nothing and the label
@@ -106,7 +181,7 @@ export const newJobWord = kind => PIPELINE_KINDS[kind]?.jobWord || 'job';
 export const isReportJob = project => PIPELINE_KINDS[project?.kind]?.report === true || (project?.pendingReviews || []).some(review => (review?.gate || review?.reviewId) === 'findings');
 export const LINK_LIMIT = 20;
 export const LINK_MAX_LENGTH = 2000;
-const VIDEO_FILE_HINT = 'For a video file on your computer, give it to Claude in chat.';
+const VIDEO_FILE_HINT = 'Give video files to Claude in chat.';
 export function parseLinks(text) {
   const links = [];
   let error = null;
@@ -115,13 +190,13 @@ export function parseLinks(text) {
     if (value.length > LINK_MAX_LENGTH) { error = `Each link must be ${LINK_MAX_LENGTH} characters or fewer.`; continue; }
     let valid = false;
     try { const url = new URL(value); valid = url.protocol === 'https:' && Boolean(url.hostname) && url.hostname.includes('.') && !url.username && !url.password; } catch { valid = false; }
-    if (!valid) { error = 'Each link must be a full address that starts with https://.'; continue; }
+    if (!valid) { error = TXT_USE_A_FULL_HTTPS; continue; }
     if (!links.includes(value)) links.push(value);
   }
   if (!error && links.length > LINK_LIMIT) error = `Add up to ${LINK_LIMIT} links.`;
   return { links, error };
 }
-const intakeLabel = value => ({kind:'Type of content',objective:'Campaign goal',distribution:'Organic or paid distribution',platforms:'Social platforms',deliverables:'Formats and quantities','deliverables (at least one)':'Formats and quantities',audience:'Target audience',evidence:'Available references and supporting material'})[value] || value;
+const intakeLabel = value => ({kind:'Type of content',objective:'Campaign goal',distribution:'Organic or paid distribution',platforms:'Social platforms',deliverables:TXT_FORMATS_AND_QUANTITIES,'deliverables (at least one)':TXT_FORMATS_AND_QUANTITIES,audience:'Target audience',evidence:'Available references and supporting material'})[value] || value;
 const time = value => value ? new Date(value).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' }) : 'Not synced yet';
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : 'Not reported';
 // Wall-clock hh:mm:ss, zero-padded. Anything that is not a finite number of
@@ -170,7 +245,7 @@ export function relativeTime(iso, now = Date.now()) {
 // written, is the actual freshness signal for this board.
 export function boardSyncDetail(updatedAt, now = Date.now()) {
   const relative = relativeTime(updatedAt, now);
-  return relative ? `Updated ${relative}` : 'Waiting for Claude to sync this board';
+  return relative ? `Updated ${relative}` : 'Waiting for Claude to sync';
 }
 const metric = (label, value, note) => `<div class="stat"><span class="eyebrow">${esc(label)}</span><b>${esc(value)}</b><small>${esc(note)}</small></div>`;
 // The board's cost figure is media generation spend, never a Claude token
@@ -196,12 +271,12 @@ export function mediaGenerationText(generation) {
 // called from the job page or exercised directly in a test.
 export function jobStats(project, now = Date.now()) {
   const usage = project?.usage || {};
-  const timeNote = usage.running ? 'Start to now, including waiting for you' : 'Start to end, including waiting for you';
+  const timeNote = usage.running ? 'Start to now' : 'Start to end';
   const elapsedMs = liveMs(usage.elapsedMs, usage.openSince, now);
   const studio = creditFraction(usage.generation?.threeEchoCredits);
   const voice = creditsInUse(usage.generation?.elevenLabsCredits) ? creditFraction(usage.generation.elevenLabsCredits) : null;
-  const note = voice ? `3Echo Studio credits used. Voice: ${voice} ElevenLabs credits.` : '3Echo Studio credits used';
-  const shared = `${metric('Tokens', number(usage.tokens), 'Claude usage for this job')}${metric('Time', clock(elapsedMs), timeNote)}`;
+  const note = voice ? `Studio credits. Voice: ${voice} credits.` : 'Studio credits';
+  const shared = `${metric('Tokens', number(usage.tokens), 'By Claude')}${metric('Time', clock(elapsedMs), timeNote)}`;
   if (isReportJob(project)) return `<div class="stats two">${shared}</div>`;
   // A job whose own stages never make media has no media generation to report, unless credits were spent anyway. Until the stages are loaded there is nothing to go on, so the card stays.
   const listed = Array.isArray(project?.stages) ? project.stages.filter(stage => stage && typeof stage === 'object') : [];
@@ -234,16 +309,17 @@ export function postThumbSrc(post, thumbs) {
 const ARTIFACT_WORKSPACE_DOC = 'socialCampaign/workspace';
 const JOB_DOCUMENT_COLLECTION = 'jobDocs';
 const JOB_DOCUMENT_ID = /^[A-Za-z0-9_-]{1,160}$/;
-const NO_SESSION_MESSAGE = 'Saved. Claude picks this up as soon as your Claude chat is open.';
+const NO_SESSION_MESSAGE = 'Saved. Claude sees it when your chat opens.';
+const NOT_NOTIFIED_MESSAGE = 'Not notified. Ask Claude in chat to sync.';
 const SIGNAL_OUTCOMES = Object.freeze({
-  sent: 'The running Claude session has been notified.',
+  sent: 'Claude has been notified.',
   no_session: NO_SESSION_MESSAGE,
-  writers_only: 'This board is read-only for your account, so Claude was not notified.',
+  writers_only: 'Read-only. Claude was not notified.',
   claude_unavailable: NO_SESSION_MESSAGE,
-  forbidden: 'Commenting from this board is off for your account. Ask Claude in chat to sync this board.',
-  consent_required: 'Comments were not allowed, so Claude was not notified. Ask Claude in chat to sync this board.',
-  rate_limited: 'Too many signals were sent. Wait a moment before trying again.',
-  unavailable: 'The Claude notification capability is unavailable. Ask Claude in chat to sync this board.',
+  forbidden: NOT_NOTIFIED_MESSAGE,
+  consent_required: NOT_NOTIFIED_MESSAGE,
+  rate_limited: 'Too many tries. Wait a moment.',
+  unavailable: NOT_NOTIFIED_MESSAGE,
 });
 const SIGNAL_ERROR_OUTCOMES = Object.freeze({
   claude_unavailable: 'claude_unavailable',
@@ -275,14 +351,14 @@ export const CONTEXT_LIMITS = Object.freeze({
 
 export const CONTEXT_FIELDS = Object.freeze([
   { name: 'audience', label: 'Audience', short: 'audience', placeholder: 'Who are you speaking to?', maxlength: CONTEXT_LIMITS.text.audience },
-  { name: 'market', label: 'Positioning', short: 'positioning', placeholder: 'What do you offer, and what makes it different?', maxlength: CONTEXT_LIMITS.text.market },
+  { name: 'market', label: 'Positioning', short: 'positioning', placeholder: 'What you offer', maxlength: CONTEXT_LIMITS.text.market },
   { name: 'voice', label: 'Brand voice', short: 'brand voice', placeholder: 'How should your brand sound?', maxlength: CONTEXT_LIMITS.text.voice },
   { name: 'contentPillars', label: 'Content pillars (one per line)', short: 'content pillars', placeholder: 'One topic per line' },
-  { name: 'competitors', label: 'Top 3 competitors (one per line)', short: 'top 3 competitors', placeholder: 'Up to 3 names or URLs, one per line' },
+  { name: 'competitors', label: 'Top 3 competitors (one per line)', short: 'top 3 competitors', placeholder: 'Names or URLs' },
 ]);
 export const CONTEXT_FIELD_NAMES = CONTEXT_FIELDS.map(field => field.name);
 export const TARGET_MARKET_FIELD = Object.freeze({ name: 'targetMarket', label: 'Target market', short: 'target market', placeholder: 'Singapore', maxlength: 60 });
-const TARGET_MARKET_TOO_LONG = 'Keep the target market under 60 characters.';
+const TARGET_MARKET_TOO_LONG = 'Keep it under 60 characters.';
 const normalizeTargetMarket = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 // Normalize what a person actually types: a bare domain becomes an https URL,
@@ -438,7 +514,7 @@ export function channelFieldError(name, rawValue, unavailable) {
   if (unavailable) return null;
   const normalized = normalizeChannelInput(name, rawValue);
   if (!normalized) return `Add ${CHANNEL_ARTICLES[name]} ${CHANNEL_LABELS[name]} URL, or check "We don't have one".`;
-  if (!/^https?:\/\//i.test(normalized)) return `Enter a full URL for ${CHANNEL_LABELS[name]} (for example https://...), or check "We don't have one".`;
+  if (!/^https?:\/\//i.test(normalized)) return `Enter a full ${CHANNEL_LABELS[name]} URL, or check "We don't have one".`;
   return null;
 }
 
@@ -450,7 +526,7 @@ function competitorLines(raw) {
 
 export function validateProfile(values = {}, prefilled = {}, unlocked = {}, { partial = false } = {}) {
   const errors = {};
-  if (!String(values.name || '').trim()) errors.name = 'Enter a brand name.';
+  if (!String(values.name || '').trim()) errors.name = NOTE_BRAND_NAME;
   for (const name of CHANNEL_NAMES) {
     // On the brand's details page an empty channel is fine (it is "not answered yet"); a channel that is filled in must still be a real link.
     if (partial && !normalizeChannelInput(name, values[name])) continue;
@@ -468,7 +544,7 @@ export function validateProfile(values = {}, prefilled = {}, unlocked = {}, { pa
   else if (pillars.some(item => item.length > CONTEXT_LIMITS.pillarItemMax)) errors.contentPillars = `Keep each content pillar to ${CONTEXT_LIMITS.pillarItemMax} characters or fewer.`;
   if (!pillars.length && unlocked.contentPillars && String(prefilled.contentPillars ?? '').trim()) errors.contentPillars = 'Add at least one content pillar.';
   const competitors = competitorLines(values.competitors);
-  if (competitors.length > CONTEXT_LIMITS.competitorsMax) errors.competitors = 'List up to 3 competitors, one per line.';
+  if (competitors.length > CONTEXT_LIMITS.competitorsMax) errors.competitors = 'List up to 3 competitors.';
   else if (competitors.some(item => item.length > CONTEXT_LIMITS.competitorItemMax)) errors.competitors = `Keep each competitor to ${CONTEXT_LIMITS.competitorItemMax} characters or fewer.`;
   return errors;
 }
@@ -478,8 +554,8 @@ export function validateProfile(values = {}, prefilled = {}, unlocked = {}, { pa
 // `start_research` { requestId, brand, profile, kit?, metricoolBlogId? } when they press Start research. `brand_rename` { requestId, brand, name }
 // changes the display name. The old single `onboard_brand` request still works and is what a brand that already did research uses to Save and continue.
 export const BRAND_NAME_LIMIT = 160;
-export const RESEARCH_MINIMUM_NOTE = 'Add a website or at least one social account to start research.';
-export const RESEARCH_READY_HINT = 'Research uses everything you have entered above.';
+export const RESEARCH_MINIMUM_NOTE = 'Add a website or social account.';
+export const RESEARCH_READY_HINT = '';
 
 // Every field on the details page, so a save always matches what is shown: a channel left empty is '' (not answered yet), "We don't have one" is
 // 'Not available', and an empty context field clears whatever was saved for it.
@@ -504,7 +580,7 @@ export function researchMinimum(values = {}) {
 // The name for a new brand or a rename, or { error }: not empty, not over the limit.
 export function brandNameArgs(raw) {
   const name = String(raw ?? '').replace(/\s+/g, ' ').trim();
-  if (!name) return { error: 'Enter a brand name.' };
+  if (!name) return { error: NOTE_BRAND_NAME };
   if (name.length > BRAND_NAME_LIMIT) return { error: `Keep the brand name under ${BRAND_NAME_LIMIT} characters.` };
   return { name };
 }
@@ -565,8 +641,8 @@ export const KIT_FONT_USES = Object.freeze(['headings', 'body', 'captions', 'oth
 export const KIT_LIMITS = Object.freeze({ maxColors: 8, maxFonts: 4 });
 // Optional real photos of the brand's world (the place, the people, the product in use), added at setup.
 export const KIT_PHOTOS_MAX = 5;
-export const KIT_PHOTOS_NOTE = 'Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
-export const KIT_PHOTOS_LATER = 'These photos are saved when you press Start research.';
+export const KIT_PHOTOS_NOTE = 'Real photos of your place or product. Optional.';
+export const KIT_PHOTOS_LATER = 'Saved when you press Start research.';
 const KIT_SOCIAL_PLATFORMS =Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
 
 // What the kit suggests from the brand's own places: a logo from its website or its profile pictures, colours from that logo or from frames of its
@@ -595,18 +671,18 @@ export function suggestedColoursNote(palette = []) {
 // dialog on their computer and imports the folder they choose. Pasting a full path (the request `brand_folder_add`) stays as a small fallback. Either
 // way the person says who owns the files, Claude reads them where they are (nothing is copied or uploaded), learns from the videos and photos, and
 // offers the fonts to the kit.
-export const KIT_FOLDER_NOTE = 'Add folders of your videos, photos and fonts. Claude reads them where they are on this computer: nothing is copied or uploaded. It learns your hooks and styles from the videos, offers photos for "Photos of your world", and adds your fonts to the kit.';
+export const KIT_FOLDER_NOTE = 'Read in place. Nothing is copied or uploaded.';
 export const KIT_FOLDER_RIGHTS = Object.freeze([
-  { value: 'ours', label: 'Ours', hint: 'I study them and can use them in your posts.' },
-  { value: 'client_ask', label: 'Client work, ask first', hint: 'I study them, but ask you before any of it goes in a post.' },
-  { value: 'never', label: 'Reference only', hint: 'I list them so you can find them, but never study or post them.' },
+  { value: 'ours', label: 'Ours', hint: 'Can be used in posts.' },
+  { value: 'client_ask', label: TXT_CLIENT_WORK_ASK_FIRST, hint: 'Asks before use in a post.' },
+  { value: 'never', label: 'Reference only', hint: 'Listed only. Never studied or posted.' },
 ]);
-export const KIT_FOLDER_OWNER_QUESTION = 'Who owns the files in this folder?';
-export const KIT_FOLDER_PICK_HINT = 'A folder picker opens on your computer, like saving a file. No need to copy a path.';
-export const KIT_FOLDER_PICK_WAIT = 'First choose who owns the files above.';
-export const KIT_FOLDER_PICK_OPENED = 'A folder picker opened on your computer';
+export const KIT_FOLDER_OWNER_QUESTION = 'Who owns these files?';
+export const KIT_FOLDER_PICK_HINT = '';
+export const KIT_FOLDER_PICK_WAIT = TXT_CHOOSE_AN_OWNER_FIRST;
+export const KIT_FOLDER_PICK_OPENED = 'Folder picker opened';
 const KIT_FOLDER_KINDS = Object.freeze([['video', 'video', 'videos'], ['image', 'photo', 'photos'], ['audio', 'audio file', 'audio files'], ['font', 'font', 'fonts']]);
-const KIT_FOLDER_STATES = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
+const KIT_FOLDER_STATES = Object.freeze({ indexing: TXT_READING_THE_FILES, stopped: 'Stopped part-way', moved: TXT_FOLDER_NOT_FOUND });
 const KIT_FOLDER_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/;
 const KIT_FOLDER_SHOWN_MS = 120000;
 const folderNumber = value => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
@@ -621,12 +697,12 @@ export function folderCountsLine(kinds) {
 // never defaulted. The name is what the row shows (the label, else the folder's last part); the full path appears nowhere on the page.
 export function folderRequestArgs({ path, label, rights } = {}) {
   const folder = String(path ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
-  if (!folder) return { error: 'Type or paste the full path of the folder.' };
-  if (!KIT_FOLDER_PATH.test(folder)) return { error: 'Use the full path of the folder, starting at the drive, for example C:\\Users\\you\\Brand videos.' };
+  if (!folder) return { error: 'Paste the full folder path.' };
+  if (!KIT_FOLDER_PATH.test(folder)) return { error: 'Use the full folder path.' };
   if (folder.length > 1000) return { error: 'That path is too long.' };
-  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose who owns the files in this folder.' };
+  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: NOTE_OWNER_FIRST };
   const words = String(label ?? '').replace(/\s+/g, ' ').trim();
-  if (words.length > 120) return { error: 'Keep the name under 120 characters.' };
+  if (words.length > 120) return { error: NOTE_NAME_LONG };
   const last = folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder;
   return { args: { folder, rights, ...(words ? { label: words } : {}) }, name: words || last };
 }
@@ -634,9 +710,9 @@ export function folderRequestArgs({ path, label, rights } = {}) {
 // What "Choose a folder..." sends (the request `brand_folder_pick`): { args: { rights, label? }, name } or { error }. No path: the folder is
 // chosen in the operating system's dialog on the person's computer. The rights answer is the person's own and is never defaulted.
 export function folderPickArgs({ label, rights } = {}) {
-  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose who owns the files in this folder.' };
+  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: NOTE_OWNER_FIRST };
   const words = String(label ?? '').replace(/\s+/g, ' ').trim();
-  if (words.length > 120) return { error: 'Keep the name under 120 characters.' };
+  if (words.length > 120) return { error: NOTE_NAME_LONG };
   return { args: { rights, ...(words ? { label: words } : {}) }, name: words || 'Your folder' };
 }
 
@@ -654,9 +730,9 @@ export const fontKey = family => String(family ?? '').trim().replace(/\s+/g, ' '
 // A plain-words problem with a picked font file, or '' when it can be read.
 export function fontFileProblem(file) {
   const extension = String(file?.name ?? '').toLowerCase().split('.').pop();
-  if (!file || !KIT_FONT_EXTENSIONS.includes(extension)) return 'Use a .ttf, .otf, .woff or .woff2 font file.';
+  if (!file || !KIT_FONT_EXTENSIONS.includes(extension)) return 'Use a .ttf, .otf or .woff file.';
   if (!(file.size > 0)) return 'That font file is empty.';
-  if (file.size > KIT_FONT_FILE_MAX) return 'That font file is too large. Use one under 20 MB.';
+  if (file.size > KIT_FONT_FILE_MAX) return 'That font is over 20 MB.';
   return '';
 }
 
@@ -818,13 +894,13 @@ export function validateKit(kit = {}) {
   const palette = Array.isArray(kit.palette) ? kit.palette : [];
   const fonts = Array.isArray(kit.fonts) ? kit.fonts : [];
   palette.forEach((color, index) => {
-    if (!normalizeHex(color?.value)) errors[`color_${index}`] = 'Use a six-digit colour like #1A2B3C.';
+    if (!normalizeHex(color?.value)) errors[`color_${index}`] = 'Use a colour like #1A2B3C.';
   });
   if (palette.length && !palette.some(color => color?.role === 'primary')) {
     errors.palette = 'Choose one primary colour.';
   }
   fonts.forEach((font, index) => {
-    if (!String(font?.family ?? '').trim()) errors[`font_${index}`] = 'Enter a font name, for example Inter.';
+    if (!String(font?.family ?? '').trim()) errors[`font_${index}`] = 'Enter a font name, like Inter.';
   });
   if (kit.logo?.error) errors.logo = kit.logo.error;
   return errors;
@@ -956,8 +1032,8 @@ export const REFERENCE_TYPES = Object.freeze([
   { id: 'picture', label: 'Reference picture', hint: 'PNG, JPG or WebP', kinds: ['image'] },
   { id: 'video', label: 'Reference video', hint: 'MP4, MOV or WebM', kinds: ['video'] },
   { id: 'audio', label: 'Audio (music or voice)', hint: 'MP3, WAV, M4A or OGG', kinds: ['audio'] },
-  { id: 'caption', label: 'Caption or text', hint: 'Type it, or choose a TXT or MD file', kinds: ['text'] },
-  { id: 'addon', label: 'Add-on', hint: 'Any picture, video, audio, PDF or text file', kinds: ['image', 'video', 'audio', 'document', 'text'] },
+  { id: 'caption', label: 'Post text', hint: 'Type or choose a file', kinds: ['text'] },
+  { id: 'addon', label: 'Add-on', hint: 'Any file', kinds: ['image', 'video', 'audio', 'document', 'text'] },
 ]);
 const REFERENCE_EXT = Object.freeze({
   png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', mp4: 'video', mov: 'video', webm: 'video', m4v: 'video',
@@ -987,13 +1063,13 @@ export function referenceKindOf(name) {
 // A plain-words problem with a picked file for the chosen type, or '' when it can go ahead.
 export function referenceProblem(typeId, file) {
   const type = REFERENCE_TYPES.find(item => item.id === typeId);
-  if (!type) return 'Choose what this is first.';
+  if (!type) return TXT_CHOOSE_WHAT_THIS_IS;
   if (!file) return '';
   const kind = referenceKindOf(file.name);
   if (!kind || !type.kinds.includes(kind)) return `${type.label} takes ${type.hint}. Pick a different file, or change what it is.`;
-  if (kind === 'text') return file.size > REFERENCE_TEXT_MAX * 4 ? 'That text file is too long. Trim it or paste the part you want.' : '';
+  if (kind === 'text') return file.size > REFERENCE_TEXT_MAX * 4 ? 'That text file is too long.' : '';
   const limit = REFERENCE_LIMIT_MB[kind];
-  if (file.size > limit * 1024 * 1024) return `That file is too big for the board (limit ${limit} MB for ${kind === 'document' ? 'documents' : kind}). Try a smaller or shorter copy.`;
+  if (file.size > limit * 1024 * 1024) return `That file is over ${limit} MB. Try a smaller copy.`;
   return '';
 }
 // The wire shape of one reference. A file goes to the asset store when `assets` is there, else inline when small;
@@ -1005,8 +1081,8 @@ export async function encodeReferenceUpload(assets, { type, file, text, note, ro
   const kind = file ? referenceKindOf(file.name) : 'text';
   if (kind === 'text') {
     const body = file ? await file.text() : String(text || '');
-    if (!body.trim()) throw new Error('Type some text, or choose a file.');
-    if (body.length > REFERENCE_TEXT_MAX) throw new Error(`That text is too long (limit ${REFERENCE_TEXT_MAX.toLocaleString('en-US')} characters). Shorten it or split it.`);
+    if (!body.trim()) throw new Error(TXT_TYPE_TEXT_OR_CHOOSE);
+    if (body.length > REFERENCE_TEXT_MAX) throw new Error(`That text is over ${REFERENCE_TEXT_MAX.toLocaleString('en-US')} characters. Shorten it.`);
     return { ...base, action: 'text', text: body, fileName: file ? file.name : 'caption.txt' };
   }
   const common = { ...base, fileName: file.name, mimeType: file.type || '', size: file.size };
@@ -1015,10 +1091,10 @@ export async function encodeReferenceUpload(assets, { type, file, text, note, ro
       const asset = await assets.upload(file, { type: file.type || 'application/octet-stream' });
       return { ...common, action: 'asset', assetId: asset.id };
     } catch {
-      if (file.size > REFERENCE_INLINE_MAX) throw new Error('The board could not upload that file right now. It may be too big for storage or storage is busy. Try again, or use a smaller copy.');
+      if (file.size > REFERENCE_INLINE_MAX) throw new Error('Upload failed. Try again or use a smaller copy.');
     }
   } else if (file.size > REFERENCE_INLINE_MAX) {
-    throw new Error('Uploading this file needs the board opened inside Claude. Open it from your Claude session and try again.');
+    throw new Error('Open the board inside Claude to upload.');
   }
   return { ...common, action: 'upload', dataBase64: await blobToBase64(file) };
 }
@@ -1067,10 +1143,10 @@ export function referenceViewer(ref = {}) {
     media = full ? `<img class="ref-viewer-img" src="${esc(full)}" alt="${esc(name)}">` : icon;
   } else if (kind === 'video') {
     media = url ? `<video class="ref-viewer-media" controls playsinline preload="metadata" src="${esc(url)}"${picture ? ` poster="${esc(picture)}"` : ''} aria-label="${esc(name)}"></video>` : (image(`First picture of ${name}`) || icon);
-    if (!url) hint = 'This clip cannot be played here yet. Claude can still use it.';
+    if (!url) hint = TXT_NO_PREVIEW_YET;
   } else if (kind === 'audio') {
     media = url ? `${icon}<audio class="ref-viewer-audio" controls preload="metadata" src="${esc(url)}" aria-label="${esc(name)}"></audio>` : icon;
-    if (!url) hint = 'This audio cannot be played here yet. Claude can still use it.';
+    if (!url) hint = TXT_NO_PREVIEW_YET;
   } else if (kind === 'text') {
     const text = String(ref.excerpt || '');
     media = text ? `<pre class="ref-viewer-text">${esc(text)}${text.length >= 400 ? '…' : ''}</pre>` : icon;
@@ -1089,7 +1165,7 @@ export function pruneRemoving(state = {}, refs = [], now = Date.now()) {
   if (state.confirm && !refs.some(ref => ref.id === state.confirm)) state.confirm = null;
   for (const [id, at] of Object.entries(state.removing || {})) {
     if (!refs.some(ref => ref.id === id)) delete state.removing[id];
-    else if (now - at > 120000) { delete state.removing[id]; state.removeError = 'That reference is still here. Removing it did not go through. Try again.'; }
+    else if (now - at > 120000) { delete state.removing[id]; state.removeError = 'Could not remove it. Try again.'; }
   }
 }
 // A small picture of a file the person has just picked, made in the browser before anything is sent. Pictures are scaled on a
@@ -1169,27 +1245,27 @@ function referenceControl(state = {}, { prefix = 'ref', busy = false, idKey = ''
   const pickedKind = state.fileName ? referenceKindOf(state.fileName) : '';
   const queue = Array.isArray(state.queue) ? state.queue : [];
   const picked = state.fileName
-    ? `<span class="ref-picked">${referenceThumb({ kind: pickedKind, thumb: pickedPreview(state.file) })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(state.fileName, 48))}</span><small>${pickedKind === 'image' ? 'Check this is the right picture' : pickedKind === 'video' ? 'Check this is the right clip' : 'Ready to add'}</small></span></span>`
+    ? `<span class="ref-picked">${referenceThumb({ kind: pickedKind, thumb: pickedPreview(state.file) })}<span class="ref-card-text"><span class="ref-card-name">${esc(truncateText(state.fileName, 48))}</span><small>${pickedKind === 'image' ? 'Check the picture' : pickedKind === 'video' ? 'Check the clip' : 'Ready to add'}</small></span></span>`
     : queue.length ? '' : `<span class="muted">${esc(type.hint)}</span>`;
   const waiting = queue.length
     ? `<ul class="ref-queue" aria-label="Files waiting to be added">${queue.map((item, index) => `<li>${referenceCard({ kind: referenceKindOf(item.file?.name), thumb: pickedPreview(item.file), name: item.file?.name, label: REFERENCE_TYPES.find(entry => entry.id === item.type)?.label })}<button type="button" class="sb-ask" data-ref-unqueue="${index}" aria-label="${esc(`Remove ${item.file?.name || 'file'}`)}" ${busy ? 'disabled' : ''}>Remove</button></li>`).join('')}</ul>`
     : '';
-  const textArea = isText ? `<label class="field-wide">Caption or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
+  const textArea = isText ? `<label class="field-wide">Post text or notes<textarea name="${prefix}_text" rows="4" maxlength="${REFERENCE_TEXT_MAX}" ${busy ? 'disabled' : ''}>${esc(state.text || '')}</textarea></label>` : '';
   const roles = referenceRolesFor(type.id);
   const picked_role = referenceRoleOf(type.id, state.role);
   const roleRow = roles.length ? `<div class="ref-roles" role="group" aria-label="Use it for (optional)"><span class="ref-roles-label">Use it for (optional)</span><span class="ref-role-chips">${roles.map(role => `<button type="button" class="ref-role${role.id === picked_role ? ' on' : ''}" data-ref-role="${role.id}" data-ref-prefix="${prefix}" aria-pressed="${role.id === picked_role ? 'true' : 'false'}" ${busy ? 'disabled' : ''}>${esc(role.label)}</button>`).join('')}</span></div>` : '';
   const link = prefix === 'ref' ? `<label class="field-wide">Or paste a link<input name="ref_link" inputmode="url" autocomplete="off" value="${esc(state.link || '')}" placeholder="TikTok, YouTube, Instagram, any web page, or a picture or video link" ${busy ? 'disabled' : ''}></label>` : '';
-  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${roleRow}${textArea}<div class="ref-drop" data-ref-drop="${prefix}"><div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : several ? 'Choose files' : 'Choose a file'}</span></label>${picked}</div>${waiting}<small class="ref-drop-hint">or drop a file here, or paste a screenshot</small></div>${link}<label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
+  return `<label>What is it<select name="${prefix}_type" ${busy ? 'disabled' : ''}>${REFERENCE_TYPES.map(item => `<option value="${item.id}"${item.id === type.id ? ' selected' : ''}>${esc(item.label)}</option>`).join('')}</select></label>${roleRow}${textArea}<div class="ref-drop" data-ref-drop="${prefix}"><div class="ref-file">${fileInput}<label class="kit-file-button" for="${fileId}">${KIT_ICONS.upload}<span>${isText ? 'Or choose a text file' : several ? 'Choose files' : 'Choose a file'}</span></label>${picked}</div>${waiting}<small class="ref-drop-hint">or drop a file or screenshot</small></div>${link}<label>Note (optional)<input name="${prefix}_note" maxlength="${REFERENCE_NOTE_MAX}" value="${esc(state.note || '')}" placeholder="e.g. match this colour and pace" ${busy ? 'disabled' : ''}></label>`;
 }
 // A pasted or typed link as a full https address, or a plain-words problem.
 export function referenceLinkOf(text) {
   const raw = String(text || '').trim();
   if (!raw) return { url: '' };
-  if (/\s/.test(raw)) return { error: 'Paste one link at a time.' };
+  if (/\s/.test(raw)) return { error: 'One link at a time.' };
   const full = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
   let url;
-  try { url = new URL(full); } catch { return { error: 'That does not look like a web address. Paste the whole link.' }; }
-  if (url.protocol !== 'https:' || !url.hostname.includes('.')) return { error: 'Paste a full web address that starts with https://.' };
+  try { url = new URL(full); } catch { return { error: 'Paste the whole link.' }; }
+  if (url.protocol !== 'https:' || !url.hostname.includes('.')) return { error: TXT_USE_A_FULL_HTTPS };
   return { url: full };
 }
 export const REFERENCE_QUEUE_MAX = 10;
@@ -1218,9 +1294,9 @@ export function referencesPanel(project, state = {}, { openKeys = new Set(), ope
   const busy = Boolean(state.busy);
   const asked = (Array.isArray(asking) ? asking : []).filter(item => item?.questionId && item.wantsUpload);
   const chips = refs.map(ref => `<li class="ref-item" aria-label="${esc(`${ref.label}: ${ref.name}`)}">${savedReferenceItem(ref, { confirming: state.confirm === ref.id, removing: Boolean(state.removing?.[ref.id]) })}</li>`).join('');
-  const list = refs.length ? `<ul class="ref-cards" aria-label="References on this job">${chips}</ul>${state.removeError ? `<p class="field-error" role="alert">${esc(state.removeError)}</p>` : ''}` : asked.length ? '' : '<p class="muted">Nothing added yet. Pictures, clips, audio or wording you add here are used for this job.</p>';
+  const list = refs.length ? `<ul class="ref-cards" aria-label="References on this job">${chips}</ul>${state.removeError ? `<p class="field-error" role="alert">${esc(state.removeError)}</p>` : ''}` : asked.length ? '' : '<p class="muted">Nothing added yet.</p>';
   const questions = asked.map(item => `<div class="ref-asked"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionUpload(item, uploadState(item) || {}, { place: 'refs' })}</div>`).join('');
-  const other = asked.length ? '<p class="field-hint">Any other picture, clip, audio or wording for this job:</p>' : '';
+  const other = asked.length ? '<p class="field-hint">Anything else for this job:</p>' : '';
   const form = `${brandFilesPicker(brandFiles, state)}<div class="ref-form">${other}${referenceControl(state, { prefix: 'ref', busy })}<div class="ref-actions"><button type="button" class="${asked.length ? 'quiet' : 'primary'}" data-ref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Saving...' : referencePanelCount(state) > 1 ? `Add ${referencePanelCount(state)} references` : 'Add reference'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`;
   const open = forceOpen || asked.length > 0 || openKeys.has('more:refs') || busy || Boolean(state.error) || (Array.isArray(state.queue) && state.queue.length > 0);
   const title = asked.length ? (asked.length === 1 ? 'Claude asks for a file' : `Claude asks for ${asked.length} files`) : 'Add a reference';
@@ -1247,7 +1323,7 @@ export function chatAttachment(state = {}, agentName = 'Director') {
   const open = Boolean(state.open || state.error || busy);
   const button = `<button type="button" class="attach icon" data-aref-action="toggle" aria-label="Attach a file" aria-expanded="${open ? 'true' : 'false'}" title="Attach a file" ${busy ? 'disabled' : ''}>${PAPERCLIP}</button>`;
   const panel = open
-    ? `<div class="ab-attach ref-form" data-aref><p class="field-hint">Send ${esc(agentName)} a picture, clip, audio or text. It is saved on this job.</p>${referenceControl(state, { prefix: 'aref', busy })}<div class="ref-actions"><button type="button" class="primary" data-aref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`
+    ? `<div class="ab-attach ref-form" data-aref><p class="field-hint">Send ${esc(agentName)} a file or text.</p>${referenceControl(state, { prefix: 'aref', busy })}<div class="ref-actions"><button type="button" class="primary" data-aref-action="send" ${busy ? 'disabled' : ''}>${busy ? 'Sending...' : 'Send file'}</button></div>${state.error ? `<p class="field-error" role="alert">${esc(state.error)}</p>` : ''}${!state.error && state.message ? `<p class="muted" role="status">${esc(state.message)}</p>` : ''}</div>`
     : '';
   return { button, panel };
 }
@@ -1268,13 +1344,13 @@ export function freshNewJobRefs() { return { type: 'picture', file: null, fileNa
 // Check what is in the control and, when it is a reference, return it as a list item; else { error }.
 export function newJobReferenceItem(state) {
   const type = REFERENCE_TYPES.find(item => item.id === state.type);
-  if (!type) return { error: 'Choose what this is first.' };
+  if (!type) return { error: TXT_CHOOSE_WHAT_THIS_IS };
   const text = String(state.text || '');
   if (state.file) {
     const problem = referenceProblem(state.type, state.file);
     if (problem) return { error: problem };
   } else if (!(type.id === 'caption' && text.trim())) {
-    return { error: type.id === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file first.' };
+    return { error: type.id === 'caption' ? NOTE_TEXT_MISSING : 'Choose a file first.' };
   }
   const note = String(state.note || '').replace(/\s+/g, ' ').trim();
   if (note.length > REFERENCE_NOTE_MAX) return { error: `Keep the note under ${REFERENCE_NOTE_MAX} characters.` };
@@ -1287,10 +1363,10 @@ export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}
     : '';
   const full = items.length >= NEW_JOB_REFERENCES_MAX;
   const control = full
-    ? `<p class="muted">That is ${NEW_JOB_REFERENCES_MAX} references. You can add more on the job page after it starts.</p>`
+    ? `<p class="muted">That is ${NEW_JOB_REFERENCES_MAX} references. Add more on the job page.</p>`
     : `<div class="ref-form">${referenceControl(refs, { prefix: 'nref', busy })}<div class="ref-actions"><button type="button" class="sb-ask" data-nref-action="add" ${busy ? 'disabled' : ''}>Add to this job</button></div></div>`;
   const open = refs.open || items.length > 0 || Boolean(refs.error);
-  return `<details class="new-refs field-wide" data-open-key="new:refs"${open ? ' open' : ''}><summary>References (optional)${items.length ? ` <span class="count">${items.length}</span>` : ''}</summary><div class="new-refs-body"><p class="field-hint">Pictures, clips, audio, wording or other files you want used for this job.</p>${list}${control}${refs.error ? `<p class="field-error" role="alert">${esc(refs.error)}</p>` : ''}</div></details>`;
+  return `<details class="new-refs field-wide" data-open-key="new:refs"${open ? ' open' : ''}><summary>References (optional)${items.length ? ` <span class="count">${items.length}</span>` : ''}</summary><div class="new-refs-body">${list}${control}${refs.error ? `<p class="field-error" role="alert">${esc(refs.error)}</p>` : ''}</div></details>`;
 }
 
 // @module forms
@@ -1378,11 +1454,11 @@ function kitFolderPending(entry, index) {
   const rights = KIT_FOLDER_RIGHTS.find(option => option.value === entry.rights)?.label || '';
   const failed = entry.status === 'declined' || entry.status === 'error';
   const picking = entry.kind === 'pick';
-  const status = entry.status === 'sent' ? 'Sending...' : entry.status === 'waiting' ? (picking ? KIT_FOLDER_PICK_OPENED : 'Waiting for Claude') : entry.status === 'applied' ? 'Added. Reading the files' : '';
+  const status = entry.status === 'sent' ? 'Sending...' : entry.status === 'waiting' ? (picking ? KIT_FOLDER_PICK_OPENED : TXT_WAITING_FOR_CLAUDE) : entry.status === 'applied' ? 'Added. Reading the files' : '';
   const meta = [rights, status].filter(Boolean).map(esc).join(' &middot; ');
   const dismiss = failed ? `<button type="button" class="quiet" data-kit-action="dismiss-folder" data-index="${index}" aria-label="${esc(`Dismiss: ${entry.name}`)}">Dismiss</button>` : '';
   const live = !failed && entry.status === 'waiting' && picking ? ' role="status"' : '';
-  return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><span class="kit-folder-icon" aria-hidden="true">${KIT_ICONS.folder}</span><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta"${live}>${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Claude could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
+  return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><span class="kit-folder-icon" aria-hidden="true">${KIT_ICONS.folder}</span><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta"${live}>${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
 }
 
 // The "Your videos, photos and fonts" block of the kit: the question of who owns the files (three cards, none picked until the person picks one),
@@ -1411,7 +1487,7 @@ export function kitFolders(brand, folders = {}, disabled = false, now = Date.now
   const owner = `<fieldset class="kit-owner" ${disabled || waiting ? 'disabled' : ''}><legend class="kit-sublabel" id="kit-folder-owner-label">${esc(KIT_FOLDER_OWNER_QUESTION)}</legend><div class="kit-owner-cards">${cards}</div></fieldset>`;
   const paste = `<details class="kit-paste" data-kit-paste ${state.pasteOpen || state.error ? 'open' : ''}><summary>Or paste a path</summary><div class="kit-folder-add"><div class="kit-folder-fields"><label class="kit-folder-field" for="kit-folder-path"><span>Folder on this computer</span><input type="text" id="kit-folder-path" name="kit_folder_path" data-kit-folder="path" value="${esc(state.path || '')}" placeholder="C:\\Users\\you\\Brand videos" autocomplete="off" spellcheck="false" aria-invalid="${state.error ? 'true' : 'false'}" ${state.error ? `aria-describedby="${errorId}"` : ''} ${off}></label><label class="kit-folder-field" for="kit-folder-label"><span>Name (optional)</span><input type="text" id="kit-folder-label" name="kit_folder_label" data-kit-folder="label" maxlength="120" value="${esc(state.label || '')}" placeholder="Summer shoot 2024" autocomplete="off" ${off}></label></div><button type="button" class="kit-add" data-kit-action="add-folder" ${off}>${KIT_ICONS.plus}<span>${state.busy ? 'Adding...' : 'Add folder'}</span></button></div></details>`;
   const problem = state.error ? `<p class="field-error" id="${errorId}" role="alert">${esc(state.error)}</p>` : '';
-  const intro = `<p class="muted">${esc(waiting ? 'Folders can be added as soon as onboarding has started.' : KIT_FOLDER_NOTE)}</p>`;
+  const intro = `<p class="muted">${esc(waiting ? 'Folders open once onboarding starts.' : KIT_FOLDER_NOTE)}</p>`;
   const found = fonts.length ? `<p class="muted kit-folder-fonts">Fonts found: ${fonts.map(esc).join(', ')}</p>` : '';
   const list = rows ? `<ul class="library-list kit-folder-list">${rows}</ul>` : '';
   return kitBlock('folders', 'Your videos, photos and fonts (optional)', `${intro}${owner}${pick}${problem}${paste}${list}${found}`, '', 'kit-card kit-folders-block');
@@ -1454,10 +1530,10 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     return `<div class="kit-drop kit-drop-filled">${tiles(kitImageSrc(first.thumb))}</div><p class="kit-suggest-note" role="status">Suggested from your ${esc(placesOf(first))}. Is this your logo?</p><div class="kit-logo-actions"><button type="button" class="kit-choose" data-kit-action="use-logo" data-id="${esc(first.id)}" ${dis}>Use this</button><button type="button" class="quiet" data-kit-action="pass-logo" data-id="${esc(first.id)}" ${dis}>Not this</button></div>${thumbs ? `<div class="kit-suggest-others" role="group" aria-label="Other logo suggestions"><span class="muted kit-card-note">Other suggestions</span>${thumbs}</div>` : ''}`;
   };
   const logoBody = hasLogo
-    ? `<div class="kit-drop kit-drop-filled" data-kit-drop="logo">${preview ? tiles(preview) : `<div class="kit-logo-preview kit-logo-preview-none"><span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span></div>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div><p class="muted kit-card-note">${preview ? 'Shown on light and dark so you can check both. ' : ''}Drop a new file on the logo to replace it.</p>`
+    ? `<div class="kit-drop kit-drop-filled" data-kit-drop="logo">${preview ? tiles(preview) : `<div class="kit-logo-preview kit-logo-preview-none"><span>${savedLogo ? 'Logo saved (no preview)' : 'No preview'}</span></div>`}</div><div class="kit-logo-actions">${fileInput('Replace logo')}<label class="kit-file-button" for="kit-logo-file">Replace</label><button type="button" class="quiet" data-kit-action="remove-logo" ${dis}>Remove logo</button></div>`
     : offers.length
       ? `${offerBody()}<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload is-compact" for="kit-logo-file"><span class="kit-upload-title">Or drop your own logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div>`
-      : `<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload" for="kit-logo-file">${ghostTiles}<span class="kit-upload-title">Drop your logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div><p class="muted kit-card-note">Shown on light and dark so you can check both.</p>`;
+      : `<div class="kit-drop" data-kit-drop="logo">${fileInput('')}<label class="kit-upload" for="kit-logo-file">${ghostTiles}<span class="kit-upload-title">Drop your logo here</span><span class="kit-upload-hint">or <u>browse</u> &middot; PNG, JPG, WebP or SVG</span></label></div>`;
   const logoTag = logoPlaces && (chosen || (showTags && provided.logo)) ? `<span class="pill">From your ${esc(logoPlaces)}</span>` : showTags && provided.logo ? tag : '';
   const logoBlock = kitBlock('logo', 'Logo', `${logoBody}${logoError ? `<p class="field-error" id="kit-logo-error" role="alert">${esc(logoError)}</p>` : ''}`, logoTag, 'kit-card kit-logo-block');
 
@@ -1475,10 +1551,10 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   // Colours read from the brand's logo or from frames of its videos say so ("From your logo"); they are suggestions the person edits like any other.
   const suggestedColours = !provided.palette ? suggestedColoursNote(projected.palette) : '';
   const paletteNote = socialPlatform && !provided.palette && palette.length ? `<p class="muted">From your ${socialPlatform} profile picture.</p>` : suggestedColours && palette.length ? `<p class="muted">${esc(suggestedColours)}</p>` : '';
-  const emptyColours = settled ? 'We could not read your colours. Add them here.' : 'No colours yet';
+  const emptyColours = settled ? 'No colours read. Add them here.' : 'No colours yet';
   const paletteFull = loading || palette.length >= KIT_LIMITS.maxColors;
   const addColor = `<button type="button" class="kit-add kit-add-swatch" data-kit-action="add-color" ${paletteFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add colour</span></button>`;
-  const colorsBody = `${paletteNote}${colorRows ? '' : `<p class="muted">${emptyColours}</p>`}<div class="kit-swatches">${colorRows}${addColor}</div>${colorRows ? '<p class="muted kit-card-note">Click a swatch to change it.</p>' : ''}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}`;
+  const colorsBody = `${paletteNote}${colorRows ? '' : `<p class="muted">${emptyColours}</p>`}<div class="kit-swatches">${colorRows}${addColor}</div>${colorRows ? '' : ''}${fieldErrors?.palette ? `<p class="field-error" id="kit-palette-error" role="alert">${esc(fieldErrors.palette)}</p>` : ''}`;
   const readColours = showTags && !provided.palette && !socialPlatform && !Array.isArray(kit.palette) && palette.length && projected.paletteSource === 'website';
   const colorsBlock = kitBlock('colors', 'Colours', colorsBody, showTags && provided.palette ? tag : readColours ? readTag : '', 'kit-card kit-colors-block');
 
@@ -1496,14 +1572,14 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     const stack = `${uploaded ? `'${uploaded}', ` : ''}${family ? `'${family}', ` : ''}var(--sans)`;
     const missing = Boolean(family) && !uploaded && fontPreview.missing.has(key);
     const note = uploaded ? 'Uploaded font file' : missing ? 'Preview unavailable' : '';
-    return `<div class="kit-row kit-font-row${missing ? ' is-fallback' : ''}" data-font-key="${esc(key)}"><span class="kit-font-sample" aria-hidden="true" style="font-family:${esc(stack)}">Aa</span><input type="text" class="kit-font-name" name="kit_font_family_${index}" maxlength="80" placeholder="Inter" list="kit-font-options" value="${esc(font?.family || '')}" aria-label="Font ${n} name" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} style="font-family:${esc(stack)}" ${dis}><select name="kit_font_use_${index}" aria-label="Font ${n} use" ${dis}>${KIT_FONT_USES.map(use => `<option value="${use}" ${font?.use === use ? 'selected' : ''}>${humanize(use)}</option>`).join('')}</select>${removeButton('remove-font', index, `Remove font ${n}`)}<span class="kit-font-note muted" data-font-note>${note}</span>${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
+    return `<div class="kit-row kit-font-row${missing ? ' is-fallback' : ''}" data-font-key="${esc(key)}"><span class="kit-font-sample" aria-hidden="true" style="font-family:${esc(stack)}">Aa</span><input type="text" class="kit-font-name" name="kit_font_family_${index}" maxlength="80" placeholder="Inter" list="kit-font-options" value="${esc(font?.family || '')}" aria-label="Font ${n} name" autocomplete="off" aria-invalid="${error ? 'true' : 'false'}" ${error ? `aria-describedby="${errorId}"` : ''} style="font-family:${esc(stack)}" ${dis}><select name="kit_font_use_${index}" aria-label="Font ${n} use" ${dis}>${KIT_FONT_USES.map(use => `<option value="${use}" ${font?.use === use ? 'selected' : ''}>${use === 'captions' ? 'Post text' : humanize(use)}</option>`).join('')}</select>${removeButton('remove-font', index, `Remove font ${n}`)}<span class="kit-font-note muted" data-font-note>${note}</span>${error ? `<p class="field-error" id="${errorId}" role="alert">${esc(error)}</p>` : ''}</div>`;
   }).join('');
   const fontsFull = loading || fonts.length >= KIT_LIMITS.maxFonts;
   const fontActions = `<div class="kit-actions"><button type="button" class="kit-add" data-kit-action="add-font" ${fontsFull ? 'disabled' : ''}>${KIT_ICONS.plus}<span>Add font</span></button><input type="file" id="kit-font-file" class="kit-file visually-hidden" name="kit_font_file" accept="${KIT_FONT_ACCEPT}" aria-label="Upload a font file" ${fontsFull ? 'disabled' : ''}><label class="kit-file-button kit-upload-font" for="kit-font-file">${KIT_ICONS.upload}<span>Upload a font file</span></label></div>`;
   const fontFeedback = `${kit.fontError ? `<p class="field-error" role="alert">${esc(kit.fontError)}</p>` : ''}${kit.fontStatus ? `<p class="muted kit-card-note" role="status">${esc(kit.fontStatus)}</p>` : ''}`;
   // Fonts guessed from the on-screen text of the brand's videos say "looks like": a close Google font, never a sure match.
   const looksLike = projected.fontsSource === 'looks_like' && !provided.fonts && fonts.length > 0;
-  const looksLikeNote = looksLike ? '<p class="muted kit-card-note">Looks like the text in your videos. A close match from Google Fonts, not a sure one, so please check it.</p>' : '';
+  const looksLikeNote = looksLike ? '<p class="muted kit-card-note">Closest match. Please check.</p>' : '';
   const fontsBody = `<datalist id="kit-font-options">${fontOptions}</datalist>${looksLikeNote}${fontRows ? `<div class="kit-specimens">${fontRows}</div>` : '<p class="muted">No fonts yet</p>'}${fontFeedback}${fontActions}`;
   const readFonts = showTags && !provided.fonts && !Array.isArray(kit.fonts) && fonts.length && !looksLike;
   const fontsBlock = kitBlock('fonts', 'Fonts', fontsBody, showTags && provided.fonts ? tag : looksLike ? '<span class="pill">Suggested, please check</span>' : readFonts ? readTag : '', 'kit-card kit-fonts-block');
@@ -1525,10 +1601,10 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
   const foldersBlock = kitFolders(brand, kit.folders, loading);
 
   const note = loading
-    ? 'Reading your logo, colours and fonts...'
+    ? 'Reading your brand kit...'
     : phase === 'new'
-      ? 'Have your logo, brand colours or fonts? Add them now and Claude will skip looking for them.'
-      : 'Check these and change anything that is not right.';
+      ? 'Have a logo, colours or fonts? Add them here.'
+      : 'Check these and fix anything wrong.';
   return `<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading ? ' aria-busy="true"' : ''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}${photosBlock}${foldersBlock}</div></fieldset>`;
 }
 
@@ -1542,7 +1618,7 @@ export function brandReady(brand) {
 // The brand's name on its own page: the name with a pencil that turns it into an input (Enter saves, Esc cancels, and Save / Cancel buttons for a
 // touch screen). Renaming changes the display name only; the brand's folder keeps its original name. `state.rename` is { open, value, busy, error }.
 const RENAME_PENCIL = '<svg aria-hidden="true" viewBox="0 0 16 16" width="13" height="13"><path d="M11.3 1.3a1 1 0 0 1 1.4 0l2 2a1 1 0 0 1 0 1.4l-8 8-3.6.9.9-3.6 8-8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-export const BRAND_RENAME_HINT = "Press Enter to save or Esc to cancel. The brand's folder keeps its original name.";
+export const BRAND_RENAME_HINT = "Enter saves, Esc cancels.";
 export function brandNameBlock(brand, state = {}) {
   const rename = state.rename && typeof state.rename === 'object' ? state.rename : {};
   const name = brand?.name || '';
@@ -1572,17 +1648,17 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   const step = !existing ? 'create' : phase === 'new' ? 'details' : 'profile';
   const minimum = researchMinimum({ ...values, name: values.name || brand?.name });
   const note = state.declined
-    ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
+    ? `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>`
     : pending
       ? notifyClaudeNotice(state, signal)
       : phase === 'running'
-        ? '<div class="notice" role="status"><span>Claude is researching this brand. The empty fields fill in when it is done.</span></div>'
+        ? '<div class="notice" role="status"><span>Claude is researching this brand.</span></div>'
         : phase === 'failed'
-          ? '<div class="notice" role="status"><span>Research could not finish. Fill in what you know, then save.</span></div>'
+          ? '<div class="notice" role="status"><span>Research did not finish. Fill in what you know and save.</span></div>'
           : step === 'create'
-            ? '<p class="muted">Start with the name. You add the details next, and press Start research when you are ready.</p>'
+            ? '<p class="muted">Start with the name. Details come next.</p>'
             : step === 'details'
-              ? '<p class="muted">Add the brand\'s links and anything you already know, then save. Start research needs a website or at least one social account, and uses everything you have entered. Claude researches the rest.</p>'
+              ? '<p class="muted">Add what you know, then save or start research.</p>'
               : '';
   const heading = step === 'create' ? 'New brand' : step === 'details' ? 'Brand details' : 'Brand profile';
   const tag = step === 'create' ? 'Step 1 of 3' : step === 'details' ? 'Step 2 of 3' : phase === 'running' ? 'Step 3 of 3' : 'Continue';
@@ -1597,7 +1673,7 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   const hidden = `<input type="hidden" name="brand" value="${esc(brand?.slug || '')}">`;
   const open = `<section class="start-card onboarding${step === 'create' ? ' is-create' : ''}">${head}${note}<form id="inline-form" class="start-form" data-onboard-step="${step}" novalidate>${hidden}<div class="form-grid">${nameBlock}</div>`;
   if (step === 'create') {
-    const label = state.busy || reading ? 'Creating...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Create brand';
+    const label = state.busy || reading ? 'Creating...' : state.submitted ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation ? TXT_NEEDS_CLAUDE_ATTENTION : 'Create brand';
     return `${open}${problem}<div class="start-foot"><button class="primary" type="submit" ${inFlight ? 'disabled' : ''}>${label}</button></div></form></section>`;
   }
   const details = step === 'details';
@@ -1608,16 +1684,16 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   const fields = `<div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, editable ? {} : prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${problem}`;
   if (details) {
     const doing = state.action;
-    const saveLabel = state.busy && doing === 'details' ? 'Saving...' : state.submitted && doing === 'details' ? 'Waiting for Claude' : state.needsReconciliation && doing === 'details' ? 'Needs Claude attention' : 'Save details';
-    const startLabel = state.busy && doing === 'start' ? 'Starting...' : state.submitted && doing === 'start' ? 'Waiting for Claude' : state.needsReconciliation && doing === 'start' ? 'Needs Claude attention' : 'Start research';
+    const saveLabel = state.busy && doing === 'details' ? 'Saving...' : state.submitted && doing === 'details' ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation && doing === 'details' ? TXT_NEEDS_CLAUDE_ATTENTION : 'Save details';
+    const startLabel = state.busy && doing === 'start' ? 'Starting...' : state.submitted && doing === 'start' ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation && doing === 'start' ? TXT_NEEDS_CLAUDE_ATTENTION : 'Start research';
     const hint = minimum.ok ? RESEARCH_READY_HINT : minimum.message;
     return `${open}${fields}<div class="start-foot"><p class="muted start-foot-hint" id="start-research-hint" data-start-hint>${esc(hint)}</p><span class="start-foot-actions"><button type="submit" ${inFlight ? 'disabled' : ''}>${saveLabel}</button><button class="primary" type="button" data-action="start-research" aria-describedby="start-research-hint" ${inFlight || !minimum.ok ? 'disabled' : ''}>${startLabel}</button></span></div></form></section>`;
   }
   const buttonLabel = state.busy ? 'Saving...'
-    : state.submitted ? 'Waiting for Claude'
-    : state.needsReconciliation ? 'Needs Claude attention'
+    : state.submitted ? TXT_WAITING_FOR_CLAUDE
+    : state.needsReconciliation ? TXT_NEEDS_CLAUDE_ATTENTION
     : phase === 'running' ? 'Researching...'
-    : 'Save and continue';
+    : TXT_SAVE_AND_CONTINUE;
   return `${open}${fields}<div class="start-foot"><button class="primary" type="submit" ${inFlight || phase === 'running' ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
 }
 
@@ -1630,15 +1706,15 @@ export function metricoolOnboardField(brand, values = {}, metricool = {}) {
   const saved = brand?.publishing?.optedOut ? NO_METRICOOL : brand?.publishing && brand.publishing.found !== false && typeof brand.publishing.blogId === 'string' ? brand.publishing.blogId : '';
   const chosen = typeof values.metricoolBlogId === 'string' ? values.metricoolBlogId : saved;
   const options = [`<option value="" ${chosen ? '' : 'selected'}>Choose later</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.option || item.label)}</option>`), `<option value="${NO_METRICOOL}" ${chosen === NO_METRICOOL ? 'selected' : ''}>Not through Metricool</option>`].join('');
-  return `<div class="channel-grid context-grid metricool-onboard"><label class="field-wide">Metricool brand for this brand's posts<select name="metricoolBlogId" data-saved="${esc(saved)}">${options}</select><span class="muted">Posts for this brand go out only through the Metricool brand you pick. You can change it later from the brand card.</span></label></div>`;
+  return `<div class="channel-grid context-grid metricool-onboard"><label class="field-wide">Metricool brand for this brand's posts<select name="metricoolBlogId" data-saved="${esc(saved)}">${options}</select></label></div>`;
 }
 
 const COMPOSER_TITLE_LIMIT = 80;
 const COMPOSER_TEXT_LIMIT = 6000;
 const COMPOSER_QUESTION = 'What do you want to get done?';
-const COMPOSER_PLACEHOLDER = 'For example: an Instagram Reel for our new serum, or a report on who leads the vitamin C market.';
-const COMPOSER_BRAND_HINT = 'Posts and campaigns need one. Claude will ask.';
-const COMPOSER_FILES_LINE = 'Have files? Add them under References, or in chat after you send this.';
+const COMPOSER_PLACEHOLDER = 'For example: an Instagram Reel for our new serum';
+const COMPOSER_BRAND_HINT = 'Posts need one.';
+const COMPOSER_FILES_LINE = 'Add files under References.';
 
 // A job's title is the first line of what the person wrote, cut at a word when it is long.
 export function composerTitle(text) {
@@ -1655,10 +1731,10 @@ export function composerTitle(text) {
 export function newJobArgs(values = {}, { brands = [], requestId } = {}) {
   const errors = {};
   const text = String(values.text ?? '').trim();
-  if (!text) errors.text = 'Say what you want to get done.';
+  if (!text) errors.text = 'Say what you want done.';
   const slug = String(values.brand ?? '').trim();
   const brand = slug && slug !== NO_BRAND ? brands.filter(brandReady).find(item => item.slug === slug) || null : null;
-  if (slug && slug !== NO_BRAND && !brand) errors.brand = 'Choose one of your brands, or leave it empty.';
+  if (slug && slug !== NO_BRAND && !brand) errors.brand = 'Choose one of your brands.';
   const parsed = parseLinks(values.links);
   if (parsed.error) errors.links = parsed.error;
   if (Object.keys(errors).length) return { errors };
@@ -1690,15 +1766,15 @@ export function composerForm(state = {}, { brands = [], variant = 'card' } = {})
   const text = newJobField(`${id}-text`, COMPOSER_QUESTION, `<textarea id="${id}-text" name="text" rows="${inbox ? 4 : 5}" maxlength="${COMPOSER_TEXT_LIMIT}" placeholder="${esc(COMPOSER_PLACEHOLDER)}" ${newJobAria(`${id}-text`, { error: errors.text })}>${esc(values.text || '')}</textarea>`, { error: errors.text, wide: true, hidden: true });
   const brand = ready.length
     ? newJobField(`${id}-brand`, 'Brand', `<select id="${id}-brand" name="brand" ${newJobAria(`${id}-brand`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })}><option value="" ${brandValue ? '' : 'selected'}>No brand chosen</option>${ready.map(item => `<option value="${esc(item.slug)}" ${brandValue === item.slug ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select>`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })
-    : '<div class="new-field"><span class="new-field-label">Brand</span><p class="field-note">Posts and campaigns need a brand. <button type="button" class="sb-ask" data-action="brand">Onboard a brand</button></p></div>';
+    : '<div class="new-field"><span class="new-field-label">Brand</span><p class="field-note">Needs a brand. <button type="button" class="sb-ask" data-action="brand">Onboard a brand</button></p></div>';
   const links = newJobField(`${id}-links`, 'Links (optional)', `<textarea id="${id}-links" class="links-input" name="links" rows="2" maxlength="${LINK_LIMIT * 2100}" placeholder="One link per line" spellcheck="false" ${newJobAria(`${id}-links`, { error: errors.links })}>${esc(values.links || '')}</textarea>`, { error: errors.links });
   const blocked = state.busy || state.submitted || state.needsReconciliation;
-  const label = state.busy ? 'Sending...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Send';
+  const label = state.busy ? 'Sending...' : state.submitted ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation ? TXT_NEEDS_CLAUDE_ATTENTION : 'Send';
   const problem = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const foot = `<div class="start-foot"><small class="composer-files">${esc(COMPOSER_FILES_LINE)}</small><button class="primary" type="submit" ${blocked ? 'disabled' : ''}>${label}</button></div>`;
   const form = `<form id="${inbox ? 'starter-form' : 'inline-form'}" class="start-form composer-form" novalidate>${text}<div class="composer-grid">${brand}${links}</div>${newJobReferences(state.refs, { busy: state.busy || state.submitted })}${problem}${foot}</form>`;
   if (inbox) return `<section class="composer composer-inbox" aria-labelledby="starter-title"><h3 class="composer-title" id="starter-title">${COMPOSER_QUESTION}</h3>${form}</section>`;
-  const notice = state.declined ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>` : '';
+  const notice = state.declined ? `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>` : '';
   return `<section class="start-card new-job composer"><div class="start-head"><h2 id="composer-title">${COMPOSER_QUESTION}</h2></div>${notice}${form}</section>`;
 }
 
@@ -1715,7 +1791,7 @@ export function plannedAsLine(project, { sent = false } = {}) {
     : sent
       ? '<span class="planned-sent" role="status">Claude has been told.</span>'
       : '<button type="button" class="quiet planned-tell" data-action="not-right">Not right? Tell Claude</button>';
-  return `<p class="planned-as"><span class="planned-text">Claude planned this as <strong>${esc(name)}</strong>: ${esc(reason)}</span>${action}</p>`;
+  return `<div class="planned-as"><span class="planned-text">Claude planned this as <strong>${esc(name)}</strong><details class="cs-more line-more"><summary>View details</summary><span class="line-more-full">${esc(reason)}</span></details></span>${action}</div>`;
 }
 
 // The plain sentence the button sends to Claude. It names the job and asks Claude to ask the person what they meant.
@@ -1769,7 +1845,7 @@ export function brandResearchPhase(brand, draft = null, now = Date.now()) {
 export function brandDriftNotice(project) {
   const brandProfile = project?.brandProfile;
   if (!brandProfile?.changedSincePlanning) return '';
-  return `<div class="notice" role="status"><span>The brand profile has changed since this job was planned (was version ${esc(brandProfile.plannedRevision)}, now version ${esc(brandProfile.currentRevision)}). Ask Claude to check whether the plan still fits.</span></div>`;
+  return `<div class="notice" role="status"><span>The brand profile changed. Ask Claude to check the plan.</span></div>`;
 }
 
 export function brandPillarsPill(brand) {
@@ -1805,7 +1881,7 @@ export function brandChip(brand, metricool = {}) {
   const ready = brandReady(brand);
   const researching = brandResearchPhase(brand) === 'running';
   const state = ready ? 'ready' : 'onboarding';
-  const note = researching ? '<p class="muted brand-chip-voice">Claude is researching this brand. The profile fills in when it\'s done.</p>' : brandVoiceLine(brand);
+  const note = researching ? '<p class="muted brand-chip-voice">Claude is researching this brand.</p>' : brandVoiceLine(brand);
   const action = researching
     ? '<button class="quiet" type="button" disabled>Researching...</button>'
     : `<button class="quiet" data-onboard="${esc(brand.slug)}">${ready ? 'Update' : 'Continue'}</button>`;
@@ -1818,8 +1894,8 @@ export function brandChip(brand, metricool = {}) {
 // captions, calls to action, formats, ad styles) with its count and its top items, the person's own items among them each with a Remove that
 // asks Claude to take it out; a library without `banks` (an older server) draws the person's items and the proven items as two lists. The
 // jobs filed most recently follow. Nothing is drawn for a brand with no library.
-const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: 'Call to action', caption: 'Caption', format: 'Format', industry: 'Industry', funnel: 'Funnel stage', pain: 'Pain point', desire: 'Desire', objection: 'Objection' });
-const LIBRARY_BANK_TITLES = Object.freeze({ pain: 'Pain points', desire: 'Desires', objection: 'Objections', angle: 'Angles', hook: 'Opening lines', caption: 'Captions', cta: 'Calls to action', format: 'Formats', style: 'Ad styles', funnel: 'Funnel stages', industry: 'Industry' });
+const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: TXT_CALL_TO_ACTION, caption: 'Post text', format: 'Format', industry: 'Industry', funnel: 'Funnel stage', pain: 'Pain point', desire: 'Desire', objection: 'Objection' });
+const LIBRARY_BANK_TITLES = Object.freeze({ pain: 'Pain points', desire: 'Desires', objection: 'Objections', angle: 'Angles', hook: 'Opening lines', caption: 'Post texts', cta: 'Calls to action', format: 'Formats', style: 'Ad styles', funnel: 'Funnel stages', industry: 'Industry' });
 // Where a banked item came from, in the words of the person: what the audience said, a competitor's, an ad, or the plugin's own starter line.
 const LIBRARY_SOURCE_WORDS = Object.freeze({ competitor: 'From a competitor', community: 'From forums and comments', review: 'From reviews', ad: 'From an ad', starter: 'Starter line' });
 const LIBRARY_STAGE_WORDS = Object.freeze({ unaware: 'Unaware', problem_aware: 'Problem aware', solution_aware: 'Solution aware', product_aware: 'Product aware', most_aware: 'Most aware' });
@@ -1841,8 +1917,8 @@ export function libraryCountsLine(library) {
 // The Footage line of the Brand library: the brand's archive of past videos, pictures and audio, from `library.footage` ({folders, files,
 // analysedQuick, analysedFull, missing, list: [{id, name, rights, files, missing, state, processed?, total?}]}, which the server adds when
 // the brand has imported footage). The counts, then each folder with whose footage it is. Nothing is drawn for a brand with none.
-const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours', client_ask: 'Client work, ask first', never: 'Reference only' });
-const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
+const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours', client_ask: TXT_CLIENT_WORK_ASK_FIRST, never: 'Reference only' });
+const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: TXT_READING_THE_FILES, stopped: 'Stopped part-way', moved: TXT_FOLDER_NOT_FOUND });
 const footageCount = value => (Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0);
 function libraryFootage(library) {
   const footage = library && typeof library === 'object' ? library.footage : null;
@@ -1867,16 +1943,16 @@ function libraryFootageGroup(brand, footage) {
     return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(folder.name) || 'Folder')}</span><span class="library-meta">${meta}</span></div></li>`;
   }).join('');
   const lost = footage.missing > 0 || footage.list.some(folder => folder.state === 'moved');
-  const note = lost ? '<p class="muted library-more">Some footage is not where it was. Tell Claude where the folder moved to and it will find the files again.</p>' : '';
+  const note = lost ? '<p class="muted library-more">Footage moved. Tell Claude the new folder.</p>' : '';
   return `<section class="library-group" aria-labelledby="library-${esc(brand.slug)}-footage"><h3 id="library-${esc(brand.slug)}-footage">Footage <span class="count">${footage.files}</span></h3><p class="muted library-intro library-footage-counts">${esc(footageCountsLine(footage))}</p><ul class="library-list">${rows}</ul>${note}</section>`;
 }
 // Posted results on a bank item (`score`, `uses`, `label`, `views` from the server's ranking) and on a filed job (`results`): a pill that
 // says winner, weak or early, and the number it rests on. An average item shows the number without a pill. The score is "x your usual":
 // 1.0x is how this brand's posts usually do on that platform. An item with no results shows nothing.
 const RESULT_PILLS = Object.freeze({
-  winner: { word: 'Winner', hint: 'One of the best results of your posts so far' },
-  weak: { word: 'Weak', hint: 'One of the weakest results of your posts so far' },
-  early: { word: 'Early', hint: 'Too early to call: the post is new, has few views, or there are too few posts to compare with' },
+  winner: { word: 'Winner', hint: 'Among your best posts' },
+  weak: { word: 'Weak', hint: 'Among your weakest posts' },
+  early: { word: 'Early', hint: 'Too early to call' },
 });
 const resultNumber = value => (Number.isFinite(value) ? `${value.toFixed(1)}x` : '');
 const resultViews = value => (Number.isFinite(value) && value >= 0 ? `${Math.round(value).toLocaleString('en-US')} views` : '');
@@ -1963,15 +2039,15 @@ function libraryBankGroup(bank, brand, { removing, errors, openKeys, copy }) {
   const title = LIBRARY_BANK_TITLES[bank.kind] || humanize(bank.kind || 'items');
   const key = `brand-library:${brand.slug}:${bank.kind}`;
   const rows = items.map(item => libraryItem({ ...item, proven: item.bank !== 'yours' }, brand, { removing, errors, copy })).join('');
-  const more = total > items.length ? `<p class="muted library-more">${plural(total - items.length, 'more item')} on this computer. Ask Claude to show the whole bank.</p>` : '';
+  const more = total > items.length ? `<p class="muted library-more">${plural(total - items.length, 'more item')} on this computer.</p>` : '';
   return `<details class="library-bank" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary><span class="library-bank-title">${esc(title)}</span><span class="count">${total}</span>${yours ? `<span class="library-bank-yours">${esc(`${yours} yours`)}</span>` : ''}<span class="library-bank-top">${esc(items[0].text)}</span></summary><ul class="library-list">${rows}</ul>${more}</details>`;
 }
 // Fresh trends (`library.trends`, which the server adds when the Trend Scout saw something under 7 days ago): what is rising now in the brand's
 // industry, each with the platform, when it was seen and the post that shows it. They are not the person's own items, so there is no Remove.
 // A hook or caption comes from an ad that keeps running: the ad libraries show no views or spend, so the row says how many days it has run.
-const TREND_KIND_WORDS = Object.freeze({ topic: 'Topic', format: 'Format', sound: 'Sound', hashtag: 'Hashtag', hook: 'Hook', caption: 'Caption' });
+const TREND_KIND_WORDS = Object.freeze({ topic: 'Topic', format: 'Format', sound: 'Sound', hashtag: 'Hashtag', hook: 'Hook', caption: 'Post text' });
 const TREND_SOURCE_WORDS = Object.freeze({ meta_ad_library: 'Meta Ad Library', tiktok_top_ads: 'TikTok Top Ads' });
-const TREND_AD_NOTE = 'Hooks and captions come from ads that keep running. The ad libraries show no views or spend, so days running stands in for them: 30 or more is a likely winner.';
+const TREND_AD_NOTE = 'Days running stands in for views. 30+ likely won.';
 const TREND_PLATFORM_WORDS = Object.freeze({ tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', x: 'X' });
 function libraryTrend(trend, brand, copy = {}) {
   const evidence = (Array.isArray(trend.evidence) ? trend.evidence : []).find(item => item && typeof item === 'object' && safeHttpsLink(item.url)) || null;
@@ -2013,8 +2089,8 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   const lists = banks.length ? bankSection : group('Yours', 'yours', yours, item => libraryItem(item, brand, state)) + group('Proven', 'proven', proven, item => libraryItem(item, brand, state));
   const body = lists + group('Fresh trends', 'trends', trends, trend => libraryTrend(trend, brand, copy), trendNote) + group('Recent jobs filed', 'jobs', jobs, libraryJob) + (footage ? libraryFootageGroup(brand, footage) : '');
   const key = `brand-library:${brand.slug}`;
-  const empty = body ? '' : '<p class="muted">Nothing is filed here yet. Lines you write at the concept step, and the work of finished jobs, are kept here for the next job.</p>';
-  return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body"><p class="muted library-intro">What Claude keeps for this brand and offers again on every new job. You can remove your own items.</p>${body}${empty}</div></details>`;
+  const empty = body ? '' : '<p class="muted">Nothing filed yet.</p>';
+  return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body">${body}${empty}</div></details>`;
 }
 
 // Where this brand's posts go: the Metricool brand it posts through, with one chip per
@@ -2027,12 +2103,12 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
 const COVERAGE_PLATFORMS = Object.freeze([['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']]);
 // Each chip is short enough to stay on one line at phone width; the full sentence is its title.
 const COVERAGE_WORDS = Object.freeze({
-  linked: ['ready', name => `${name} linked`, name => `${name} in Metricool matches the channel on this brand card.`],
-  not_linked: ['needed', name => `${name} not linked`, name => `${name} is on this brand card but is not linked in Metricool.`],
-  different_handle: ['needed', name => `${name} different handle`, name => `${name} in Metricool is a different account from the one on this brand card.`],
-  unverified: ['needed', name => `${name}: check`, name => `Cannot tell whether ${name} in Metricool is the same account as on this brand card: check it in Metricool.`],
-  link_changed: ['needed', name => `${name} changed`, name => `${name} in Metricool is not the account this brand was linked to: pick the Metricool brand again.`],
-  only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is linked in Metricool but is not on this brand card.`],
+  linked: ['ready', name => `${name} linked`, name => `${name} matches Metricool.`],
+  not_linked: ['needed', name => `${name} not linked`, name => `${name} is not linked in Metricool.`],
+  different_handle: ['needed', name => `${name} different handle`, name => `${name} is a different account in Metricool.`],
+  unverified: ['needed', name => `${name}: check`, name => `Check ${name} in Metricool.`],
+  link_changed: ['needed', name => `${name} changed`, name => `${name} changed. Pick the Metricool brand again.`],
+  only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is only in Metricool.`],
 });
 
 export function metricoolCoverageChips(coverage, trailing = '') {
@@ -2052,7 +2128,7 @@ function metricoolPickerForm({ slug, brands = [], current = '', selected = '', b
   const chosen = selected || current;
   const options = [`<option value="" ${chosen ? '' : 'selected'} disabled>Choose a Metricool brand</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.option || item.label)}</option>`), `<option value="${NO_METRICOOL}" ${chosen === NO_METRICOOL ? 'selected' : ''}>Not through Metricool</option>`].join('');
   const cancelButton = cancel ? `<button type="button" class="quiet" data-metricool-cancel="${id}" ${busy ? 'disabled' : ''}>Cancel</button>` : '';
-  const label = askHere ? 'Which Metricool brand should this brand post through?' : 'Post through this Metricool brand';
+  const label = askHere ? 'Metricool brand to post through' : 'Post through this Metricool brand';
   return `<div class="brand-chip-publish brand-chip-publish-edit"><label class="muted" for="metricool-select-${id}">${esc(label)}</label><span class="metricool-pick"><select id="metricool-select-${id}" name="metricool_brand_select" data-metricool-brand="${id}" ${busy ? 'disabled' : ''}>${options}</select><button type="button" class="primary" data-metricool-save="${id}" ${busy || !chosen || chosen === current ? 'disabled' : ''}>${busy ? 'Saving...' : 'Use this brand'}</button>${cancelButton}</span>${error ? `<p class="muted metricool-error" role="alert">${esc(error)}</p>` : ''}</div>`;
 }
 
@@ -2060,7 +2136,7 @@ export function brandMetricoolLine(brand, { brands = [], open = false, busy = fa
   const publishing = brand?.publishing;
   const slug = esc(brand?.slug || '');
   const ready = brandReady(brand);
-  if (publishing?.unreadable) return '<div class="brand-chip-publish"><p class="muted metricool-warning">Could not read this brand\'s Metricool details</p></div>';
+  if (publishing?.unreadable) return '<div class="brand-chip-publish"><p class="muted metricool-warning">Could not read the Metricool details</p></div>';
   const optedOut = Boolean(publishing?.optedOut);
   const gone = Boolean(publishing) && publishing.found === false && !optedOut;
   const askHere = !publishing && brands.length > 5 && ready;
@@ -2073,11 +2149,11 @@ export function brandMetricoolLine(brand, { brands = [], open = false, busy = fa
   // Change sits at the end of the chips row, or at the end of the warning when the saved brand is gone.
   const canChange = ready && (brands.length > 1 || ((gone || optedOut) && brands.length > 0) || (brands.length === 1 && !optedOut));
   const change = canChange ? `<button type="button" class="quiet" data-metricool-change="${slug}">Change</button>` : '';
-  if (optedOut) return `<div class="brand-chip-publish"><p class="muted">Posts for this brand are not sent through Metricool${change ? ` ${change}` : ''}</p></div>`;
+  if (optedOut) return `<div class="brand-chip-publish"><p class="muted">Not posting through Metricool${change ? ` ${change}` : ''}</p></div>`;
   if (gone) {
-    return `<div class="brand-chip-publish"><p class="muted metricool-warning">Metricool no longer lists the brand <strong>${esc(publishing.label)}</strong>, so posts have nowhere to go.${change ? ` ${change}` : ''}</p></div>`;
+    return `<div class="brand-chip-publish"><p class="muted metricool-warning">Metricool no longer lists <strong>${esc(publishing.label)}</strong>. Posts have nowhere to go.${change ? ` ${change}` : ''}</p></div>`;
   }
-  return `<div class="brand-chip-publish"><p class="muted">Posts go out through Metricool, brand <strong>${esc(publishing.label)}</strong></p>${metricoolCoverageChips(publishing.coverage, change)}</div>`;
+  return `<div class="brand-chip-publish"><p class="muted">Metricool brand: <strong>${esc(publishing.label)}</strong></p>${metricoolCoverageChips(publishing.coverage, change)}</div>`;
 }
 
 export function brandStudioWorkspaceLine(brand) {
@@ -2092,10 +2168,10 @@ export function brandStudioWorkspaceLine(brand) {
 // state pill on the right. `busy` disables the actions while a request for
 // this connector is in flight.
 const CONNECTOR_GUIDANCE = Object.freeze({
-  threeecho_studio: 'Add 3Echo Studio in claude.ai: Settings, Connectors, then come back and say done.',
-  metricool: 'Add Metricool in claude.ai: Settings, Connectors, then come back and say done.',
-  meta_ads: 'Add Meta ads in claude.ai: Settings, Connectors, as a custom connector with the URL https://mcp.facebook.com/ads, then come back and say done.',
-  tiktok_ads: 'Add TikTok for Business in claude.ai: Settings, Connectors, then come back and say done.',
+  threeecho_studio: 'Add 3Echo Studio in claude.ai Connectors, then say done.',
+  metricool: 'Add Metricool in claude.ai Connectors, then say done.',
+  meta_ads: 'Add Meta ads in claude.ai as a custom connector at https://mcp.facebook.com/ads.',
+  tiktok_ads: 'Add TikTok for Business in claude.ai Connectors, then say done.',
 });
 
 // Marks for connectors whose first two letters would match another's (Metricool and Meta ads are both ME).
@@ -2134,7 +2210,7 @@ export function connectorCard(connector, { busy = false, waiting = false } = {})
 export function notifyClaudeNotice(state = {}, signal = {}, now = Date.now()) {
   const { artifact = false, availability = null, busy = false } = signal;
   const helper = availability === 'writers_only' || availability === 'no_session' ? SIGNAL_OUTCOMES[availability] : '';
-  const text = esc(helper || state.message || 'Saved. Claude picks this up automatically; if nothing happens, notify Claude.');
+  const text = esc(helper || state.message || 'Saved. If nothing happens, notify Claude.');
   const delivered = state.signal === 'sent';
   const showButton = artifact && availability !== 'off' && !delivered;
   const canNotify = availability === 'available';
@@ -2172,10 +2248,10 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
     const brand = (brands || []).find(item => item.slug === project.brand);
     const brandStage = brand?.usage?.stages?.[0];
     if (brandStage) {
-      rows.push(usageFooterRow('Brand research', brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now), { note: 'Shared by every job for this brand; not part of the job total.' }));
+      rows.push(usageFooterRow('Brand research', brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now), { note: NOTE_SHARED_COST }));
     }
     const setupStage = brand?.usage?.stages?.find(stage => stage.id === 'brand-setup');
-    if (setupStage) rows.push(usageFooterRow('Brand setup', setupStage.tokens, null, { note: 'Shared by every job for this brand; not part of the job total.' }));
+    if (setupStage) rows.push(usageFooterRow('Brand setup', setupStage.tokens, null, { note: NOTE_SHARED_COST }));
     const generation = usage.generation || {};
     const studio = creditFraction(generation.threeEchoCredits);
     const voice = creditFraction(generation.elevenLabsCredits);
@@ -2384,7 +2460,7 @@ export function reportArticle(report, { jobTitle = '' } = {}) {
   const { title, body, tiles, unseen, shown } = reportContent(report);
   const missing = unseen > 0 ? `<p class="muted">${shown ? `${unseen} more ${unseen === 1 ? 'still is' : 'stills are'} on your computer.` : `The ${unseen === 1 ? 'still is' : 'stills are'} on your computer.`}</p>` : '';
   const stills = tiles.length || missing ? `<h4>Stills</h4>${tiles.length ? `<ul class="still-grid">${tiles.map(tile => `<li>${tile}</li>`).join('')}</ul>` : ''}${missing}` : '';
-  const shortened = report.truncated ? '<p class="muted">Shortened for the board. The full report is on your computer.</p>' : '';
+  const shortened = report.truncated ? `<p class="muted">${NOTE_SHORTENED}</p>` : '';
   const heading = title.toLowerCase() === String(jobTitle || '').trim().toLowerCase() ? '' : `<h3>${esc(title)}</h3>`;
   return `<article class="doc-file report-doc">${heading}<div class="md">${body}${stills}</div>${shortened}</article>`;
 }
@@ -2400,7 +2476,7 @@ export function reportFileName(title, extension) {
   return `${base || 'report'}.${extension}`;
 }
 
-const SHORTENED_COPY = 'This copy was shortened. The full report is on your computer.';
+const SHORTENED_COPY = NOTE_SHORTENED;
 
 export function reportMarkdownFile(report, title) {
   const stills = Array.isArray(report?.stills) ? report.stills : [];
@@ -2463,10 +2539,10 @@ export function reportHtmlFile(report, title) {
 }
 
 const DOWNLOAD_NOTES = Object.freeze({
-  rate_limited: 'Try again in a moment.',
-  extension_not_enabled: 'This format can\'t be saved here.',
-  rejected_extension: 'This format can\'t be saved here.',
-  too_large: 'This file is too big to save here.',
+  rate_limited: 'Try again shortly.',
+  extension_not_enabled: NOTE_FORMAT_UNSAVABLE,
+  rejected_extension: NOTE_FORMAT_UNSAVABLE,
+  too_large: 'This file is too big.',
 });
 const DOWNLOAD_FAILED = new Set(['bad_request', 'transform_error', 'request_unknown']);
 
@@ -2546,10 +2622,10 @@ export function placementIssue(platform, placement, format, ratios = []) {
   const name = { reel: 'A Reel', story: 'A Story', video: 'A TikTok video' }[placement] || 'This post type';
   if (format) {
     if ((placement === 'reel' || (platform === 'tiktok' && placement === 'video')) && !VIDEO_FORMATS.includes(format)) return `${name} needs a video format.`;
-    if (placement === 'story' && !STORY_FORMATS.includes(format)) return 'A Story needs an image or video format.';
-    if (platform === 'tiktok' && placement === 'photo' && !PHOTO_FORMATS.includes(format)) return 'A TikTok photo post needs the Image or Carousel format.';
-    if (platform === 'instagram' && placement === 'post' && format === 'text_only') return 'An Instagram post needs an image or video format.';
-    if (placement === 'carousel' && format !== 'carousel') return 'A carousel needs the Carousel format.';
+    if (placement === 'story' && !STORY_FORMATS.includes(format)) return 'A Story needs an image or video.';
+    if (platform === 'tiktok' && placement === 'photo' && !PHOTO_FORMATS.includes(format)) return 'TikTok photos need Image or Carousel.';
+    if (platform === 'instagram' && placement === 'post' && format === 'text_only') return 'Instagram needs an image or video.';
+    if (placement === 'carousel' && format !== 'carousel') return 'Use the Carousel format.';
   }
   if (VERTICAL_TYPES.includes(placement) && (placement !== 'video' || platform === 'tiktok') && (ratios || []).some(ratio => ratio !== '9:16')) return `${name} is 9:16.`;
   return '';
@@ -2603,7 +2679,7 @@ export function intakePatch(intake, draft = {}) {
     } else if (field.input === 'links') {
       const { links, error } = parseLinks(values[key]);
       if (error) errors[key] = error;
-      else if (!links.length) { if (field.missing) errors[key] = field.need === 'video' ? 'Add a link to the video, or give the file to Claude in chat.' : field.need === 'link_or_file' ? 'Add at least one link, or give the files to Claude in chat.' : 'Add at least one link.'; }
+      else if (!links.length) { if (field.missing) errors[key] = field.need === 'video' ? 'Add a video link, or give the file to Claude.' : field.need === 'link_or_file' ? 'Add a link, or give the files to Claude.' : 'Add at least one link.'; }
       else if (field.missing || changed([key])) patch[key] = links;
     } else if (field.input === 'textarea') {
       const text = String(values[key] || '').trim();
@@ -2614,14 +2690,14 @@ export function intakePatch(intake, draft = {}) {
       const currency = String(values.budget_currency || '').trim().toUpperCase();
       const amountText = String(values.budget_amount ?? '').trim();
       const amount = Number(amountText);
-      if (!/^[A-Z]{3}$/.test(currency)) errors.budget_currency = 'Enter a three-letter currency code, for example SGD.';
-      if (!amountText || !Number.isFinite(amount) || amount < 0) errors.budget_amount = 'Enter the most you want to spend.';
+      if (!/^[A-Z]{3}$/.test(currency)) errors.budget_currency = 'Use a currency code like SGD.';
+      if (!amountText || !Number.isFinite(amount) || amount < 0) errors.budget_amount = 'Enter your maximum spend.';
       if (!errors.budget_currency && !errors.budget_amount && (field.missing || changed(['budget_currency', 'budget_amount']))) patch.budget = { ...(field.value?.extra || {}), currency, maxTotalAmount: amount };
     } else if (field.input === 'url') {
       const text = normalizeChannelInput('website', values[key]);
       let valid = false;
       try { valid = /^https?:$/.test(new URL(text).protocol); } catch { valid = false; }
-      if (!valid) { if (field.missing || text) errors[key] = 'Enter a full URL, for example https://example.com.'; }
+      if (!valid) { if (field.missing || text) errors[key] = 'Enter a full URL.'; }
       else if (field.missing || changed([key])) patch[key] = text;
     } else if (field.input === 'deliverables') {
       const rows = deliverableRows(field, intakePlatforms(intake, values), values);
@@ -2634,7 +2710,7 @@ export function intakePatch(intake, draft = {}) {
       for (const row of rows) {
         const count = Number(row.count);
         if (!formats.includes(row.format)) { errors[`${row.key}_format`] = 'Choose a format.'; rowErrors = true; }
-        if (!Number.isInteger(count) || count < 1 || count > 100) { errors[`${row.key}_count`] = 'Enter a whole number from 1 to 100.'; rowErrors = true; }
+        if (!Number.isInteger(count) || count < 1 || count > 100) { errors[`${row.key}_count`] = 'Enter a number from 1 to 100.'; rowErrors = true; }
         const extra = { ...(row.item?.extra || {}) };
         if (row.placements.length && isVerticalPostType(row.platform, row.placement)) extra.aspectRatios = ['9:16'];
         if (row.placements.length) {
@@ -2654,7 +2730,7 @@ export function intakePatch(intake, draft = {}) {
 export function intakeArgs(project, draft, requestId) {
   const { patch, errors } = intakePatch(project?.intake, draft);
   if (Object.keys(errors).length) return { errors };
-  if (!Object.keys(patch).length) return { errors: { form: 'Change or answer at least one item before saving.' } };
+  if (!Object.keys(patch).length) return { errors: { form: NOTE_NOTHING_CHANGED } };
   return { args: { requestId, brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, patch, ...(project.title ? { title: project.title } : {}) } };
 }
 
@@ -2727,7 +2803,7 @@ export function placementOptionsHtml(list, selected = '') {
 // so; one that nothing fits says what to change (a rule to fix, so it is a conflict, not a hint).
 const POST_NOUNS = { reel: 'Reel', story: 'Story', post: 'post', carousel: 'carousel', video: 'video', photo: 'photo post' };
 const FORMAT_MEDIA = { static_image: 'image', carousel: 'carousel', brand_video: 'video', ugc: 'video', motion_graphic: 'video', text_only: 'text post' };
-const PLATFORM_NEEDS = { instagram: 'a picture or a video', tiktok: 'a video, a picture or a set of pictures', facebook: 'a picture, a video or words' };
+const PLATFORM_NEEDS = { instagram: 'a picture or a video', tiktok: 'a video or pictures', facebook: 'a picture, a video or words' };
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
 const choicesOf = nouns => nouns.join(', ').replace(/, ([^,]*)$/, ' or $1');
 export function placementAsks(rows) {
@@ -2823,13 +2899,13 @@ export function intakeForm(project, state = {}, signal = {}) {
   const other = [...new Set((intake.other || []).map(intakeLabel))];
   const pending = state.submitted || state.needsReconciliation;
   const notice = state.declined
-    ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
+    ? `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>`
     : pending ? notifyClaudeNotice(state, signal) : '';
   const otherList = other.length ? `<div class="intake-other"><span class="intake-label-text">${fields.length ? 'Also needed, in chat' : 'Still needed'}</span><ul>${other.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>` : '';
   if (!fields.length) {
     return `<section class="panel intake" aria-labelledby="intake-title"><div class="section-head"><h2 id="intake-title">Finish the brief</h2></div>${notice}${otherList}</section>`;
   }
-  const buttonLabel = state.busy ? 'Saving...' : state.submitted ? 'Waiting for Claude' : state.needsReconciliation ? 'Needs Claude attention' : 'Save and continue';
+  const buttonLabel = state.busy ? 'Saving...' : state.submitted ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation ? TXT_NEEDS_CLAUDE_ATTENTION : TXT_SAVE_AND_CONTINUE;
   const error = state.error || errors?.form ? `<p class="notice error inline-error" role="alert">${esc(errors?.form || state.error)}</p>` : '';
   const platforms = intakePlatforms(intake, values);
   const brief = intake.brief && !fields.some(field => field.key === 'request') ? `<div class="intake-brief"><span class="intake-label-text">Your brief</span><p>${esc(intake.brief)}</p></div>` : '';
@@ -2847,14 +2923,14 @@ export function drawerTabs(file) {
 
 export function drawerPrompt(file) {
   const prompt = typeof file?.prompt === 'string' ? file.prompt.trim() : '';
-  return prompt ? `<pre class="drawer-prompt">${esc(prompt)}</pre>` : '<p class="muted">No prompt was recorded for this output.</p>';
+  return prompt ? `<pre class="drawer-prompt">${esc(prompt)}</pre>` : '<p class="muted">No prompt recorded.</p>';
 }
 
 const fact = (label, value) => (value ? `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>` : '');
 
 export function drawerMade(file) {
   const made = file?.made;
-  if (!made) return '<p class="muted">Nothing was recorded for how this output was made.</p>';
+  if (!made) return '<p class="muted">Nothing recorded.</p>';
   const what = [made.what, made.item, Number(made.version) > 0 ? `Version ${Number(made.version)}` : ''].filter(Boolean).join(' · ');
   const credits = creditNumber(made.credits);
   return `<dl class="drawer-facts">${[
@@ -2887,16 +2963,16 @@ const GATE_TITLES = Object.freeze({
   cut: 'Check the joined video',
   finish: 'Check the finished video',
   content: 'Approve the final post',
-  publish: 'Confirm where and when to post',
+  publish: 'Confirm where and when',
   campaign_proposal: 'Approve the campaign plan',
   campaign_activation: 'Approve going live',
   findings: 'Approve the report',
 });
 const REVIEW_WAITING = Object.freeze({
-  preparing: 'Claude is preparing the files for this review.',
+  preparing: 'Claude is preparing the files.',
   loading: 'Loading this review...',
-  syncing: 'Waiting for Claude to put this review on the board.',
-  changed: 'This changed after it was shown to you. Ask Claude to show it again.',
+  syncing: TXT_WAITING_FOR_CLAUDE_2,
+  changed: 'Changed since you saw it. Ask Claude to show it again.',
 });
 const PLATFORM_NAMES = Object.freeze({ facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', youtube: 'YouTube' });
 const platformName = value => PLATFORM_NAMES[String(value || '').toLowerCase()] || humanize(value);
@@ -2926,7 +3002,7 @@ export function stageProgress(project) {
 }
 
 export function jobLoadingLine(state = 'loading') {
-  return `<p class="muted job-loading" role="status">${esc(state === 'loading' ? 'Loading this job...' : 'Waiting for Claude to put this job on the board.')}</p>`;
+  return `<p class="muted job-loading" role="status">${esc(state === 'loading' ? 'Loading this job...' : TXT_WAITING_FOR_CLAUDE_2)}</p>`;
 }
 
 /** The review the job waits on, from the projection. */
@@ -3255,7 +3331,7 @@ const STRATEGY_ICON = Object.freeze({
   cta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   other: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg>',
 });
-const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: 'Their problem', cta: 'Call to action' });
+const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: 'Their problem', cta: TXT_CALL_TO_ACTION });
 /** The first clause of a strategy line, plain and capitalised, cut to `limit` characters on a word. */
 export function strategyShort(value, limit = 70, { clause = true } = {}) {
   let text = String(value ?? '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
@@ -3329,12 +3405,12 @@ export function hookLinesOf(concept, { own = {}, edited = {} } = {}) {
  */
 export function applyHookEdit(state, concept) {
   const edit = state?.hookEdit;
-  if (!edit || !concept || concept.id !== edit.id) return { error: 'Nothing to save.' };
+  if (!edit || !concept || concept.id !== edit.id) return { error: TXT_NOTHING_TO_SAVE };
   const text = cleanHookLine(edit.text);
   if (!text) return { error: 'Type your opening line first.' };
   if (text.length > HOOK_LINE_LIMIT) return { error: `Keep it to ${HOOK_LINE_LIMIT} characters or fewer.` };
   const { lines } = hookLinesOf(concept, { own: state.ownLines, edited: state.editedLines });
-  if (edit.at === 'new' && (state.ownLines?.[edit.id] || []).length >= HOOK_OWN_LIMIT) return { error: `That is the most you can add here (${HOOK_OWN_LIMIT}).` };
+  if (edit.at === 'new' && (state.ownLines?.[edit.id] || []).length >= HOOK_OWN_LIMIT) return { error: `Limit reached (${HOOK_OWN_LIMIT}).` };
   if (edit.at !== 'new' && !lines[edit.at]) return { error: 'That line is no longer here.' };
   const same = lines.findIndex((line, at) => at !== edit.at && line.text.toLowerCase() === text.toLowerCase());
   let pick = same;
@@ -3416,7 +3492,7 @@ const PICK_ROWS = Object.freeze([
   { field: 'funnel', title: 'Funnel stage', noun: 'funnel stage', picked: 'Funnel stage', own: 'funnel stage' },
   { field: 'style', title: 'Ad style', noun: 'ad style', picked: 'Ad style', own: 'ad style' },
   { field: 'format', title: 'Format', noun: 'format', picked: 'Format', own: 'format' },
-  { field: 'cta', title: 'Call to action', noun: 'call to action', picked: 'CTA', own: 'CTA' },
+  { field: 'cta', title: TXT_CALL_TO_ACTION, noun: 'call to action', picked: 'CTA', own: 'CTA' },
   { field: 'pain', title: 'Problem', noun: 'problem', picked: 'Problem', own: 'problem', limit: HOOK_LINE_LIMIT },
   { field: 'angle', title: 'Angle', noun: 'angle', picked: 'Angle', own: 'angle', limit: HOOK_LINE_LIMIT },
   { field: 'subtopic', title: 'Subtopic', noun: 'subtopic', picked: 'Subtopic', own: 'subtopic' },
@@ -3502,7 +3578,7 @@ function pickRowOf(options, field, rowKey, fallbackId, { chosen, added } = {}) {
 export function applyPickEdit(state, options, concept = null) {
   const edit = state?.strategyEdit;
   const parts = edit ? pickRowParts(edit.row) : null;
-  if (!parts || (parts.id !== null && concept?.id !== parts.id)) return { error: 'Nothing to save.' };
+  if (!parts || (parts.id !== null && concept?.id !== parts.id)) return { error: TXT_NOTHING_TO_SAVE };
   const noun = PICK_ROW_OF[parts.field].noun;
   const text = cleanHookLine(edit.text);
   if (!text) return { error: `Type your own ${noun} first.` };
@@ -3510,7 +3586,7 @@ export function applyPickEdit(state, options, concept = null) {
   const row = pickRowOf(options, parts.field, edit.row, pickFallback(options, parts.field, concept), { chosen: state.strategyPicks, added: state.strategyOwn });
   if (!row) return { error: 'That row is no longer here.' };
   const same = row.options.find(item => item.text.toLowerCase() === text.toLowerCase() || pickShown(item).toLowerCase() === text.toLowerCase());
-  if (!same && !row.room) return { error: `That is the most you can add here (${PICK_OWN_LIMIT}).` };
+  if (!same && !row.room) return { error: `Limit reached (${PICK_OWN_LIMIT}).` };
   if (!same) state.strategyOwn = { ...(state.strategyOwn || {}), [edit.row]: [...row.mine, text] };
   const pick = same ? same.id : ownPickId(text);
   state.strategyPicks = { ...(state.strategyPicks || {}), [edit.row]: pick };
@@ -3651,9 +3727,9 @@ const CC_PLATFORMS = Object.freeze({
   facebook: { name: 'Facebook', icon: 'meta' }, 'meta-ad': { name: 'Meta ad', icon: 'meta' }, web: { name: 'Web', icon: 'web' },
 });
 const CC_WHY = Object.freeze({
-  brand: 'Built on what already works for this brand.',
-  competitors: "Borrows the shape of a competitor's winner, never their words or claims.",
-  trending: 'Rides a topic people in this niche keep watching.',
+  brand: 'Built on what works for this brand.',
+  competitors: "Borrows a competitor winner's shape.",
+  trending: 'Rides a topic your niche watches.',
 });
 const CC_FIELD = Object.freeze({
   source: /^sources?$/i, insight: /^insight\b/i, anchor: /^anchor\b/i, stage: /^awareness[\s_-]*stage\b/i, angle: /^angle\b/i,
@@ -3733,7 +3809,7 @@ const ccSourcePill = source => (source ? `<span class="cc-src cc-src-${esc(sourc
 
 export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null, panel = null } = {}) {
   const list = concepts?.concepts || [];
-  if (!list.length) return '<p class="muted">No concepts were found in this file.</p>';
+  if (!list.length) return '<p class="muted">No concepts found.</p>';
   const lock = disabled || Boolean(strategy?.disabled);
   const model = concept => {
     const fields = (concept.fields || []).filter(field => field && String(field.value ?? '').trim());
@@ -3760,16 +3836,16 @@ export function conceptCards(concepts, choice = null, { disabled = false, hooks 
   const card = item => {
     const { concept, source, lines, picked, proof } = item;
     const id = esc(concept.id);
-    const facts = [['Format', factOf(item, CC_FIELD.format) || factOf(item, /^visual[\s_-]*format\b/i)], ['Subtopic', factOf(item, CC_FIELD.subtopic)], ['Length', factOf(item, CC_FIELD.length)], ['Call to action', factOf(item, CC_FIELD.cta)]]
+    const facts = [['Format', factOf(item, CC_FIELD.format) || factOf(item, /^visual[\s_-]*format\b/i)], ['Subtopic', factOf(item, CC_FIELD.subtopic)], ['Length', factOf(item, CC_FIELD.length)], [TXT_CALL_TO_ACTION, factOf(item, CC_FIELD.cta)]]
       .filter(([, value]) => value).map(([label, value]) => `<span class="cc-fact"><span>${esc(label)}</span><b title="${esc(value)}">${esc(value)}</b></span>`).join('');
     const opens = lines.length
-      ? `<span class="cc-opens"><span class="cc-label">Opens with</span><q>${esc(lines[picked].text)}</q><span class="cc-opens-foot">Line ${picked + 1} of ${lines.length}<button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="hooks">Change opening line</button></span></span>`
-      : `<span class="cc-opens is-empty"><span class="cc-label">Opens with</span><span class="cc-opens-none">No opening line is listed yet.</span><span class="cc-opens-foot"><button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="hooks">Add an opening line</button></span></span>`;
+      ? `<span class="cc-opens"><span class="cc-label">Opens with</span><q>${esc(lines[picked].text)}</q><span class="cc-opens-foot">Line ${picked + 1} of ${lines.length}</span></span>`
+      : `<span class="cc-opens is-empty"><span class="cc-label">Opens with</span><span class="cc-opens-none">None yet.</span></span>`;
     const why = source && CC_WHY[source.kind] ? `<p class="cc-why">${esc(CC_WHY[source.kind])}</p>` : '';
     let evidence = '';
     if (proof.length) evidence = `<span class="cc-tiles">${proof.slice(0, 3).map(tile => ccTile(tile)).join('')}</span>`;
-    else if (source?.detail) evidence = `<p class="cc-evidence">${esc(ccCut(ccPlain(source.detail), 160))}</p><button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="why">See the research in details</button>`;
-    else if (!source) evidence = '<p class="cc-evidence">No research is attached to this concept.</p>';
+    else if (source?.detail) evidence = `<p class="cc-evidence">${esc(ccCut(ccPlain(source.detail), 160))}</p>`;
+    else if (!source) evidence = '<p class="cc-evidence">No research attached.</p>';
     const strength = item.strength === null ? '' : `<span class="cc-strength"><span class="cc-strength-row">Strength score<b>${item.strength.toFixed(1)} / 10</b></span>${ccMeter(item.strength)}</span>`;
     const credits = Number.isInteger(concept.credits) ? `<span class="cc-credits">${esc(`${concept.credits.toLocaleString()} credits for media`)}</span>` : '';
     return `<label class="cc-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${id}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="cc-face">`
@@ -3795,7 +3871,7 @@ function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, st
   const row = (label, html, field) => `<div class="cc-kv-row"><dt>${esc(label)}</dt><dd${field && /\n/.test(field.value) ? ' class="lines"' : ''}>${html}</dd></div>`;
   const fieldRow = (label, field) => (field ? row(label, textOf(field), field) : '');
   // Opening line
-  const hooksSection = `<section class="cc-sec" data-cc-sec="hooks"><h3>Opening line</h3><p class="cc-sec-intro">The first 2 seconds. Pick one, or write your own.</p><dl class="cc-hook-dl" id="cc-hooks-${id}">${hookPicks(concept, hookField, { hooks, own, edited, edit, disabled })}</dl></section>`;
+  const hooksSection = `<section class="cc-sec" data-cc-sec="hooks"><h3>Opening line</h3><dl class="cc-hook-dl" id="cc-hooks-${id}">${hookPicks(concept, hookField, { hooks, own, edited, edit, disabled })}</dl></section>`;
   // Why it works
   const insight = take(CC_FIELD.insight);
   const anchor = take(CC_FIELD.anchor);
@@ -3811,7 +3887,7 @@ function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, st
     stage ? row('Where viewers are', stageHtml, stage) : '', fieldRow('Angle', angle), fieldRow('In one line', oneline), fieldRow('Why this wins', wins),
   ].join('');
   const tiles = proof.length ? `<span class="cc-tiles">${proof.map(tile => ccTile(tile, true)).join('')}</span>` : '';
-  const whySection = (whyRows || tiles) ? `<section class="cc-sec" data-cc-sec="why"><h3>Why it works</h3>${source && CC_WHY[source.kind] ? `<p class="cc-sec-intro">${esc(CC_WHY[source.kind])}</p>` : ''}${whyRows ? `<dl class="cc-kv">${whyRows}</dl>` : ''}${tiles}</section>` : '';
+  const whySection = (whyRows || tiles) ? `<section class="cc-sec" data-cc-sec="why"><h3>Why it works</h3>${whyRows ? `<dl class="cc-kv">${whyRows}</dl>` : ''}${tiles}</section>` : '';
   // How the video plays
   const beatsField = take(CC_FIELD.beats);
   const beats = beatsField ? ccBeatsOf(beatsField.value) : null;
@@ -3825,7 +3901,7 @@ function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, st
   const playSection = (beatsHtml || playRows || restRows) ? `<section class="cc-sec" data-cc-sec="plays"><h3>How the video plays</h3>${beatsHtml}${playRows || restRows ? `<dl class="cc-kv">${playRows}${restRows}</dl>` : ''}</section>` : '';
   // Strategy picks
   const pickRows = conceptPickRows(concept, strategy, lock);
-  const picksSection = pickRows ? `<section class="cc-sec" data-cc-sec="picks"><h3>Strategy picks</h3><p class="cc-sec-intro">Already set from the research. Change any of them.</p><div class="cc-picks">${pickRows.map(entry => pickRowHtml(entry, { concept, edit: strategy.edit, disabled: lock })).join('')}</div></section>` : '';
+  const picksSection = pickRows ? `<section class="cc-sec" data-cc-sec="picks"><h3>Strategy picks</h3><div class="cc-picks">${pickRows.map(entry => pickRowHtml(entry, { concept, edit: strategy.edit, disabled: lock })).join('')}</div></section>` : '';
   // Scores
   const average = item.strength === null ? '' : `<p class="cc-score-total"><span>Strength score</span><b>${item.strength.toFixed(1)} / 10</b></p>`;
   const bars = scores.length ? `<div class="cc-scores">${scores.map(score => `<div class="cc-score"><span class="cc-strength-row">${esc(score.label)}<b>${score.value}/10</b></span>${ccMeter(score.value)}</div>`).join('')}</div>` : (rubricField ? `<p class="cc-text${/\n/.test(rubricField.value) ? ' lines' : ''}">${inlineMarkdown(rubricField.value)}</p>` : '');
@@ -3926,7 +4002,7 @@ function recipeOptionCards(deliverableId, field, fieldDoc, picked, disabled) {
   return `<div class="recipe-grid" role="radiogroup" aria-label="${esc(fieldDoc.label)}">${cards}${own}</div>`;
 }
 
-const CTA_STYLE_FALLBACK = Object.freeze([['link_caption', 'Link in the caption'], ['link_bio', 'Link in the bio'], ['story_sticker', 'Story link sticker'], ['comment_keyword', 'Comment a keyword'], ['dm', 'Send a DM'], ['save', 'Ask people to save'], ['share_send', 'Ask people to share'], ['question', 'Ask a question'], ['follow', 'Ask people to follow'], ['none', 'No call to action']].map(([code, label]) => ({ code, label })));
+const CTA_STYLE_FALLBACK = Object.freeze([['link_caption', 'Link in the post text'], ['link_bio', 'Link in the bio'], ['story_sticker', 'Story link sticker'], ['comment_keyword', 'Comment a keyword'], ['dm', 'Send a DM'], ['save', 'Ask people to save'], ['share_send', 'Ask people to share'], ['question', 'Ask a question'], ['follow', 'Ask people to follow'], ['none', 'No call to action']].map(([code, label]) => ({ code, label })));
 
 function recipeOwnForm(deliverableId, field, own, catalog, disabled) {
   const prefix = `recipe_${deliverableId}_${field}_own`;
@@ -3963,7 +4039,7 @@ export function recipeReviewSection(doc, recipeState, { disabled }) {
   if (!pending.length) return '';
   const catalog = doc.recipeCatalog;
   const blocks = pending.map(([id, entry]) => recipeDeliverableBlock(id, entry, recipeState, catalog, { disabled })).join('');
-  return `<section class="recipe-section"><h3>Copy choices</h3><p class="muted">Choose the content pillar, angle, hook, call to action and hashtags for each post before approving.</p>${blocks}</section>`;
+  return `<section class="recipe-section"><h3>Copy choices</h3>${blocks}</section>`;
 }
 
 export function recipePanel(doc, recipeState, recipeStatus, { disabled = false } = {}) {
@@ -3973,15 +4049,15 @@ export function recipePanel(doc, recipeState, recipeStatus, { disabled = false }
   const blocks = pending.map(([id, entry]) => {
     const status = recipeStatus[id] || {};
     const busy = disabled || status.busy || status.submitted;
-    const label = status.busy ? 'Saving...' : status.submitted ? 'Waiting for Claude' : 'Save copy choices';
+    const label = status.busy ? 'Saving...' : status.submitted ? TXT_WAITING_FOR_CLAUDE : 'Save copy choices';
     const error = status.error ? `<p class="notice error inline-error" role="alert">${esc(status.error)}</p>` : '';
     const notice = status.declined
-      ? `<div class="notice" role="status"><span>${esc(status.message || 'Declined in chat. Nothing was changed.')}</span></div>`
-      : status.submitted ? `<div class="notice" role="status"><span>Saved. Your Claude session will pick this up.</span></div>` : '';
+      ? `<div class="notice" role="status"><span>${esc(status.message || NOTE_DECLINED)}</span></div>`
+      : status.submitted ? `<div class="notice" role="status"><span>Saved.</span></div>` : '';
     const foot = `${error}<div class="review-actions"><div class="review-buttons"><button type="button" class="primary" data-recipe-save="${esc(id)}" ${busy ? 'disabled' : ''}>${esc(label)}</button></div></div>${notice}`;
     return recipeDeliverableBlock(id, entry, recipeState, catalog, { disabled: busy, foot });
   }).join('');
-  return `<section class="panel recipe-panel" aria-labelledby="recipe-title"><div class="section-head"><h2 id="recipe-title">Copy choices</h2></div><p class="muted">Choose the content pillar, angle, hook, call to action and hashtags for each post.</p>${blocks}</section>`;
+  return `<section class="panel recipe-panel" aria-labelledby="recipe-title"><div class="section-head"><h2 id="recipe-title">Copy choices</h2></div>${blocks}</section>`;
 }
 
 
@@ -4059,7 +4135,7 @@ function panelFrameHtml(panel, index, { large = false } = {}) {
     : [frame?.thumb];
   const src = sources.map(safePreviewUrl).find(Boolean);
   if (src) return `<img src="${esc(src)}" alt="${esc(panelLabelOf(panel, index))}" loading="lazy">`;
-  if (large) return `<span class="sb-empty">${FRAME_ICON}<span>${panel?.source === 'kept' ? 'Existing image' : frame?.thumbOmitted ? 'Frame is on your computer' : 'Not made yet.'}</span></span>`;
+  if (large) return `<span class="sb-empty">${FRAME_ICON}<span>${panel?.source === 'kept' ? 'Existing image' : frame?.thumbOmitted ? 'On your computer' : 'Not made yet.'}</span></span>`;
   const shot = trimmed(panel?.shot);
   return `<span class="sb-sketch">${shot ? inlineMarkdown(shot) : '<span class="muted">No shot described</span>'}</span>`;
 }
@@ -4092,7 +4168,7 @@ export function storyboardStrip(board, { interactive = false, verdicts = {}, cur
     const key = panelKey(board, panel, index);
     return stripCell(board, panel, index, { interactive, verdict: verdicts[key]?.verdict || null, current: current === key, highlight: highlight === key });
   }).join('');
-  return `<section class="storyboard"><div class="storyboard-head"><div class="storyboard-title"><h3>${esc(deliverableLabel(board, 'Storyboard'))}</h3>${refTag(boardRef)}</div><div class="storyboard-sub"><span class="muted">${esc(meta)}</span>${interactive ? askForChanges(boardRef) : ''}</div></div>${runtimeNote(board)}${panels.length ? `<ol class="sb-strip" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${cells}</ol>` : '<p class="muted">No panels were found in this storyboard.</p>'}</section>`;
+  return `<section class="storyboard"><div class="storyboard-head"><div class="storyboard-title"><h3>${esc(deliverableLabel(board, 'Storyboard'))}</h3>${refTag(boardRef)}</div><div class="storyboard-sub"><span class="muted">${esc(meta)}</span>${interactive ? askForChanges(boardRef) : ''}</div></div>${runtimeNote(board)}${panels.length ? `<ol class="sb-strip" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${cells}</ol>` : '<p class="muted">No panels found.</p>'}</section>`;
 }
 
 function storyboardPanelsOf(boards) {
@@ -4193,7 +4269,7 @@ export function sampleView(doc) {
   const looks = Array.isArray(found?.board?.looks) ? found.board.looks.filter(item => trimmed(item?.label) && trimmed(item?.text)) : [];
   const whyLine = why ? `<p class="sample-why"><strong>Why this panel:</strong> ${esc(why)}</p>` : '';
   const sets = looks.length
-    ? `<div class="sample-sets"><p class="sample-sets-title">${esc(count > 1 ? `This picture sets the look for all ${count} panels. Check:` : 'Check:')}</p><ul>${looks.map(item => `<li><strong>${esc(trimmed(item.label))}:</strong> ${esc(trimmed(item.text))}</li>`).join('')}</ul></div>`
+    ? `<div class="sample-sets"><p class="sample-sets-title">${esc(count > 1 ? `Sets the look for all ${count} panels. Check:` : 'Check:')}</p><ul>${looks.map(item => `<li><strong>${esc(trimmed(item.label))}:</strong> ${esc(trimmed(item.text))}</li>`).join('')}</ul></div>`
     : '';
   // Until the sample is approved the other panels have no picture yet, so they fold away and the card stays on the one picture.
   const rest = count > 1 && strips ? `<details class="sample-rest"><summary>${esc(`The other ${count - 1} panels, made after you approve this one`)}</summary>${strips}</details>` : strips;
@@ -4245,7 +4321,7 @@ export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
 export function labelCheckSection(check, accepted = {}, { disabled = false } = {}) {
   if (!check || check.state !== 'current') return '';
   const flags = Array.isArray(check.flags) ? check.flags : [];
-  if (!flags.length) return '<p class="qc-clear">Every label and logo matches the brand.</p>';
+  if (!flags.length) return '<p class="qc-clear">Labels and logos match.</p>';
   const dis = disabled ? 'disabled' : '';
   const items = flags.map(flag => {
     const on = Boolean(accepted[flag.id]);
@@ -4308,7 +4384,7 @@ export function postPreview(post) {
   const postRef = typeof post?.deliverable === 'string' && post.deliverable.trim() ? post.deliverable.trim() : null;
   const title = deliverableLabel(post, 'Post');
   const media = post?.media || [];
-  return `<article class="post-preview"><div class="post-head"><div class="post-title"><h3>${esc(title)}</h3>${refTag(postRef)}</div>${askForChanges(postRef)}</div>${media.length ? `<div class="media-grid">${media.map(ref => mediaTile(ref)).join('')}</div>` : ''}<dl class="review-fields">${post?.hook ? `<div><dt>Hook</dt><dd class="post-hook">${esc(post.hook)}</dd></div>` : ''}${rest ? `<div><dt>Caption</dt><dd class="post-caption">${esc(rest)}</dd></div>` : ''}${post?.cta ? `<div><dt>CTA</dt><dd>${esc(post.cta)}</dd></div>` : ''}${post?.hashtags?.length ? `<div><dt>Hashtags</dt><dd class="post-tags">${esc(post.hashtags.join(' '))}</dd></div>` : ''}</dl></article>`;
+  return `<article class="post-preview"><div class="post-head"><div class="post-title"><h3>${esc(title)}</h3>${refTag(postRef)}</div>${askForChanges(postRef)}</div>${media.length ? `<div class="media-grid">${media.map(ref => mediaTile(ref)).join('')}</div>` : ''}<dl class="review-fields">${post?.hook ? `<div><dt>Hook</dt><dd class="post-hook">${esc(post.hook)}</dd></div>` : ''}${rest ? `<div><dt>Post text</dt><dd class="post-caption">${esc(rest)}</dd></div>` : ''}${post?.cta ? `<div><dt>CTA</dt><dd>${esc(post.cta)}</dd></div>` : ''}${post?.hashtags?.length ? `<div><dt>Hashtags</dt><dd class="post-tags">${esc(post.hashtags.join(' '))}</dd></div>` : ''}</dl></article>`;
 }
 
 export function priceTable(quote, { used = null, withProvider = false } = {}) {
@@ -4342,7 +4418,7 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false, uplo
   const info = doc?.review?.studioWorkspace;
   const workspaces = Array.isArray(info?.workspaces) ? info.workspaces : [];
   if (!info) return '';
-  if (!workspaces.length) return upload ? '<p class="muted">Claude is getting your 3echo workspaces.</p>' : '';
+  if (!workspaces.length) return upload ? '<p class="muted">Loading your 3echo workspaces.</p>' : '';
   const busy = Boolean(state.busy);
   const submitted = Boolean(state.submitted);
   const locked = disabled || busy || submitted;
@@ -4356,12 +4432,12 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false, uplo
     const balance = studioWorkspaceBalanceWords(item.creditAvailable);
     return `<option value="${esc(item.id)}" ${selected === item.id ? 'selected' : ''}>${esc(item.name)}${balance ? ` (${esc(balance)})` : ''}</option>`;
   }).join('');
-  const label = upload ? (info.workspaceId ? 'Change which 3echo workspace your files go to' : 'Choose which 3echo workspace your files go to') : info.workspaceId ? 'Change which workspace pays' : 'Choose which workspace pays for this job';
+  const label = upload ? (info.workspaceId ? 'Change the files workspace' : 'Choose the files workspace') : info.workspaceId ? 'Change which workspace pays' : 'Choose the paying workspace';
   const cancel = info.workspaceId ? `<button type="button" class="quiet" data-workspace-action="cancel" ${locked ? 'disabled' : ''}>Cancel</button>` : '';
   const brandOption = `<label class="price-workspace-scope"><input type="checkbox" name="studio_workspace_brand_default" ${state.brandDefault ? 'checked' : ''} ${locked ? 'disabled' : ''}> Also use this for every job from this brand</label>`;
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const notice = !state.error && state.message ? `<p class="muted">${esc(state.message)}</p>` : '';
-  return `<div class="price-workspace price-workspace-edit"><label for="studio-workspace-select">${esc(label)}</label><select id="studio-workspace-select" name="studio_workspace_select" ${locked ? 'disabled' : ''}>${options}</select>${brandOption}${error}${notice}<div class="review-buttons"><button type="button" class="primary" data-workspace-action="save" ${locked ? 'disabled' : ''}>${busy ? 'Saving...' : submitted ? 'Waiting for Claude' : 'Set workspace'}</button>${cancel}</div></div>`;
+  return `<div class="price-workspace price-workspace-edit"><label for="studio-workspace-select">${esc(label)}</label><select id="studio-workspace-select" name="studio_workspace_select" ${locked ? 'disabled' : ''}>${options}</select>${brandOption}${error}${notice}<div class="review-buttons"><button type="button" class="primary" data-workspace-action="save" ${locked ? 'disabled' : ''}>${busy ? 'Saving...' : submitted ? TXT_WAITING_FOR_CLAUDE : 'Set workspace'}</button>${cancel}</div></div>`;
 }
 
 // @module publish
@@ -4378,10 +4454,10 @@ export const PUBLISH_APPROVE_LABELS = Object.freeze({
 export const PUBLISH_PREPARING_LABEL = 'Preparing download…';
 // The board click is the person's approval for every route: nothing else is asked in chat.
 export const PUBLISH_SAFETY_LINES = Object.freeze({
-  metricool_now: 'Clicking Post Now sends each post to Metricool right away, and it goes out within a few minutes.',
-  metricool_schedule: 'Nothing goes out until you click Schedule Post. You can cancel a scheduled post in Metricool until it goes out.',
-  metricool_draft: 'Drafts are saved in Metricool and stay there until you publish them.',
-  self: 'Nothing is posted for you. After you click, the posting kit has each file, caption and step.',
+  metricool_now: 'Post Now sends each post to Metricool right away. It goes out within minutes.',
+  metricool_schedule: 'Nothing goes out until you click Schedule Post. You can cancel in Metricool until then.',
+  metricool_draft: 'Drafts stay in Metricool until you publish them.',
+  self: 'Nothing is posted for you. The posting kit has each file, the post text and each step.',
 });
 export const PUBLISH_ROUTE_WORDS = Object.freeze({
   metricool_now: 'Post Now',
@@ -4389,14 +4465,14 @@ export const PUBLISH_ROUTE_WORDS = Object.freeze({
   metricool_draft: 'Save as Draft',
   self: "I'll Post It Myself",
 });
-export const PUBLISH_OUTDATED_LINE = 'Something changed since this plan was made, so it is being rebuilt.';
-export const PUBLISH_CHANGED_LINE = 'The plan changed after it was prepared; it is being rebuilt.';
+export const PUBLISH_OUTDATED_LINE = TXT_THE_PLAN_IS_BEING;
+export const PUBLISH_CHANGED_LINE = TXT_THE_PLAN_IS_BEING;
 // While any posting-card request is out (a route, a post type or a posting time), the card says so once, at its top, and every
 // control on it is held. The rows say the plan is being updated; nothing else on the card says "saving".
 export const PUBLISH_SAVING_LINE = 'Saving your choice...';
 export const PUBLISH_UPDATING_LINE = 'Updating the plan...';
-export const PUBLISH_WAITING_LINE = 'Still waiting for Claude to save this choice.';
-export const PUBLISH_SAVED_LINE = 'Claude saved this choice, but the updated plan has not reached the board yet.';
+export const PUBLISH_WAITING_LINE = NOTE_WAITING_SAVE;
+export const PUBLISH_SAVED_LINE = NOTE_SAVED_SOON;
 /** The pause after an arrow key before the route it landed on is saved. */
 export const PUBLISH_ROUTE_KEY_PAUSE_MS = 700;
 
@@ -4420,7 +4496,7 @@ export function postTimeArgs({ project, deliverable, dateTime, requestId }) {
   return { requestId, brand: project.brand, jobId: project.jobId, ...(deliverable ? { deliverable } : {}), dateTime };
 }
 
-export const POST_TIME_NEEDED_LINE = 'Choose a date and a time.';
+export const POST_TIME_NEEDED_LINE = 'Choose a date and time.';
 /** The soonest a scheduled post may be, as the server holds it. */
 export const POST_TIME_LEAD_MINUTES = 5;
 const POST_TIME_VALUE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
@@ -4448,10 +4524,10 @@ export function postTimeProblem(value, { zone, zoneWords = '', now = Date.now() 
     const part = type => back.find(item => item.type === type)?.value;
     if (`${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}` !== value) {
       // A time on the calendar that comes back different is one the clocks skip (spring forward); anything else is not a date.
-      return new Date(guess).toISOString().slice(0, 16) === value ? `That time doesn't exist in ${zoneWords || zone} because the clocks change. Pick another time.` : POST_TIME_NEEDED_LINE;
+      return new Date(guess).toISOString().slice(0, 16) === value ? `That time doesn't exist in ${zoneWords || zone} because the clocks change.` : POST_TIME_NEEDED_LINE;
     }
   } catch { return POST_TIME_NEEDED_LINE; }
-  if (instant < now) return `That time has already passed. Pick a time at least ${POST_TIME_LEAD_MINUTES} minutes ahead.`;
+  if (instant < now) return `Pick a time at least ${POST_TIME_LEAD_MINUTES} minutes ahead.`;
   if (instant < now + POST_TIME_LEAD_MINUTES * 60 * 1000) return `That time is less than ${POST_TIME_LEAD_MINUTES} minutes away. Pick a time at least ${POST_TIME_LEAD_MINUTES} minutes ahead.`;
   return '';
 }
@@ -4527,7 +4603,7 @@ function publishRoutes(publish, routeState, { locked = false, held: otherHeld = 
   if (pending || otherHeld) status = '';
   else if (routeState?.error) status = `<p class="notice error inline-error" role="alert">${esc(routeState.error)}</p>`;
   else if (routeState?.notice) status = `<p class="publish-route-note" role="status">${esc(routeState.notice)}</p>`;
-  return `<fieldset class="publish-routes"><legend>How should these posts go out?</legend><div class="route-grid">${cards}</div>${why}${status}</fieldset>`;
+  return `<fieldset class="publish-routes"><legend>How should posts go out?</legend><div class="route-grid">${cards}</div>${why}${status}</fieldset>`;
 }
 
 // Where the posts go, said before anything is approved: one line per network ("Instagram @coachfabian, through Metricool brand Coach Fabian"),
@@ -4560,7 +4636,7 @@ function metricoolChange(metricool, _refused, locked) {
   if (metricool.open) return metricoolPickerForm({ slug: metricool.slug, brands, current: metricool.current || '', selected: metricool.selected || '', busy: Boolean(metricool.busy), error: metricool.error || '', cancel: true });
   // Even a single saved Metricool brand leaves "Not through Metricool" to move to.
   if (!brands.length) return '';
-  return `<p class="publish-destination-change"><button type="button" class="quiet" data-metricool-change="${esc(metricool.slug)}">Change</button><span class="muted"> the Metricool brand for this brand's posts. The plan is rebuilt and needs your approval again.</span></p>`;
+  return `<p class="publish-destination-change"><button type="button" class="quiet" data-metricool-change="${esc(metricool.slug)}">Change</button><span class="muted"> the Metricool brand. The plan is rebuilt and needs approval again.</span></p>`;
 }
 
 function publishChecks(post, key = '', openKeys = new Set()) {
@@ -4705,7 +4781,7 @@ function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ct
   // While a request on the card is out, every row shows the plan as it was, muted, and says it is being updated in place of its checks.
   const updating = Boolean(ctx.held);
   const checks = updating ? `<p class="publish-updating">${esc(PUBLISH_UPDATING_LINE)}</p>` : publishChecks(post, `publish-checks:${ref}`, openKeys);
-  return `<article class="publish-post${preview ? ' has-preview' : ''}${updating ? ' is-updating' : ''}" role="listitem"${updating ? ' aria-busy="true"' : ''}>${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div><dl class="publish-facts"><div${whenEditing(post, ctx.state, ctx.usesAll) ? ' class="publish-when-fact"' : ''}><dt>When</dt><dd>${postWhen(post, ctx.state, ctx)}</dd></div><div><dt>Media</dt><dd>${media.length ? esc(media.join(', ')) : '<span class="muted">None</span>'}</dd></div>${post.aiLabel ? `<div><dt>AI label</dt><dd>${esc(post.aiLabel)}</dd></div>` : ''}${title}${caption ? `<div class="publish-wide"><dt>Caption</dt><dd>${caption}</dd></div>` : ''}${first ? `<div class="publish-wide"><dt>First comment</dt><dd>${first}</dd></div>` : ''}</dl><div class="publish-check-list">${postTypeBlock(post, ctx.state, ctx)}${checks}</div></div></article>`;
+  return `<article class="publish-post${preview ? ' has-preview' : ''}${updating ? ' is-updating' : ''}" role="listitem"${updating ? ' aria-busy="true"' : ''}>${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div><dl class="publish-facts"><div${whenEditing(post, ctx.state, ctx.usesAll) ? ' class="publish-when-fact"' : ''}><dt>When</dt><dd>${postWhen(post, ctx.state, ctx)}</dd></div><div><dt>Media</dt><dd>${media.length ? esc(media.join(', ')) : '<span class="muted">None</span>'}</dd></div>${post.aiLabel ? `<div><dt>AI label</dt><dd>${esc(post.aiLabel)}</dd></div>` : ''}${title}${caption ? `<div class="publish-wide"><dt>Post text</dt><dd>${caption}</dd></div>` : ''}${first ? `<div class="publish-wide"><dt>First comment</dt><dd>${first}</dd></div>` : ''}</dl><div class="publish-check-list">${postTypeBlock(post, ctx.state, ctx)}${checks}</div></div></article>`;
 }
 
 // A job planned before posting through Metricool says plainly that it ends with the hand-off package.
@@ -4728,7 +4804,7 @@ export function publishCard(publish, routeState = {}, { disabled = false, openKe
   // held, every row muted.
   const pending = publishPending(publish, routeState, postStates);
   const held = Boolean(pending);
-  const rows = posts.length ? `<div class="publish-posts" role="list">${posts.map(post => publishPostRow(post, jobId, openKeys, typeof previews === 'function' ? previews(post) : '', { state: postStates?.[post.id], signal, now, locked: disabled, held, usesAll: publish.allTime?.state === 'none' })).join('')}</div>` : '<p class="muted">There are no posts in this plan yet.</p>';
+  const rows = posts.length ? `<div class="publish-posts" role="list">${posts.map(post => publishPostRow(post, jobId, openKeys, typeof previews === 'function' ? previews(post) : '', { state: postStates?.[post.id], signal, now, locked: disabled, held, usesAll: publish.allTime?.state === 'none' })).join('')}</div>` : '<p class="muted">No posts in this plan yet.</p>';
   return `<div class="publish-card"${held ? ' aria-busy="true"' : ''}>${publishSavingLine(pending, { signal, now })}${publishNoteLine(note)}${publishRoutes(publish, routeState, { locked: disabled, held })}${allTimeBlock(publish, postStates?.[ALL_POSTS], { locked: disabled, held })}${publishDestination(publish, { metricool, locked: disabled || held })}${rows}</div>`;
 }
 
@@ -4737,7 +4813,7 @@ export function publishCard(publish, routeState = {}, { disabled = false, openKe
  * choice still being saved, and the button stays held while anything on the card is pending.
  */
 export function publishApproval(publish, routeState = {}, postStates = {}) {
-  if (!publish || typeof publish !== 'object') return { disabled: true, label: 'Approve', line: 'Claude is still preparing the posting plan.' };
+  if (!publish || typeof publish !== 'object') return { disabled: true, label: 'Approve', line: 'Preparing the posting plan.' };
   const pending = publishPending(publish, routeState, postStates);
   const posts = Array.isArray(publish.posts) ? publish.posts : [];
   const route = Object.hasOwn(PUBLISH_APPROVE_LABELS, publish.route) ? publish.route : 'self';
@@ -4751,10 +4827,10 @@ export function publishApproval(publish, routeState = {}, postStates = {}) {
   if (routeState?.draft && routeState.draft !== publish.route) return { disabled: true, label: preparing, line: '', safety };
   if (publish.outdated) return { disabled: true, label: preparing, line: typeof publish.reason === 'string' && publish.reason.trim() ? publish.reason.trim() : PUBLISH_OUTDATED_LINE, safety };
   if (publish.changed) return { disabled: true, label: preparing, line: PUBLISH_CHANGED_LINE, safety };
-  if (!posts.length) return { disabled: true, label: preparing, line: 'There are no posts to approve yet.', safety };
+  if (!posts.length) return { disabled: true, label: preparing, line: 'No posts to approve yet.', safety };
   if (!publish.ready) {
     const failing = posts.filter(post => publishFailing(post).length || (Array.isArray(post?.typeChoices) && post.typeChoices.length)).length;
-    return { disabled: true, label: route === 'self' ? preparing : label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'This plan is not ready to approve yet.', safety };
+    return { disabled: true, label: route === 'self' ? preparing : label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'Not ready to approve yet.', safety };
   }
   // Schedule Post stays held until every post has a valid time (its own, or the one for all).
   if (route === 'metricool_schedule') {
@@ -4773,10 +4849,10 @@ export const POST_STATUS_WORDS = Object.freeze({
   not_sent: 'Not sent yet',
   unconfirmed: 'Sending (unconfirmed)',
   needs_check: 'Waiting for your answer',
-  handed_over: 'Waiting for you to post it',
+  handed_over: 'Waiting for you to post',
   scheduled: 'Scheduled',
   draft: 'Saved as a draft in Metricool',
-  waiting_in_app: 'Waiting for you in the Metricool app',
+  waiting_in_app: 'Waiting in the Metricool app',
   posted: 'Posted',
   failed: 'Failed',
   late: 'Late',
@@ -4789,17 +4865,17 @@ export const POST_CHECK_QUESTION = 'Is this post in Metricool?';
 export const POST_IN_METRICOOL = 'It is in Metricool';
 export const POST_NOT_IN_METRICOOL = 'It is not in Metricool';
 export const POST_ANSWER_SAVING_LINE = 'Saving your answer...';
-export const POST_ANSWER_WAITING_LINE = 'Still waiting for Claude to save this answer.';
-export const POST_ANSWER_SAVED_LINE = 'Claude saved this answer, but the board has not caught up yet.';
+export const POST_ANSWER_WAITING_LINE = NOTE_WAITING_SAVE;
+export const POST_ANSWER_SAVED_LINE = NOTE_SAVED_SOON;
 export const POST_MARK_SAVING_LINE = 'Saving...';
-export const POST_MARK_WAITING_LINE = 'Still waiting for Claude to save this.';
-export const POST_MARK_SAVED_LINE = 'Claude saved this, but the board has not caught up yet.';
+export const POST_MARK_WAITING_LINE = NOTE_WAITING_SAVE;
+export const POST_MARK_SAVED_LINE = NOTE_SAVED_SOON;
 export const KIT_LINK_LIMIT = 500;
 export const KIT_COPIED_MS = 2000;
-export const KIT_DOWNLOAD_WAITING = 'Claude is preparing the download link';
-export const KIT_PARTIAL_DONE = 'Every post here is marked as posted.';
-export const KIT_PARTIAL_INTRO = 'These posts did not go out through Metricool. Post each one yourself, then mark it as posted.';
-export const KIT_INTRO = 'Nothing is posted for you. For each post, download the file, copy the caption, post it yourself, then mark it as posted.';
+export const KIT_DOWNLOAD_WAITING = 'Preparing the download link';
+export const KIT_PARTIAL_DONE = 'All marked as posted.';
+export const KIT_PARTIAL_INTRO = 'Post each one yourself, then mark it posted.';
+export const KIT_INTRO = 'Nothing is posted for you. Download, copy the post text, post, then mark it posted.';
 
 /** The request an answer to "Is this post in Metricool?" sends: exactly these six fields (the transport adds the workspace). `lid` is the attempt the answer is for, as the status row carries it. */
 export function resolvePostArgs({ project, postId, answer, requestId, lid }) {
@@ -4816,10 +4892,10 @@ export function markPostedArgs({ project, postId, link, requestId }) {
 export function markLinkProblem(value) {
   const link = typeof value === 'string' ? value.trim() : '';
   if (!link) return '';
-  if (link.length > KIT_LINK_LIMIT) return `The link is too long. Use at most ${KIT_LINK_LIMIT} characters.`;
+  if (link.length > KIT_LINK_LIMIT) return `Link too long. Use at most ${KIT_LINK_LIMIT} characters.`;
   let url = null;
   try { url = new URL(link); } catch { url = null; }
-  if (!url || url.protocol !== 'https:' || !url.hostname || /\s/.test(link) || url.username || url.password) return 'Paste the full link, starting with https://.';
+  if (!url || url.protocol !== 'https:' || !url.hostname || /\s/.test(link) || url.username || url.password) return 'Paste the full link.';
   return '';
 }
 
@@ -4833,7 +4909,7 @@ export function safeHttpsLink(value) {
 export const copyShortcut = platform => (/mac|iphone|ipad|ipod/i.test(String(platform || '')) ? 'Cmd+C' : 'Ctrl+C');
 /** How to copy by hand from the box: press and hold on a touch screen, else the keyboard shortcut. */
 export const copyHint = (platform, touch = false) => (touch ? 'Press and hold to copy' : `Press ${copyShortcut(platform)} to copy`);
-export const KIT_COPY_REFUSED = "Copy wasn't allowed. Copy the text below.";
+export const KIT_COPY_REFUSED = "Copy blocked. Copy the text below.";
 
 const externalLink = (href, text, className = 'post-link') => `<a class="${className}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
 
@@ -4864,7 +4940,7 @@ function postQuestion(post, state, ctx) {
   const request = postRequestLine(state, ANSWER_LINES, ctx);
   const held = request.held;
   const note = early ? `<p class="post-check-wait" id="post-check-wait-${esc(id)}">Check again after ${esc(after.text || 'a few minutes')}</p>` : '';
-  return `<div class="post-check" role="group" aria-labelledby="post-check-q-${esc(id)}"${held ? ' aria-busy="true"' : ''}><p class="post-check-q" id="post-check-q-${esc(id)}">${esc(POST_CHECK_QUESTION)}</p><p class="post-check-help muted">Claude could not tell whether this one went out. Look in Metricool, then tell it which is true.</p><div class="post-check-actions"><button type="button" data-post-answer="in_metricool" data-post-id="${esc(id)}" ${held ? 'aria-disabled="true" disabled' : ''}>${esc(POST_IN_METRICOOL)}</button><button type="button" data-post-answer="not_in_metricool" data-post-id="${esc(id)}" ${held || early ? 'disabled' : ''}${early ? ` aria-describedby="post-check-wait-${esc(id)}"` : ''}>${esc(POST_NOT_IN_METRICOOL)}</button></div>${note}${request.html}</div>`;
+  return `<div class="post-check" role="group" aria-labelledby="post-check-q-${esc(id)}"${held ? ' aria-busy="true"' : ''}><p class="post-check-q" id="post-check-q-${esc(id)}">${esc(POST_CHECK_QUESTION)}</p><p class="post-check-help muted">Claude could not tell if this went out. Check Metricool.</p><div class="post-check-actions"><button type="button" data-post-answer="in_metricool" data-post-id="${esc(id)}" ${held ? 'aria-disabled="true" disabled' : ''}>${esc(POST_IN_METRICOOL)}</button><button type="button" data-post-answer="not_in_metricool" data-post-id="${esc(id)}" ${held || early ? 'disabled' : ''}${early ? ` aria-describedby="post-check-wait-${esc(id)}"` : ''}>${esc(POST_NOT_IN_METRICOOL)}</button></div>${note}${request.html}</div>`;
 }
 
 function postStatusRow(post, state, ctx) {
@@ -4913,7 +4989,7 @@ export function testVersionsSection(variants) {
     const fields = `${hook ? `<div><dt>Hook</dt><dd class="post-hook">${esc(hook)}</dd></div>` : ''}${cta ? `<div><dt>Call to action</dt><dd>${esc(cta)}</dd></div>` : ''}`;
     return `<article class="post-preview test-version"><div class="post-head"><div class="post-title"><h4>${esc(`Test version ${String(item.id || '').replace(/^v/i, '')}`.trim())}</h4></div></div><div class="media-grid">${mediaTile({ ...item.media, title: `Test version ${String(item.id || '').replace(/^v/i, '')}` })}</div>${fields ? `<dl class="review-fields">${fields}</dl>` : ''}</article>`;
   }).join('');
-  return `<section class="test-versions" aria-label="Test versions"><h3>Test versions</h3><p class="muted">The same video with a different hook and call to action, for ads or A/B tests. Only the main video is posted.</p><div class="post-list">${rows}</div></section>`;
+  return `<section class="test-versions" aria-label="Test versions"><h3>Test versions</h3><p class="muted">Same video, other hooks. Only the main video is posted.</p><div class="post-list">${rows}</div></section>`;
 }
 
 // A post's test versions inside its posting kit, with the one plain line that says what they are for.
@@ -4924,7 +5000,7 @@ function kitVariants(post) {
     const lines = [trimmed(item.hook) ? `Hook: ${trimmed(item.hook)}` : '', trimmed(item.cta) ? `Call to action: ${trimmed(item.cta)}` : ''].filter(Boolean);
     return `<li class="kit-file-row"><span class="kit-file-name">${esc(item.name || item.id || 'Test version')}</span>${lines.length ? `<span class="muted">${esc(lines.join(' · '))}</span>` : ''}</li>`;
   }).join('');
-  return `<div class="kit-section kit-variants"><h5>Test versions</h5><p class="muted">Test versions for ads or A/B tests</p><ul class="kit-files">${rows}</ul></div>`;
+  return `<div class="kit-section kit-variants"><h5>Test versions</h5><ul class="kit-files">${rows}</ul></div>`;
 }
 // END test versions and social check
 
@@ -4992,7 +5068,7 @@ function kitPost(post, state, ctx) {
   const items = lines.join('');
   const when = typeof post.when === 'string' && post.when ? `<dl class="publish-facts"><div><dt>When</dt><dd>${esc(post.when)}</dd></div></dl>` : '';
   const preview = kitPreviews(post);
-  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitVariants(post)}${kitCopyBlock(post, 'caption', 'Caption', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
+  return `<article class="publish-post kit-post${preview ? ' has-preview' : ''}${post.marked ? ' is-marked' : ''}" role="listitem">${postMedia(preview)}<div class="publish-post-body"><div class="publish-post-head"><h4>${esc(post.label || 'Post')}</h4>${post.account ? `<span class="publish-account">${esc(post.account)}</span>` : ''}</div>${when}${kitFiles(post)}${kitVariants(post)}${kitCopyBlock(post, 'caption', 'Post text', state, ctx)}${kitCopyBlock(post, 'comment', 'First comment', state, ctx)}${items && !post.marked ? `<div class="kit-section"><h5>Before you post</h5><ol class="kit-checklist">${items}</ol></div>` : ''}${kitMarkBlock(post, state, ctx)}</div></article>`;
 }
 
 /**
@@ -5010,7 +5086,7 @@ export function postingKitPanel(kit, postStates = {}, { signal = {}, now = Date.
   const finished = done && kit.settled !== false && kit.closed === true;
   const closing = done && kit.settled === true && kit.closed !== true;
   const count = finished ? 'All posted' : `${marked} of ${posts.length} posted`;
-  const intro = finished ? 'Every post is marked as posted. This job is finished.' : closing ? 'Claude is closing this job.' : kit.route === 'partial' ? (done ? KIT_PARTIAL_DONE : KIT_PARTIAL_INTRO) : KIT_INTRO;
+  const intro = finished ? 'All posts are marked posted.' : closing ? 'Closing this job.' : kit.route === 'partial' ? (done ? KIT_PARTIAL_DONE : KIT_PARTIAL_INTRO) : KIT_INTRO;
   return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p>${kitDownloadButton(kit)}<div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
 }
 
@@ -5022,8 +5098,8 @@ function reviewFilesHtml(doc, paths) {
     const title = displayTitle(file || { path }, 'Document');
     const body = file?.text != null
       ? (/\.md$/i.test(path) ? `<div class="md">${renderMarkdown(withoutTitle(file.text, title))}</div>` : `<pre class="doc-pre">${esc(file.text)}</pre>`)
-      : '<p class="muted">Too large for the board. Open it from your computer.</p>';
-    return `<article class="doc-file"><h3>${esc(title)}</h3>${body}${file?.truncated ? '<p class="muted">Shortened for the board. The full file is on your computer.</p>' : ''}</article>`;
+      : `<p class="muted">${NOTE_TOO_LARGE}</p>`;
+    return `<article class="doc-file"><h3>${esc(title)}</h3>${body}${file?.truncated ? `<p class="muted">${NOTE_SHORTENED}</p>` : ''}</article>`;
   }).join('');
 }
 
@@ -5111,7 +5187,7 @@ const COPY_GATES = new Set(['sample', 'pictures', 'clips', 'cut', 'finish', 'con
 const copiesWaiting = refs => {
   const kinds = new Set(refs.map(ref => ref.kind));
   const what = kinds.has('image') && kinds.has('video') ? 'pictures and video' : kinds.has('video') ? 'video' : 'pictures';
-  return `Viewable copies of the ${what} aren't on the board yet. You can approve in chat, or ask for changes here.`;
+  return `No viewable ${what} yet. Approve in chat or ask for changes.`;
 };
 
 function unviewableMedia(doc) {
@@ -5148,18 +5224,18 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
   if (gate === 'concept') {
     const concepts = doc?.review?.concepts;
     const concept = concepts?.concepts?.find(item => item.id === state.choice);
-    if (!concept) return { disabled: true, label: 'Approve', line: 'Pick a concept to approve it.' };
+    if (!concept) return { disabled: true, label: 'Approve', line: TXT_PICK_A_CONCEPT_FIRST };
     const pending = unchosenRecipes(doc);
     if (pending.some(([id]) => !recipeReady(recipeState, id))) {
-      return { disabled: true, label: `Approve concept ${concept.id}`, line: 'Choose the copy for every post before approving.' };
+      return { disabled: true, label: `Approve concept ${concept.id}`, line: NOTE_CHOOSE_COPY };
     }
     const credits = conceptCredits(concepts, concept);
     return { label: `Approve concept ${concept.id}`, credits, line: credits ? `Approving allows up to ${credits.toLocaleString()} credits for media.` : 'Approving allows no media spend yet.' };
   }
   if (gate === 'price') {
     const totals = priceTotals(doc?.review?.quote);
-    if (!totals) return { disabled: true, label: 'Approve price', line: 'Every item needs a price before this can be approved.' };
-    if (studioWorkspaceRequired(doc)) return { disabled: true, label: 'Approve price', line: 'Choose which workspace pays before this can be approved.' };
+    if (!totals) return { disabled: true, label: 'Approve price', line: NOTE_NEEDS_PRICE };
+    if (studioWorkspaceRequired(doc)) return { disabled: true, label: 'Approve price', line: 'Choose the paying workspace first.' };
     const words = priceWords(totals);
     return { label: 'Approve price', line: words ? `Approving allows ${words} for this job.` : 'Approving allows no credits for this job.' };
   }
@@ -5175,8 +5251,8 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
     const all = mediaPanelsOf(doc);
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
-    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again before it is made.` };
-    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? (doc?.combine ? 'Pick the music, voice-over and captions below, then approve.' : 'Approve it and pick what to add: captions, music, both or nothing.') : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
+    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again.` };
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? (doc?.combine ? 'Pick the music, voice-over and subtitles, then approve.' : 'Approve, then pick subtitles, music, both or nothing.') : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
     return { label: gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
@@ -5187,15 +5263,15 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
   if (gate === 'content' && doc?.review?.checks) {
     // A final post made from files the person supplied has no label check; it is approved while every check on its posts passes.
     const problem = suppliedFirstProblem(doc.review.checks);
-    if (!doc.review.checks.ready) return { disabled: true, label: 'Approve', line: problem ? `Fix these first: ${problem}` : 'Fix these first. Claude is still getting the checks ready.' };
+    if (!doc.review.checks.ready) return { disabled: true, label: 'Approve', line: problem ? `Fix these first: ${problem}` : 'Fix these first.' };
     return { label: 'Approve', line: '' };
   }
   if (gate === 'content') {
     const check = doc?.review?.labelCheck;
-    if (check?.state === 'missing') return { disabled: true, label: 'Approve', line: 'Claude checks the labels and logos before this can be approved.' };
-    if (check?.state === 'stale') return { disabled: true, label: 'Approve', line: 'Some images or video changed after the label check. Claude checks them again before this can be approved.' };
+    if (check?.state === 'missing') return { disabled: true, label: 'Approve', line: 'Label check comes first.' };
+    if (check?.state === 'stale') return { disabled: true, label: 'Approve', line: 'Media changed. It will be rechecked.' };
     const open = (check?.flags || []).filter(flag => !state.accepted?.[flag.id]).length;
-    if (open) return { disabled: true, label: 'Approve', line: open === 1 ? 'Accept the item from the label check as is, or ask for changes.' : `Accept the ${open} items from the label check as is, or ask for changes.` };
+    if (open) return { disabled: true, label: 'Approve', line: open === 1 ? 'Accept the label check item, or ask for changes.' : `Accept the ${open} label check items, or ask for changes.` };
     return { label: 'Approve', line: '' };
   }
   if (gate === 'publish') return publishApproval(doc?.review?.publish, routeState, postStates);
@@ -5203,10 +5279,10 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
   return { label: 'Approve', line: '' };
 }
 // ---- The combine card: music, voice-over and captions, each row with its own choice (one card on the joined video).
-const COMBINE_ROW_TITLES = Object.freeze({ music: 'Music', voice: 'Voice-over', captions: 'Captions' });
+const COMBINE_ROW_TITLES = Object.freeze({ music: 'Music', voice: 'Voice-over', captions: 'Subtitles' });
 const COMBINE_NOTES = Object.freeze({
-  upload: { music: 'Claude will ask you for the track after you approve.', voice: 'Claude will ask you for the recording after you approve.' },
-  make: { music: 'Made with ElevenLabs. Claude shows the price first and nothing is made until you click it.', voice: 'Made with ElevenLabs from the script. Claude shows the price first and nothing is made until you click it. You pick from the takes side by side.' },
+  upload: { music: 'Claude asks for the track after approval.', voice: 'Claude asks for the recording after approval.' },
+  make: { music: 'Made with ElevenLabs. Costs credits.', voice: 'Made with ElevenLabs. Costs credits. Compare takes.' },
 });
 
 /** The picks the combine card shows now: the storyboard-driven defaults, then whatever the person changed (state.combine). */
@@ -5239,7 +5315,7 @@ function combineItems(card, row, brand) {
 /** The combine arguments for the approval, or an error line when a library pick has no item. */
 export function combineArgs(doc, state = {}) {
   const picks = combinePicks(doc, state);
-  if (!picks) return { error: 'The combine card is not ready yet.' };
+  if (!picks) return { error: 'Not ready yet.' };
   const out = {};
   for (const row of ['music', 'voice', 'captions']) {
     const pick = picks[row];
@@ -5274,22 +5350,22 @@ export function combineCard(doc, state = {}, { disabled = false } = {}) {
     } else if (COMBINE_NOTES[pick.source]?.[row]) {
       detail = `<p class="muted combine-note">${esc(COMBINE_NOTES[pick.source][row])}</p>`;
     } else if (row === 'voice' && pick.source === 'none' && card.voiceOver?.enabled) {
-      detail = '<p class="muted combine-note">The storyboard said this video has a voice-over.</p>';
+      detail = '<p class="muted combine-note">The storyboard has a voice-over.</p>';
     }
-    const asked = row === 'voice' && card.voiceOver ? `<p class="muted combine-note">${card.voiceOver.enabled ? `The storyboard asked for a voice-over${card.voiceOver.voice ? ` (${esc(card.voiceOver.voice)})` : ''}.` : 'The storyboard said no voice-over.'}</p>` : '';
+    const asked = row === 'voice' && card.voiceOver ? `<p class="muted combine-note">${card.voiceOver.enabled ? `The storyboard wants a voice-over${card.voiceOver.voice ? ` (${esc(card.voiceOver.voice)})` : ''}.` : 'The storyboard has no voice-over.'}</p>` : '';
     return `<fieldset class="combine-row" data-combine-row="${row}"><legend>${esc(COMBINE_ROW_TITLES[row])}</legend><div class="combine-options" role="radiogroup">${options}</div>${asked}${detail}</fieldset>`;
   }).join('');
-  return `<section class="combine-card" aria-labelledby="combine-title"><div class="combine-head"><h3 id="combine-title">What goes on the joined video</h3>${brandFilter}</div>${rows}<p class="muted combine-foot">Music and a voice-over made with ElevenLabs always cost credits: Claude shows the price and you click it before anything is made.</p></section>`;
+  return `<section class="combine-card" aria-labelledby="combine-title"><div class="combine-head"><h3 id="combine-title">What goes on the joined video</h3>${brandFilter}</div>${rows}<p class="muted combine-foot">ElevenLabs audio costs credits. You see the price and click first.</p></section>`;
 }
 
 /** What the joined video's approve buttons add; the id is what the server records as the finishing choice. */
 export const FINISHING_PICKS = Object.freeze([
-  { id: 'captions', label: 'Approve + add captions' },
+  { id: 'captions', label: 'Approve + add subtitles' },
   { id: 'music', label: 'Approve + add music' },
   { id: 'both', label: 'Approve + both', primary: true },
   { id: 'skip', label: 'Approve as is' },
 ]);
-const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare prices too, and add one more competitor.' });
+const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare prices too.' });
 
 /**
  * The submit_decision request arguments for an Approve or Ask for changes
@@ -5313,8 +5389,8 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     const all = storyboardPanelsOf(boards);
     // The server hears a verdict for every panel: "approve" for each one with no change asked.
     const decided = panelVerdicts(boards, panelStates(boards, panels));
-    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on a panel, so send the changes instead.' };
-    if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
+    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: TXT_SEND_THE_REQUESTED_CHANGES };
+    if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: NOTE_SAY_CHANGE };
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
     return { args };
@@ -5325,8 +5401,8 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
       const mine = states[mediaPanelKey(panel)];
       return { panel: trimmed(panel.panel), ...(trimmed(panel.deliverable) ? { deliverable: trimmed(panel.deliverable) } : {}), verdict: mine.verdict, ...(mine.verdict === 'changes' && trimmed(mine.note) ? { note: trimmed(mine.note) } : {}) };
     });
-    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: 'A change is asked on one, so send the changes instead.' };
-    if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: 'Say what should change.' };
+    if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: TXT_SEND_THE_REQUESTED_CHANGES };
+    if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: NOTE_SAY_CHANGE };
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
     // The joined video is approved together with what to add to it: captions, music, both or as is (skip).
@@ -5335,25 +5411,25 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
       if (picked.error) return { error: picked.error };
       args.combine = picked.combine;
     } else if (gate === 'cut' && verdict === 'approve' && finishing !== null) {
-      if (!FINISHING_PICKS.some(pick => pick.id === finishing)) return { error: 'Pick captions, music, both or as is.' };
+      if (!FINISHING_PICKS.some(pick => pick.id === finishing)) return { error: 'Pick subtitles, music, both or as is.' };
       args.finishing = finishing;
     }
     return { args };
   }
-  if (verdict === 'request_changes' && !note) return { error: 'Say what should change.' };
+  if (verdict === 'request_changes' && !note) return { error: NOTE_SAY_CHANGE };
   if (gate === 'content' && verdict === 'approve') {
     const flags = doc?.review?.labelCheck?.flags || [];
     const ids = flags.map(flag => flag.id).filter(id => accepted[id]);
-    if (flags.length && ids.length !== flags.length) return { error: 'Accept each item from the label check first.' };
+    if (flags.length && ids.length !== flags.length) return { error: 'Accept each label check item first.' };
     if (ids.length) args.acceptedFlagIds = ids;
   }
   if (gate === 'concept') {
     const concepts = doc?.review?.concepts;
     const concept = concepts?.concepts?.find(item => item.id === choice) || null;
     if (verdict === 'approve') {
-      if (!concept) return { error: 'Pick a concept first.' };
+      if (!concept) return { error: TXT_PICK_A_CONCEPT_FIRST };
       const pending = unchosenRecipes(doc);
-      if (pending.some(([id]) => !recipeReady(recipeState, id))) return { error: 'Choose the copy for every post before approving.' };
+      if (pending.some(([id]) => !recipeReady(recipeState, id))) return { error: NOTE_CHOOSE_COPY };
       if (pending.length) args.recipe = Object.fromEntries(pending.map(([id]) => [id, recipePicks(recipeState, id)]));
       args.chosen = concept.id;
       args.credits = conceptCredits(concepts, concept);
@@ -5379,7 +5455,7 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
   }
   if (gate === 'price' && verdict === 'approve') {
     const totals = priceTotals(doc?.review?.quote);
-    if (!totals) return { error: 'Every item needs a price before this can be approved.' };
+    if (!totals) return { error: NOTE_NEEDS_PRICE };
     args.totals = totals;
   }
   // Approving sends no note: the box says "What should change?", so a note there belongs to a request for changes only.
@@ -5459,7 +5535,7 @@ export function sentDecisionState(project, state) {
 /** What a settled card says: the decision on it was already made (applied, or declined as a repeat), so the buttons stay off. */
 export function settledLine(state) {
   const said = typeof state?.message === 'string' ? state.message.trim() : '';
-  return said ? `Already handled. ${said}` : 'Already handled. Claude has this decision and is catching up.';
+  return said ? `Already handled. ${said}` : 'Already handled. Claude is catching up.';
 }
 
 /**
@@ -5490,11 +5566,11 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
   const headExtra = ready && gate === 'findings' ? reportDownloads(downloads) : '';
   const decided = state.busy || state.submitted || state.needsReconciliation || state.settled;
   const plan = ready ? approval(gate, doc, state, recipeState, routeState, postStates) : { disabled: true, label: 'Approve', line: '' };
-  const approveLabel = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? 'Waiting for Claude' : plan.label;
+  const approveLabel = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? TXT_WAITING_FOR_CLAUDE : plan.label;
   const notice = state.settled
     ? `<div class="notice" role="status"><span>${esc(settledLine(state))}</span></div>`
     : state.declined
-      ? `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`
+      ? `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>`
       : state.submitted || state.needsReconciliation ? notifyClaudeNotice(state, signal) : '';
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   // The joined video is approved with what to add to it, in one click. Once a choice is sent the buttons give way to the one that waits.
@@ -5503,9 +5579,9 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
     ? '<button type="button" class="primary" data-review-action="approve" data-finishing="combine">Approve + add these</button>'
     : pickFinishing
     ? FINISHING_PICKS.map(pick => `<button type="button"${pick.primary ? ' class="primary"' : ''} data-review-action="approve" data-finishing="${esc(pick.id)}">${esc(pick.label)}</button>`).join('')
-    : `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? 'Waiting for Claude' : state.settled ? 'Already handled' : approveLabel)}</button>`;
+    : `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? TXT_WAITING_FOR_CLAUDE : state.settled ? 'Already handled' : approveLabel)}</button>`;
   const actions = state.commentOpen
-    ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: make the hook shorter and show the product sooner.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? 'Waiting for Claude' : 'Send changes'}</button></div></div></div>`
+    ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: shorten the hook.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? TXT_WAITING_FOR_CLAUDE : 'Send changes'}</button></div></div></div>`
     : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button>${primaryButtons}</div></div>`;
   const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : GATE_TITLES[gate] || humanize(gate);
   return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
@@ -5517,7 +5593,7 @@ export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
-const BRIEF_MISSING = 'A few answers are missing from the brief.';
+const BRIEF_MISSING = 'Some brief answers are missing.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'finished video': 'finish', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
 const hasQuestionId = item => item?.questionId !== undefined && item?.questionId !== null && String(item.questionId).trim() !== '';
@@ -5533,7 +5609,7 @@ function legacyJobInbox(project) {
   const review = pendingReview(project);
   if (review) {
     const gate = review.gate || review.reviewId || null;
-    return [{ ...base, kind: 'decision', gate, text: GATE_TITLES[gate] || 'A decision is waiting for you.' }];
+    return [{ ...base, kind: 'decision', gate, text: GATE_TITLES[gate] || NOTE_DECISION_WAITING }];
   }
   const intake = project?.intake;
   const briefOpen = (intake?.fields || []).some(field => field?.missing) || (intake?.other || []).length > 0 || (project?.blockers || []).length > 0;
@@ -5563,10 +5639,10 @@ export function onboardingInboxItems(brands = [], drafts = []) {
     const phase = brandResearchPhase(brand, draft);
     const name = trimmed(brand.name) || 'This brand';
     const base = { kind: 'onboarding', brand: brand.slug, brandName: trimmed(brand.name) || null };
-    if (phase === 'running') return [{ ...base, state: 'running', needsYou: false, text: `${name} onboarding has started. Claude is researching the brand. Nothing needed from you yet.` }];
+    if (phase === 'running') return [{ ...base, state: 'running', needsYou: false, text: `${name}: researching. Nothing needed yet.` }];
     if (phase === 'complete') {
       const researched = brand.usage?.status === 'complete';
-      return [{ ...base, state: 'review', needsYou: true, text: researched ? `${name} research is done. Check the brand profile and click Save and continue.` : 'Check the brand profile and click Save and continue.' }];
+      return [{ ...base, state: 'review', needsYou: true, text: researched ? `${name}: research done. Check the profile and save.` : 'Check the profile and save.' }];
     }
     if (phase === 'failed') {
       const why = trimmed(brand.usage?.result?.reason).replace(/[.!?]+$/, '');
@@ -5586,7 +5662,7 @@ export function stuckInboxItems(projects = [], items = []) {
   const asked = new Set((Array.isArray(items) ? items : []).filter(item => item?.jobId && item.kind !== 'post').map(item => item.jobId));
   return (Array.isArray(projects) ? projects : []).filter(project => project?.jobId && project.stuck && typeof project.stuck === 'object' && !asked.has(project.jobId)).map(project => ({
     kind: 'stuck', jobId: project.jobId, jobTitle: trimmed(project.title), brandName: trimmed(project.brandName),
-    text: `Stuck: ${agentPlain(project.stuck.reason, project.stuck.kind === 'internal' ? 'Something went wrong on our side' : 'Claude needs your help to carry on')}`,
+    text: `Stuck: ${agentPlain(project.stuck.reason, project.stuck.kind === 'internal' ? NOTE_WENT_WRONG : NOTE_NEEDS_HELP)}`,
   }));
 }
 
@@ -5619,17 +5695,17 @@ export function inboxOptions(options) {
 }
 
 export function answerArgs(item, { choice = null, text = null, requestId } = {}) {
-  if (!hasQuestionId(item)) return { error: 'This question is no longer open.' };
+  if (!hasQuestionId(item)) return { error: 'This question is closed.' };
   const args = { requestId, questionId: item.questionId };
   if (text !== null && text !== undefined) {
-    if (item.allowText === false) return { error: 'Choose one of the answers.' };
+    if (item.allowText === false) return { error: TXT_CHOOSE_ONE_OF_THE };
     const value = String(text).trim();
     if (!value) return { error: 'Type your answer first.' };
     if (value.length > ANSWER_LIMIT) return { error: `Keep your answer to ${ANSWER_LIMIT} characters or fewer.` };
     args.text = value;
   } else {
     const option = Number.isInteger(choice) ? inboxOptions(item.options)[choice] : null;
-    if (!option) return { error: 'Choose one of the answers.' };
+    if (!option) return { error: TXT_CHOOSE_ONE_OF_THE };
     args.choice = option.value;
     if (String(option.value) !== option.label) args.choiceLabel = option.label;
   }
@@ -5651,7 +5727,7 @@ function inboxJobLine(item) {
 }
 
 function inboxStatus(state = {}, signal = {}) {
-  if (state.declined) return `<div class="notice" role="status"><span>${esc(state.message || 'Declined in chat. Nothing was changed.')}</span></div>`;
+  if (state.declined) return `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>`;
   return state.submitted || state.needsReconciliation ? notifyClaudeNotice(state, signal) : '';
 }
 
@@ -5665,7 +5741,7 @@ function inboxSummary(item) {
   return item?.credits && typeof item.credits === 'object' ? priceWords(item.credits) : '';
 }
 
-const IN_CHAT_LINE = 'Answer this one in the chat. Claude only takes your go-ahead for posting or spending from the chat.';
+const IN_CHAT_LINE = 'Answer in chat. Posting and spending are approved only there.';
 
 /** Takes of a voice-over or music track, side by side with a player each; the picking is done with the answer buttons below. */
 export function takeList(takes) {
@@ -5726,7 +5802,7 @@ function sampleThumb(doc) {
   return `<figure class="inbox-thumb" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${body}</figure>`;
 }
 
-const REVIEW_NOT_READY = 'Claude is getting this ready to show you.';
+const REVIEW_NOT_READY = 'Getting this ready.';
 
 // Small pictures of what a review is about (storyboard pictures, clips, the joined or finished video, the post), each opening the review.
 function decisionPreviews(item, jobId) {
@@ -5738,12 +5814,12 @@ function decisionPreviews(item, jobId) {
 
 export function inboxDecisionArgs(item, { brand = null, requestId } = {}) {
   const artifacts = Array.isArray(item?.artifacts) ? item.artifacts.filter(entry => entry && typeof entry.path === 'string' && typeof entry.sha256 === 'string') : [];
-  if (!item?.jobId || !INLINE_DECISIONS.has(item.gate) || !artifacts.length || !Number.isSafeInteger(item.revision)) return { error: 'Open the review to decide this.' };
+  if (!item?.jobId || !INLINE_DECISIONS.has(item.gate) || !artifacts.length || !Number.isSafeInteger(item.revision)) return { error: 'Open the review.' };
   const args = { requestId, brand, jobId: item.jobId, reviewId: item.gate, revision: item.revision, artifacts: artifacts.map(({ path, sha256 }) => ({ path, sha256 })), decision: 'approve' };
   if (trimmed(item.jobTitle)) args.title = trimmed(item.jobTitle);
   if (item.gate === 'price') {
     const credits = item.credits && typeof item.credits === 'object' ? item.credits : null;
-    if (!credits || PRICE_PROVIDERS.some(provider => credits[provider] !== undefined && creditNumber(credits[provider]) === null)) return { error: 'Every item needs a price before this can be approved.' };
+    if (!credits || PRICE_PROVIDERS.some(provider => credits[provider] !== undefined && creditNumber(credits[provider]) === null)) return { error: NOTE_NEEDS_PRICE };
     args.totals = Object.fromEntries(PRICE_PROVIDERS.map(provider => [provider, creditNumber(credits[provider]) || 0]));
   }
   return { args };
@@ -5766,14 +5842,14 @@ function decisionCard(item, ctx = {}) {
   const plan = status === 'ready' ? approval(gate, shown, state, {}) : { label: gate === 'price' ? 'Approve price' : 'Approve sample', line: '' };
   const blocked = (docState === 'loading' && !shown) || status === 'changed' || Boolean(plan.disabled);
   const decided = Boolean(state.busy || state.submitted || state.needsReconciliation);
-  const label = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? 'Waiting for Claude' : plan.label;
+  const label = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? TXT_WAITING_FOR_CLAUDE : plan.label;
   const line = plan.disabled && plan.line ? plan.line : status === 'changed' ? REVIEW_WAITING.changed : summary || plan.line;
   const thumb = gate === 'sample' && shown ? sampleThumb(shown) : '';
   return `${summaryLine(line)}${thumb}${inboxError(state)}<div class="inbox-actions">${reviewButton}<button type="button" class="primary" data-inbox-approve="${esc(jobId)}" ${blocked || decided ? 'disabled' : ''}>${esc(label)}</button></div>${inboxStatus(state, signal)}`;
 }
 
 const INBOX_FIELD_INPUTS = new Set(['select', 'checkboxes', 'textarea', 'url']);
-const FIX_HIGHLIGHTED = 'Fix the highlighted answers before saving.';
+const FIX_HIGHLIGHTED = NOTE_FIX_ANSWERS;
 
 function fieldAnswered(field, values, intake) {
   if (field.input !== 'deliverables') return !intakeFieldEmpty(field, values);
@@ -5806,20 +5882,20 @@ function briefFields(item, intake, errors = null) {
 export function inboxIntakeArgs(project, draft = {}, keys = [], { requestId, required = null, items = [] } = {}) {
   const fallback = items.map(itemField).filter(Boolean);
   const intake = project?.intake || (fallback.length ? { fields: fallback, platforms: [] } : null);
-  if (!intake || !project?.jobId) return { errors: { form: 'Open the job to answer this.' } };
+  if (!intake || !project?.jobId) return { errors: { form: 'Open the job.' } };
   const revision = [items.find(item => item?.field === required), ...items].find(item => Number.isSafeInteger(item?.revision))?.revision;
   const values = intakeValues(intake, draft);
   const fields = (intake.fields || []).filter(field => field && field.input !== 'photo' && keys.includes(field.key));
   const own = required ? fields.find(field => field.key === required) : null;
   if (own && !fieldAnswered(own, values, intake)) {
     const { errors } = intakePatch({ ...intake, fields: [own] }, draft);
-    return { errors: Object.keys(errors).length ? errors : { form: 'Answer this first.' } };
+    return { errors: Object.keys(errors).length ? errors : { form: TXT_ANSWER_THIS_FIRST } };
   }
   const answered = fields.filter(field => fieldAnswered(field, values, intake));
-  if (!answered.length) return { errors: { form: 'Answer this first.' } };
+  if (!answered.length) return { errors: { form: TXT_ANSWER_THIS_FIRST } };
   const { patch, errors } = intakePatch({ ...intake, fields: answered }, draft);
   if (Object.keys(errors).length) return { errors };
-  if (!Object.keys(patch).length) return { errors: { form: 'Change or answer at least one item before saving.' } };
+  if (!Object.keys(patch).length) return { errors: { form: NOTE_NOTHING_CHANGED } };
   return { args: { requestId, brand: project.brand, jobId: project.jobId, expectedRevision: revision ?? project.revision, patch, ...(project.title ? { title: project.title } : {}) } };
 }
 
@@ -5839,7 +5915,7 @@ function briefCard(item, ctx = {}, index = 0) {
   const keys = single ? [...new Set([item.field, ...briefKeys])] : shown.map(field => field.key);
   const here = state.inboxField && keys.includes(state.inboxField) ? state.inboxField === (item.field || null) : briefLead;
   const pending = Boolean(state.submitted || state.needsReconciliation);
-  const label = here && state.busy ? 'Saving...' : here && state.submitted ? 'Waiting for Claude' : here && state.needsReconciliation ? 'Needs Claude attention' : 'Save';
+  const label = here && state.busy ? 'Saving...' : here && state.submitted ? TXT_WAITING_FOR_CLAUDE : here && state.needsReconciliation ? TXT_NEEDS_CLAUDE_ATTENTION : 'Save';
   const message = errors?.form || (state.error && state.error !== FIX_HIGHLIGHTED ? state.error : '');
   const error = here && message ? `<p class="notice error inline-error" role="alert">${esc(message)}</p>` : '';
   const platforms = intakePlatforms(intake, values);
@@ -5859,7 +5935,7 @@ export function newestJobsFirst(list) {
   return (Array.isArray(list) ? list : []).map((project, at) => ({ project, at, time: jobOpenedAt(project) })).sort((a, b) => b.time - a.time || a.at - b.at).map(entry => entry.project);
 }
 
-const INBOX_TEXT_FALLBACK = Object.freeze({ decision: 'A decision is waiting for you.', brief: BRIEF_MISSING, question: '' });
+const INBOX_TEXT_FALLBACK = Object.freeze({ decision: NOTE_DECISION_WAITING, brief: BRIEF_MISSING, question: '' });
 
 export function inboxKey(item) {
   if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}`;
@@ -5959,7 +6035,7 @@ function questionGroupCard(items, contexts, indexes, { signal = {}, workspace = 
     const text = inboxItemText(item);
     return `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}">${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${questionCard(item, contexts[at].question || {}, signal, indexes[at])}</div>`;
   }).join('');
-  const lead = `<p class="inbox-summary">${esc(`${items.length} questions from Claude about this job.`)}</p>`;
+  const lead = `<p class="inbox-summary">${esc(`${items.length} questions from Claude.`)}</p>`;
   return `<li class="inbox-item is-group" data-inbox-key="${esc(`questions-${head.jobId}`)}">${workspace ? inboxJobLine(head) : ''}${inboxFromLine(head)}${lead}${blocks}</li>`;
 }
 
@@ -6060,18 +6136,18 @@ export function stageApprovals(stage) {
 // @module rail
 const RAIL_SETTLED = new Set(['complete', 'pending', 'cancelled']);
 const RAIL_UPCOMING = new Set(['pending', 'waiting', 'running']);
-const RAIL_HERE_HELD = Object.freeze({ BLOCKED: 'Held up', ESCALATED: 'Held up', CHANGES_REQUESTED: 'Making the changes you asked for' });
+const RAIL_HERE_HELD = Object.freeze({ BLOCKED: 'Held up', ESCALATED: 'Held up', CHANGES_REQUESTED: 'Making your changes' });
 const RAIL_NEEDS_HELP = new Set(['BLOCKED', 'ESCALATED']);
 const RAIL_JUMPS = Object.freeze({ decision: ['review', 'Review'], brief: ['brief', 'Finish the brief'] });
 const RAIL_TEXT = Object.freeze({
-  notStarted: 'Not started yet',
+  notStarted: TXT_NOT_STARTED_YET,
   finished: 'Finished',
   posting: 'Posting',
   lastStep: 'This is the last step.',
   allDone: 'All steps are done.',
-  idle: 'Nothing right now, Claude is working.',
+  idle: 'Nothing now. Claude is working.',
   done: 'Nothing, this job is finished.',
-  held: 'Claude needs your help. Check the chat.',
+  held: 'Claude needs your help. See chat.',
 });
 
 function railJump(item) {
@@ -6128,7 +6204,7 @@ export function jobFlowStage(stage, index) {
 export function jobFlowPanel(project) {
   const stages = Array.isArray(project?.stages) ? project.stages : [];
   const count = stages.length;
-  return `<section class="panel job-flow"><div class="section-head"><h2>Job flow</h2><span class="count">${count} ${count === 1 ? 'stage' : 'stages'}</span></div>${stages.map(jobFlowStage).join('') || '<p class="muted">The stages appear when the brief is routed. Ask Claude to complete the missing brief details.</p>'}</section>`;
+  return `<section class="panel job-flow"><div class="section-head"><h2>Job flow</h2><span class="count">${count} ${count === 1 ? 'stage' : 'stages'}</span></div>${stages.map(jobFlowStage).join('') || '<p class="muted">Stages appear once the brief is routed.</p>'}</section>`;
 }
 
 /** The job document's file entry for a project output, when it is the same revision. */
@@ -6146,10 +6222,10 @@ export function outputReviewUrl(doc, file, path) {
 export function previewUnavailableReason({ type = '', path = '', hasDoc = true } = {}) {
   const guess = type || (/\.(png|jpe?g|webp|gif)$/i.test(path) ? 'image' : /\.(mp4|webm|mov)$/i.test(path) ? 'video' : /\.(mp3|wav|m4a|ogg)$/i.test(path) ? 'audio' : '');
   const noun = /image/.test(guess) ? 'picture' : /video/.test(guess) ? 'video' : /audio/.test(guess) ? 'audio clip' : null;
-  if (!hasDoc) return 'The details for this job are still loading. Try again in a moment.';
-  if (noun) return `Claude has not added a viewable copy of this ${noun} to the board yet. Ask Claude to add one, or open it from your computer.`;
-  if (/\.(md|txt|csv)$/i.test(path)) return 'This document is not on the board right now. Ask Claude to refresh the board, or open it from your computer.';
-  return 'The board cannot show this kind of file. Open it from your computer.';
+  if (!hasDoc) return 'Still loading. Try again shortly.';
+  if (noun) return `No viewable ${noun} yet. Ask Claude, or open it from your computer.`;
+  if (/\.(md|txt|csv)$/i.test(path)) return 'Not on the board. Ask Claude to refresh, or open it on your computer.';
+  return 'Cannot show this file type. Open it on your computer.';
 }
 
 /** Research and strategy as collapsible, readable panels. */
@@ -6158,7 +6234,7 @@ export function documentPanels(doc, openKeys = new Set()) {
   const files = new Map((doc.files || []).map(file => [file.path, file]));
   const research = (doc.research || []).map(path => files.get(path)).filter(Boolean);
   const strategy = doc.strategy ? files.get(doc.strategy) : null;
-  const block = file => `<article class="doc-file"><h3>${esc(outputLabel(file, doc).title)}</h3>${file.text != null ? `<div class="md">${renderMarkdown(withoutTitle(file.text, file.title))}</div>` : '<p class="muted">Too large for the board. Open it from your computer.</p>'}${file.truncated ? '<p class="muted">Shortened for the board. The full file is on your computer.</p>' : ''}</article>`;
+  const block = file => `<article class="doc-file"><h3>${esc(outputLabel(file, doc).title)}</h3>${file.text != null ? `<div class="md">${renderMarkdown(withoutTitle(file.text, file.title))}</div>` : `<p class="muted">${NOTE_TOO_LARGE}</p>`}${file.truncated ? `<p class="muted">${NOTE_SHORTENED}</p>` : ''}</article>`;
   const panel = (key, title, list) => `<details class="panel doc-panel" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary><span class="doc-summary-title">${esc(title)}</span>${list.length > 1 ? `<span class="count">${list.length} files</span>` : ''}</summary><div class="doc-body">${list.map(block).join('')}</div></details>`;
   return `${research.length ? panel('doc:research', 'Research', research) : ''}${strategy ? panel('doc:strategy', 'Strategy', [strategy]) : ''}`;
 }
@@ -6231,7 +6307,7 @@ function outputRow(item, index, doc) {
   return `<button class="artifact${label.pinned ? ' is-pinned' : ''}" data-artifact="${index}"><span class="artifact-copy"><span class="artifact-title">${esc(label.title)}${label.tags.map(refTag).join('')}</span><small>${esc(label.note)}</small></span><span aria-hidden="true">↗</span></button>`;
 }
 
-export function outputsList(artifacts = [], doc = null, openKeys = new Set(), { empty = 'Drafts, media, and the delivery package will appear here.' } = {}) {
+export function outputsList(artifacts = [], doc = null, openKeys = new Set(), { empty = 'Drafts and media appear here.' } = {}) {
   const pinnedOrder = new Map((doc?.outputs?.pinned || []).map((entry, order) => [entry.path, order]));
   const entries = artifacts.map((item, index) => ({ item, index, group: pinnedOrder.has(item?.path) ? 'pinned' : outputGroup(item?.path) }));
   if (!entries.length) return `<p class="muted">${esc(empty)}</p>`;
@@ -6270,7 +6346,7 @@ export function agentStateOf(value) {
   return AGENT_STATES[key] ? key : 'waiting';
 }
 const isDirectorAgent = agent => agent?.id === 'producer';
-export const AGENT_HANDED_NOTE = 'Handed to the Director for your decision';
+export const AGENT_HANDED_NOTE = 'Waiting on your decision';
 /** One voice: the review card of a pending gate is in the Director's chat only. Any other agent's chat never carries it. */
 export const chatDecisionCard = (agent, decision, gate) => Boolean(decision && gate) && isDirectorAgent(agent);
 /** The plain line in the chat of the agent whose finished work waits on a decision: it is handed over, nothing is asked of the person there. */
@@ -6294,7 +6370,7 @@ export function agentMessageProblem(text, agent) {
   const clean = agentMessageText(text);
   if (!clean) return 'Write your message first.';
   if (clean.length > AGENT_MESSAGE_LIMIT) return `Keep your message to ${AGENT_MESSAGE_LIMIT} characters or fewer.`;
-  if ((Number(agent?.pendingMessages) || 0) >= AGENT_PENDING_LIMIT) return `The ${agentNameOf(agent)} has ${AGENT_PENDING_LIMIT} messages waiting. Wait for a reply before sending more.`;
+  if ((Number(agent?.pendingMessages) || 0) >= AGENT_PENDING_LIMIT) return `The ${agentNameOf(agent)} has ${AGENT_PENDING_LIMIT} messages waiting. Wait for a reply.`;
   return '';
 }
 export const agentMessageText = text => String(text ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim();
@@ -6312,7 +6388,7 @@ function agentMessageStatus(agent, message) {
   if (message.status === 'answered') return { word: 'Answered', note: '' };
   if (message.status === 'delivered') return { word: `Delivered${message.deliveredAt ? ' ' + agentTime(message.deliveredAt) : ''}`, note: '' };
   if (isDirectorAgent(agent)) return { word: 'Sent', note: 'The Director replies here.' };
-  return { word: 'Sent', note: agentStateOf(agent.state) === 'done' ? `The ${name} has finished, so the Director will answer.` : `Passed on at the ${name}'s next step.` };
+  return { word: 'Sent', note: agentStateOf(agent.state) === 'done' ? `The ${name} has finished. The Director will answer.` : `Passed on at the ${name}'s next step.` };
 }
 
 function agentChips(files, more, { artifacts, doc, label, by }) {
@@ -6331,17 +6407,17 @@ function agentChips(files, more, { artifacts, doc, label, by }) {
   return `<ul class="ab-chips" aria-label="${esc(label)}">${list.map(chip).join('')}${extra ? `<li class="ab-more">${esc(`+${extra} more`)}</li>` : ''}</ul>`;
 }
 
-const DIRECTOR_ROLE = 'Runs the job and talks to you';
+const DIRECTOR_ROLE = 'Runs the job';
 function agentStuckBanner(stuck, retry = {}, signal = {}, project = null) {
   if (!stuck || typeof stuck !== 'object') return '';
   const internal = stuck.kind === 'internal';
-  const reason = agentPlain(stuck.reason, internal ? 'Something went wrong on our side' : 'Claude needs your help to carry on');
+  const reason = agentPlain(stuck.reason, internal ? NOTE_WENT_WRONG : NOTE_NEEDS_HELP);
   const since = agentTime(stuck.since);
   // Try again is only for a job that went wrong on our side, and only while the server says it can be tried (not mid-retry, not after a second failure).
   const mine = Boolean(retry.applied && retry.sinceSeen === stuck.since && !retry.submitted);
   const waiting = Boolean(retry.busy || retry.submitted || retry.needsReconciliation || mine);
   const button = stuck.canRetry === true && internal ? `<button type="button" class="ab-retry" data-ab-retry="${esc(project?.jobId || '')}" ${waiting ? 'disabled' : ''}>${retry.busy ? 'Trying again...' : 'Try again'}</button>` : '';
-  const status = button ? (mine ? '<p class="inbox-note" role="status">Trying that step again. This updates when it is done.</p>' : inboxStatus(retry, signal)) + inboxError(retry) : '';
+  const status = button ? (mine ? '<p class="inbox-note" role="status">Trying that step again.</p>' : inboxStatus(retry, signal)) + inboxError(retry) : '';
   return `<section class="ab-stuck" data-kind="${internal ? 'internal' : 'help'}" aria-labelledby="ab-stuck-title"><p class="ab-stuck-title" id="ab-stuck-title"><strong>Stuck:</strong> ${esc(reason)}</p>${since ? `<small>Since ${esc(since)}</small>` : ''}${button}${status}</section>`;
 }
 
@@ -6431,7 +6507,7 @@ export function blob(name, mood, size = 34) {
 // an agent whose work waits on a decision reads "Waiting" with the note "Handed to the Director for your decision". An agent
 // nobody has used yet is "not called yet".
 const AGENT_VIEWS = Object.freeze({
-  needs_you: { word: 'Waiting on you', tone: 'ask', mood: 'surprised' },
+  needs_you: { word: TXT_WAITING_ON_YOU, tone: 'ask', mood: 'surprised' },
   working: { word: 'Working', tone: 'working', mood: 'thinking' },
   waiting: { word: 'Waiting', tone: 'draft', mood: 'idle' },
   up_next: { word: 'Up next', tone: 'idle', mood: 'sleepy' },
@@ -6487,7 +6563,7 @@ function agentRow({ agent, view }, { now, needText = '', questions = 0, active =
   const line = isDirectorAgent(agent) && view.state === 'needs_you' && needText ? needText : view.state === 'waiting' && note ? note : agentPlain(agent.task);
   const unread = unreadReplies(agent);
   const badge = questions ? `<span class="ag-count" title="Questions waiting on you">${questions}</span>` : unread ? '<i class="ag-dot" role="img" aria-label="New reply" title="A reply you have not read"></i>' : '';
-  return `<button type="button" class="ag st-${view.tone}${active ? ' sel' : ''}" data-ab-open="${esc(agent.id)}"><span class="ag-f">${blob(agent.id, view.mood, 36)}<i class="ag-d" aria-hidden="true"></i></span><span class="ag-b"><span class="ag-n"><b>${esc(name)}</b>${time ? `<span class="ag-time num">${esc(time)}</span>` : ''}</span><span class="ag-l"><span class="ag-w">${esc(view.word)}</span>${line ? ` · ${esc(line)}` : ''}</span></span><span class="ag-t">${badge}</span></button>`;
+  return `<button type="button" class="ag st-${view.tone}${active ? ' sel' : ''}" data-ab-open="${esc(agent.id)}"${line && capWords(line, 12) !== line ? ` title="${esc(line)}"` : ''}><span class="ag-f">${blob(agent.id, view.mood, 36)}<i class="ag-d" aria-hidden="true"></i></span><span class="ag-b"><span class="ag-n"><b>${esc(name)}</b>${time ? `<span class="ag-time num">${esc(time)}</span>` : ''}</span><span class="ag-l"><span class="ag-w">${esc(view.word)}</span>${line ? ` · ${esc(capWords(line, 12))}` : ''}</span></span><span class="ag-t">${badge}</span></button>`;
 }
 
 /** The Inbox: the Director first, then the agents that have been called, then the ones not called yet. */
@@ -6530,7 +6606,7 @@ const tookWords = ms => (Number.isFinite(ms) && ms > 0 ? (ms < 90000 ? `${Math.m
 // A step is a window of time (when it began, when it finished). Its trace is who did it, what it made, and what that agent ran,
 // said and was told inside the window. A step with no recorded time shows who and what only, never another step's activity.
 const traceMs = value => { const at = Date.parse(value ?? ''); return Number.isFinite(at) ? at : null; };
-const TRACE_RUN_WORDS = Object.freeze({ finished: 'Finished', failed: 'Could not finish', stopped: 'Finished', running: 'Working now', lost: 'Stopped responding' });
+const TRACE_RUN_WORDS = Object.freeze({ finished: 'Finished', failed: TXT_COULD_NOT_FINISH, stopped: 'Finished', running: 'Working now', lost: 'Stopped responding' });
 // The activity rows that only repeat a message the Messages list already shows.
 const TRACE_MESSAGE_ROWS = /^(You sent a message|Your message was passed on|Your message was answered|The Director answered your message)$/;
 const traceWhen = value => (traceMs(value) === null ? '' : time(value));
@@ -6652,14 +6728,14 @@ export function stepTrace(item, ctx = {}) {
     withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
     traceFact(status === 'done' || status === 'running' ? 'Started' : 'Waiting since', esc(traceWhen(item.startedAt))),
     status === 'done' ? traceFact('Finished', esc([traceWhen(item.doneAt), took].filter(Boolean).join(' · '))) : '',
-    status === 'running' ? traceFact('Now', 'Working on it') : '',
-    status === 'waiting' ? traceFact('Now', 'Waiting on you') : '',
+    status === 'running' ? traceFact('Now', TXT_WORKING_ON_IT) : '',
+    status === 'waiting' ? traceFact('Now', TXT_WAITING_ON_YOU) : '',
   ].join('');
   const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
   const asked = withFiles ? requestTrace(item) : '';
   const none = !facts && !made && !session && !asked && !shotPlan;
-  const sessionBody = win.known ? (session || '<p class="muted">Nothing was recorded for this step.</p>') : '<p class="muted">The time of this step was not recorded.</p>';
-  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection('What it made', made)}${shotPlan}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
+  const sessionBody = win.known ? (session || '<p class="muted">Nothing recorded.</p>') : '<p class="muted">No time recorded.</p>';
+  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection(TXT_WHAT_IT_MADE, made)}${shotPlan}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
 }
 
 const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
@@ -6688,11 +6764,11 @@ export function gateTrace(item, ctx = {}) {
   const facts = [
     traceFact('Prepared by', traceWho(item.agent || agent?.id, person, agent?.model)),
     traceFact('Asked you', esc(traceWhen(item.openedAt))),
-    item.status === 'waiting' ? traceFact('Now', 'Waiting on you') : '',
+    item.status === 'waiting' ? traceFact('Now', TXT_WAITING_ON_YOU) : '',
   ].join('');
   const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agents, win)].join('') : '';
   const decided = decisions ? `<ol class="trace-list">${decisions}</ol>` : '';
-  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', (item.quote && item.status === 'done' ? priceTable(item.quote, { withProvider: true }) : '') + traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else was recorded for this decision.</p>') : '')}`;
+  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', (item.quote && item.status === 'done' ? priceTable(item.quote, { withProvider: true }) : '') + traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else recorded.</p>') : '')}`;
 }
 
 // One bubble for each finished step of this agent: the step's name, the files it made as links, and a small footer.
@@ -6700,7 +6776,7 @@ function workBubbles(agent, tasks, chipContext) {
   const done = tasks.filter(task => task.status === 'done');
   const files = Array.isArray(agent.files) ? agent.files.filter(file => file && trimmed(file.path)) : [];
   if (!done.length && !files.length) return '';
-  const groups = (done.length ? done : [{ name: 'What it made', outputs: [] }]).map(task => ({ task, files: [] }));
+  const groups = (done.length ? done : [{ name: TXT_WHAT_IT_MADE, outputs: [] }]).map(task => ({ task, files: [] }));
   const taken = new Set();
   for (const group of groups) {
     for (const file of files) {
@@ -6752,7 +6828,7 @@ export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} }
   const name = agentNameOf(agent);
   const attach = chatAttachment(ui.attach || {}, name);
   const draft = ui.draft || '';
-  const hint = isDirectorAgent(agent) ? 'The Director answers here.' : `The Director passes this on at the ${name}'s next step.`;
+  const hint = isDirectorAgent(agent) ? 'The Director answers here.' : `Passed on at the ${name}'s next step.`;
   const send = ui.send || {};
   return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}"><div class="cmp-row">${attach.button}<label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div>${attach.panel}<div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
 }
@@ -6760,7 +6836,7 @@ export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} }
 // The agent's own tasks on this job, in plan order, at the top of its chat. A task that began (done, working or waiting) opens to its
 // history, the same trace the stage card shows; one not started yet is disabled. An agent with no plan rows (the Researcher on
 // brand onboarding) lists its runs instead, each openable.
-const TASK_PILLS = Object.freeze({ finished: ['done', 'Done'], failed: ['pending', 'Could not finish'], stopped: ['done', 'Done'], running: ['running', 'Working'], lost: ['pending', 'Stopped responding'] });
+const TASK_PILLS = Object.freeze({ finished: ['done', 'Done'], failed: ['pending', TXT_COULD_NOT_FINISH], stopped: ['done', 'Done'], running: ['running', 'Working'], lost: ['pending', 'Stopped responding'] });
 function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = '' } = {}) {
   const view = agentView(agent);
   const person = { name: agentNameOf(agent), mood: view.mood };
@@ -6797,7 +6873,7 @@ export function agentChat(agent, ctx = {}) {
   const director = isDirectorAgent(agent);
   const role = agentPlain(agent.role) || (director ? DIRECTOR_ROLE : agentPlain(agent.task));
   const card = item ? `<div class="msg-r a"><div class="dc s-waiting"><div class="dc-h"><span class="node pic" aria-hidden="true"><img src="${gatePicture(item.gate)}" alt=""></span><div><b>${esc(item.title)}</b><span class="pill st-waiting">Waiting on you</span></div></div>${item.line ? `<p>${esc(item.line)}</p>` : ''}<div class="bub-act"><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('change')} Request change</button><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('open')} Open details</button></div></div></div>` : '';
-  const typing = view.state === 'working' ? `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? 'Working on it' : agentPlain(agent.task, 'Working on it'))}</p></div></div>` : '';
+  const typing = view.state === 'working' ? `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>` : '';
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
@@ -6816,7 +6892,7 @@ function chatDetails(agent, { openKeys, jobId }) {
 }
 
 // Step statuses as the server projects them: done, running, waiting (on the person) or pending.
-const STEP_STATUS_WORDS = Object.freeze({ done: 'Done', running: 'Working', waiting: 'Waiting on you', pending: 'Not started' });
+const STEP_STATUS_WORDS = Object.freeze({ done: 'Done', running: 'Working', waiting: TXT_WAITING_ON_YOU, pending: 'Not started' });
 // The stage turns running as soon as the one before it is done, a moment before the Director calls its agent.
 const STEP_STARTING_WORD = 'Starting';
 const STEP_STATUSES = new Set(Object.keys(STEP_STATUS_WORDS));
@@ -6874,18 +6950,19 @@ function stepCard(item, prev, who, { trace = '', open = false, key = '' } = {}) 
   const person = who(item.agent) || { name: humanize(item.agent), mood: 'sleepy' };
   const status = item.status;
   const starting = status === 'running' && person.called === false;
-  const said = status === 'pending' ? (prev ? `Waits on ${prev}` : 'Not started yet') : status === 'waiting' ? 'Waiting on you' : starting ? `The Director is calling the ${person.name}` : status === 'done' && item.receipt ? item.receipt : item.line || (status === 'done' ? 'Finished' : 'Working on it');
+  const saidFull = status === 'pending' ? (prev ? `Waits on ${prev}` : TXT_NOT_STARTED_YET) : status === 'waiting' ? TXT_WAITING_ON_YOU : starting ? `The Director is calling the ${person.name}` : status === 'done' && item.receipt ? item.receipt : item.line || (status === 'done' ? 'Finished' : TXT_WORKING_ON_IT);
+  const said = capWords(saidFull);
   const glyph = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : status === 'running' ? '<span class="pip"></span>' : '';
   const row = `<span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span>`;
   // A step that is done, working or waiting opens to its history. One not reached yet is shown disabled: no control, no history.
   if (status === 'pending') return `<li class="step s-pending is-locked" aria-disabled="true"><div class="step-row">${row}</div></li>`;
-  return `<li class="step s-${status} has-trace"><details class="step-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="step-row" title="${esc(`Show the history of ${item.name}`)}">${row}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${trace}</div></details></li>`;
+  return `<li class="step s-${status} has-trace"><details class="step-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="step-row" title="${esc(`Show the history of ${item.name}`)}">${row}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${saidFull !== said ? `<p class="muted step-full">${esc(saidFull)}</p>` : ''}${trace}</div></details></li>`;
 }
 
 function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
   const status = item.status;
   const approved = gateReceipt(item) || 'Done';
-  const meta = status === 'waiting' ? 'Waiting on you' : status === 'done' ? approved : 'Not started yet';
+  const meta = status === 'waiting' ? TXT_WAITING_ON_YOU : status === 'done' ? approved : TXT_NOT_STARTED_YET;
   const badge = status === 'done' ? icon('check') : status === 'waiting' ? icon('user') : icon('gate');
   const head = `<span class="gl" aria-hidden="true">${badge}</span><span class="gt"><b>${esc(item.name)}</b><span class="meta">${esc(meta)}</span></span>`;
   const cls = `gateband g-${status}`;
@@ -6939,7 +7016,7 @@ export function stageQuestions(items, { stateOf = () => ({}), signal = {} } = {}
   const open = (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && item.questionId);
   if (!open.length) return '';
   const blocks = open.map((item, at) => `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionCard(item, stateOf(item) || {}, signal, at, { place: 'stage' })}</div>`).join('');
-  return `<div class="stage-ask" role="group" aria-label="Claude's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'Claude needs your answer to carry on' : `Claude needs ${open.length} answers to carry on`)}</p>${blocks}</div>`;
+  return `<div class="stage-ask" role="group" aria-label="Claude's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'Claude needs your answer' : `Claude needs ${open.length} answers`)}</p>${blocks}</div>`;
 }
 
 export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, asking = '' } = {}) {
@@ -7145,7 +7222,7 @@ export function intelSteps(intel) {
 export function intelSubtopicsProblem(rows) {
   const names = intelList(rows).map(row => String(row?.name ?? '').trim());
   if (names.some(name => !name)) return 'Fill in the empty subtopic or remove it.';
-  if (new Set(names.map(name => name.toLowerCase())).size < names.length) return 'Two subtopics have the same name. Rename or remove one.';
+  if (new Set(names.map(name => name.toLowerCase())).size < names.length) return 'Two subtopics share a name. Rename or remove one.';
   if (names.length > INTEL_SUBTOPIC_COUNT) return `Remove ${names.length - INTEL_SUBTOPIC_COUNT} to keep exactly ${INTEL_SUBTOPIC_COUNT}.`;
   if (names.length < INTEL_SUBTOPIC_COUNT) return `Add ${names.length === INTEL_SUBTOPIC_COUNT - 1 ? 'one more' : `${INTEL_SUBTOPIC_COUNT - names.length} more`} to reach ${INTEL_SUBTOPIC_COUNT}.`;
   return '';
@@ -7195,7 +7272,7 @@ export function intelPostCard(post, intel, { section = 'post', index = 0, compet
   const maker = trimmed(post.competitor) || competitor;
   const links = href
     ? `<a class="intel-open" href="${esc(href)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`Open post in a new tab: ${title}`)}">Open post ↗</a><button type="button" class="intel-copy${copied === key ? ' is-copied' : ''}" data-intel-act="copy" data-intel-arg="${esc(key)}" data-intel-url="${esc(href)}" data-intel-focus="copy:${esc(key)}" aria-label="${esc(`${copied === key ? 'Link copied' : 'Copy link'}: ${title}`)}">${copied === key ? 'Copied' : 'Copy link'}</button>`
-    : '<span class="muted">No link was saved for this post.</span>';
+    : '<span class="muted">No link saved.</span>';
   const box = href && fallback === key
     ? `<div class="kit-fallback intel-fallback"><p class="kit-fallback-status" role="status">${esc(KIT_COPY_REFUSED.replace('the text', 'the link'))}</p><label class="visually-hidden" for="intel-fallback-${esc(section)}-${index}">Link to this post</label><input id="intel-fallback-${esc(section)}-${index}" type="text" readonly value="${esc(href)}" data-intel-fallback="${esc(key)}" aria-describedby="intel-fallback-hint-${esc(section)}-${index}"><div class="kit-fallback-foot"><span class="muted" id="intel-fallback-hint-${esc(section)}-${index}">${esc(hint || copyHint(''))}</span><button type="button" class="quiet" data-intel-act="copy-done" data-intel-arg="${esc(key)}">Done</button></div></div>`
     : '';
@@ -7210,7 +7287,7 @@ function intelCards(items, intel, ui, section, ctx) {
 function intelPlanPanel(intel, ui) {
   const plan = intelPlan(intel);
   if (!plan.rows.length || !plan.cols.length) {
-    return '<p class="intel-intro">Your subtopics go down the side and the formats that work best across the top, with a post idea in every cell. It is written when the research steps are done.</p><p class="intel-empty">No plan yet.</p>';
+    return '<p class="intel-empty">No plan yet.</p>';
   }
   const head = `<tr><th scope="col">Subtopic</th>${plan.cols.map(col => `<th scope="col">${esc(col.name)}</th>`).join('')}</tr>`;
   const body = plan.rows.map((row, r) => `<tr><th scope="row">${esc(row.name)}</th>${plan.cols.map((col, c) => {
@@ -7232,27 +7309,27 @@ function intelPlanPanel(intel, ui) {
 function intelOwnPanel(intel, ui, ctx) {
   const posts = intelRecords(intel.own).map(post => ({ post, competitor: '' }));
   const empty = intel.newBrand
-    ? 'None yet. This fills in from the results of your first posts.'
-    : 'No winners yet. Posts that beat your own usual views show here once the research has taken them apart.';
-  return `<p class="intel-intro">Posts that beat your own usual views, each taken apart and labelled. These feed concept A, from the brand.</p>${posts.length ? intelCards(posts, intel, ui, 'own', ctx) : `<p class="intel-empty">${esc(empty)}</p>`}`;
+    ? 'None yet.'
+    : 'No winners yet.';
+  return `<p class="intel-intro">Your best posts feed concept A.</p>${posts.length ? intelCards(posts, intel, ui, 'own', ctx) : `<p class="intel-empty">${esc(empty)}</p>`}`;
 }
 function intelCompetitorsPanel(intel, ui, ctx) {
   const groups = intelRecords(intel.competitors);
   const posts = groups.flatMap(group => intelRecords(group.posts).map(post => ({ post, competitor: trimmed(group.name) })));
   const names = groups.map(group => trimmed(group.name)).filter(Boolean);
   const who = names.length ? ` ${names.length === 1 ? 'Competitor' : 'Competitors'}: ${names.join(', ')}.` : '';
-  return `<p class="intel-intro">${esc(`Your top competitors' winning posts, taken apart. These feed concept B, from top competitors.${who}`)}</p>${posts.length ? intelCards(posts, intel, ui, 'competitor', ctx) : '<p class="intel-empty">No competitor posts yet.</p>'}`;
+  return `<p class="intel-intro">${esc(`Competitor winners feed concept B.${who}`)}</p>${posts.length ? intelCards(posts, intel, ui, 'competitor', ctx) : '<p class="intel-empty">No competitor posts yet.</p>'}`;
 }
 function intelViralPanel(intel, ui, ctx) {
   const posts = intelRecords(intel.viral).map(post => ({ post, competitor: '' }));
-  return `<p class="intel-intro">What is rising now in your niche, taken apart. These feed concept C, from what is trending.</p>${posts.length ? intelCards(posts, intel, ui, 'viral', ctx) : '<p class="intel-empty">Nothing viral found yet.</p>'}`;
+  return `<p class="intel-intro">Rising now. Feeds concept C.</p>${posts.length ? intelCards(posts, intel, ui, 'viral', ctx) : '<p class="intel-empty">Nothing viral found yet.</p>'}`;
 }
 
 // The 6 subtopics: cards to read, and the controls that confirm, edit, add and remove. Confirming sends all of them at once.
 function intelSubtopicsPanel(intel, ui, now) {
   const items = intelSubtopics(intel);
   const meta = intelObject(intel.subtopics);
-  const intro = '<p class="intel-intro">The 6 subtopics that perform in your niche, ranked by views across your posts, your competitors and what is trending. Every job takes its topic from them.</p>';
+  const intro = '<p class="intel-intro">The 6 top subtopics in your niche.</p>';
   const problem = ui.error ? `<p class="inline-error" role="alert">${esc(ui.error)}</p>` : '';
   if (ui.editing) {
     const rows = ui.rows;
@@ -7260,7 +7337,7 @@ function intelSubtopicsPanel(intel, ui, now) {
     const list = rows.map((row, at) => `<li class="intel-edit-row"><label class="visually-hidden" for="intel-sub-${at}">${esc(`Subtopic ${at + 1}`)}</label><input id="intel-sub-${at}" type="text" maxlength="80" autocomplete="off" value="${esc(row.name)}" data-intel-row="${at}" data-intel-focus="row:${at}" placeholder="Name a subtopic"><button type="button" class="quiet" data-intel-act="remove" data-intel-arg="${at}" data-intel-focus="remove:${at}" aria-label="${esc(`Remove subtopic ${at + 1}${trimmed(row.name) ? `: ${row.name.trim()}` : ''}`)}">Remove</button></li>`).join('');
     return `${intro}<form class="intel-edit" data-intel-form novalidate><ul class="intel-edit-rows">${list}</ul><p class="intel-count${issue ? ' is-bad' : ''}" role="status" aria-live="polite">${esc(status)}</p>${problem}<div class="intel-actions"><button type="submit" class="primary" data-intel-focus="save"${issue || ui.busy ? ' disabled' : ''}${ui.busy ? ' aria-busy="true"' : ''}>${ui.busy ? 'Sending...' : `Save these ${INTEL_SUBTOPIC_COUNT}`}</button><button type="button" data-intel-act="add" data-intel-focus="add"${rows.length >= INTEL_SUBTOPIC_MAX || ui.busy ? ' disabled' : ''}>+ Add your own</button><button type="button" class="quiet" data-intel-act="cancel-edit" data-intel-focus="cancel-edit"${ui.busy ? ' disabled' : ''}>Cancel</button></div></form>`;
   }
-  if (!items.length) return `${intro}<p class="intel-empty">The subtopics appear once enough posts have been taken apart.</p>`;
+  if (!items.length) return `${intro}<p class="intel-empty">Appear once posts are analysed.</p>`;
   const cards = items.map(item => {
     const facts = item.source === 'yours' ? 'Added by you' : [item.topViews !== null ? `Top post ${intelCount(item.topViews)}` : '', item.postCount !== null ? `${item.postCount} ${item.postCount === 1 ? 'post' : 'posts'}` : ''].filter(Boolean).join(' · ');
     return `<li class="intel-sub"><strong>${esc(item.name)}</strong>${facts ? `<span class="intel-sub-meta">${esc(facts)}</span>` : ''}${item.source === 'yours' ? '<span class="pill">Yours</span>' : ''}</li>`;
@@ -7268,7 +7345,7 @@ function intelSubtopicsPanel(intel, ui, now) {
   const confirmed = meta.status === 'confirmed';
   const waiting = intelSentPending(intel, ui.sent, now);
   const ready = items.length === INTEL_SUBTOPIC_COUNT;
-  const state = waiting ? '<p class="intel-note" role="status">Sent. Claude saves these and updates this board.</p>'
+  const state = waiting ? '<p class="intel-note" role="status">Sent.</p>'
     : !ready && !confirmed ? `<p class="intel-note" role="status">I found ${items.length}, and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Edit them, or add your own.</p>` : '';
   const confirmButton = waiting ? '' : confirmed ? '<span class="pill ready">Confirmed</span>'
     : `<button type="button" class="primary" data-intel-act="confirm" data-intel-focus="confirm"${ready && !ui.busy ? '' : ' disabled'}${ui.busy ? ' aria-busy="true"' : ''}>${ui.busy ? 'Sending...' : 'Looks right'}</button>`;
@@ -7295,7 +7372,7 @@ function intelBanksPanel(intel, ctx) {
     const linked = ctx.libraryKinds.has(bank.kind);
     return `<div class="intel-bank"><div class="intel-bank-title"><span>${esc(bank.title)}</span>${row.count !== null ? `<span class="count num">${row.count}</span>` : ''}</div>${row.top || !row.count ? `<p class="intel-bank-top">${esc(row.top || 'None saved yet.')}</p>` : ''}${linked ? `<button type="button" class="intel-bank-link" data-intel-act="bank" data-intel-arg="${esc(bank.kind)}" data-intel-focus="bank:${esc(bank.kind)}" aria-label="${esc(`Open ${bank.title.toLowerCase()} in the Brand library`)}">Open in Brand library</button>` : ''}</div>`;
   }).join('');
-  return `<p class="intel-intro">What your customers say, in their words, and what you can say back. The full lists are in the Brand library.</p><div class="intel-banks">${cards}</div>`;
+  return `<p class="intel-intro">What customers say.</p><div class="intel-banks">${cards}</div>`;
 }
 
 function intelTabs(slug, name, current) {
@@ -7304,11 +7381,11 @@ function intelTabs(slug, name, current) {
 }
 function intelRunningBody(intel) {
   const steps = intelSteps(intel);
-  if (!steps.length) return '<p class="muted">Claude is starting the research. The steps show here as they begin.</p>';
+  if (!steps.length) return '<p class="muted">Claude is starting the research.</p>';
   const done = steps.filter(step => step.state === 'done').length;
   const percent = Math.round((done / steps.length) * 100);
   const rows = steps.map(step => `<li class="is-${step.state}"><span class="intel-dot" aria-hidden="true"></span><span class="intel-step-text">${esc(step.label)}<span class="visually-hidden">${esc(` (${INTEL_STEP_WORDS[step.state]})`)}</span>${step.detail ? `<span class="intel-step-detail">${esc(step.detail)}</span>` : ''}</span></li>`).join('');
-  return `<div class="intel-progress"><span class="intel-progress-line">${esc(`${done} of ${steps.length} steps done`)}</span><div class="intel-bar" role="progressbar" aria-label="Research progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="--intel-pct:${percent}%"></i></div></div><ol class="intel-steps">${rows}</ol><p class="muted intel-foot">You can keep working. The Director tells you here when it is ready.</p>`;
+  return `<div class="intel-progress"><span class="intel-progress-line">${esc(`${done} of ${steps.length} steps done`)}</span><div class="intel-bar" role="progressbar" aria-label="Research progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="--intel-pct:${percent}%"></i></div></div><ol class="intel-steps">${rows}</ol><p class="muted intel-foot">You can keep working.</p>`;
 }
 
 /**
@@ -7340,7 +7417,7 @@ export function brandIntelligence(brand, ui = freshIntelState(), { open = false,
           : tab === 'competitors' ? intelCompetitorsPanel(intel, ui, ctx)
             : tab === 'viral' ? intelViralPanel(intel, ui, ctx)
               : intelBanksPanel(intel, ctx);
-    const fresh = intel.newBrand ? '<p class="intel-note">You are new on social, so Your winners is empty for now. The subtopics and the plan come from your competitors, what is viral in your niche and your website. Once you post, your own results start ranking formats and subtopics.</p>' : '';
+    const fresh = intel.newBrand ? '<p class="intel-note">New on social, so Your winners is empty. The plan uses competitors and niche.</p>' : '';
     body += `${fresh}${intelTabs(slug, name, tab)}<div class="intel-panel" role="tabpanel" id="intel-panel-${esc(slug)}" aria-labelledby="intel-tab-${esc(slug)}-${tab}" tabindex="0" data-intel-panel="${esc(slug)}">${panel}</div>`;
   }
   return `<details class="panel doc-panel brand-intel" data-open-key="brand-intel:${esc(slug)}" data-intel-brand="${esc(slug)}"${open ? ' open' : ''}>${summary}<div class="doc-body">${body}</div></details>`;
@@ -7366,12 +7443,12 @@ export function intelDirectorNotes(brand, ui = freshIntelState(), now = Date.now
   const items = intelSubtopics(intel);
   if (intelObject(intel.subtopics).status === 'confirmed' || !items.length) return none;
   const sent = intelSentPending(intel, ui?.sent, now);
-  const opener = intel.newBrand ? 'You are new on social, so I built your plan from what works for your competitors and your niche.' : 'Your brand intelligence is ready.';
+  const opener = intel.newBrand ? 'Built from your competitors and niche.' : 'Your brand intelligence is ready.';
   const names = `<ul class="intel-note-list">${items.map(item => `<li>${esc(item.name)}</li>`).join('')}</ul>`;
   const on = `data-intel-brand="${esc(slug)}"`;
-  if (sent) return { messages: [say('subtopics-sent', `<p>${esc(opener)} Your subtopics are sent. I save them and update this board.</p>`)], waiting: 0, first: '' };
+  if (sent) return { messages: [say('subtopics-sent', `<p>${esc(opener)} Subtopics sent.</p>`)], waiting: 0, first: '' };
   const exact = items.length === INTEL_SUBTOPIC_COUNT;
-  const question = exact ? `Do these ${INTEL_SUBTOPIC_COUNT} subtopics look right? Every job takes its topic from them.` : `I found ${items.length} subtopics and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Please adjust them.`;
+  const question = exact ? `Do these ${INTEL_SUBTOPIC_COUNT} subtopics look right?` : `I found ${items.length} subtopics and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Please adjust them.`;
   const buttons = `<div class="bub-act">${exact ? `<button type="button" class="sm primary" data-intel-act="note-confirm" ${on}>Looks right</button>` : ''}<button type="button" class="sm" data-intel-act="note-edit" ${on}>Edit</button></div>`;
   return { messages: [say('subtopics', `<p>${esc(opener)} ${esc(question)}</p>${names}${buttons}`)], waiting: 1, first: question };
 }
@@ -7456,20 +7533,20 @@ function emptySnapshot(workspaceId) {
     workspace: { workspaceId },
     projects: [],
     brands: [],
-    connection: { status: 'waiting', message: 'Ask the running Claude session to sync this board.' },
+    connection: { status: 'waiting', message: 'Ask Claude to sync this board.' },
   };
 }
 
 function validateWorkspaceSnapshot(snapshot, workspaceId) {
   const actual = workspaceIdOf(snapshot);
   if (!actual || String(actual) !== String(workspaceId)) {
-    throw new Error('This board belongs to a different workspace. Open the board for the selected workspace.');
+    throw new Error('Wrong workspace. Open the right board.');
   }
   return snapshot;
 }
 
 function signalMessage(outcome) {
-  return SIGNAL_OUTCOMES[outcome] || 'Claude was not notified. Ask Claude in chat to sync this board.';
+  return SIGNAL_OUTCOMES[outcome] || NOT_NOTIFIED_MESSAGE;
 }
 
 const GATE_COMMENT_NAMES = Object.freeze({
@@ -7511,7 +7588,7 @@ export function requestComment(operation, args = {}) {
     case 'save_brand_details':
       return args?.kit ? "Save the brand's details and kit." : "Save the brand's details.";
     case 'start_research':
-      return 'Start research for this brand with the details saved on its page.';
+      return 'Start research for this brand.';
     case 'brand_rename':
       return `Rename the brand to ${truncateText(args?.name, 80) || 'this name'}.`;
     case 'create_job': {
@@ -7553,7 +7630,7 @@ export function requestComment(operation, args = {}) {
       return name ? `Add the folder "${truncateText(name, 80)}" to the brand's footage.` : "Add a folder to the brand's footage.";
     }
     case 'brand_folder_pick':
-      return "Open a folder picker on my computer to add a folder to the brand's footage.";
+      return "Open a folder picker on my computer.";
     case 'choose_publish_route':
       return `Posts will go out this way: ${PUBLISH_ROUTE_WORDS[args?.route] || 'a different route'}.`;
     case 'choose_post_type':
@@ -7637,16 +7714,16 @@ export async function askBoardConsent(host = globalThis) {
 
 export async function createTransport(config = {}, host = globalThis) {
   const mode = config.mode || 'artifact';
-  if (mode !== 'artifact') throw new Error('This board only works as a Claude artifact. Ask Claude to open it for you.');
-  if (!host.claude?.use) throw new Error('This board only works when it is opened inside Claude. Ask Claude to open it for you.');
+  if (mode !== 'artifact') throw new Error(TXT_OPEN_THIS_BOARD_INSIDE);
+  if (!host.claude?.use) throw new Error(TXT_OPEN_THIS_BOARD_INSIDE);
   const workspaceId = String(config.workspaceId || '').trim();
-  if (!workspaceId) throw new Error('This board is missing some setup information. Ask Claude to open it again.');
+  if (!workspaceId) throw new Error('Setup is missing. Ask Claude to reopen the board.');
   const db = await host.claude.use('db');
-  if (!db?.doc) throw new Error('This board cannot save changes right now. Try again from Claude.');
+  if (!db?.doc) throw new Error('Cannot save right now. Try again from Claude.');
   const workspaceRef = db.doc(ARTIFACT_WORKSPACE_DOC);
   const inFlight = new Map();
   const savedRequestIds = new Set();
-  let signalState = { status: 'idle', message: 'Notify Claude when there is a saved board request to process.' };
+  let signalState = { status: 'idle', message: 'Notify Claude to process a saved request.' };
   let forbiddenForVisit = false;
   let viewerId;
 
@@ -7797,7 +7874,7 @@ export async function createTransport(config = {}, host = globalThis) {
       const element = host.document?.getElementById?.('app') || host.document?.body;
       const anchor = typeof comments.anchorFor === 'function' ? await comments.anchorFor(element) : null;
       const text = truncateText(
-        requestId ? requestComment(operation, args || {}) : reason === 'Notify Claude' ? 'Please check the board for my latest updates.' : reason,
+        requestId ? requestComment(operation, args || {}) : reason === 'Notify Claude' ? 'Please check the board for my updates.' : reason,
         300,
       );
       await comments.sendToClaude({ anchor, text });
@@ -7831,14 +7908,14 @@ export async function createTransport(config = {}, host = globalThis) {
       if (operation === 'snapshot') return readSnapshot();
       if (typeof operation !== 'string' || !operation.trim()) throw new Error('A board operation is required.');
       const requestId = String(args.requestId || randomId(host));
-      if (!REQUEST_ID.test(requestId)) throw new Error('A stable request ID is required for this action.');
+      if (!REQUEST_ID.test(requestId)) throw new Error('A request ID is required.');
       if (args.workspaceId != null && String(args.workspaceId) !== workspaceId) {
         throw new Error('This request belongs to a different workspace.');
       }
       const requestArgs = { ...args, requestId, workspaceId };
       const active = inFlight.get(requestId);
       if (active) {
-        if (active.operation !== operation || stableJson(active.args) !== stableJson(requestArgs)) throw new Error('Request ID was reused with different data.');
+        if (active.operation !== operation || stableJson(active.args) !== stableJson(requestArgs)) throw new Error(TXT_REQUEST_ID_WAS_REUSED);
         return active.promise;
       }
       const work = (async () => {
@@ -7859,16 +7936,16 @@ export async function createTransport(config = {}, host = globalThis) {
         if (savedRequestIds.has(requestId)) {
           const existing = await ref.get();
           if (recordData(existing)) {
-            if (!sameRequest(existing, request)) throw new Error('Request ID was reused with different data.');
+            if (!sameRequest(existing, request)) throw new Error(TXT_REQUEST_ID_WAS_REUSED);
             const prior = recordData(existing);
-            return { status: prior.status || 'requested', requestId, message: prior.message || 'This request is already saved. The running Claude session will validate it once.' };
+            return { status: prior.status || 'requested', requestId, message: prior.message || 'Already saved. Claude will handle it once.' };
           }
         }
         await ref.set(request);
         savedRequestIds.add(requestId);
         const signalled = await signal('Board request saved', { requestId, operation, args: requestArgs });
         const message = signalled.status === 'sent'
-          ? 'Request saved. The running Claude session has been notified.'
+          ? 'Saved. Claude has been notified.'
           : NO_SESSION_SIGNAL_OUTCOMES.has(signalled.status)
             ? signalled.message
             : `Request saved. ${signalled.message}`;
@@ -7930,7 +8007,7 @@ if (typeof document !== 'undefined') {
       transport ||= await createTransport(config);
       const result = await transport.call('refresh_board', { requestId: randomId(globalThis) });
       boardUpdateSentAt = Date.now();
-      notify(result?.message || 'Request saved. Claude will update the board.');
+      notify(result?.message || TXT_SAVED_CLAUDE_WILL_UPDATE);
     } catch (e) {
       notify(e.message);
     } finally {
@@ -8014,10 +8091,10 @@ if (typeof document !== 'undefined') {
   function connectorsPanel(forced) {
     const connectors = data.connectors || [];
     const back = forced ? '' : '<div class="toolbar"><button class="quiet" data-action="connectors-close">&larr; Back</button></div>';
-    const optional = connectors.some(connector => connector.optional) ? ' Metricool, Meta ads and TikTok ads are optional: Metricool schedules your posts, the ad connectors only read ad results, and setup does not wait for any of them.' : '';
-    const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional}${forced ? ' Press Continue when you are ready; anything left can be connected later from Connectors at the top.' : ''}</p>`;
+    const optional = connectors.some(connector => connector.optional) ? ' Metricool, Meta ads and TikTok ads are optional.' : '';
+    const intro = `<p class="muted">Connect the tools Claude uses to make media.${optional}${forced ? ' Press Continue when ready.' : ''}</p>`;
     const busy = connectorPending.size > 0;
-    const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected can be added later from Connectors at the top.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
+    const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Add the rest later from Connectors.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
     return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key), waiting: connectorIsWaiting(connector) })).join('')}</section>${next}`;
   }
   async function continueConnectors() {
@@ -8026,7 +8103,7 @@ if (typeof document !== 'undefined') {
     render();
     try {
       const result = await transport.call('connectors_continue', { requestId: randomId(globalThis) });
-      notify(result?.message || 'Saved. Claude moves on to your brand.');
+      notify(result?.message || 'Saved. On to your brand.');
       await refresh();
     } catch (e) {
       connectorsContinued = false;
@@ -8043,7 +8120,7 @@ if (typeof document !== 'undefined') {
       const providerName = current?.name;
       const result = await transport.call(operation, {requestId: randomId(globalThis), provider, ...(providerName ? { providerName } : {})});
       if (operation === 'connect_provider') connectorWaiting.set(provider, { at: Date.now(), state: current?.state ?? null, brandCount: current?.brandCount ?? null });
-      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      notify(result?.message || NOTE_SAVED);
       await refresh();
     } catch (e) {
       notify(e.message);
@@ -8108,8 +8185,8 @@ if (typeof document !== 'undefined') {
   function projectCard(project, waiting = false) {
     const brand = project.brand === NO_BRAND ? '' : project.brandName || 'Unassigned brand';
     const { done, total } = stageProgress(project);
-    const tokens = typeof project.usage?.tokens === 'number' && Number.isFinite(project.usage.tokens) ? `${compactCount(project.usage.tokens)} tokens` : '';
-    const lines = [['Opened', openedWord(project.usage?.startedAt)], ['Claude usage', tokens], ['Steps', total ? `${done} of ${total} done` : ''], ['Now', trimmed(project.stageSummary?.current)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
+    // Opened, usage and where it lives sit on the job page, under About this job and Usage.
+    const lines = [['Steps', total ? `${done} of ${total} done` : ''], ['Now', trimmed(project.stageSummary?.current)]].filter(([, value]) => value);
     const activity = agentLineOf(project) || `<p>${esc(project.nextAction || humanize(project.state))}</p>`;
     return `<button class="project-card${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}" style="--h:${hueOf(project.jobId)}"><span class="pc-top card-art"><span class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</span></span><span class="pc-body card-body"><span class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</span>${pill(project.state, project.stateLabel)}</span><span class="pc-act">${activity}</span><span class="pc-dots" aria-hidden="true"></span></button>`;
   }
@@ -8350,18 +8427,18 @@ if (typeof document !== 'undefined') {
         const keep = part === 'review' && state.args ? { settled: true, args: state.args } : { args: null };
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, ...keep, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
-        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? 'Claude has your answer.' : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'Claude is trying that step again.' : 'Claude applied your decision.');
+        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? NOTE_HAS_ANSWER : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'Claude is trying that step again.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
         // Declined because it repeats a decision already made: the card is settled, not re-armed.
         const handled = part === 'review' && state.args && Boolean(receipt.handled || acknowledgement.handled);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was changed.', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: handled ? state.args : null, ...(handled ? { settled: true } : {}) });
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || NOTE_DECLINED, submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: handled ? state.args : null, ...(handled ? { settled: true } : {}) });
         if (part === 'route') routeEnded(jobId, state, 'notice', state.message);
         else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'notice', state.message);
         render();
       } else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: true, error: acknowledgement.message || receipt.message || 'Claude could not apply this. It needs checking before another try.', submittedAt: null, lastReminderAt: null, reminding: false });
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: true, error: acknowledgement.message || receipt.message || 'Could not apply this. Claude must check first.', submittedAt: null, lastReminderAt: null, reminding: false });
         if (part === 'route') routeEnded(jobId, state, 'error', state.error);
         else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'error', state.error);
         render();
@@ -8445,7 +8522,7 @@ if (typeof document !== 'undefined') {
     const nextLine = project.nextAction || humanize(project.state);
     const railParts = stepRailParts(project, doc);
     const subtitle = [brandLabel, railParts?.here || trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<p>${esc(line)}</p>` : ''}${researchLine(project) ? `<p class="muted job-research">${esc(researchLine(project))}</p>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
+    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<div class="job-line">${shortLine(line)}</div>` : ''}${researchLine(project) ? `<div class="muted job-line job-research">${shortLine(researchLine(project))}</div>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
@@ -8578,7 +8655,7 @@ if (typeof document !== 'undefined') {
       const result = await transport.call('choose_metricool_brand', { requestId: randomId(globalThis), brand: slug, blogId, brandName: brand.name, label: chosen.label });
       metricoolUi.open.delete(slug);
       metricoolUi.picks.delete(slug);
-      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      notify(result?.message || NOTE_SAVED);
       await refresh();
     } catch (e) {
       metricoolUi.errors.set(slug, e.message);
@@ -8610,11 +8687,11 @@ if (typeof document !== 'undefined') {
     render();
     try {
       const result = await transport.call('bank_remove', { requestId: randomId(globalThis), brand: slug, id });
-      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      notify(result?.message || NOTE_SAVED);
       await refresh();
     } catch (e) {
       libraryUi.removing.delete(key);
-      libraryUi.errors.set(key, e.message || 'Could not send that.');
+      libraryUi.errors.set(key, e.message || NOTE_SEND_FAILED);
     } finally {
       render();
     }
@@ -8644,7 +8721,7 @@ if (typeof document !== 'undefined') {
     if (!agentsPanel) onboardChat = undefined;
     const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
-    const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
+    const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
     // With the Director's chat on the page the side column is that chat alone; without one (a brand with no agents yet) it is the Needs you box.
     const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}</div>` : aside());
     if (firstRun) {
@@ -8667,7 +8744,7 @@ if (typeof document !== 'undefined') {
     // Newest first, like the In flight cards; finished jobs go to the bottom.
     const rank = project => (FINAL_JOB_STATES.includes(project?.state) ? 1 : 0);
     const ordered = newestJobsFirst(projects).map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
-    const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
+    const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
     const startRow = doors.length ? `<section class="doors-section" aria-labelledby="doors-title"><div class="section-head"><h2 id="doors-title">Start a new job</h2></div>${doorRow}</section>` : '';
     return `${head}<div class="overview-main">${needs}${overviewColumn({ strip, jobs: rows, onboarding })}${startRow}</div>`;
   }
@@ -8676,7 +8753,7 @@ if (typeof document !== 'undefined') {
     const pipelineItems = workspaceInbox(data).items;
     const waitingJobs = jobsWaitingOn(pipelineItems);
     const door = pipelineDoors(data.projects || [], pipelineItems).find(item => item.group === group);
-    if (!door) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted">This kind of job is not on the board. <a href="#/">Back to all jobs</a></p>';
+    if (!door) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted"><a href="#/">Back to all jobs</a></p>';
     const jobs = door.jobs.length
       ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${door.jobs.length}</span></div><div class="project-grid">${newestJobsFirst(door.jobs).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
       : '<p class="muted empty-jobs">No jobs of this kind yet. Start one below.</p>';
@@ -8698,17 +8775,17 @@ if (typeof document !== 'undefined') {
     if (/video/.test(type)) {
       const poster = safePreviewUrl(file?.poster);
       if (preview) return `<figure class="drawer-media"><video controls playsinline preload="metadata" src="${esc(preview)}"${poster ? ` poster="${esc(poster)}"` : ''} aria-label="${title}"></video></figure>`;
-      if (file) return `${mediaTile({ kind: 'video', title: outputLabel(a, doc).title, poster: file.poster, durationSeconds: file.durationSeconds })}<p class="muted drawer-note">The video stays on your computer until Claude adds a copy to the board.</p>`;
+      if (file) return `${mediaTile({ kind: 'video', title: outputLabel(a, doc).title, poster: file.poster, durationSeconds: file.durationSeconds })}<p class="muted drawer-note">The video is on your computer.</p>`;
     }
     if (/audio/.test(type) && preview) return `<audio controls src="${esc(preview)}"></audio>`;
     if (preview && !/image|video|audio/.test(type)) return `<a href="${esc(preview)}" target="_blank" rel="noopener noreferrer">Open output</a>`;
     // An internal .json file (a concept, storyboard, generation manifest...) is
     // structured data for Claude, not something to dump raw on the board: the
     // storyboard and other review panels already show its readable fields.
-    if (/\.json$/i.test(a.path || '')) return '<p class="muted">Internal data file. Its readable fields show in the review above; open it from your computer for the raw file.</p>';
+    if (/\.json$/i.test(a.path || '')) return '<p class="muted">Data file. Open it from your computer.</p>';
     const text = file?.text ?? a.content;
-    if (text != null) return `${/\.md$/i.test(a.path || '') ? `<div class="md">${renderMarkdown(text)}</div>` : `<pre>${esc(text)}</pre>`}${file?.truncated ? '<p class="muted drawer-note">Shortened for the board. The full file is on your computer.</p>' : ''}`;
-    if (file?.omitted) return '<p class="muted">Too large for the board. Open it from your computer.</p>';
+    if (text != null) return `${/\.md$/i.test(a.path || '') ? `<div class="md">${renderMarkdown(text)}</div>` : `<pre>${esc(text)}</pre>`}${file?.truncated ? `<p class="muted drawer-note">${NOTE_SHORTENED}</p>` : ''}`;
+    if (file?.omitted) return `<p class="muted">${NOTE_TOO_LARGE}</p>`;
     const reason = previewUnavailableReason({ type, path: a.path, hasDoc: Boolean(doc) });
     return `<pre>${esc(a.summary || reason)}</pre>`;
   }
@@ -8851,7 +8928,7 @@ if (typeof document !== 'undefined') {
         render();
       } else {
         Object.assign(state, { busy: false, answered: true, requestId: null });
-        notify(result?.message || 'Claude has your answer.');
+        notify(result?.message || NOTE_HAS_ANSWER);
         await refresh();
       }
     } catch (e) {
@@ -8941,7 +9018,7 @@ if (typeof document !== 'undefined') {
         Object.assign(entry, { status: 'declined', message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was added.' });
         stopFolderWatch(entry);
       } else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
-        Object.assign(entry, { status: 'error', message: acknowledgement.message || receipt.message || 'Claude could not read that folder. It needs checking before another try.' });
+        Object.assign(entry, { status: 'error', message: acknowledgement.message || receipt.message || 'Could not read that folder. Claude must check first.' });
         stopFolderWatch(entry);
       } else return;
       render();
@@ -8963,9 +9040,9 @@ if (typeof document !== 'undefined') {
       ui.pending.push(entry);
       Object.assign(ui, { path: '', label: '', rights: '' });
       watchFolderAdd(entry);
-      notify(result?.message || 'Request saved. Claude will read the folder.');
+      notify(result?.message || 'Saved. Claude will read the folder.');
     } catch (e) {
-      ui.error = e.message || 'Could not send that.';
+      ui.error = e.message || NOTE_SEND_FAILED;
     } finally {
       ui.busy = false;
       render();
@@ -8989,9 +9066,9 @@ if (typeof document !== 'undefined') {
       ui.pending.push(entry);
       Object.assign(ui, { label: '', rights: '' });
       watchFolderAdd(entry);
-      notify(result?.message || 'Request saved. Claude will open a folder picker on your computer.');
+      notify(result?.message || 'Saved. A folder picker opens on your computer.');
     } catch (e) {
-      ui.error = e.message || 'Could not send that.';
+      ui.error = e.message || NOTE_SEND_FAILED;
     } finally {
       ui.busy = false;
       inline.kitFocus = kitFocusSelector('rights-folder');
@@ -9057,7 +9134,7 @@ if (typeof document !== 'undefined') {
     // rebuilds the form from inline.values.
     captureInlineValues();
     const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
-    if (!allowed.includes(file.type)) { kit.logo = { error: 'Use a PNG, JPG, WebP or SVG file.' }; inline.kitFocus = kitFocusSelector('replace-logo'); render(); return; }
+    if (!allowed.includes(file.type)) { kit.logo = { error: NOTE_LOGO_TYPE }; inline.kitFocus = kitFocusSelector('replace-logo'); render(); return; }
     try {
       const image = await loadImageFromFile(file);
       const main = await exportUnderLimit(image, 512, 40 * 1024);
@@ -9072,7 +9149,7 @@ if (typeof document !== 'undefined') {
       const uploaded = await encodeLogoUpload(assets, main, thumb);
       kit.logo = { ...uploaded, previewDataUrl, error: null };
     } catch {
-      kit.logo = { error: 'Use a PNG, JPG, WebP or SVG file.' };
+      kit.logo = { error: NOTE_LOGO_TYPE };
     }
     captureInlineValues();
     inline.kitFocus = kitFocusSelector('replace-logo');
@@ -9105,14 +9182,14 @@ if (typeof document !== 'undefined') {
     try {
       const bytes = await file.arrayBuffer();
       const family = (await fontFamilyFromBytes(bytes)) || fontFamilyFromFileName(file.name);
-      if (!family) { kit.fontError = 'Could not read a font name from that file. Add the font by typing its name instead.'; finish(); return; }
+      if (!family) { kit.fontError = 'No font name found. Type it instead.'; finish(); return; }
       const known = current.some(font => fontKey(font.family) === fontKey(family));
       if (!known && current.length >= KIT_LIMITS.maxFonts) { kit.fontError = `The kit holds up to ${KIT_LIMITS.maxFonts} fonts. Remove one first.`; finish(); return; }
       const alias = await loadUploadedFont(family, bytes);
       if (!known) current.push({ family, use: nextFontUse(current) });
       kit.fonts = current;
-      kit.fontStatus = (known ? `${family} is already in your fonts.` : `Added ${family} from ${file.name}.`) + (alias ? '' : ' This browser could not show a preview of the file.');
-    } catch { kit.fontError = 'That font file could not be read. Try another file.'; }
+      kit.fontStatus = (known ? `${family} is already in your fonts.` : `Added ${family} from ${file.name}.`) + (alias ? '' : ' No preview available.');
+    } catch { kit.fontError = 'Could not read that font. Try another file.'; }
     finish();
   }
   // Fonts of the kit: ask Google Fonts for each family shown in a font row, once, so the specimen shows the real letters. A family Google does not
@@ -9200,7 +9277,7 @@ if (typeof document !== 'undefined') {
   // logo: capture the other fields' typed values before and after, since this
   // re-renders the form.
   async function preparePhotoFile(file) {
-    if (!PHOTO_ACCEPT.includes(file.type)) return { error: 'Use a PNG, JPG or WebP file.' };
+    if (!PHOTO_ACCEPT.includes(file.type)) return { error: NOTE_PHOTO_TYPE };
     try {
       const image = await loadImageFromFile(file);
       const main = await exportPhoto(image, 2048, 0.9);
@@ -9213,7 +9290,7 @@ if (typeof document !== 'undefined') {
       const uploaded = await encodePhotoUpload(assets, forUpload, file.name);
       return { ...uploaded, previewDataUrl, error: null };
     } catch {
-      return { error: 'Use a PNG, JPG or WebP file.' };
+      return { error: NOTE_PHOTO_TYPE };
     }
   }
   // The Finish the brief photo field attaches the moment a valid file is
@@ -9231,7 +9308,7 @@ if (typeof document !== 'undefined') {
     if (!transport) return;
     const state = uiFor(project).intake;
     const payload = photoPayload(photo);
-    if (!payload) { state.photo = { error: 'Use a PNG, JPG or WebP file.' }; render(); return; }
+    if (!payload) { state.photo = { error: NOTE_PHOTO_TYPE }; render(); return; }
     const requestId = randomId(globalThis);
     state.photo = { ...photo, requestId, busy: true, error: null, message: '' };
     render();
@@ -9240,7 +9317,7 @@ if (typeof document !== 'undefined') {
     try {
       const result = await transport.call('attach_product_photo', args);
       if (result?.status === 'requested') {
-        Object.assign(state.photo, { busy: false, message: result.message || 'Saving. Claude will confirm shortly.' });
+        Object.assign(state.photo, { busy: false, message: result.message || NOTE_SAVING });
         watchJobRequest(project.jobId, 'photo', state.photo);
         render();
       } else {
@@ -9278,7 +9355,7 @@ if (typeof document !== 'undefined') {
     let problem = '', first = null;
     for (const file of files) {
       if (queue.some(item => item.file.name === file.name && item.file.size === file.size)) continue;
-      if (queue.length >= REFERENCE_QUEUE_MAX) { problem = `Add up to ${REFERENCE_QUEUE_MAX} files at a time. Add these, then pick the rest.`; break; }
+      if (queue.length >= REFERENCE_QUEUE_MAX) { problem = `Add up to ${REFERENCE_QUEUE_MAX} files at a time.`; break; }
       const type = state.typeTouched ? state.type : detectedReferenceType(file);
       const wrong = referenceProblem(type, file);
       if (wrong) { problem ||= wrong; continue; }
@@ -9299,7 +9376,7 @@ if (typeof document !== 'undefined') {
       state.typeTouched = true;
       const before = state.queue.length;
       state.queue = state.queue.filter(item => !referenceProblem(state.type, item.file)).map(item => ({ ...item, type: state.type }));
-      state.error = state.queue.length < before ? `Some files do not fit "${REFERENCE_TYPES.find(item => item.id === state.type)?.label || 'that type'}" and were taken off the list.` : '';
+      state.error = state.queue.length < before ? `Some files do not fit "${REFERENCE_TYPES.find(item => item.id === state.type)?.label || 'that type'}" and were removed.` : '';
       state.message = '';
     } else {
       queueRefFiles(state, dropped || [...(field.files || [])]);
@@ -9316,7 +9393,7 @@ if (typeof document !== 'undefined') {
     const linked = referenceLinkOf(state.link);
     if (linked.error) { state.error = linked.error; render(); return; }
     if (!files.length && !typed && !linked.url) {
-      state.error = state.type === 'caption' ? 'Type some text, or choose a text file.' : 'Choose a file, or paste a link.';
+      state.error = state.type === 'caption' ? NOTE_TEXT_MISSING : 'Choose a file, or paste a link.';
       render();
       return;
     }
@@ -9352,8 +9429,8 @@ if (typeof document !== 'undefined') {
         state.link = '';
       }
       const onlyLink = total === 1 && Boolean(linked.url);
-      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', typeTouched: false, role: '', queue: [], message: onlyLink ? 'Saving the link. Claude will confirm shortly.' : total > 1 ? `Sent ${total} references. Claude will confirm shortly.` : (result?.message || 'Saving. Claude will confirm shortly.') });
-      notify(result?.status === 'requested' ? (onlyLink ? 'Link sent. Claude will save it to this job.' : total > 1 ? `${total} references sent. Claude will save them to this job.` : 'Reference sent. Claude will save it to this job.') : (result?.message || 'Reference saved.'));
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', typeTouched: false, role: '', queue: [], message: onlyLink ? 'Saving the link.' : total > 1 ? `Sent ${total} references.` : (result?.message || NOTE_SAVING) });
+      notify(result?.status === 'requested' ? (onlyLink ? 'Link sent to Claude.' : total > 1 ? `${total} references sent to Claude.` : 'Reference sent to Claude.') : (result?.message || 'Reference saved.'));
       render();
       await refresh();
     } catch (e) {
@@ -9373,8 +9450,8 @@ if (typeof document !== 'undefined') {
     try {
       const reference = { type: 'picture', action: 'brand', brandAssetId: file.id, ...(file.kind === 'logo' ? { role: 'logo' } : {}) };
       const result = await transport.call('add_reference', { requestId: randomId(globalThis), brand: project.brand, jobId: project.jobId, expectedRevision: project.revision, reference, ...(project.title ? { title: project.title } : {}) });
-      Object.assign(state, { busy: false, brandPick: '', message: result?.message || 'Saving. Claude will confirm shortly.' });
-      notify(result?.status === 'requested' ? 'Brand file sent. Claude will save it to this job.' : (result?.message || 'Reference saved.'));
+      Object.assign(state, { busy: false, brandPick: '', message: result?.message || NOTE_SAVING });
+      notify(result?.status === 'requested' ? 'Brand file sent to Claude.' : (result?.message || 'Reference saved.'));
       render();
       await refresh();
     } catch (e) {
@@ -9394,7 +9471,7 @@ if (typeof document !== 'undefined') {
     try {
       const requestId = randomId(globalThis);
       const result = await transport.call('remove_reference', { requestId, brand: project.brand, jobId: project.jobId, referenceId: id, expectedRevision: project.revision, ...(project.title ? { title: project.title } : {}) });
-      notify(result?.status === 'requested' ? 'Removing that reference. It disappears once Claude confirms.' : (result?.message || 'Reference removed.'));
+      notify(result?.status === 'requested' ? 'Removing that reference.' : (result?.message || 'Reference removed.'));
       render();
       await refresh();
     } catch (e) {
@@ -9563,9 +9640,9 @@ if (typeof document !== 'undefined') {
       const requestId = randomId(globalThis);
       const args = { requestId, brand: ownerJob.brand, jobId: ownerJob.jobId, expectedRevision: ownerJob.revision, reference, ...(ownerJob.title ? { title: ownerJob.title } : {}), ...(prefix === 'aref' ? { to: agentBoxState(ownerJob).chat || agentBoxState(ownerJob).to || 'producer' } : {}), ...(questionId ? { questionId } : {}) };
       const result = await transport.call('add_reference', args);
-      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', role: '', typeTouched: false, open: false, message: result?.message || 'Sent. Claude will save it to this job.' });
+      Object.assign(state, { busy: false, file: null, fileName: '', text: '', note: '', role: '', typeTouched: false, open: false, message: result?.message || 'Sent to Claude.' });
       if (questionId) state.type = item?.wantsUpload?.type || 'picture';
-      notify(result?.status === 'requested' ? 'File sent. Claude will save it to this job.' : (result?.message || 'File saved.'));
+      notify(result?.status === 'requested' ? 'File sent to Claude.' : (result?.message || 'File saved.'));
       render();
       await refresh();
     } catch (e) {
@@ -9775,11 +9852,11 @@ if (typeof document !== 'undefined') {
       case'connectors':connectorsView=true;render();globalThis.scrollTo?.(0,0);break;
       case'connectors-close':connectorsView=false;render();break;
       case'connectors-continue':await continueConnectors();break;
-      case'signal':try{const result=await transport?.signal?.('Notify Claude');notify(result?.message || 'The board could not notify Claude.');render();}catch(e){notify(e.message);}break;
-      case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'Claude has been told. Watch the Inbox for its question.':(result?.message || 'The board could not notify Claude.'));render();}catch(e){notify(e.message);}break;}
+      case'signal':try{const result=await transport?.signal?.('Notify Claude');notify(result?.message || NOTE_NOTIFY_FAILED);render();}catch(e){notify(e.message);}break;
+      case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'Claude has been told. Watch the Inbox.':(result?.message || NOTE_NOTIFY_FAILED));render();}catch(e){notify(e.message);}break;}
       case'remind':await remindRequest(target.dataset.requestId);break;
       case'source':
-        { const p=current(); const jobLabel=p?.title || 'this job'; const brandLabel=p?.brandName || 'the selected brand'; try { const result=await transport?.signal?.(`Please select the local source files for ${jobLabel} for ${brandLabel} in Claude. The board does not accept local paths.`); notify(result?.message || 'Ask Claude in chat to select the local source files for this job.'); render(); } catch(e) { notify(e.message); } }
+        { const p=current(); const jobLabel=p?.title || 'this job'; const brandLabel=p?.brandName || 'the selected brand'; try { const result=await transport?.signal?.(`Please select the local source files for ${jobLabel} for ${brandLabel} in Claude.`); notify(result?.message || 'Ask Claude in chat to pick the source files.'); render(); } catch(e) { notify(e.message); } }
         break;
     }
   });
@@ -9839,7 +9916,7 @@ if (typeof document !== 'undefined') {
     const field = event.target;
     if (!(field instanceof HTMLInputElement) || field.type !== 'text') return;
     if (field.name === 'name') {
-      updateFieldErrorUI('name', String(field.value || '').trim() ? null : 'Enter a brand name.');
+      updateFieldErrorUI('name', String(field.value || '').trim() ? null : NOTE_BRAND_NAME);
       return;
     }
     if (!CHANNEL_NAMES.includes(field.name)) return;
@@ -9918,7 +9995,7 @@ if (typeof document !== 'undefined') {
         active.error = '';
         active.declined = true;
         active.requestId = null;
-        active.message = acknowledgement.message || receipt.message || 'Declined in chat. Nothing was changed.';
+        active.message = acknowledgement.message || receipt.message || NOTE_DECLINED;
         active.submittedAt = null;
         active.lastReminderAt = null;
         active.reminding = false;
@@ -9932,8 +10009,8 @@ if (typeof document !== 'undefined') {
         active.submitted = false;
         active.needsReconciliation = !(status === 'rejected' && (acknowledgement.noMutation === true || receipt.noMutation === true));
         if (!active.needsReconciliation) active.requestId = null;
-        active.error = acknowledgement.message || receipt.message || receipt.error || result.message || 'Claude could not reconcile this request. Review the form and try again.';
-        active.message = active.needsReconciliation ? 'Claude needs to check this request before it can be retried.' : '';
+        active.error = acknowledgement.message || receipt.message || receipt.error || result.message || 'Could not apply this. Check the form and retry.';
+        active.message = active.needsReconciliation ? 'Claude must check this request first.' : '';
         active.submittedAt = null;
         active.lastReminderAt = null;
         active.reminding = false;
@@ -9942,7 +10019,7 @@ if (typeof document !== 'undefined') {
         active.submitted = true;
         active.submittedAt ||= Date.now();
         scheduleReminderWake(active);
-        active.message = acknowledgement.message || receipt.message || result.message || 'Request saved. Claude will validate it and update this board.';
+        active.message = acknowledgement.message || receipt.message || result.message || NOTE_SAVED;
         if (isCurrent) render();
       }
     }, error => {
@@ -9952,7 +10029,7 @@ if (typeof document !== 'undefined') {
       active.submitted = true;
       active.submittedAt ||= Date.now();
       scheduleReminderWake(active);
-      active.message = 'Request saved. Receipt updates are unavailable until Claude reconnects.';
+      active.message = 'Saved. Updates resume when Claude reconnects.';
       active.error = error?.message || '';
       if (isCurrent) render();
     });
@@ -10024,7 +10101,7 @@ if (typeof document !== 'undefined') {
       for (const name of CHANNEL_NAMES) values[name] = normalizeChannelInput(name, values[name]);
     }
     if (!active || active.busy) return;
-    if (active.needsReconciliation) { active.error = 'Claude needs to check this request before another save is allowed.'; render(); return; }
+    if (active.needsReconciliation) { active.error = NOTE_NEEDS_CHECK; render(); return; }
     const currentBrand = active.kind === 'onboard' && active.brand ? (data.brands || []).find(item => item.slug === active.brand) : null;
     const researchPhase = active.kind === 'onboard' ? brandResearchPhase(currentBrand, active) : null;
     if (researchPhase === 'running') { active.error = 'Claude is still researching this brand.'; render(); return; }
@@ -10040,7 +10117,7 @@ if (typeof document !== 'undefined') {
         values.name = named.name;
       } else {
         const fieldErrors = validateProfile(values, active.prefilled, active.unlocked, { partial: action !== 'finish' });
-        if (Object.keys(fieldErrors).length) { active.values = values; active.fieldErrors = fieldErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
+        if (Object.keys(fieldErrors).length) { active.values = values; active.fieldErrors = fieldErrors; active.error = NOTE_FIX_FIELDS; render(); return; }
         active.fieldErrors = null;
         if (action === 'start') {
           const minimum = researchMinimum(values);
@@ -10052,7 +10129,7 @@ if (typeof document !== 'undefined') {
         // research pass that already ran its course.
         active.finalizingOnboarding = action === 'finish';
         const kitErrors = validateKit(active.kit || {});
-        if (Object.keys(kitErrors).length) { active.values = values; active.kitErrors = kitErrors; active.error = 'Fix the highlighted fields before saving.'; render(); return; }
+        if (Object.keys(kitErrors).length) { active.values = values; active.kitErrors = kitErrors; active.error = NOTE_FIX_FIELDS; render(); return; }
         active.kitErrors = null;
       }
     } else {
@@ -10100,10 +10177,10 @@ if (typeof document !== 'undefined') {
         active.signal = result.signal || null;
         if (active.submitted) { active.submittedAt ||= Date.now(); scheduleReminderWake(active); }
         active.message = result.message || (result.status === 'requested'
-          ? 'Request saved. Claude will validate it and update this board.'
+          ? NOTE_SAVED
           : result.status === 'declined'
-            ? 'Declined in chat. Nothing was changed.'
-            : 'Claude needs attention before this request can be applied.');
+            ? NOTE_DECLINED
+            : 'Claude needs attention before applying this.');
         if (result.status === 'requested') watchRequest(active);
         else if (result.status === 'declined') {
           // Final, non-error state: leave the form open with a clean slate
@@ -10112,7 +10189,7 @@ if (typeof document !== 'undefined') {
           active.error = '';
           active.declined = true;
           active.requestId = null;
-        } else { active.needsReconciliation = true; active.error = 'Claude needs to check this request before another save is allowed.'; }
+        } else { active.needsReconciliation = true; active.error = NOTE_NEEDS_CHECK; }
         notify(active.message);
         await refresh();
         return;
@@ -10148,19 +10225,19 @@ if (typeof document !== 'undefined') {
     const done = (patch, note = '') => { Object.assign(state, { busy: false, ...patch }); if (inline) inline.renamedNote = note; render(); };
     try {
       const result = await transport.call('brand_rename', { requestId, brand: brand.slug, name: named.name });
-      notify(result?.message || 'Request saved. Claude will rename the brand.');
+      notify(result?.message || 'Saved. Claude will rename the brand.');
       let unsubscribe = null;
       const stop = () => { if (typeof unsubscribe === 'function') unsubscribe(); unsubscribe = null; };
       unsubscribe = transport.subscribeRequest?.(requestId, receipt => {
         if (!receipt) return;
         const acknowledgement = receipt.artifactReceipt || receipt;
         const status = String(acknowledgement.status || receipt.status || 'requested');
-        if (status === 'applied') { stop(); done({ open: false, error: '' }, "Renamed. The brand's folder keeps its original name."); void refresh(); }
-        else if (status === 'declined') { stop(); done({ error: String(acknowledgement.message || receipt.message || 'Claude did not rename the brand.').replace(/^Declined in chat\. Nothing was changed\.\s*/i, '') || 'Claude did not rename the brand.' }); }
-        else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) { stop(); done({ error: acknowledgement.message || receipt.message || 'Claude could not rename the brand. It needs checking before another try.' }); }
+        if (status === 'applied') { stop(); done({ open: false, error: '' }, "Renamed. The folder name stays."); void refresh(); }
+        else if (status === 'declined') { stop(); done({ error: String(acknowledgement.message || receipt.message || NOTE_NO_RENAME).replace(/^Declined in chat\. Nothing was changed\.\s*/i, '') || NOTE_NO_RENAME }); }
+        else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) { stop(); done({ error: acknowledgement.message || receipt.message || 'Could not rename. Claude must check first.' }); }
       }, () => {});
     } catch (e) {
-      done({ error: e.message || 'Could not send that.' });
+      done({ error: e.message || NOTE_SEND_FAILED });
     }
   }
   function readIntakeForm(form) {
@@ -10183,7 +10260,7 @@ if (typeof document !== 'undefined') {
       : intakeArgs(project, state.values, requestId);
     if (errors) {
       state.errors = errors;
-      state.error = errors.form ? '' : 'Fix the highlighted answers before saving.';
+      state.error = errors.form ? '' : NOTE_FIX_ANSWERS;
       render();
       const own = state.inboxField ? `[data-inbox-field="${CSS.escape(state.inboxField)}"]` : '';
       app.querySelector(inboxForm ? `[data-inbox-intake="${CSS.escape(project.jobId)}"]${own} [aria-invalid="true"]` : '#intake-form [aria-invalid="true"]')?.focus();
@@ -10358,8 +10435,8 @@ if (typeof document !== 'undefined') {
     const comment = app.querySelector('#review-comment')?.value ?? state.comment ?? '';
     state.comment = comment;
     // An opening line still being typed is not part of the approval: ask for it to be saved or dropped first, so it is never lost quietly.
-    if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel the opening line you are typing first.'; render(); return; }
-    if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel the option you are typing first.'; render(); return; }
+    if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel your opening line first.'; render(); return; }
+    if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel your option first.'; render(); return; }
     const requestId = state.requestId || randomId(globalThis);
     const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
     if (error) { state.error = error; render(); return; }
@@ -10382,7 +10459,7 @@ if (typeof document !== 'undefined') {
     const ui = uiFor(project);
     const status = (ui.recipeStatus[deliverableId] ||= {});
     if (!transport || status.busy || status.submitted) return;
-    if (!recipeReady(ui.recipe, deliverableId)) { status.error = 'Choose the content pillar, angle, hook, call to action and hashtags before saving.'; render(); return; }
+    if (!recipeReady(ui.recipe, deliverableId)) { status.error = 'Choose all five copy choices before saving.'; render(); return; }
     const requestId = status.requestId || randomId(globalThis);
     const args = { requestId, brand: project.brand, jobId: project.jobId, deliverable: deliverableId, picks: recipePicks(ui.recipe, deliverableId), title: project.title };
     Object.assign(status, { requestId, busy: true, error: '', declined: false });
@@ -10512,7 +10589,7 @@ if (typeof document !== 'undefined') {
     if (fold && !fold.open) { fold.open = true; if (fold.dataset.openKey) openKeys.add(fold.dataset.openKey); }
     jumpTo(selector);
   }
-  const AGENT_SEND_FAILED = 'Your message was not saved. Try again.';
+  const AGENT_SEND_FAILED = 'Message not saved. Try again.';
   async function submitAgentMessage(project, form) {
     const box = agentBoxState(project);
     const agents = agentBoxOf(docFor(project))?.all || [];
@@ -10525,7 +10602,7 @@ if (typeof document !== 'undefined') {
     if (box.error) { render(); focusQuietly('#ab-text'); return; }
     const requestId = randomId(globalThis);
     const args = agentMessageArgs({ project, agent: agent.id, text: box.draft, requestId });
-    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, error: '', message: 'Saved. Claude picks this up and passes it on.', operation: 'agent_message', args });
+    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, error: '', message: 'Saved. Claude will pass it on.', operation: 'agent_message', args });
     render();
     focusQuietly('#ab-text');
     try {
@@ -10578,7 +10655,7 @@ if (typeof document !== 'undefined') {
     if (!transport || !stuck || stuck.kind !== 'internal' || state.busy || state.submitted) return;
     const requestId = randomId(globalThis);
     const args = retryStepArgs({ project, requestId });
-    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, applied: false, sinceSeen: stuck.since, error: '', message: 'Saved. Claude will try that step again.', operation: 'retry_step', args });
+    Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, applied: false, sinceSeen: stuck.since, error: '', message: 'Saved. Claude will retry that step.', operation: 'retry_step', args });
     render();
     try {
       const result = await transport.call('retry_step', args);
@@ -10594,7 +10671,7 @@ if (typeof document !== 'undefined') {
       render();
     } catch {
       if (state.requestId !== requestId) return;
-      Object.assign(state, { busy: false, requestId: null, operation: null, args: null, error: 'Could not ask Claude to try again. Try once more.' });
+      Object.assign(state, { busy: false, requestId: null, operation: null, args: null, error: 'Could not ask Claude to retry. Try again.' });
       render();
     }
   }
@@ -10908,7 +10985,7 @@ if (typeof document !== 'undefined') {
     }
     if (action === 'save-change') {
       const note = String(app.querySelector('#sb-note')?.value ?? state.panelDraft ?? '').trim();
-      if (!note) { state.panelError = 'Say what should change in this panel.'; render(); focusQuietly('#sb-note'); return; }
+      if (!note) { state.panelError = 'Say what to change in this panel.'; render(); focusQuietly('#sb-note'); return; }
       state.panels[slot] = { verdict: 'changes', note };
       state.panelEditing = null;
       state.panelDraft = '';
@@ -10940,7 +11017,7 @@ if (typeof document !== 'undefined') {
     if (action === 'undo') { delete state.mediaPanels[key]; state.error = ''; render(); return; }
     if (action === 'save') {
       const note = String(app.querySelector('#mr-note')?.value ?? state.mediaDraft ?? '').trim();
-      if (!note) { state.mediaError = 'Say what should change.'; render(); focusQuietly('#mr-note'); return; }
+      if (!note) { state.mediaError = NOTE_SAY_CHANGE; render(); focusQuietly('#mr-note'); return; }
       state.mediaPanels[key] = { verdict: 'changes', note };
       state.mediaEditing = null;
       state.mediaDraft = '';
@@ -11445,17 +11522,17 @@ if (typeof document !== 'undefined') {
     if (state.busy) return;
     const problem = intelSubtopicsProblem(rows);
     if (problem) { state.error = problem; redraw(); return; }
-    if (!transport) { state.error = 'The board is not connected to Claude yet. Try again in a moment.'; redraw(); return; }
+    if (!transport) { state.error = NOTE_NOT_CONNECTED; redraw(); return; }
     state.busy = true;
     state.error = '';
     redraw();
     try {
       const result = await transport.call('subtopics_confirm', { requestId: randomId(globalThis), brand: slug, items: intelSubtopicItems(rows) });
       Object.assign(state, { sent: { rows: rows.map(row => ({ id: row.id, name: String(row.name).trim() })), at: Date.now() }, editing: false, rows: [], error: '' });
-      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      notify(result?.message || NOTE_SAVED);
       await refresh();
     } catch (e) {
-      state.error = e.message || 'Could not send that.';
+      state.error = e.message || NOTE_SEND_FAILED;
     } finally {
       state.busy = false;
       redraw();
@@ -11489,17 +11566,17 @@ if (typeof document !== 'undefined') {
     const state = intelState(slug);
     const cell = state.cell;
     if (!cell || state.cellBusy) return;
-    if (!transport) { state.cellError = 'The board is not connected to Claude yet. Try again in a moment.'; redraw(); return; }
+    if (!transport) { state.cellError = NOTE_NOT_CONNECTED; redraw(); return; }
     state.cellBusy = true;
     state.cellError = '';
     redraw();
     try {
       const result = await transport.call('plan_cell_start', { requestId: randomId(globalThis), brand: slug, subtopic: cell.subtopic, format: cell.format });
-      Object.assign(state, { cell: null, cellSent: 'Sent. Claude sets up this post and it shows with your jobs when it is ready.' });
-      notify(result?.message || 'Request saved. Claude will validate it and update this board.');
+      Object.assign(state, { cell: null, cellSent: 'Sent. The post shows with your jobs when ready.' });
+      notify(result?.message || NOTE_SAVED);
       await refresh();
     } catch (e) {
-      state.cellError = e.message || 'Could not send that.';
+      state.cellError = e.message || NOTE_SEND_FAILED;
     } finally {
       state.cellBusy = false;
       redraw();

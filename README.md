@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.48.
+Current version: 0.17.49.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -280,7 +280,7 @@ claude plugin marketplace update 3echo-social-campaign
 claude plugin update social-campaign@3echo-social-campaign
 ```
 
-Then open a new chat.
+Social Campaign switches to the new version by itself in a chat that is already open; you do not type anything.
 Your workspace, brands and jobs are kept, because they live in your working folder and not in the plugin.
 If the update reports an error, remove the marketplace with `claude plugin marketplace remove 3echo-social-campaign`, then add and install it again as in step 1.
 
@@ -332,8 +332,9 @@ Setup may also ask once to let the plugin's tools and the board update run witho
 
 ### 6. After a plugin update
 
-Open a new chat and type `/social-campaign`.
-A running chat keeps the old version until you do.
+Nothing to type. Ask Social Campaign to update (or tap Yes when it offers), and it runs the update itself.
+A chat that is already open moves to the new version by itself: the tools switch within a few seconds and the board page is republished without a click.
+Only if that switch fails will it tell you to open a new chat.
 Quitting Claude is not needed.
 Your jobs and board are kept.
 

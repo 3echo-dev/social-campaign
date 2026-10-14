@@ -94,13 +94,25 @@ If the call fails or is not available, ignore it and carry on.
 ### Check for a finished update before anything else
 
 The moment this session's first successful `pipeline_status`, `pipeline_board_open` or `pipeline_board_source` result arrives, before doing anything else with it, look at `updateWaiting` and `pluginVersion`.
-Treat the server as a superseded install, waiting for the session to restart onto the newer one, when `updateWaiting` is `true`, or when the result carries no `pluginVersion` at all because the running server predates this check.
-When that happens, say so once, in one plain line: "Social Campaign was just updated. Open a new chat and type /social-campaign to carry on. Your jobs and board are kept." and stop there for this turn.
+Treat the server as a superseded install, one that could not switch to the newer version by itself, when `updateWaiting` is `true`, or when the result carries no `pluginVersion` at all because the running server predates this check.
+When that happens, say so once, in one plain line: "Social Campaign was just updated, but this chat could not switch to it by itself. Open a new chat to carry on. Your jobs and board are kept." and stop there for this turn.
 Do not refresh or republish the board with that server this turn, on the board or through board-sync: it would publish an old page.
 Never tell the person to quit Claude, and never mention `/reload-plugins`: neither reliably reconnects a plugin's MCP server in every session type.
+Otherwise, when the result says `swapped: true`, the plugin switched to a newer version while this chat was open and the server is already running it, but this skill (loaded from ${CLAUDE_PLUGIN_ROOT}/skills) is still the older text. Read `social-campaign/SKILL.md` from the result's `skillsRoot` and follow that file from here on; read any other skill from `skillsRoot` too, the first time you use it. When the result also carries `boardRefresh`, republish the board now as it says, without asking the person.
 Otherwise carry on as usual below.
 A call that failed with an error proves nothing either way: handle the error as usual, for example a corrupt board binding, and run the check on the next successful result instead.
-Run this check once per session, on the first successful result from any of these tools; do not repeat it on later calls.
+Run this check on the first successful result from any of these tools, and again only when a later result's `runningVersion` differs from the one you saw before (the plugin was updated while the chat was open); otherwise do not repeat it.
+
+### Updating the plugin
+
+The person never types anything to update.
+When they ask to update Social Campaign, or you would like to offer it, ask once with `pipeline_board_ask` ("Update Social Campaign now?", options "Yes, update" and "Not now"), and say the same line in chat.
+Only after they tap yes (or answer yes in chat), run these two commands through Bash, one after the other:
+`claude plugin marketplace update 3echo-social-campaign`
+`claude plugin update social-campaign@3echo-social-campaign`
+Then call `pipeline_status`. The plugin switches itself to the new version on that call, and the result says `swapped: true`; carry on as the check above describes, and tell the person it is updated in one plain line.
+If the result still shows the old version and `updateWaiting` is false, wait a few seconds and call `pipeline_status` once more.
+Only when `updateWaiting` is `true` (the switch failed) say the one line from the check above and tell them to open a new chat.
 
 The main entry opens a valid existing board directly and delegates missing workspace or artifact configuration to `setup`.
 
