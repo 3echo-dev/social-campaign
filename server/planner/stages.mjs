@@ -22,9 +22,6 @@
  * those ids from this table, and nothing else in the server hard codes a stage.
  */
 
-/** The five approval scopes, in the order a job meets them. */
-export const APPROVAL_SCOPES = ['strategy', 'concept', 'cost', 'media', 'final'];
-
 /**
  * What intake hands the first stage of any route. A stage whose inputs are covered
  * by this needs nothing before it.

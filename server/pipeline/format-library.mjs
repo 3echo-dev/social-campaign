@@ -89,16 +89,6 @@ export function findEntry(id, options) {
   return null;
 }
 
-/** { id: name } for the ids given (an id the library does not hold is left out). */
-export function formatNamesFor(ids, options) {
-  const out = {};
-  for (const id of ids ?? []) {
-    const entry = typeof id === 'string' ? findEntry(id, options) : null;
-    if (entry) out[entry.id] = entry.name;
-  }
-  return out;
-}
-
 /** The id of a library entry that the text names (its id anywhere in it, else its name word for word), or null. `axis` limits the search. */
 export function entryIdIn(text, axis = null, options) {
   const value = plain(text);

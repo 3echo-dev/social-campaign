@@ -13,7 +13,6 @@ const brandProfileRuntime = require(join(runtime.runtimeConstants.pipelineRoot, 
 const libBrandKit = require(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-brand-kit.js'));
 
 const string = { type: 'string' };
-const object = { type: 'object' };
 
 const KIT_SCHEMA = {
   type: 'object',

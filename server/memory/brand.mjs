@@ -29,14 +29,6 @@ const PILLAR_TITLES = {
   platform_playbook: 'Platform Playbook',
 };
 
-/** One short line of what each pillar is for, shown under its label on the screen. */
-export const PILLAR_HELP = {
-  brand_voice: 'How the brand sounds: tone, words it uses and words it avoids.',
-  audience: 'Who this is for: their situation, what they want and what holds them back.',
-  positioning: 'What makes this brand the right choice, and against what alternative.',
-  platform_playbook: 'How to show up on Facebook, Instagram and TikTok specifically.',
-};
-
 export { PILLAR_KEYS };
 
 /**

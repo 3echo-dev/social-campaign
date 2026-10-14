@@ -730,17 +730,6 @@ export function needsRearm(root, sessionId, now = Date.now()) {
   return at === null || now - at > REARM_AFTER_MS;
 }
 
-export function otherWindowArmedRecently(root, sessionId, now = Date.now()) {
-  const current = readJson(wakePath(root));
-  const sessions = sessionMap(plainObject(current) ? current.sessions : null);
-  const key = sessionId != null ? String(sessionId) : null;
-  return Object.entries(sessions).some(([id, entry]) => {
-    if (key !== null && id === key) return false;
-    const at = Date.parse(entry?.at ?? '');
-    return Number.isFinite(at) && now - at <= REARM_AFTER_MS;
-  });
-}
-
 export function claimStopBlock(root, sessionId, signature, at = new Date().toISOString()) {
   const file = boardPath(root, 'stop-hook.json');
   const current = readJson(file);

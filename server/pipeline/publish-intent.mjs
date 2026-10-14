@@ -62,7 +62,6 @@ import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-wor
 
 export { PUBLISH_INTENT_FILE, PUBLISH_ROUTES, probeMedia };
 export const MEDIA_FACTS_FILE = 'publish/media-facts.json';
-export const SEND_LOG_FILE = 'publish/metricool.jsonl';
 
 const require = createRequire(import.meta.url);
 const SCRIPTS = join(runtime.runtimeConstants.pipelineRoot, 'scripts');

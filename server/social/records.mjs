@@ -11,9 +11,6 @@ import { nowIso } from '../lib/ids.mjs';
 /** The social platforms in scope. */
 export const SOCIAL_PLATFORMS = ['tiktok', 'instagram', 'facebook', 'youtube'];
 
-/** Coverage values, best first. */
-export const COVERAGE_ORDER = ['full', 'partial', 'none'];
-
 /**
  * Why coverage is reduced. The first six are the contract's; `blocked` means the
  * platform answered an automated reader with a bot challenge or an unreadable page,
@@ -408,31 +405,6 @@ export function pageRecord(input) {
     links: Array.isArray(input.links) ? input.links : [],
     ...provenance({ source_type: 'web_evidence', confidence: 0.85, ...input }, input.url),
   };
-}
-
-/**
- * The worse of two coverage values.
- * @param {...string} values
- * @returns {'full'|'partial'|'none'}
- */
-export function worstCoverage(...values) {
-  let worst = 0;
-  for (const value of values) worst = Math.max(worst, Math.max(0, COVERAGE_ORDER.indexOf(value)));
-  return /** @type {any} */ (COVERAGE_ORDER[worst]);
-}
-
-/**
- * The better of two coverage values.
- * @param {...string} values
- * @returns {'full'|'partial'|'none'}
- */
-export function bestCoverage(...values) {
-  let best = 2;
-  for (const value of values) {
-    const index = COVERAGE_ORDER.indexOf(value);
-    if (index >= 0) best = Math.min(best, index);
-  }
-  return /** @type {any} */ (COVERAGE_ORDER[best]);
 }
 
 /**

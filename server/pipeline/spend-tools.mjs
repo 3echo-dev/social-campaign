@@ -116,8 +116,6 @@ export function toolBase(name) {
   return at > 3 ? value.slice(at + 2) : value;
 }
 
-export const isGuardedTool = base => GUARDED_TOOLS.has(base);
-
 /** 'threeEcho' or 'elevenLabs' when the full MCP tool name belongs to one of those servers, else null. */
 export function spendServer(name) {
   const value = String(name || '');

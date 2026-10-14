@@ -25,46 +25,12 @@ import {
 const ORIGINS = ['reference', 'generated', 'imported'];
 const KINDS = ['video', 'image', 'audio', 'document', 'script', 'other'];
 
-/** Which contract each analyst must satisfy. */
-const ANALYST_SCHEMA = {
-  'video-analyst': 'video-creative-analysis.schema.json',
-  'image-analyst': 'image-creative-analysis.schema.json',
-  'script-analyst': 'script-analysis.schema.json',
-};
-
 /**
  * @param {unknown} value
  * @returns {string|null}
  */
 function optionalString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-/**
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} assetId
- * @param {string} workspaceRoot
- */
-function requireAsset(db, assetId, workspaceRoot) {
-  const row = db.prepare('SELECT * FROM assets WHERE id = ?').get(assetId);
-  if (!row) throw new InvalidInputError('No asset with that id is in the library.');
-  return assetFromRow(row, workspaceRoot);
-}
-
-/**
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} assetId
- */
-function analysesFor(db, assetId) {
-  return db
-    .prepare('SELECT id, analyst, json, created_at FROM asset_analyses WHERE asset_id = ? ORDER BY created_at DESC, id DESC')
-    .all(assetId)
-    .map((row) => ({
-      id: String(row.id),
-      analyst: String(row.analyst),
-      analysis: parseJson(String(row.json), {}),
-      created_at: String(row.created_at),
-    }));
 }
 
 /**
@@ -140,48 +106,6 @@ function searchAssets(args, workspace) {
   };
 }
 
-/**
- * Counts by kind, total duration, formats, and analysis coverage.
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string|null} brandId
- */
-function summarize(db, brandId) {
-  const where = brandId ? 'WHERE brand_id = ?' : '';
-  const values = brandId ? [brandId] : [];
-  const byKind = db
-    .prepare(`SELECT kind, COUNT(*) AS n, COALESCE(SUM(duration), 0) AS seconds FROM assets ${where} GROUP BY kind`)
-    .all(...values);
-  const formats = db
-    .prepare(`SELECT mime, COUNT(*) AS n FROM assets ${where} GROUP BY mime ORDER BY n DESC`)
-    .all(...values);
-  const totals = db
-    .prepare(
-      `SELECT COUNT(*) AS total, COALESCE(SUM(bytes), 0) AS bytes, COALESCE(SUM(duration), 0) AS seconds,
-         SUM(CASE WHEN EXISTS (SELECT 1 FROM asset_analyses x WHERE x.asset_id = assets.id) THEN 1 ELSE 0 END) AS analyzed
-       FROM assets ${where}`,
-    )
-    .get(...values);
-  const orientation = db
-    .prepare(
-      `SELECT CASE WHEN width IS NULL OR height IS NULL THEN 'unknown'
-                   WHEN width > height THEN 'landscape' WHEN width < height THEN 'portrait' ELSE 'square' END AS shape,
-              COUNT(*) AS n FROM assets ${where} GROUP BY shape`,
-    )
-    .all(...values);
-  return {
-    total: Number(totals?.total ?? 0),
-    analyzed: Number(totals?.analyzed ?? 0),
-    pending_analysis: Number(totals?.total ?? 0) - Number(totals?.analyzed ?? 0),
-    total_bytes: Number(totals?.bytes ?? 0),
-    total_duration: Math.round(Number(totals?.seconds ?? 0) * 100) / 100,
-    by_kind: Object.fromEntries(
-      byKind.map((row) => [String(row.kind), { count: Number(row.n), duration: Math.round(Number(row.seconds) * 100) / 100 }]),
-    ),
-    formats: formats.map((row) => ({ mime: row.mime ? String(row.mime) : null, count: Number(row.n) })),
-    orientation: Object.fromEntries(orientation.map((row) => [String(row.shape), Number(row.n)])),
-  };
-}
-
 /** @type {import('../mcp/registry.mjs').ToolDefinition[]} */
 export const assetTools = [
   defineTool({
@@ -217,20 +141,6 @@ export const assetTools = [
   }),
 
   defineTool({
-    name: 'asset_get',
-    description: 'Fetch one library asset by id: its facts, thumbnail and frame paths.',
-    inputSchema: {
-      type: 'object',
-      properties: { asset_id: { type: 'string' } },
-      required: ['asset_id'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => ({
-      asset: requireAsset(workspace.requireDb(), String(args.asset_id), workspace.requireRoot()),
-    }),
-  }),
-
-  defineTool({
     name: 'asset_search',
     description:
       'Search the creative library. Filters: brand_id, kind (video, image, audio, document, script, other), ' +
@@ -253,201 +163,4 @@ export const assetTools = [
     handler: (args, { workspace }) => searchAssets(args, workspace),
   }),
 
-  defineTool({
-    name: 'creative_search',
-    description:
-      'Search analysed creative in the library. Same filters as asset_search plus hook_type, format and ' +
-      'platform, each matched against the stored analyses. Use this to find references by what they do.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brand_id: { type: 'string' },
-        kind: { type: 'string' },
-        query: { type: 'string' },
-        hook_type: { type: 'string' },
-        format: { type: 'string' },
-        platform: { type: 'string', description: 'facebook, instagram or tiktok.' },
-        min_duration: { type: 'number' },
-        max_duration: { type: 'number' },
-        limit: { type: 'number' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => searchAssets(args, workspace),
-  }),
-
-  defineTool({
-    name: 'creative_get',
-    description: 'Fetch one asset together with every analysis saved against it, newest first.',
-    inputSchema: {
-      type: 'object',
-      properties: { asset_id: { type: 'string' } },
-      required: ['asset_id'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const asset = requireAsset(db, String(args.asset_id), workspace.requireRoot());
-      return { asset, analyses: analysesFor(db, asset.id) };
-    },
-  }),
-
-  defineTool({
-    name: 'creative_save_analysis',
-    description:
-      'Save an analyst reading of one asset. analyst is video-analyst, image-analyst or script-analyst and the ' +
-      'analysis must match that analyst\'s contract; problems are listed back if it does not. A new reading ' +
-      'never replaces an older one.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        asset_id: { type: 'string' },
-        analyst: { type: 'string' },
-        analysis: { type: 'object' },
-      },
-      required: ['asset_id', 'analyst', 'analysis'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const analyst = String(args.analyst);
-      const schemaFile = ANALYST_SCHEMA[analyst];
-      if (!schemaFile) {
-        throw new InvalidInputError(`analyst must be one of ${Object.keys(ANALYST_SCHEMA).join(', ')}.`);
-      }
-      const asset = requireAsset(db, String(args.asset_id), workspace.requireRoot());
-      const analysis = { ...(/** @type {Record<string, unknown>} */ (args.analysis)), asset_id: asset.id };
-      const problems = validateAgainst(analysis, schemaFile);
-      if (problems.length > 0) {
-        throw new InvalidInputError('The analysis does not match the expected shape.', {
-          details: { problems },
-          fix: `Fix these and save again: ${problems.slice(0, 8).join('; ')}`,
-        });
-      }
-      const id = newId();
-      const createdAt = nowIso();
-      db.prepare('INSERT INTO asset_analyses (id, asset_id, analyst, json, created_at) VALUES (?, ?, ?, ?, ?)').run(
-        id,
-        asset.id,
-        analyst,
-        toJsonColumn(analysis),
-        createdAt,
-      );
-      return { ok: true, id, asset_id: asset.id, analyst, created_at: createdAt };
-    },
-  }),
-
-  defineTool({
-    name: 'library_ingest',
-    description:
-      'Start indexing a media folder into the creative library: find supported files, hash and dedupe them, ' +
-      'read their facts and make thumbnails. Returns a job id at once; poll library_status for progress. ' +
-      'The folder is only read. Pointing at the same folder again only picks up new files. ' +
-      'This fills the older creative library, which jobs do not read. For a brand\'s archive of past footage use brand_footage_import instead: it keeps the footage in the brand\'s library with rights, ' +
-      'and brand_footage_search finds it again for repurpose jobs.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        source_folder: { type: 'string', description: 'Absolute path to the folder.' },
-        brand_id: { type: 'string' },
-      },
-      required: ['source_folder'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const workspaceRoot = workspace.requireRoot();
-      const sourceFolder = String(args.source_folder);
-      if (isTooBroadSourceFolder(sourceFolder, workspaceRoot)) {
-        throw new InvalidInputError(
-          'That folder is too broad to index. Choose a specific folder rather than the home directory, a drive root or the workspace root.',
-        );
-      }
-      const job = startLibraryJob({
-        db: workspace.requireDb(),
-        workspaceRoot,
-        sourceFolder,
-        brandId: optionalString(args.brand_id),
-      });
-      return { ok: true, job_id: job.id, job, hint: 'Call library_status with this job_id to follow progress.' };
-    },
-  }),
-
-  defineTool({
-    name: 'library_status',
-    description:
-      'Progress of a library indexing job: files found, hashed, probed, thumbnails made, registered, ' +
-      'duplicates, failures, and whether it is still running.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        job_id: { type: 'string', description: 'Omit to get the most recent job.' },
-        cancel: { type: 'boolean', description: 'Set true to stop the job after the current file.' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const jobId = optionalString(args.job_id);
-      const job = jobId ? getJob(db, jobId) : latestJob(db);
-      if (!job) throw new InvalidInputError('No library job with that id.');
-      if (args.cancel === true) cancelLibraryJob(job.id);
-      const done = job.registered + job.duplicates + job.skipped + job.failed;
-      return {
-        job: { ...job, running: isJobRunning(job.id) },
-        progress: job.files_found > 0 ? Math.min(1, done / job.files_found) : job.status === 'completed' ? 1 : 0,
-        finished: !isJobRunning(job.id) && job.status !== 'queued' && job.status !== 'running',
-      };
-    },
-  }),
-
-  defineTool({
-    name: 'library_pending_analysis',
-    description:
-      'List library assets that have no analysis yet, with their facts, thumbnail and frame paths, so a ' +
-      'video, image or script analyst can read them and analyse them. Filter with brand_id and kind.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brand_id: { type: 'string' },
-        kind: { type: 'string', description: 'video, image or script. Default: all three.' },
-        limit: { type: 'number', description: 'Default 20, maximum 200.' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const root = workspace.requireRoot();
-      const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 200);
-      const kind = optionalString(args.kind);
-      const kinds = kind ? [kind] : ['video', 'image', 'script'];
-      const brandId = optionalString(args.brand_id);
-      const rows = db
-        .prepare(
-          `SELECT * FROM assets a WHERE kind IN (${kinds.map(() => '?').join(', ')})
-             ${brandId ? 'AND brand_id = ?' : ''}
-             AND NOT EXISTS (SELECT 1 FROM asset_analyses x WHERE x.asset_id = a.id)
-           ORDER BY created_at ASC, id ASC LIMIT ?`,
-        )
-        .all(...kinds, ...(brandId ? [brandId] : []), limit);
-      const assets = rows.map((row) => assetFromRow(row, root));
-      return {
-        assets,
-        count: assets.length,
-        hint: 'Read keyframe_paths to see each asset, then call creative_save_analysis.',
-      };
-    },
-  }),
-
-  defineTool({
-    name: 'library_summary',
-    description:
-      'Totals for the creative library: counts and duration by kind, formats, orientation, and how many ' +
-      'assets still need analysis.',
-    inputSchema: {
-      type: 'object',
-      properties: { brand_id: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => ({ summary: summarize(workspace.requireDb(), optionalString(args.brand_id)) }),
-  }),
 ];

@@ -30,8 +30,6 @@ const THREE_ECHO_TOOLS = new Set([
   'list_workspaces', 'get_workspace_capabilities', 'estimate_video_job', 'create_image_job', 'create_video_job',
   'wait_for_job', 'get_job', 'get_job_result', 'get_asset', 'fetch_asset_bytes', 'import_asset_from_url', 'cancel_job',
 ]);
-export const THREE_ECHO_RESULTS = Object.freeze(['wait_for_job', 'get_job_result', 'get_asset']);
-export const THREE_ECHO_ESTIMATE = 'estimate_video_job';
 const VOICE_DEFAULT_GENERATIONS = 4;
 const EPSILON = 1e-6;
 

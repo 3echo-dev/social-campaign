@@ -851,9 +851,6 @@ export const CLASSIFIER_MODEL = 'haiku';
 /** Well inside the ten seconds a hook is given, and inside a person's patience at the prompt. */
 export const CLASSIFY_MS = 4000;
 
-/** The only words the classifier's answer is read for. Anything else is unclear. */
-export const CLASSIFIER_VOCABULARY = ['approve', 'edit', 'change', 'start over', 'answer', 'unclear'];
-
 /** The classifier's whole brief. Fixed, so the same prompt is asked the same way every time. */
 export const CLASSIFIER_SYSTEM =
   'You sort one chat message into one word. Reply with exactly one of: approve, edit, change, '

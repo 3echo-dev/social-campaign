@@ -23,9 +23,6 @@ import { commentRecord, postRecord, profileRecord, tiktokTimeFromId, toCount } f
 /** Where TikTok lives. Tests point this at a local server. */
 export const TIKTOK_BASE_URL = 'https://www.tiktok.com';
 
-/** How many posts the profile embed shows. */
-export const EMBED_PROFILE_POSTS = 10;
-
 /**
  * @typedef {{ok: false, code: string, reason: string, trip: boolean}} PublicFailure
  */

@@ -44,22 +44,11 @@ function resolveJob(root, brandValue, jobId) {
   return { brand, dir };
 }
 
-export function shelfDir(brandDir) { return join(brandDir, 'music'); }
 export function choicePath(jobDir) { return join(jobDir, 'media', 'music', 'choice.json'); }
-
-export function readShelf(brandDir) {
-  const list = readJson(join(shelfDir(brandDir), 'index.json'), []);
-  return Array.isArray(list) ? list : [];
-}
 
 export function readChoice(jobDir) {
   const value = readJson(choicePath(jobDir), null);
   return value && typeof value === 'object' ? value : null;
-}
-
-function tidyTitle(file) {
-  const name = basename(file, extname(file)).replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return name || 'Untitled track';
 }
 
 function safeFileName(file) {

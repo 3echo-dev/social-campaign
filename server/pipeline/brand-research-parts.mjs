@@ -82,8 +82,6 @@ const LABELS = Object.freeze({
   viral: 'What is viral now',
 });
 
-/** The statuses a part file carries: the starting file is pending, a worker writes working while it goes and done in its last write. */
-export const PART_STATUSES = Object.freeze(['pending', 'working', 'done']);
 const DRAFT_KEYS = Object.freeze(['fills', 'suggested', 'research', 'brandFiles', 'topPosts', 'banks', 'budget']);
 const META_KEYS = Object.freeze(['version', 'runId', 'part', 'status', 'competitor']);
 const BRAND_FILE_LIMITS = Object.freeze({ segments: 3, phrases: 8, objections: 5, notFor: 4, proof: 8, competitors: 3, neverClaim: 6, pillars: 8, cadence: 3, notes: 3 });

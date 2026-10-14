@@ -34,9 +34,6 @@ import { approvalStatus } from '../review/approvals.mjs';
 /** The artifact kind the working manifest is stored under. */
 export const MANIFEST_KIND = 'GenerationManifest';
 
-/** The artifact kind the finished projection is stored under. */
-export const PACKAGE_KIND = 'GeneratedMediaPackage';
-
 /**
  * Every state an item can be in. `outcome_unknown` is a dead end on purpose: a
  * submission whose result we could not observe (timeout, crash) never auto-retries.
@@ -47,20 +44,6 @@ export const ITEM_STATES = ['planned', 'generating', 'generated', 'approved', 'r
 /** What the user is told when generation is attempted before the cost gate. */
 export const NEEDS_COST_APPROVAL_MESSAGE =
   'I need your approval on the cost before I can make this. Nothing has been spent.';
-
-/**
- * The id of the review that currently authorises a kind, by the same newest-wins
- * rule as the approval_check tool, so that generation can guard itself without
- * depending on Claude having called it.
- * @param {any} db
- * @param {string} campaignId
- * @param {string} kind
- * @returns {string|null} the review id, or null when there is no approval
- */
-export function approvedReviewId(db, campaignId, kind) {
-  const row = approvedReview(db, campaignId, kind);
-  return row ? row.id : null;
-}
 
 /**
  * The review that currently authorises a kind, with the moment it was resolved, so a

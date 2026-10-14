@@ -502,11 +502,6 @@ export function whenIdle({ root, brand } = {}) {
   return TAILS.get(footageDir(root, brand)) || Promise.resolve();
 }
 
-/** Whether a folder is being indexed (or waiting its turn) in this process. */
-export function isIndexing({ root, brand, folderId } = {}) {
-  return RUNS.has(`${footageDir(root, brand)}|${folderId}`);
-}
-
 // ---------------------------------------------------------------- what the rest of the plugin reads
 const FONT_NAMES_ON_BOARD = 8;
 

@@ -112,34 +112,4 @@ export const mediaTools = [
     },
   }),
 
-  defineTool({
-    name: 'media_extract_audio',
-    description:
-      'Extract the audio track of a video or audio file into the workspace as a 16 kHz mono wav (or mp3), ' +
-      'for transcription. Only call this when a transcript is actually needed.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        asset_id: { type: 'string', description: 'A registered asset id.' },
-        path: { type: 'string', description: 'Alternatively, an absolute path to a file.' },
-        format: { type: 'string', description: 'wav (default) or mp3.' },
-      },
-      additionalProperties: false,
-    },
-    handler: async (args, { workspace }) => {
-      const root = workspace.requireRoot();
-      const target = resolveTarget(args, workspace);
-      const type = detectType(target.path);
-      if (type.kind !== 'video' && type.kind !== 'audio') {
-        throw new InvalidInputError('Audio can only be extracted from a video or an audio file.');
-      }
-      const result = await extractAudio({
-        filePath: target.path,
-        assetId: target.assetId,
-        workspaceRoot: root,
-        format: args.format === 'mp3' ? 'mp3' : 'wav',
-      });
-      return { asset_id: target.asset ? target.assetId : null, source: target.path, audio_path: result.path, format: result.format };
-    },
-  }),
 ];

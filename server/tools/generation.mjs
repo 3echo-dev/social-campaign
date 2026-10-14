@@ -275,16 +275,6 @@ function saveContractArtifact(db, campaignId, kind, json, path = null) {
   return { id, version };
 }
 
-/**
- * @param {any} db
- * @param {string} campaignId
- * @returns {any|null}
- */
-function readSubtitlePackage(db, campaignId, assetId) {
-  const json = currentArtifact(db, campaignId, 'SubtitlePackage')?.json ?? null;
-  return json && String(/** @type {any} */ (json).asset_id) === assetId ? json : null;
-}
-
 /** Longest wait for one generated file, the same as the generation lander. */
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -511,36 +501,6 @@ export const generationTools = [
   }),
 
   defineTool({
-    name: 'generation_outcome_unknown',
-    description:
-      'Record that a submission to the provider ended without a known result: a timeout, a crash, or any ' +
-      'other case where you cannot tell whether it went through. This never auto-retries. The item is parked ' +
-      'until a human clears it at media review or a fresh cost approval is granted.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        campaign_id: { type: 'string' },
-        item_id: { type: 'string' },
-        detail: { type: 'string', description: 'One plain sentence about what happened.' },
-      },
-      required: ['campaign_id', 'item_id'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const campaignId = String(args.campaign_id);
-      const result = markOutcomeUnknown(db, campaignId, String(args.item_id), optionalString(args.detail));
-      logEvent(db, campaignId, 'generation.outcome_unknown', { item_id: String(args.item_id), detail: optionalString(args.detail) });
-      return {
-        ok: true,
-        item: result.item,
-        summary: result.manifest.summary,
-        message: 'Recorded as an unclear outcome. I will not try this again on my own; it needs a human decision.',
-      };
-    },
-  }),
-
-  defineTool({
     name: 'generation_complete',
     description:
       'Record what the provider produced for one item: pass either the file on this computer or the url to ' +
@@ -671,25 +631,6 @@ export const generationTools = [
   }),
 
   defineTool({
-    name: 'generation_package_get',
-    description:
-      'Read where generation has got to for this job: every planned item with its state, plus the package of ' +
-      'finished media to show at media review.',
-    inputSchema: {
-      type: 'object',
-      properties: { campaign_id: { type: 'string' } },
-      required: ['campaign_id'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const manifest = readManifest(db, String(args.campaign_id));
-      if (!manifest) return { exists: false, manifest: null, package: null, ledger: null };
-      return { exists: true, manifest, package: toPackage(manifest), ledger: ledgerFor(manifest) };
-    },
-  }),
-
-  defineTool({
     name: 'subtitles_build',
     description:
       'Turn a transcript into subtitle files for one video: short cues of at most two lines, written next to ' +
@@ -747,70 +688,6 @@ export const generationTools = [
       };
       const saved = saveContractArtifact(db, campaignId, 'SubtitlePackage', subtitlePackage, srtPath);
       return { ok: true, version: saved.version, srt_path: srtPath, vtt_path: vttPath, cues: subtitlePackage.cues };
-    },
-  }),
-
-  defineTool({
-    name: 'subtitles_render',
-    description:
-      'Burn the subtitles already built for a video into a copy of it, so the captions are visible with the ' +
-      'sound off. The new file is added to the library and kept with the job.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        campaign_id: { type: 'string' },
-        asset_id: { type: 'string' },
-        style: { type: 'object', description: 'font_family, font_size, position (top, middle, lower_third, bottom).' },
-      },
-      required: ['campaign_id', 'asset_id'],
-      additionalProperties: false,
-    },
-    handler: async (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const root = workspace.requireRoot();
-      const campaignId = String(args.campaign_id);
-      const assetId = String(args.asset_id);
-      const asset = requireAssetRow(db, assetId);
-      const subtitlePackage = readSubtitlePackage(db, campaignId, assetId);
-      if (!subtitlePackage) {
-        throw new InvalidInputError('This video has no subtitles yet.', { fix: 'Build the subtitles first.' });
-      }
-
-      const folder = generatedDir(root, campaignId);
-      const outPath = derivedPath(folder, asset.path, 'subtitled', '.mp4');
-      const style = { ...(subtitlePackage.style ?? {}), ...(/** @type {any} */ (args.style) ?? {}) };
-      await renderSubtitles({
-        video_path: asset.path,
-        srt_path: String(subtitlePackage.files?.srt_path),
-        out_path: outPath,
-        style,
-      });
-
-      const registered = await registerFile({
-        db,
-        workspaceRoot: root,
-        path: outPath,
-        origin: 'generated',
-        campaignId,
-      });
-      saveContractArtifact(
-        db,
-        campaignId,
-        'SubtitlePackage',
-        { ...subtitlePackage, files: { ...subtitlePackage.files, burned_in_path: registered.asset.path } },
-        registered.asset.path,
-      );
-      if (readManifest(db, campaignId)) {
-        attachDerivedAsset(db, campaignId, {
-          asset_id: registered.asset.id,
-          kind: 'video',
-          path: registered.asset.path,
-          provider: 'local',
-          prompt: null,
-          panel_id: `subtitled:${assetId}`,
-        });
-      }
-      return { ok: true, asset: registered.asset, path: registered.asset.path };
     },
   }),
 
@@ -904,48 +781,6 @@ export const generationTools = [
       }
 
       return { ok: true, applied: prepared.applied, exports, cover_frame: cover };
-    },
-  }),
-
-  defineTool({
-    name: 'integration_connect_threeecho_open',
-    description:
-      '3Echo Studio connects only through the person\'s own claude.ai connector, so this opens no sign-in of ' +
-      'its own. Call it when image or video generation is next and 3Echo Studio is not present yet; it returns ' +
-      'plain guidance for adding the connector in claude.ai and coming back once it is added.',
-    inputSchema: {
-      type: 'object',
-      properties: { reason: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args) => {
-      const reason = optionalString(args.reason);
-      return {
-        ok: true,
-        provider: 'threeecho_studio',
-        message: reason ? `${reason} ${THREEECHO_CONNECTOR_GUIDANCE}` : THREEECHO_CONNECTOR_GUIDANCE,
-      };
-    },
-  }),
-
-  defineTool({
-    name: 'integration_connect_elevenlabs_open',
-    description:
-      "ElevenLabs connects only through the person's own claude.ai connector, so this opens no sign-in of " +
-      'its own. Call it when a voiceover, sound or transcript is next and ElevenLabs is not present yet; it ' +
-      'returns plain guidance for adding the connector in claude.ai and coming back once it is added.',
-    inputSchema: {
-      type: 'object',
-      properties: { reason: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args) => {
-      const reason = optionalString(args.reason);
-      return {
-        ok: true,
-        provider: 'elevenlabs',
-        message: reason ? `${reason} ${ELEVENLABS_CONNECTOR_GUIDANCE}` : ELEVENLABS_CONNECTOR_GUIDANCE,
-      };
     },
   }),
 

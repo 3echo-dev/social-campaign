@@ -36,13 +36,6 @@ export function setLogFile(filePath) {
 }
 
 /**
- * @param {'debug'|'info'|'warn'|'error'} next
- */
-export function setLogLevel(next) {
-  if (ORDER[next]) level = next;
-}
-
-/**
  * @param {'debug'|'info'|'warn'|'error'} kind
  * @param {string} message
  * @param {Record<string, unknown>} [fields]
