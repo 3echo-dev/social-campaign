@@ -32,6 +32,7 @@ import { sha256File } from '../media/hash.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { LOCAL_WHISPER_MISSING, localWhisperAvailable, transcribeLocally } from './local-whisper.mjs';
+import { ensureSpeechModel } from '../setup/research-helper.mjs';
 import { extractWatchFrames } from './watch-frames.mjs';
 import {
   captionLanguageTag,
@@ -518,7 +519,17 @@ function noProviderAnswer(facts, local = null) {
  */
 async function transcribeWithLocalReader(workspace, facts) {
   const local = await transcribeLocally({ path: facts.mediaPath, language: facts.language, durationS: facts.durationS });
-  if (!local.ok) return { ok: false, local };
+  if (!local.ok) {
+    // The speech model is the one download the person agreed to with the speech reader: it starts now, in the background,
+    // for a person who said yes to it, and the answer says so instead of asking them to run a command.
+    if (local.status === 'model_missing') {
+      const fetching = ensureSpeechModel(workspace, local.model);
+      if (fetching.state === 'downloading') {
+        return { ok: false, local: { ...local, message: 'Local speech to text is downloading its speech model (about 480 MB) in the background. Try this video again in a few minutes.' } };
+      }
+    }
+    return { ok: false, local };
+  }
   const { segments } = normalizeSegments(local.segments);
   if (segments.length === 0) return { ok: false, local: { ok: false, status: 'no_speech', message: 'No speech was found in that audio.', model: local.model } };
   const saved = storeTranscript(workspace, {

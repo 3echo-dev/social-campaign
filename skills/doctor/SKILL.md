@@ -78,7 +78,7 @@ If `repairable` is not empty, offer to fix those items, in one sentence each, an
 
 - Ask before each repair. Never repair without being asked to.
 - On yes, call `doctor_repair({check: "<id>"})` once per item, one at a time.
-  For `research_helper`, first tell the person what it installs and how big it is, and pass `confirm: true` only after their yes to that; without it nothing is installed.
+  For `research_helper`, first tell the person what it installs and how big it is (a download of roughly 400 MB, about 1 GB on disk), offer local speech to text as part of the same yes (about 630 MB more), and pass `confirm: true` only after their yes to that, adding `speech: true` only if the yes included speech to text; without `confirm` nothing is installed.
 - `doctor_repair` returns `repaired`, a `detail` to read out, sometimes `restart_needed`, and a fresh `checks` list.
   Report the `detail` in the user's words, and if `restart_needed` is true tell them to close this Claude session and start a new one.
 - If `repaired` is false, read the `detail` and stop. Do not try the same repair again.
@@ -109,7 +109,7 @@ Translate, do not dump.
 - A yt-dlp warning means social research reads less directly.
   Without yt-dlp, TikTok posts and video addresses fall back to web search; without browser impersonation, or on an old version, TikTok answers about half of its reads with a bot check.
   Read out the version from `detail` and the one line from `fix`, which already names the right command for how yt-dlp was installed.
-- A research helper warning is never urgent. Research still runs on public pages and web search; the helper only adds the ability to read pages that show almost nothing to a plain reader. If a previous attempt failed, `detail` names what happened in full; read it out rather than summarizing it away. Offer to set it up, say it takes several minutes and downloads a few hundred megabytes, and move on either way.
+- A research helper warning is never urgent. Research still runs on public pages and web search; the helper only adds the ability to read pages that show almost nothing to a plain reader. If a previous attempt failed, `detail` names what happened in full; read it out rather than summarizing it away. Offer to set it up, say it takes several minutes and downloads roughly 400 MB, and move on either way.
 - Setup checks, per brand:
   the Publishing link names the Metricool brand and the handle for each channel (Facebook, Instagram, TikTok).
   A different or missing handle means posts could go to the wrong account or none, so read out the `fix`.

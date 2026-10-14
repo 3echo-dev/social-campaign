@@ -6,12 +6,14 @@
  * that already imports in this computer's Python is used. Measured live on 2026-10-13: the cached "small" model
  * transcribed 11 seconds of Japanese TikTok speech in 7 seconds on a laptop CPU.
  *
- * Nothing is installed here. The Python is found, in this order, among: a path named by SOCIAL_CAMPAIGN_WHISPER_PYTHON
+ * Nothing is installed here. The research helper installs faster-whisper into its own environment, and fetches the
+ * model once in the background, after the person said yes to local speech to text (server/setup/research-helper.mjs,
+ * speech-helper.mjs). The Python is found, in this order, among: a path named by SOCIAL_CAMPAIGN_WHISPER_PYTHON
  * (development and tests; under the test runner it is the only one tried), the research helper's own environment, and
- * the system Python; the first one that can
- * `import faster_whisper` is used. The model is "small" (or "small.en" when the speech is English), CPU, int8 weights.
- * A model that is not already on the computer is not downloaded behind the person's back: the answer says which
- * model is missing and the one line that fetches it.
+ * the system Python; the first one that can `import faster_whisper` is used. The model is "small" (or "small.en" when
+ * the speech is English and that model is on the computer; the multilingual "small" reads English too), CPU, int8
+ * weights. A model that is not already on the computer is never downloaded here: the answer says which model is
+ * missing, and the caller starts the background download only for a person who agreed to it.
  *
  * Every outcome is a plain object, never a throw: `{ok: true, ...}` or `{ok: false, status, message}` with a status
  * of not_installed, model_missing, too_long, timed_out, no_speech or failed, and a message for a person.
@@ -23,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 import { pythonChildEnv } from '../lib/python-env.mjs';
 import { managedEnvironmentRoot, managedPythonPath } from '../setup/research-helper-record.mjs';
+import { speechModelPresent } from '../setup/speech-helper.mjs';
 import { killTree } from '../social/backends/ytdlp.mjs';
 
 /** The Python worker. */
@@ -42,7 +45,7 @@ const MISSING_TTL_MS = 2 * 60_000;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 export const LOCAL_WHISPER_MISSING =
-  'No local speech to text is installed on this computer. It uses faster-whisper in this computer\'s Python (pip install faster-whisper), which Social Campaign does not install for you.';
+  'Local speech to text is not set up on this computer. The research helper can add it, free (about 150 MB of packages and a speech model of about 480 MB, installed in the background once you say yes). Or put faster-whisper in your own Python (pip install faster-whisper); Social Campaign does not install it there for you. Without it, a video with no captions is read from its frames only.';
 
 /**
  * The model to use: the English only one for English speech, the multilingual one otherwise.
@@ -207,7 +210,10 @@ export async function transcribeLocally(options) {
   }
   const found = await findLocalWhisper({ candidates: options.candidates, env: options.env });
   if (!found) return { ok: false, status: 'not_installed', message: LOCAL_WHISPER_MISSING };
-  const model = whisperModelFor(options.language);
+  // English speech prefers the English only model; when only the multilingual one is on the computer it reads English too,
+  // so the second download is never needed.
+  let model = whisperModelFor(options.language);
+  if (found.source !== 'configured' && model === 'small.en' && !speechModelPresent('small.en', options.env) && speechModelPresent('small', options.env)) model = 'small';
   // The CPU reads at several times real time; two times the recording and a minute is room for a slow laptop.
   const timeoutMs = options.timeoutMs ?? Math.min(25 * 60_000, 60_000 + (durationS ?? 120) * 2_000);
   const out = await runCollect(found.command, [...found.args, options.script ?? WHISPER_SCRIPT], {
@@ -243,7 +249,9 @@ export async function transcribeLocally(options) {
         ok: false,
         status: 'model_missing',
         model,
-        message: `faster-whisper is installed, but its "${model}" model is not downloaded on this computer, and Social Campaign does not download it for you. Fetching it once (about 460 MB) is: ${fetchModelCommand(found, model)}`,
+        message: found.source === 'research_helper'
+          ? `Local speech to text is installed, but its "${model}" speech model (about 480 MB) is not downloaded yet.`
+          : `faster-whisper is installed, but its "${model}" model is not downloaded on this computer, and Social Campaign does not download it for you. Fetching it once (about 480 MB) is: ${fetchModelCommand(found, model)}`,
       };
     case 'not_installed':
       return { ok: false, status: 'not_installed', message: LOCAL_WHISPER_MISSING, model };

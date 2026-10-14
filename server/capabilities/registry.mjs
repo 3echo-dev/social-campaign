@@ -44,7 +44,7 @@ export const CAPABILITIES = [
   { name: 'social.inspect_account', purpose: 'Inspect a public social account', provider: 'Public pages and yt-dlp, with web evidence plans', resolver: 'social', risk: 'medium' },
   { name: 'social.search_content', purpose: 'Discover relevant social content', provider: 'Public pages and yt-dlp, with web evidence plans', resolver: 'social', risk: 'medium' },
   { name: 'ads.research', purpose: 'Inspect paid creative and ad libraries', provider: 'Public ad libraries, with web evidence plans', resolver: 'social', risk: 'medium' },
-  { name: 'research.browser', purpose: 'Render JavaScript pages for research the other backends could not read', provider: 'A local Python worker over crawl4ai and Playwright Chromium', resolver: 'research_browser', risk: 'medium' },
+  { name: 'research.browser', purpose: 'Render JavaScript pages for research the other backends could not read', provider: 'A local Python worker over Scrapling and Chromium', resolver: 'research_browser', risk: 'medium' },
 
   { name: 'media.probe', purpose: 'Duration, codec, resolution, fps, audio', provider: 'FFprobe', resolver: 'ffprobe', risk: 'none' },
   { name: 'media.extract_frames', purpose: 'Key and representative frames', provider: 'FFmpeg', resolver: 'ffmpeg', risk: 'none' },

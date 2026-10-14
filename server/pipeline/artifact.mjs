@@ -18,11 +18,12 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { BOARD_SHELL_FILES, boardShellHashInput, buildBoardShell, buildBoardShellText } from '../../scripts/build-board.mjs';
+import { boardShellHashInput, buildBoardShell, buildBoardShellText } from '../../scripts/build-board.mjs';
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import * as runtime from './runtime.mjs';
 import { boardJobDocuments, boardSnapshot, boardSummary } from './board.mjs';
-import { ARTIFACT_PATH, ARTIFACT_SOURCE_VERSION, artifactIdOf, canonicalArtifactUrl, isBoardUrl, projectionFileName, projectionHashFromFileName, readBoardLink, recordProjectionWritten } from './board-freshness.mjs';
+import { ARTIFACT_PATH, ARTIFACT_SOURCE_VERSION, artifactIdOf, canonicalArtifactUrl, isBoardUrl, normalizeFileHashes, projectionFileName, projectionHashFromFileName, readBoardLink, recordProjectionWritten } from './board-freshness.mjs';
+import { boardReadPlan, pathsToPublish, removeStaleBoardFiles } from './board-files.mjs';
 import { JOB_DOCUMENT_COLLECTION } from './job-document.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -165,6 +166,7 @@ function artifactBindingFromRecord(record, expectedWorkspaceId) {
     source: record.source === 'config' ? 'config' : 'binding',
     sourceHash: sourceHash || null,
     sourceVersion: typeof record.sourceVersion === 'string' ? record.sourceVersion : null,
+    fileHashes: normalizeFileHashes(record.fileHashes),
     ownershipStatus: 'unverified',
   };
 }
@@ -216,6 +218,7 @@ function bestEffortBinding(record, expectedWorkspaceId) {
     source: record.source === 'config' ? 'config' : 'binding',
     sourceHash: null,
     sourceVersion: null,
+    fileHashes: null,
     ownershipStatus: 'unverified',
   };
 }
@@ -501,30 +504,54 @@ function preserveBindingBytes(root, bytes) {
  * The returned filePath is for the host Artifact tool only and is never put in
  * the artifact database document.
  *
- * @param {{root:string}} options
+ * The page is a small shell and the board's code and styles are supporting files (`files`: published path to local
+ * file). Passing the `url` of the bound board makes it a refresh: `files` then holds only the files whose hash differs
+ * from the ones the board was last bound with, because the Artifact tool keeps the files a publish leaves out and the
+ * agent has to read every file it publishes. Without a url (a first publication, a replacement board, a binding that
+ * recorded no file hashes) every file is returned. `reads` lists the Read calls that cover the page and those files, each
+ * under the Read tool's token cap.
+ *
+ * @param {{root:string, url?:string|null}} options
  */
-export function sourceArtifactBoard({ root }) {
+export function sourceArtifactBoard({ root, url = null }) {
   const workspace = workspaceFor(root);
   const parts = buildBoardShell({ config: { workspaceId: workspace.workspaceId, mode: 'artifact' } });
   const filePath = sourcePath(root);
-  const jsPath = join(boardDirPath(root), BOARD_SHELL_FILES.js);
-  const cssPath = join(boardDirPath(root), BOARD_SHELL_FILES.css);
-  writeTextAtomic(jsPath, parts.js);
-  writeTextAtomic(cssPath, parts.css);
+  const dir = boardDirPath(root);
+  const localPaths = {};
+  const fileHashes = {};
+  for (const file of parts.files) {
+    localPaths[file.path] = join(dir, file.path);
+    fileHashes[file.path] = file.sha256;
+    writeTextAtomic(localPaths[file.path], file.text);
+  }
+  removeStaleBoardFiles(dir, new Set(Object.keys(localPaths)));
   writeTextAtomic(filePath, parts.html);
   const sourceHash = createHash('sha256').update(boardShellHashInput(parts), 'utf8').digest('hex');
   updateJsonFile(sourceMetaPath(root), (current) => ({
     ...current,
     sourceVersion: ARTIFACT_SOURCE_VERSION,
     sourceHash,
+    fileHashes,
     generatedAt: typeof current.generatedAt === 'string' && current.sourceHash === sourceHash ? current.generatedAt : now(),
   }), {});
+  const link = url ? readBoardLink(root) : null;
+  const recorded = link && isBoardUrl(link, url) ? link.fileHashes : null;
+  const publish = pathsToPublish(fileHashes, recorded);
+  const files = Object.fromEntries(publish.map((path) => [path, localPaths[path]]));
+  const texts = new Map(parts.files.map((file) => [file.path, file.text]));
   const snapshot = boardSnapshot({ root });
   const projection = writeBoardDocuments({ root, snapshot });
   return {
     filePath,
     // Supporting files for the Artifact tool's `files` parameter: published path -> source file.
-    files: { [BOARD_SHELL_FILES.js]: jsPath, [BOARD_SHELL_FILES.css]: cssPath },
+    files,
+    filesMode: recorded ? 'changed' : 'all',
+    allFiles: Object.keys(fileHashes),
+    unchangedFiles: Object.keys(fileHashes).filter((path) => !publish.includes(path)),
+    fileHashes,
+    // Every Read to issue before publishing, all in one message: the page first, then each file in `files`.
+    reads: boardReadPlan([{ file_path: filePath, text: parts.html }, ...publish.map((path) => ({ file_path: localPaths[path], text: texts.get(path) }))]),
     relativePath: join(BOARD_DIR, SOURCE_FILE).replaceAll('\\', '/'),
     sourceVersion: ARTIFACT_SOURCE_VERSION,
     sourceHash,
@@ -686,6 +713,12 @@ export function bindArtifactBoard({ root, url, workspaceId, replace = false, sou
     const nextSourceVersion = receipt.sourceVersion != null
       ? receipt.sourceVersion
       : sameUrl && trustedExisting ? existing?.sourceVersion || null : null;
+    // The hash of each published file goes with the source hash it belongs to: the ones this source was built with when the
+    // receipt is the latest source, the ones already recorded when the same source is bound again, none otherwise.
+    const generated = readSourceMeta(root);
+    const nextFileHashes = nextSourceHash && generated.sourceHash === nextSourceHash
+      ? normalizeFileHashes(generated.fileHashes)
+      : sameUrl && trustedExisting && nextSourceHash && existing?.sourceHash === nextSourceHash ? existing.fileHashes || null : null;
     const recovery = recoveryStatus !== 'none'
       ? {
         status: recoveryStatus,
@@ -705,6 +738,7 @@ export function bindArtifactBoard({ root, url, workspaceId, replace = false, sou
       ownershipStatus: 'unverified',
       sourceHash: nextSourceHash,
       sourceVersion: nextSourceVersion,
+      fileHashes: nextFileHashes,
       ...(recovery ? { recovery } : {}),
     };
   }, {});

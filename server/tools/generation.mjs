@@ -73,7 +73,7 @@ const ELEVENLABS_CONNECT_COPY = {
 
 /** Which items need which connection. */
 const PROVIDER_FOR_KIND = { image: 'threeecho_studio', video: 'threeecho_studio', voice: 'elevenlabs', audio: 'elevenlabs' };
-const PROBE_PROVIDERS = ['threeecho_studio', 'elevenlabs', 'metricool', 'meta_ads', 'tiktok_ads'];
+export const PROBE_PROVIDERS = ['threeecho_studio', 'elevenlabs', 'metricool', 'meta_ads', 'tiktok_ads'];
 
 /**
  * @param {unknown} value
@@ -96,7 +96,7 @@ function optionalString(value) {
  * @param {{provider: string, ok: boolean, detail: string, namespace: string|null}} input
  * @returns {{state: string, namespace: string|null, providers: Record<string, unknown>}}
  */
-function recordIntegrationProbe(workspace, input) {
+export function recordIntegrationProbe(workspace, input) {
   const at = nowIso();
   const lastProbe = {
     ok: input.ok,

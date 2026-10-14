@@ -407,10 +407,45 @@ function positioningSections(data, template, profile) {
   return { generated, research: any, profile: fromProfile };
 }
 
+// The section a run adds to the platform playbook for the videos it took apart. It is not in the template, so it is placed before the changelog.
+const VIDEOS_HEADING = 'What the best videos do';
+
+function videoRows(videos) {
+  return videos.map(item => {
+    const breakdown = item.breakdown || {};
+    return [
+      item.source === 'competitor' ? cell(item.competitor, 'competitor') : 'the brand',
+      cell(item.platform),
+      cell(breakdown.format, 'unknown'),
+      cell(breakdown.spokenHook, ''),
+      cell(breakdown.onScreenHook, ''),
+      Number.isFinite(breakdown.cutsPer10s) ? String(breakdown.cutsPer10s) : 'unknown',
+      breakdown.presenter === true ? 'yes' : breakdown.presenter === false ? 'no' : 'unknown',
+      cell(breakdown.sound, 'unknown'),
+      cell(breakdown.cta, ''),
+      cell(`${item.url} (posted ${item.date})`),
+    ];
+  });
+}
+
+function videosSection(videos) {
+  const lead = 'Seen in the videos themselves (their frames, cuts and sound), not guessed from the captions. Reference only: learn the pattern, never copy a video.';
+  return {
+    heading: VIDEOS_HEADING,
+    body: [lead, table(['Whose', 'Platform', 'Format', 'Said', 'On screen', 'Cuts per 10 s', 'Presenter', 'Sound', 'Call to action', 'Source'], videoRows(videos))].join('\n\n'),
+  };
+}
+
 function playbookSections(data, template, profile) {
   const generated = {};
+  const extra = [];
   let any = false;
   let fromProfile = false;
+  const videos = ((data && data.videos) || []).filter(item => item && item.breakdown);
+  if (videos.length) {
+    any = true;
+    extra.push(videosSection(videos));
+  }
   const pillars = Array.isArray(profile.contentPillars) ? profile.contentPillars.filter(item => typeof item === 'string' && item.trim()) : [];
   const purposes = new Map(((data && data.pillars) || []).map(item => [item.name.toLowerCase(), item.purpose]));
   if (pillars.length) {
@@ -437,7 +472,7 @@ function playbookSections(data, template, profile) {
     }));
   }
   // The pillars alone come from the profile; the file counts as filled from research only when research added to them.
-  return { generated, research: any, profile: fromProfile };
+  return { generated, research: any, profile: fromProfile, extra };
 }
 
 function sectionsFor(stem, data, template, profile) {
@@ -489,6 +524,7 @@ function render(stem, data, context) {
     if (section.heading === 'Changelog') continue;
     out.push(built.generated[section.heading] ? { heading: section.heading, body: built.generated[section.heading] } : section);
   }
+  for (const section of built.extra || []) out.push(section);
   const version = (context.priorVersion || 0) + 1;
   const action = state === 'research'
     ? `${context.refresh ? 'refreshed' : 'created'} from onboarding research (run ${context.runId})`
@@ -599,7 +635,8 @@ function upgradeReason(brandDir, record) {
 }
 
 /**
- * Write the three files from a validated `brandFiles` block (or none). `options`: { data, runId, now }.
+ * Write the three files from a validated `brandFiles` block (or none). `options`: { data, runId, now, videos }. `videos` are the checked
+ * top posts that carry a `breakdown`; they add the "What the best videos do" section to the platform playbook.
  * Returns { files: { audience: { status }, ... }, proofPoints, phrases, evidenceBearing }.
  * status is written (filled from research), fallback (nothing sourced, template kept with a line saying so), kept (the file was
  * edited and is left alone) or unchanged.
@@ -612,11 +649,12 @@ function write(brandDir, options = {}) {
     runId: String(options.runId || 'unknown'), profile,
   };
   const data = options.data && typeof options.data === 'object' ? options.data : {};
+  const videos = Array.isArray(options.videos) ? options.videos.filter(item => item && item.breakdown) : [];
   fs.mkdirSync(path.join(brandDir, 'brand'), { recursive: true });
   const files = {
     audience: writeOne(brandDir, 'audience', data.audience || null, context),
     positioning: writeOne(brandDir, 'positioning', data.positioning || null, context),
-    'platform-playbook': writeOne(brandDir, 'platform-playbook', data.platforms || null, context),
+    'platform-playbook': writeOne(brandDir, 'platform-playbook', videos.length ? { ...(data.platforms || {}), videos } : data.platforms || null, context),
   };
   return { files, ...evidenceGate(brandDir) };
 }

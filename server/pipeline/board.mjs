@@ -34,6 +34,8 @@ import { readyChecks } from './ready-checks.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
 import { normaliseCombine, recordCombine } from './combine.mjs';
 import { boardLibrary, fileJobQuietly, readBank, recordConceptDecision, removeBankItem } from './brand-library.mjs';
+import { checkFolderRequest } from './brand-footage.mjs';
+import { importAndDigest } from './brand-footage-digest.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -1761,7 +1763,7 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','brand_folder_add',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if (operation === 'onboard_brand' && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
@@ -1773,6 +1775,7 @@ export function saveBoardRequest({ root,operation,args,source = 'artifact',by = 
   if (operation === 'agent_message') checkAgentMessage(root, args);
   if (operation === 'retry_step') checkRetryStep(root, args);
   if (operation === 'bank_remove') checkBankRemove(root, args);
+  if (operation === 'brand_folder_add') checkFolderAdd(root, args, { live: false });
   if (operation === 'add_reference') validateAddReference(root, args);
   if (operation === 'remove_reference') validateRemoveReference(root, args);
   if (HANDOFF_OPERATIONS.includes(operation)) checkHandoffRequest(root, operation, args);
@@ -2026,6 +2029,19 @@ function checkBankRemove(root, args) {
   }
   for (const brand of brands) for (const bank of args.bank ? [args.bank] : ['yours', 'proven']) if (holds(brand, bank)) return { brand, bank };
   throw new Error('That item could not be found in any brand library.');
+}
+
+// A folder of the brand's videos, pictures and fonts the person typed on the onboarding page: { requestId, brand, folder, rights, label?, workspaceId? }.
+// The folder is a full path on the person's computer and rights is their own answer (ours, client_ask or never; never defaulted). Saved
+// as it is typed; when it is applied the folder is looked at, and a folder that is not there, is too broad, or is already added with other
+// rights is refused with a plain line (decline the request with it). `live` false checks only the shape, so the request can be saved first.
+const FOLDER_ADD_FIELDS = new Set(['requestId', 'brand', 'folder', 'rights', 'label', 'workspaceId']);
+function checkFolderAdd(root, args, { live = true } = {}) {
+  if (!plainObject(args) || Object.keys(args).some(key => !FOLDER_ADD_FIELDS.has(key))) throw new Error('A folder request names only the brand, the folder, whose footage it is and an optional name.');
+  if (typeof args.brand !== 'string' || !runtime.listBrands({ root }).some(item => item.slug === args.brand.trim())) throw new Error('That brand could not be found.');
+  if (typeof args.folder !== 'string' || !args.folder.trim() || args.folder.length > 1000) throw new Error('Say which folder, with its full path on this computer.');
+  if (args.label !== undefined && (typeof args.label !== 'string' || args.label.length > 200)) throw new Error('Keep the folder name short.');
+  return checkFolderRequest({ root, brand: args.brand.trim(), folder: args.folder, rights: args.rights, label: args.label ?? null, live });
 }
 
 /**
@@ -2677,6 +2693,14 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     const done = removeBankItem({ root, brand, bank, id: args.id, missingOk: true });
     return { brand, id: args.id, removed: done.removed, message: done.removed ? 'Removed from your brand library.' : 'That item was already gone from your brand library.' };
   }
+  if(operation==='brand_folder_add') {
+    // The onboarding page's Add a folder: the folder joins the brand's footage and is read in the background (local and free; the
+    // originals are not copied or changed). Fonts found go into a kit that has none. The person's rights answer is kept as given.
+    const { brand, path, rights, label } = checkFolderAdd(root,args,{ live: true });
+    const { folder, created } = importAndDigest({ root, brand, folder: path, rights, label });
+    const name = folder.label || basename(path) || 'the folder';
+    return { brand, folderId: folder.id, name, rights, created, message: created ? `Reading ${name} now. It is free, and your files are not copied or changed.` : `${name} was already added. Reading it again for anything new.` };
+  }
   if(operation==='retry_step') {
     const { job, stuck } = checkRetryStep(root,args);
     recordRetry(root,job);
@@ -2734,6 +2758,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'agent_message') return result.messageId ? { jobId: result.jobId, agent: result.agent, messageId: result.messageId } : null;
   if (operation === 'retry_step') return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'bank_remove') return result.id ? { brand: result.brand, id: result.id } : null;
+  if (operation === 'brand_folder_add') return result.folderId ? { brand: result.brand, folderId: result.folderId } : null;
   if (HANDOFF_OPERATIONS.includes(operation)) return result.jobId ? { jobId: result.jobId } : null;
   if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
   return null;
@@ -3310,6 +3335,7 @@ function applyBoardRequestNow({root,requestId,confirmedBy}) {
   if(record.operation==='agent_message') checkAgentMessage(root,record.args);
   if(record.operation==='retry_step') checkRetryStep(root,record.args);
   if(record.operation==='bank_remove') checkBankRemove(root,record.args);
+  if(record.operation==='brand_folder_add') checkFolderAdd(root,record.args,{ live: true });
   if(record.operation==='remove_reference') validateRemoveReference(root,record.args);
   if(HANDOFF_OPERATIONS.includes(record.operation)) checkHandoffRequest(root,record.operation,record.args);
   const claimed=claimBoardRequest(file);

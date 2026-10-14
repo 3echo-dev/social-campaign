@@ -29,9 +29,9 @@ import { pythonChildEnv } from '../../lib/python-env.mjs';
 import {
   hasUsableResearchHelperRecord,
   normalizeResearchHelperRecord,
+  readResearchHelperState,
   researchHelperChildEnv,
 } from '../../setup/research-helper-record.mjs';
-import { readResearchHelperState } from './browser.mjs';
 import { killTree } from './ytdlp.mjs';
 
 /**
@@ -208,12 +208,19 @@ export class StealthBackend {
   }
 
   /**
-   * A web page that answered 403 or a Cloudflare check to the plain readers.
+   * A web page. The worker reads it with a plain request in Chrome's clothes first and starts a browser only when
+   * that is refused (403, Cloudflare). `render: true` goes straight to the browser and waits for the page to draw itself:
+   * for a page whose content is added by JavaScript, which the plain request found empty. `extract: 'json_ld'` also
+   * returns the page's JSON-LD blocks. Instagram addresses are always read with the plain request only.
    * @param {string} url
-   * @param {{timeoutMs?: number}} [options]
+   * @param {{timeoutMs?: number, render?: boolean, extract?: 'json_ld'}} [options]
    */
   async page(url, options = {}) {
-    const outcome = await this.call({ op: 'page', url }, options.timeoutMs ?? STEALTH_TIMEOUT_MS);
+    /** @type {Record<string, any>} */
+    const request = { op: 'page', url };
+    if (options.render) request.render = true;
+    if (options.extract === 'json_ld') request.extract = 'json_ld';
+    const outcome = await this.call(request, options.timeoutMs ?? STEALTH_TIMEOUT_MS);
     if (!outcome.ok) return outcome;
     const { httpStatus, ...rest } = outcome.result;
     // A worker older than this release marked a JavaScript shell (TikTok tag and search pages: 22 characters) as ok.

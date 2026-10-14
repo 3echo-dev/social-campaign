@@ -78,6 +78,7 @@ export const brandLibraryTools = [
     description: [
       'Add to, edit or remove an item in a brand\'s bank. Two banks: "yours" (the default) holds the person\'s own lines and picks, such as an opening line they wrote, their industry or a call to action they like;',
       '"proven" holds what worked, and every proven item needs the https link of the post it comes from, with its views (or likes for Instagram) and date when known (evidence), and whether it came from the brand\'s own posts or a competitor\'s (source).',
+      'An item learned from a file in the brand\'s own footage library (brand_footage_analysis_save feeds these by itself) names that file in evidence.file instead of a link.',
       'Save to "yours" only what the person said or chose, or when they ask you to; never invent their words. Saving the same words twice keeps one item.',
       'action add needs kind and text. action edit needs id and the new text (the old words are kept as "was"). action remove needs id; it is also how a board request to remove an item is carried out.',
       'Kinds: hook, angle, style, cta, caption, format, industry, funnel. Returns the item and whether anything changed, plus the bank counts.',
@@ -95,7 +96,14 @@ export const brandLibraryTools = [
           type: 'object',
           description: 'Proven items only: where it was seen.',
           properties: {
-            url: { ...string, description: 'The https link of the post. Required for a proven item.' },
+            url: { ...string, description: 'The https link of the post. Required for a proven item, unless it was learned from the brand\'s own footage (then pass file instead).' },
+            file: {
+              type: 'object',
+              description: 'A proven item learned from a file in the brand\'s own footage library instead of a post: the file is the proof. Never a path.',
+              properties: { fileId: { ...string, description: 'The fileId from brand_footage_search.' }, name: { ...string, description: 'The file\'s name.' }, kind: { type: 'string', enum: ['video', 'image'] }, folder: { ...string, description: 'The folder\'s name.' } },
+              required: ['fileId', 'name'],
+              additionalProperties: false,
+            },
             views: { type: 'number', description: 'How many views it had.' },
             likes: { type: 'number', description: 'How many likes it had. Only for an Instagram post, which shows no views to a signed-out reader; leave out when views are given.' },
             date: { ...string, description: 'When it was posted, as YYYY-MM-DD. posted_at is accepted too.' },

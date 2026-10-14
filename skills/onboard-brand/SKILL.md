@@ -19,6 +19,7 @@ metadata:
 - 4. Brand research pass
 - 4b. Industry and the brand library
 - 4c. Your archive (optional)
+- 4d. Folders added on the board
 - 5. Verify and show the board
 - 6. Return to a pending job
 - Local boundaries
@@ -169,6 +170,7 @@ Otherwise, dispatch the researcher once with workstream `brand-onboarding`, pass
 The file at `draftPath` already holds the right keys for the researcher to fill in.
 Research on a brand is as deep as research on a job: the researcher reads the website, reads each declared social account and each competitor handle once with `social_profile_get` and `social_outliers_find` (TikTok, Instagram and YouTube; Instagram needs the research helper's stealth reader and shows no view counts, so its posts come back ranked by likes and are filed as top posts with their likes in place of views), and keeps a saved capture behind every source.
 It has no Chrome tools; the Instagram look below is yours.
+The researcher also takes at most 5 of the top videos apart (the 3 best own and the 2 best competitor videos, with `pipeline_video_teardown` and `media_transcribe`) and writes what it saw into `topPosts`; a teardown counts as one of its fetches, and a video whose download fails is skipped with a line in the gaps.
 The result also holds `draftContract`, the exact shape of the draft (sources, evidence rows, competitor details, the optional findings keys).
 Paste the returned `draftContract` verbatim into the researcher's spawn prompt, on every dispatch including a second round, and do not restate field formats in your own words.
 In `fills`, competitors are brand names only; their details belong in `research.competitorDetails`.
@@ -180,6 +182,7 @@ Then call `pipeline_brand_research_save` with the brand and `runId`.
 
 When the save returns `needs_changes`, never close the run and never tell the person about it.
 Read `problems`: fix the draft file yourself when the fix is only wording or a stray key, otherwise dispatch the researcher once more with the `problems`, `draftPath` and `rawDir`, then save again.
+Say this to the researcher in that second dispatch, word for word: "Rewrite the draft file with Write (you have no Edit tool), copying each quote exactly from its capture."
 Never add, change or date a source, URL or piece of evidence yourself: anything about sources, captures, excerpts, competitor handles, or the files and top posts the draft carries goes back to the researcher.
 Do this for at most two rounds.
 When `needsAudience` is true, the researcher either finds the brand's own audience or suggests one from the top competitors' audiences in the target market.
@@ -226,6 +229,7 @@ The brand library already has what the research found, so the first concepts do 
 The save filed the research for the next job to reuse (brand and competitor research stay fresh for 30 days), and it saved the best posts the researcher read on the brand's own accounts and on each competitor's as proven hooks, from the `topPosts` in the researcher's draft.
 Do not call `social_outliers_find` again for those accounts, and never guess a handle.
 When the save result's `topPosts.saved` is more than 0, say so in one line, for example "Saved 5 top posts to your brand library."
+When `topPosts.breakdowns.videos` is more than 0, add one line in plain words, for example "I also watched 4 of the best videos and saved how they open, their style and their call to action."
 When no post was saved and Instagram is not the reason, say so once in plain words, for example "There are no posts to learn from yet, so your brand library starts empty. It fills as you make posts.", and carry on.
 
 ### Instagram behind a login
@@ -256,6 +260,33 @@ Describing the footage is what costs model usage, so keep the first pass small: 
 List them with `brand_footage_search` (`analysed` none, `kind` video). For each, call `media_extract_frames` on its `path` with a count of 3, Read the frames, and get the first spoken words with `media_transcribe` only when it answers with a transcript at no cost (a saved one, the platform captions, or the free local reader when faster-whisper is installed); when it says it needs a paid transcription provider, leave the spoken words out and do not run it. Then call `brand_footage_analysis_save` with stage `quick`: what the opening seconds show, the first spoken words if any, and the products, mood and shot types you can see. Never describe a file marked never. Describe more only when the person asks.
 When the first pass is done, tell the person in plain words how many files there are and how many you looked at, and offer a full breakdown of the clips they care about: ask with `pipeline_board_ask` ("Want me to break down your best clips in full? It reads each one closely and uses model usage."). Mark the files they pick with `brand_footage_mark`. Its answer says how many files are marked and that a full pass uses model usage: tell the person that number and ask again before you start. Then watch each marked file (`media_extract_frames` with a count of 12 and the transcript) and save stage `full` with `brand_footage_analysis_save`: scenes, shot types, products, mood, on-screen text and usable moments, with start and end times in seconds.
 When the first pass is saved, say what the person now has in one line, for example "Your archive has 128 files, and I have looked at 20 of them."
+The person can also add folders themselves on the board, under Logo, colours and fonts; section 4d says how to handle those.
+
+## 4d. Folders added on the board
+
+The board's "Logo, colours and fonts" section has an "Add a folder" control.
+The person types or pastes the full path of a folder of the brand's videos, photos or fonts and says whose footage it is (ours, client work, never use), and can add as many folders as they like.
+Each one arrives as a `brand_folder_add` request with `{ brand, folder, rights, label? }`.
+The rights are the person's own answer from the board: never change them and never ask again.
+Land it with `pipeline_board_request_land` and apply it at once with `pipeline_board_request_apply`, `confirmedBy` set to the board request: the click is the approval, so there is no chat confirmation.
+The apply imports the folder exactly as `brand_footage_import` does and starts reading it in the background, which is free; nothing is copied, moved or changed.
+Do not call `brand_footage_import` for it as well.
+If the apply refuses (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line in chat, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
+After a successful apply, publish the workspace projection so the board lists the folder, then do the following in order.
+
+1. Let it read. `brand_footage_status` shows how far each folder got; it carries on without you, so check it only when you have nothing else to do, and carry on with the steps around this one meanwhile.
+2. Look at a few files, without asking: the board click already covers a small first pass. Describe at most 20 files per request, videos first (at most 10) and then pictures, never a file in a `never` folder and never a font. Use `brand_footage_search` with `analysed` none, and describe each as 4c says: for a video its frames and, at no cost, its first spoken words; for a picture, look at it (its `path`, or its `thumbnail`).
+   Save stage `quick` with `brand_footage_analysis_save`. For a picture, `opening` says what is in it, with `products`, `mood`, `style`, `logoVisible` true when a logo shows and `isLogo` true when the picture is itself a logo. For a video, also give `hook` (its opening line or visual hook) and `style` (for example "talking head with captions"); the hook, style, shot types and on-screen text of a video go into the brand library as the brand's own proven lines by themselves, with the file as their proof.
+3. Ask before the full pass, with the count. Say how many videos and photos there are and how many you looked at, then ask with `pipeline_board_ask` whether to break the best clips down in full, for example "I looked at 20 of your 52 videos and photos. Want me to break down your best clips in full? It reads each clip closely and uses model usage." Mark the files they pick with `brand_footage_mark`, tell them how many are marked, and ask again before you start. Then do the full pass as 4c says.
+4. Call `brand_footage_digest` and report in plain words what was found, from its `summary`, for example "12 videos, 40 photos, 2 fonts: Montserrat, Playfair. I looked at 20 of them." Add one line for each thing it did or offers:
+   - Fonts: when the kit had no fonts, the families found are already in the kit's Fonts, and the person confirms them with Save and continue like the rest of the kit; say so. When the kit has fonts and `fonts.offer` lists more, ask which to add with `pipeline_board_ask`, then call `brand_footage_adopt` with the `fonts` they chose.
+   - Logo: only when `logos.offer` is not empty (the kit has no logo). Ask "Is this your logo?" with its file name, and on a yes call `brand_footage_adopt` with `logoFileId`. Never replace a logo the person already has; use `replaceLogo` only when they say so in their own words.
+   - Photos of your world: when `photos.offer` has pictures and `photos.room` is above 0, pick at most that many that show the brand's place, people or product in use (not a logo, not a screenshot), say in one line what each shows, and ask once whether to add them. On a yes call `brand_footage_adopt` with `photoFileIds`. The photos the person chose themselves are never replaced, and when there is no room say nothing.
+   - When the person says no to an offer, call `brand_footage_adopt` with `pass` so it is not offered again.
+5. A file in a `ours` folder is free to use; a `client_ask` file needs the person's yes before it is posted, and learning from it or offering it here is not posting it; a `never` file is never described, offered or used. When the person changes a folder's rights, use `brand_footage_folder`.
+
+Never mention file paths, ids, tool names or the folder's technical state in chat or on the board.
+Say what was found in plain marketing words, for example "I found 12 videos, 40 photos and 2 fonts, Montserrat and Playfair. I added the fonts to your kit and saved 9 hooks and styles from your videos to your brand library."
 
 ## 5. Verify and show the board
 

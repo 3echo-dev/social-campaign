@@ -967,38 +967,73 @@ def op_instagram_page(url):
     return {"status": "ok", **result}
 
 
-def op_page(request):
-    url = safe_http_url(request.get("url"))
-    if not url:
-        return {"status": "error", "detail": "That address cannot be read."}
-    if is_instagram_url(url):
-        return op_instagram_page(url)
-    from scrapling.fetchers import Fetcher
+JSON_LD_BLOCK = re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>([\s\S]*?)</script>', re.I)
+JSON_LD_CAP = 10
+# Sign-in walls a rendered page shows instead of its content (Facebook is the one that does it to a signed out visitor).
+RENDER_LOGIN_PATTERN = re.compile(r"log into facebook|log in to facebook|create new account|see more on facebook", re.I)
+# How long a rendered read waits after the page loaded, so a single page app can draw its content.
+RENDER_SETTLE_MS = 2500
 
-    try:
-        response = Fetcher.get(url, impersonate="chrome", timeout=max(3, min(10, remaining_ms() // 1000)), retries=1, follow_redirects=True)
-        text = text_of(response)
-        if not looks_blocked(response, text):
-            if not text.strip():
-                return {"status": "empty", "detail": "The page had nothing to read."}
-            result = page_result(response, "fetcher")
-            if is_js_shell(result):
-                return {"status": "empty", "detail": SHELL_DETAIL}
-            result["meta"] = meta_tags(body_text(response))
-            return {"status": "ok", **result}
-    except Exception:  # noqa: BLE001 - a failed plain read goes to the one stealth attempt
-        pass
-    response = stealth_fetch(url, solve_cloudflare=True, network_idle=False, timeout=remaining_ms())
+
+def extract_json_ld(html):
+    """The page's JSON-LD blocks, parsed, at most JSON_LD_CAP of them. A block that does not parse is skipped."""
+    blocks = []
+    for match in JSON_LD_BLOCK.finditer(html or ""):
+        raw = match.group(1).strip()
+        if not raw:
+            continue
+        try:
+            blocks.append(json.loads(raw))
+        except Exception:  # noqa: BLE001
+            continue
+        if len(blocks) >= JSON_LD_CAP:
+            break
+    return blocks
+
+
+def finish_page(response, method, request):
+    """The page result for a response, or the status that explains why there is none."""
     text = text_of(response)
     if looks_blocked(response, text):
         return {"status": "blocked", "detail": "The site still answered with a bot check."}
     if not text.strip():
         return {"status": "empty", "detail": "The page had nothing to read."}
-    result = page_result(response, "stealth")
+    result = page_result(response, method)
     if is_js_shell(result):
         return {"status": "empty", "detail": SHELL_DETAIL}
-    result["meta"] = meta_tags(body_text(response))
+    if method == "render" and len(text) < 3000 and RENDER_LOGIN_PATTERN.search(text):
+        return {"status": "login_required", "detail": "The page asked for a sign in."}
+    html = body_text(response)
+    result["meta"] = meta_tags(html)
+    if request.get("extract") == "json_ld":
+        result["json_ld"] = extract_json_ld(html)
     return {"status": "ok", **result}
+
+
+def op_page(request):
+    """One page. A plain request in Chrome's clothes first; a browser only when that is refused, or when the caller
+    asks for a render (`render: true`, for a page whose content is drawn by JavaScript and so came back empty)."""
+    url = safe_http_url(request.get("url"))
+    if not url:
+        return {"status": "error", "detail": "That address cannot be read."}
+    if is_instagram_url(url):
+        return op_instagram_page(url)
+    render = bool(request.get("render"))
+    if not render:
+        from scrapling.fetchers import Fetcher
+
+        try:
+            response = Fetcher.get(url, impersonate="chrome", timeout=max(3, min(10, remaining_ms() // 1000)), retries=1, follow_redirects=True)
+            text = text_of(response)
+            if not looks_blocked(response, text):
+                return finish_page(response, "fetcher", request)
+        except Exception:  # noqa: BLE001 - a failed plain read goes to the one stealth attempt
+            pass
+    options = {"solve_cloudflare": True, "network_idle": False, "timeout": remaining_ms()}
+    if render:
+        options["wait"] = RENDER_SETTLE_MS
+    response = stealth_fetch(url, **options)
+    return finish_page(response, "render" if render else "stealth", request)
 
 
 OPERATIONS = {

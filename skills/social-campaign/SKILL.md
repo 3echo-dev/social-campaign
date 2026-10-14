@@ -71,9 +71,11 @@ The root entry tools own board setup and synchronization.
 ### Check the research tools first
 
 The very first step of every session, before the update check below, is one call to the MCP tool `research_tools_check`.
-It returns quickly and starts any missing or outdated research helper in the background by itself.
+It returns quickly, from what is on disk and a cached look at the newest versions, and reports the real state of the research tools on this computer (`state`, `versions`, `outdated`).
+It updates whatever is already installed and out of date in the background by itself, and removes packages nothing uses any more; it never installs a research helper on a computer that has none.
 Never wait for it, never poll it, and never hold up anything on it.
-Say one plain line only if its result shows something is being updated: "Updating research tools in the background; this won't hold anything up." Otherwise say nothing about it.
+Say one plain line only if its result has `updating: true`: "Updating research tools in the background; this won't hold anything up." Connecting an existing helper to this workspace (`linking`) is silent.
+When `consentNeeded` is true there is no helper yet; say nothing and carry on, because the one question about installing it belongs to setup (or to the doctor when the person asks for it).
 If the call fails or is not available, ignore it and carry on.
 
 ### Check for a finished update before anything else
@@ -128,8 +130,8 @@ Pass that root through the workspace tools and let the local runner resolve all 
 
 The local pipeline does not use Drive configuration, Drive URLs, remote-only inputs, or automatic downloads.
 
-The optional research helper installs itself in the background when a workspace is set up; never ask the person about it.
-Outside setup, only the doctor repairs it, and nothing waits for it to finish.
+The optional research helper installs only after the person's yes, asked once during setup together with the other setup questions, and then in the background.
+Outside setup, only the doctor installs or repairs it (again only after a yes), `research_tools_check` keeps an installed one current, and nothing waits for any of it to finish.
 
 Do not ask for a connector before creating a local draft.
 
@@ -375,8 +377,8 @@ Do not maintain a second stage order in chat or in this skill.
 
 Use the existing research, strategy, creative, generation, review, and publishing skills only for stages present in the snapshot.
 
-3Echo Studio and ElevenLabs are asked for once during setup, each with a Connect or Skip for now choice.
-A stage that needs a connector the user skipped asks again at that point, before the stage can run.
+3Echo Studio and ElevenLabs are offered once during setup, each with a Connect choice, and the Connectors step has one Continue to move on from any that are not connected yet.
+A stage that needs a connector that is not connected asks again at that point, before the stage can run.
 
 Do not start paid generation before its cost approval.
 
@@ -423,7 +425,7 @@ Keep the board projection scoped to the selected workspace and job.
 
 Local paths are valid only for the local runner.
 
-pipeline_board_source returns a filePath and a files map (board.js, board.css) for the host Artifact tool, the `documents` to write, and the same short summary.
+pipeline_board_source returns a filePath and a files map (the board's supporting script and style files; only the changed ones on a refresh) for the host Artifact tool, the `documents` to write, and the same short summary.
 
 Keep that file path out of the artifact database.
 

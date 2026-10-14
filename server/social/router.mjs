@@ -19,9 +19,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { log } from '../lib/log.mjs';
 import { AdLibraryBackend, EU_LIKE, metaLibraryUrl, tiktokLibraryUrls } from './backends/adlibrary.mjs';
-import { BrowserBackend } from './backends/browser.mjs';
 import { commentsFromPage, instagramTopic, postFromPage, profileFromPage, readInstagramPage, topicFromPage } from './backends/instagram.mjs';
 import { PublicPageBackend } from './backends/public_page.mjs';
+import { postFromRenderedPage, profileFromRenderedPage } from './backends/rendered-page.mjs';
 import { STEALTH_TIMEOUT_MS } from './backends/stealth.mjs';
 import { emptyAccountReason, isEmptyAccount, TikTokPublicBackend } from './backends/tiktok_public.mjs';
 import { CRAWL_BUDGET_MS, FETCH_TIMEOUT_MS, Politeness, webCrawl } from './backends/web.mjs';
@@ -122,21 +122,20 @@ export const ROUTES = {
     comments: ['tiktok_comments'],
     // Only the hashtag totals: the tag page itself answers a bot check every time (live 2026-10-13 and 2026-10-14).
     search: ['tiktok_embed'],
-    // The browser backend is never used for TikTok: the embed and yt-dlp already work.
-    ads: ['tiktok_creative_center', 'browser'],
+    // The Creative Center page, read by the ad reader (with the stealth reader as its own fallback).
+    ads: ['tiktok_creative_center'],
   },
-  // The browser backend runs last, and only for the operations the other backends
-  // leave at `none` or `partial`: it is skipped automatically once the earlier
-  // backends already answered in full.
+  // `stealth_page` (the stealth reader rendering the page in a real browser) runs last, and only for the operations the
+  // other backends leave at `none` or `partial`: it is skipped once the earlier backends already answered in full.
   // One primary and ONE fallback per operation: the most proven fallback is kept, longer chains are trimmed.
   // Instagram (live 2026-10-13, logged out): the Scrapling page op (`stealth`) reads profiles, posts and /popular/
   // topic pages; yt-dlp's user extractor is broken, so it is not a profile route, only a post fallback.
   instagram: { profile: ['stealth', 'instagram_page'], post: ['stealth', 'yt-dlp'], comments: ['stealth', 'yt-dlp'], search: ['stealth'] },
   // YouTube: yt-dlp lists a channel's Shorts tab in about 1.5 seconds, and reads one video and its comments.
   youtube: { profile: ['yt-dlp'], post: ['yt-dlp'], comments: ['yt-dlp'], search: ['yt-dlp'] },
-  facebook: { profile: ['facebook_page', 'browser'], post: ['facebook_page', 'browser'], comments: [], search: [] },
-  meta: { ads: ['meta_ad_library', 'browser'] },
-  web: { crawl: ['web_reader', 'browser'] },
+  facebook: { profile: ['facebook_page', 'stealth_page'], post: ['facebook_page', 'stealth_page'], comments: [], search: [] },
+  meta: { ads: ['meta_ad_library'] },
+  web: { crawl: ['web_reader', 'stealth'] },
 };
 
 /** How the envelope names each internal backend. */
@@ -149,7 +148,7 @@ const REPORTED = {
   web_reader: 'public_page',
   meta_ad_library: 'ad_library_page',
   tiktok_creative_center: 'ad_library_page',
-  browser: 'browser',
+  stealth_page: 'browser',
   stealth: 'browser',
 };
 
@@ -296,7 +295,6 @@ export class SocialRouter {
     this.ads =
       options.ads ??
       new AdLibraryBackend(standIn ? { ...shared, bases: { meta: standIn, tiktokCreativeCenter: standIn, tiktokLibrary: standIn } } : shared);
-    this.browser = options.browser ?? new BrowserBackend({ politeness: this.politeness });
     /** @type {{value: any}} the stealth reader, found on first use unless one is passed in. */
     this.stealthHolder = { value: options.stealth !== undefined ? options.stealth : undefined };
     this.breaker = options.breaker ?? sharedBreaker;
@@ -340,7 +338,6 @@ export class SocialRouter {
     const scoped = /** @type {SocialRouter} */ (Object.create(this));
     scoped.db = () => db;
     scoped.brandCountry = () => country;
-    scoped.browser = typeof this.browser.withContext === 'function' ? this.browser.withContext({ workspaceRoot: root }) : this.browser;
     scoped.workspaceRoot = root;
     return scoped;
   }
@@ -563,20 +560,67 @@ export class SocialRouter {
   }
 
   /**
-   * Run one browser backend attempt, skipping it outright (never counted as a real
-   * failure, never tripped) when the `research.browser` capability is not ready.
+   * Run one attempt that has the stealth reader render a page in a real browser (Facebook profiles and posts), skipping it
+   * outright (never counted as a real failure, never tripped) when the research helper is not ready.
    * @template T
    * @param {Attempt[]} attempts
    * @param {string} platform
-   * @param {() => Promise<T & {ok: boolean}>} call
+   * @param {(stealth: any, ms: number) => Promise<T & {ok: boolean}>} call
    * @returns {Promise<(T & {ok: true})|null>}
    */
-  async browserAttempt(attempts, platform, call) {
-    if (!this.browser.ready()) {
-      attempts.push({ backend: 'browser', outcome: 'skipped', code: 'backend_missing', reason: 'skipped: the browser research helper is not connected.' });
+  async renderedAttempt(attempts, platform, call) {
+    const stealth = await this.stealthReady();
+    if (!stealth) {
+      attempts.push({ backend: 'stealth_page', outcome: 'skipped', code: 'backend_missing', reason: 'skipped: the research helper (Scrapling) is not installed.' });
       return null;
     }
-    return this.attempt(attempts, 'browser', platform, call);
+    return this.attempt(attempts, 'stealth_page', platform, (ms) => call(stealth, ms));
+  }
+
+  /**
+   * One page, rendered in a real browser by the stealth reader, with its JSON-LD blocks.
+   * @param {any} stealth
+   * @param {string} url
+   * @param {number} ms time left in this call.
+   * @returns {Promise<{ok: true, page: Record<string, any>}|{ok: false, code: string, reason: string, trip: boolean}>}
+   */
+  async renderedPageRead(stealth, url, ms) {
+    try {
+      await this.politeness.wait(new URL(url).host);
+    } catch {
+      // a broken politeness helper, or an address the worker will reject itself, never blocks a read
+    }
+    const out = await stealth.page(url, { render: true, extract: 'json_ld', timeoutMs: Math.min(ms, STEALTH_TIMEOUT_MS) });
+    if (!out || out.ok !== true) {
+      return { ok: false, code: envelopeCode(out?.code ?? 'unsupported'), reason: out?.reason ?? 'The stealth reader failed.', trip: Boolean(out?.trip) };
+    }
+    return { ok: true, page: out };
+  }
+
+  /**
+   * A Facebook profile from the rendered page.
+   * @param {any} stealth
+   * @param {{handle: string, url: string}} target
+   * @param {'instagram'|'facebook'} platform
+   * @param {number} ms
+   */
+  async renderedProfileRead(stealth, target, platform, ms) {
+    const read = await this.renderedPageRead(stealth, target.url, ms);
+    if (!read.ok) return read;
+    return profileFromRenderedPage(read.page, target, platform, new Date(this.now()).toISOString());
+  }
+
+  /**
+   * A Facebook post from the rendered page.
+   * @param {any} stealth
+   * @param {string} url
+   * @param {'instagram'|'facebook'} platform
+   * @param {number} ms
+   */
+  async renderedPostRead(stealth, url, platform, ms) {
+    const read = await this.renderedPageRead(stealth, url, ms);
+    if (!read.ok) return read;
+    return postFromRenderedPage(read.page, url, platform, new Date(this.now()).toISOString());
   }
 
   /**
@@ -763,11 +807,10 @@ export class SocialRouter {
             posts = listing.posts;
             profile = profile ?? listing.profile;
           }
-        } else if (backend === 'browser') {
-          // Only worth spawning once the cheaper backends have already been tried and
-          // still left the profile facts unread.
+        } else if (backend === 'stealth_page') {
+          // Only worth a browser once the cheaper backends have already been tried and still left the profile facts unread.
           if (!profile) {
-            const page = await this.browserAttempt(attempts, `${platform}:profile`, (ms) => limited(this.browser, ms).profile(target, platform));
+            const page = await this.renderedAttempt(attempts, `${platform}:profile`, (stealth, ms) => this.renderedProfileRead(stealth, target, /** @type {'instagram'|'facebook'} */ (platform), ms));
             if (page) profile = page.profile;
           }
         } else {
@@ -927,8 +970,8 @@ export class SocialRouter {
       } else if (backend === 'tiktok_embed') {
         const read = await this.attempt(attempts, backend, `${platform}:post`, (ms) => limited(this.tiktok, ms).post(/** @type {string} */ (postId)));
         if (read) record = record ? mergePosts([record], [read.record])[0] : read.record;
-      } else if (backend === 'browser') {
-        const read = await this.browserAttempt(attempts, `${platform}:post`, (ms) => limited(this.browser, ms).post(url, /** @type {'instagram'|'facebook'} */ (platform)));
+      } else if (backend === 'stealth_page') {
+        const read = await this.renderedAttempt(attempts, `${platform}:post`, (stealth, ms) => this.renderedPostRead(stealth, url, /** @type {'instagram'|'facebook'} */ (platform), ms));
         if (read) record = record ? mergePosts([record], [read.record])[0] : read.record;
       } else {
         const read = await this.attempt(attempts, backend, `${platform}:post`, (ms) => limited(this.pages, ms).post(url, platform));
@@ -1400,15 +1443,6 @@ export class SocialRouter {
       attempts.push({ backend, outcome: outcome.records.length > 0 ? 'ok' : 'failed', code: outcome.records.length > 0 ? null : outcome.code, reason: outcome.reason || null });
       let records = outcome.records;
       let usedBackend = outcome.reached ? 'ad_library_page' : 'none';
-      // The library page itself is tried first; the browser backend only runs when
-      // that page carried nothing, since it is much slower and heavier to spawn.
-      if (records.length === 0 && !outcome.extra?.definitive) {
-        const browserOutcome = await this.browserAttempt(attempts, `${platform}:ads`, (ms) => limited(this.browser, ms).adLibraryPage(outcome.urls.library, platform));
-        if (browserOutcome && browserOutcome.records.length > 0) {
-          records = browserOutcome.records;
-          usedBackend = 'browser';
-        }
-      }
       const coverage = records.length > 0 ? 'partial' : 'none';
       return this.finish({
         platform,
@@ -1439,10 +1473,9 @@ export class SocialRouter {
   }
 
   /**
-   * `web_reader` first, always; the browser backend only for a single page read
-   * that came back `none` because its content is added by JavaScript, since a
-   * section or site crawl with the browser backend would be far too slow to spawn
-   * once per page.
+   * `web_reader` first, always; the stealth reader (Scrapling) only for a single page read that came back `none`
+   * because the site refused the plain reader or its content is added by JavaScript, since a section or site crawl in a
+   * browser would be far too slow to spawn once per page.
    * @param {string} url
    * @param {'page'|'section'|'site'} scope
    * @param {number} maxPages
@@ -1455,35 +1488,31 @@ export class SocialRouter {
     if (!jsGap) return first;
     /** @type {Attempt[]} */
     const attempts = [{ backend: 'web_reader', outcome: 'failed', code: first.degraded_code, reason: first.degraded_reason }];
-    // The ONE fallback: a 403, bot check or Cloudflare answer goes to the stealth reader when it is
-    // installed; everything else (and a JavaScript shell) goes to the browser backend.
-    const stealth = refused ? await this.stealthReady() : null;
-    let page;
-    let backend = 'browser';
-    if (stealth) {
-      backend = 'stealth';
-      const read = await this.attempt(attempts, 'stealth', 'web:crawl', async (ms) => {
-        const out = await stealth.page(url, { timeoutMs: Math.min(ms, 40_000) });
-        if (!out || out.ok !== true) return { ok: false, code: envelopeCode(out?.code ?? 'unsupported'), reason: out?.reason ?? 'The stealth reader failed.', trip: Boolean(out?.trip) };
-        const text = String(out.text ?? '');
-        if (text.trim().length === 0) return { ok: false, code: 'empty_page', reason: 'The stealth reader found nothing readable.', trip: false };
-        const fetchedAt = new Date(this.now()).toISOString();
-        const record = pageRecord({
-          url: out.finalUrl ?? url,
-          title: out.title ?? null,
-          text,
-          links: Array.isArray(out.links) ? out.links.filter((link) => typeof link === 'string') : [],
-          source_ref: out.finalUrl ?? url,
-          observed_at: fetchedAt,
-          source_type: 'web_evidence',
-          confidence: 0.8,
-        });
-        return { ok: true, record, coverage: text.trim().length < 400 ? 'partial' : 'full' };
-      });
-      page = read;
-    } else {
-      page = await this.browserAttempt(attempts, 'web:crawl', (ms) => limited(this.browser, ms).page(url));
+    // The ONE fallback is the stealth reader. A 403, bot check or Cloudflare answer is read the way it reads any refused
+    // page (a plain request, then a browser); a page that is only a JavaScript shell goes straight to a rendered read.
+    const stealth = await this.stealthReady();
+    if (!stealth) {
+      attempts.push({ backend: 'stealth', outcome: 'skipped', code: 'backend_missing', reason: 'skipped: the research helper (Scrapling) is not installed.' });
+      return { ...first, attempts: [...attempts] };
     }
+    const page = await this.attempt(attempts, 'stealth', 'web:crawl', async (ms) => {
+      const out = await stealth.page(url, { render: !refused, timeoutMs: Math.min(ms, 40_000) });
+      if (!out || out.ok !== true) return { ok: false, code: envelopeCode(out?.code ?? 'unsupported'), reason: out?.reason ?? 'The stealth reader failed.', trip: Boolean(out?.trip) };
+      const text = String(out.text ?? '');
+      if (text.trim().length === 0) return { ok: false, code: 'empty_page', reason: 'The stealth reader found nothing readable.', trip: false };
+      const fetchedAt = new Date(this.now()).toISOString();
+      const record = pageRecord({
+        url: out.finalUrl ?? url,
+        title: out.title ?? null,
+        text,
+        links: Array.isArray(out.links) ? out.links.filter((link) => typeof link === 'string') : [],
+        source_ref: out.finalUrl ?? url,
+        observed_at: fetchedAt,
+        source_type: 'web_evidence',
+        confidence: 0.8,
+      });
+      return { ok: true, record, coverage: text.trim().length < 400 ? 'partial' : 'full' };
+    });
     if (!page) {
       return { ...first, attempts: [...attempts] };
     }
@@ -1495,7 +1524,7 @@ export class SocialRouter {
       attempts,
       reason: page.coverage === 'partial' ? 'The rendered page had only a little readable text.' : null,
       plan: () => first.web_evidence_plan,
-      extra: { scope, pages_read: 1, skipped: [], rendered: true, rendered_by: backend },
+      extra: { scope, pages_read: 1, skipped: [], rendered: true, rendered_by: 'stealth' },
     });
   }
 

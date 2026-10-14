@@ -140,6 +140,8 @@ function baseTool(name) {
 const SEARCH_TOOLS = new Set(['WebSearch', 'social_search']);
 const FETCH_TOOLS = new Set([
   'WebFetch', 'web_crawl', 'social_profile_get', 'social_post_get', 'social_outliers_find', 'social_comments_get', 'social_ad_search', 'chrome',
+  // Taking a video apart downloads it, so it is one fetch of a run's budget.
+  'pipeline_video_teardown',
 ]);
 
 /**

@@ -38,6 +38,7 @@ import { questionTools } from './questions.mjs';
 import { mediaHostTools } from './media-host.mjs';
 import { publishingConnectTools } from './publishing-connect.mjs';
 import { adAccountTools } from './ad-accounts.mjs';
+import { integrationProbesTools } from './integration-probes.mjs';
 import { adResultsTools } from './ad-results.mjs';
 import { publishTools } from './publish.mjs';
 import { catalogueTools } from './catalogue.mjs';
@@ -80,6 +81,7 @@ export const ALL_TOOL_MODULES = [
   mediaHostTools,
   publishingConnectTools,
   adAccountTools,
+  integrationProbesTools,
   adResultsTools,
   publishTools,
   catalogueTools,

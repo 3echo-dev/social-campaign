@@ -1,45 +1,44 @@
 /**
- * The browser based research helper: detect it, install it, report on it.
+ * The research helper: detect it, install it, keep it current, report on it.
  *
- * Some sites show almost nothing to a plain page fetch. A real browser driving the
- * page reads them properly, so Social Campaign can optionally install one: the
- * Crawl4AI package, in its own virtual environment, and the Chromium that package
- * drives. Both are somebody else's software living on the person's computer, so
- * neither is installed without them choosing to (every install entry point needs
- * `confirm: true`), and neither is ever required. Python itself must already be
- * there: it is never installed for the person, who gets the command instead.
+ * Some sites show almost nothing to a plain page fetch. The helper puts Scrapling (a Python page reader that can drive a
+ * real browser), yt-dlp and a private copy of the Chromium browser they drive on the person's computer, in their own
+ * virtual environment, and optionally faster-whisper for speech to text on the CPU. All of it is somebody else's
+ * software, so none of it is installed without the person choosing to (a fresh install needs `confirmed: true`, which
+ * only an explicit yes in chat sets), and none of it is ever required. Python itself must already be there: it is never
+ * installed for the person, who gets the command instead.
  *
- * The environment and its browser go in the plugin data folder when Claude Code
- * provides one (removed on uninstall), and in `~/.social-campaign/research-helper`
- * otherwise. An install already in that older place keeps being used.
+ * The environment and its browser go in the plugin data folder when Claude Code provides one (removed on uninstall),
+ * and in `~/.social-campaign/research-helper` otherwise. An install already in that older place keeps being used.
+ *
+ * What it installs is exactly what the code calls, and nothing else: Scrapling with its fetchers (plus Playwright and
+ * Patchright, which Scrapling requires, and curl_cffi), yt-dlp with browser impersonation, and, only when asked,
+ * faster-whisper. Earlier releases also installed the Crawl4AI browser worker and the two retired discovery libraries; no code
+ * calls those now, so an update uninstalls them and the packages only they needed, from this environment only (helper-packages.mjs).
  *
  * Three rules hold this file together.
  *
- * Nothing runs through a shell. Every child process is `execFile` with an argument
- * array, so a folder name with a space or a quote in it is an argument, never syntax.
+ * Nothing runs through a shell. Every child process is `spawn` with an argument array, so a folder name with a space or a
+ * quote in it is an argument, never syntax.
  *
- * Nothing blocks. `startInstall` returns the moment the work is handed to the event
- * loop; `research_helper_status` reads `installProgress()` and reports the steps as they
- * go by. Every step carries its own timeout, so a wedged installer ends as a
- * plain failure rather than a status that says "Installing" forever.
+ * Nothing blocks. `startInstall` returns the moment the work is handed to the event loop; `research_helper_status` and
+ * `research_tools_check` read `installProgress()` and report the steps as they go by. Every step carries its own timeout,
+ * so a wedged installer ends as a plain failure rather than a status that says "Installing" forever.
  *
- * Nothing throws at the caller. Every failure becomes a recorded state with a
- * sentence a person can act on, because a failed optional extra must never take the
- * rest of setup down with it.
+ * Nothing throws at the caller. Every failure becomes a recorded state with a sentence a person can act on, because a
+ * failed optional extra must never take the rest of setup down with it.
  *
  * What is recorded, and who reads it
  * ----------------------------------
- * The outcome is written to `<workspace>/.social-campaign/integrations.json` under
- * `research_helper`, whose `state` is `connected`, `not_connected` or `degraded`.
- * That is the agreed handover point for the `research.browser` capability: this file
- * writes the state, and the capability resolver reads it.
+ * The outcome is written to `<workspace>/.social-campaign/integrations.json` under `research_helper`, whose `state` is
+ * `connected`, `not_connected` or `degraded`. That is the agreed handover point for the `research.browser` capability:
+ * this file writes the state, and the capability resolver reads it.
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { newId, nowIso } from '../lib/ids.mjs';
@@ -52,13 +51,31 @@ import {
   pluginDataEnvironmentRoot,
   researchHelperChildEnv,
   hasUsableResearchHelperRecord,
-  researchHelperWorkerSha256,
   readResearchHelperRecord,
   updateResearchHelperRecord,
   RESEARCH_HELPER_ENVIRONMENT_KIND,
   RESEARCH_HELPER_KEY,
   RESEARCH_HELPER_RECORD_VERSION,
 } from './research-helper-record.mjs';
+import {
+  STALE_LABELS,
+  STALE_PACKAGES,
+  compareVersions,
+  installedVersions,
+  normalizeDistName,
+  planPrune,
+  readLatestVersions,
+  refreshLatestVersions,
+  sitePackagesOf,
+  whenLatestSettles,
+} from './helper-packages.mjs';
+import {
+  FASTER_WHISPER_REQUIREMENT,
+  SPEECH_MODEL,
+  SPEECH_SIZE_WORDS,
+  fetchSpeechModel,
+  speechModelPresent,
+} from './speech-helper.mjs';
 import { globalConfigDir } from '../lib/paths.mjs';
 import { killTree } from '../social/backends/ytdlp.mjs';
 import { YTDLP_STALE_DAYS, findOnPath, ytdlpAgeDays } from '../lib/install-hints.mjs';
@@ -68,22 +85,14 @@ export const RESEARCH_CAPABILITY = 'research.browser';
 
 /** The key inside integrations.json. */
 export { RESEARCH_HELPER_KEY, RESEARCH_HELPER_RECORD_VERSION } from './research-helper-record.mjs';
-
-/** The worker shipped beside this module in both source and extracted packages. */
-export const DEFAULT_WORKER_PATH = fileURLToPath(new URL('../../python/social_fetch.py', import.meta.url));
-
-/**
- * The Crawl4AI release this installs, verified as the current release on PyPI.
- * Pinned rather than floating so an install today and an install next month put the
- * same thing on two people's machines.
- */
-export const CRAWL4AI_VERSION = '0.9.3';
+export { installedVersions, sitePackagesOf } from './helper-packages.mjs';
+export { whenLatestSettles as whenResearchLatestSettles } from './helper-packages.mjs';
 
 /**
- * The one pin set. These versions fit together (checked with pip): Scrapling 0.4.15 needs
- * playwright >= 1.62, patchright >= 1.62.1 and curl_cffi >= 0.16.1; Crawl4AI 0.9.3 and
- * yt-dlp[curl-cffi] accept them. Every pip run in this file passes them as a constraints file, so no
- * install or upgrade can move these packages, and an update changes them here, in one place.
+ * The one pin set. These versions fit together (checked with pip): Scrapling 0.4.15 needs playwright >= 1.62,
+ * patchright >= 1.62.1 and curl_cffi >= 0.16.1; yt-dlp[curl-cffi] accepts them. Playwright and Patchright share one
+ * Chromium build only while their versions match, so they move together. Every pip run in this file passes them as a
+ * constraints file, so no install or upgrade can move these packages, and an update changes them here, in one place.
  */
 export const SCRAPLING_VERSION = '0.4.15';
 export const PLAYWRIGHT_VERSION = '1.63.0';
@@ -96,7 +105,6 @@ export const PINNED_VERSIONS = {
   playwright: PLAYWRIGHT_VERSION,
   patchright: PATCHRIGHT_VERSION,
   'curl-cffi': CURL_CFFI_VERSION,
-  crawl4ai: CRAWL4AI_VERSION,
 };
 
 /** What pip is asked to install for the pinned set. */
@@ -105,7 +113,6 @@ export const PINNED_REQUIREMENTS = [
   `playwright==${PLAYWRIGHT_VERSION}`,
   `patchright==${PATCHRIGHT_VERSION}`,
   `curl_cffi==${CURL_CFFI_VERSION}`,
-  `crawl4ai==${CRAWL4AI_VERSION}`,
 ];
 
 /** The constraints file written inside the environment folder; pip reads it with -c. */
@@ -114,11 +121,24 @@ export const CONSTRAINTS_FILE_NAME = 'social-campaign-pins.txt';
 /** yt-dlp with curl_cffi, so TikTok's bot check can be answered with browser impersonation (--impersonate chrome). */
 export const VIDEO_TOOLS_REQUIREMENT = 'yt-dlp[default,curl-cffi]';
 
+/** A yt-dlp release this much older than the newest pip reports counts as outdated (it releases every few weeks). */
+export const YTDLP_BEHIND_DAYS = 21;
+
 /** The oldest Python the helper works on. */
 export const MIN_PYTHON = { major: 3, minor: 10 };
 
 /** The page the smoke run reads, chosen because it exists to be fetched. */
 export const SMOKE_URL = 'https://example.com';
+
+/** Plain names of the tracked packages. */
+const PACKAGE_NAMES = {
+  scrapling: 'Scrapling',
+  playwright: 'Playwright',
+  patchright: 'Patchright',
+  'curl-cffi': 'curl_cffi',
+  'yt-dlp': 'yt-dlp',
+  'faster-whisper': 'faster-whisper',
+};
 
 /**
  * Every step, in the order they run, with the words the status shows and how far
@@ -126,23 +146,30 @@ export const SMOKE_URL = 'https://example.com';
  * @type {Array<{id: string, label: string, percent: number}>}
  */
 export const INSTALL_STEPS = [
-  { id: 'detecting', label: 'Checking what is already on this computer', percent: 8 },
+  { id: 'detecting', label: 'Checking what is already on this computer', percent: 6 },
   // Python is never installed for the person; this step only finds it, and is where
   // the install stops with the manual command when there is none.
-  { id: 'python', label: 'Looking for Python', percent: 30 },
-  { id: 'crawl4ai', label: 'Installing the page reader', percent: 60 },
-  { id: 'browser', label: 'Installing the browser it drives', percent: 85 },
+  { id: 'python', label: 'Looking for Python', percent: 14 },
+  { id: 'readers', label: 'Installing the page readers', percent: 55 },
+  { id: 'browser', label: 'Installing the browser they drive', percent: 85 },
   { id: 'smoke', label: 'Reading a test page', percent: 96 },
   { id: 'done', label: 'Ready', percent: 100 },
+];
+
+/** The steps of the optional speech reader, which run after the helper itself is ready. */
+export const SPEECH_STEPS = [
+  { id: 'speech_package', label: 'Installing local speech to text', percent: 15 },
+  { id: 'speech_model', label: 'Downloading the speech model', percent: 100 },
 ];
 
 /** How long each step is given before it is called a failure. */
 const STEP_TIMEOUT_MS = {
   probe: 20_000,
   python: 20 * 60_000,
-  crawl4ai: 20 * 60_000,
+  readers: 20 * 60_000,
   browser: 20 * 60_000,
   smoke: 3 * 60_000,
+  prune: 10 * 60_000,
 };
 
 // A browser download can take close to an hour on a slow connection. The lease
@@ -151,11 +178,6 @@ const STEP_TIMEOUT_MS = {
 const INSTALL_LEASE_WAIT_MS = 65 * 60_000;
 const INSTALL_LEASE_POLL_MS = 250;
 
-/**
- * The Python commands to try, most specific first. `py -3` is the Windows launcher,
- * which is the only one that reliably skips the Microsoft Store stub.
- * @returns {string[][]}
- */
 /**
  * Whether this process is running under Node's test runner.
  *
@@ -183,6 +205,11 @@ function realInstallAllowed() {
   return process.env.SOCIAL_CAMPAIGN_ALLOW_REAL_INSTALL === '1';
 }
 
+/**
+ * The Python commands to try, most specific first. `py -3` is the Windows launcher,
+ * which is the only one that reliably skips the Microsoft Store stub.
+ * @returns {string[][]}
+ */
 export function pythonCandidates() {
   // Tests stand a small Node script in for Python rather than touching whatever is
   // really on the machine running them. Nothing in the product ever sets this.
@@ -202,6 +229,21 @@ export function pythonCandidates() {
     : [['python3'], ['python']];
 }
 
+/**
+ * Under the test runner only: a fixture standing in for the environment's own interpreter, so the whole install path
+ * (reuse of an existing environment included) runs against it. Nothing in the product ever sets this.
+ * @returns {string[]|null}
+ */
+function testRuntimeCommand() {
+  if (!isNodeTestProcess() || !process.env.SOCIAL_CAMPAIGN_TEST_RUNTIME_PYTHON) return null;
+  try {
+    const parsed = JSON.parse(process.env.SOCIAL_CAMPAIGN_TEST_RUNTIME_PYTHON);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The one line Python prints so detection can read its version and its real path. */
 const VERSION_SCRIPT = 'import sys;print("SCPY",sys.version_info[0],sys.version_info[1],sys.executable,sep="|")';
 
@@ -212,9 +254,10 @@ const VERSION_SCRIPT = 'import sys;print("SCPY",sys.version_info[0],sys.version_
  * @param {string[]} args
  * @param {number} timeoutMs
  * @param {NodeJS.ProcessEnv} [env] the child's environment; omitted inherits this process's.
+ * @param {string} [input] text written to the child's stdin; without it stdin is closed.
  * @returns {Promise<{ok: boolean, code: number|string|null, stdout: string, stderr: string, spawnFailed: boolean, timedOut: boolean}>}
  */
-export function run(command, args, timeoutMs, env) {
+export function run(command, args, timeoutMs, env, input) {
   const [program, ...fixed] = command;
   return new Promise((resolvePromise) => {
     let stdout = '';
@@ -239,7 +282,7 @@ export function run(command, args, timeoutMs, env) {
     }, timeoutMs);
     try {
       child = spawn(program, [...fixed, ...args], {
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
         // Python prints its answers in UTF-8, whatever the console code page is.
@@ -257,6 +300,10 @@ export function run(command, args, timeoutMs, env) {
       finish({ ok: false, code: typeof code === 'string' ? code : null, spawnFailed: code === 'ENOENT' });
     });
     child.on('close', (code) => finish({ ok: code === 0, code }));
+    if (input !== undefined) {
+      child.stdin?.on('error', () => {});
+      child.stdin?.end(input);
+    }
   });
 }
 
@@ -281,16 +328,17 @@ function canRunInstallCommand(command, options = {}) {
  * @param {string[]} command
  * @param {string[]} args
  * @param {number} timeoutMs
- * @param {{allowRealInstall?: boolean, env?: NodeJS.ProcessEnv}} [options]
+ * @param {{allowRealInstall?: boolean, env?: NodeJS.ProcessEnv, input?: string}} [options]
  */
 function runInstallCommand(command, args, timeoutMs, options = {}) {
-  if (canRunInstallCommand(command, options)) return run(command, args, timeoutMs, options.env);
+  if (canRunInstallCommand(command, options)) return run(command, args, timeoutMs, options.env, options.input);
   return Promise.resolve({
     ok: false,
     code: 'test_install_blocked',
     stdout: '',
     stderr: 'Real installer commands are disabled during tests. Use SOCIAL_CAMPAIGN_TEST_PYTHON with a fixture.',
     spawnFailed: false,
+    timedOut: false,
   });
 }
 
@@ -422,30 +470,30 @@ export async function detectPython(candidates = pythonCandidates()) {
 }
 
 /** The one line the package prints so detection can read its version. */
-const CRAWL4AI_SCRIPT =
-  'import importlib.metadata as metadata;import crawl4ai;print("SCC4|"+metadata.version("crawl4ai"))';
+const SCRAPLING_SCRIPT =
+  'import importlib.metadata as metadata;import scrapling;print("SCSC|"+metadata.version("scrapling"))';
 
 /**
- * Is Crawl4AI importable by this Python?
+ * Is Scrapling importable by this Python?
  * @param {string[]} command
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<{found: boolean, version: string|null, compatible: boolean}>}
  */
-export async function detectCrawl4ai(command, env) {
-  const result = await run(command, ['-c', CRAWL4AI_SCRIPT], STEP_TIMEOUT_MS.probe, env);
+export async function detectScrapling(command, env) {
+  const result = await run(command, ['-c', SCRAPLING_SCRIPT], STEP_TIMEOUT_MS.probe, env);
   const line = String(result.stdout)
     .split(/\r?\n/)
     .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith('SCC4|'));
+    .find((entry) => entry.startsWith('SCSC|'));
   if (!result.ok || !line) return { found: false, version: null, compatible: false };
-  const version = line.slice('SCC4|'.length) || null;
-  return { found: true, version, compatible: version === CRAWL4AI_VERSION };
+  const version = line.slice('SCSC|'.length) || null;
+  return { found: true, version, compatible: version === SCRAPLING_VERSION };
 }
 
 /**
- * Playwright's Chromium is a download, not a package, so importing playwright says
- * nothing about whether the browser itself is on disk. This asks for the executable
- * path and then asks the filesystem, through Python, whether it is really there.
+ * The browser is a download, not a package, so importing the package says nothing about whether the browser itself is on
+ * disk. This asks Patchright (the driver Scrapling's stealth fetcher uses) for the executable path and then asks the
+ * filesystem, through Python, whether it is really there.
  * @param {string[]} command
  * @param {NodeJS.ProcessEnv} [env] carries PLAYWRIGHT_BROWSERS_PATH for an environment with its own browsers folder.
  * @returns {Promise<{found: boolean}>}
@@ -453,7 +501,7 @@ export async function detectCrawl4ai(command, env) {
 export async function detectChromium(command, env) {
   const script =
     'import os\n' +
-    'from playwright.sync_api import sync_playwright\n' +
+    'from patchright.sync_api import sync_playwright\n' +
     'with sync_playwright() as p:\n' +
     '    print("SCCR|" + str(os.path.exists(p.chromium.executable_path)))\n';
   const result = await run(command, ['-c', script], STEP_TIMEOUT_MS.probe, env);
@@ -464,11 +512,31 @@ export async function detectChromium(command, env) {
   return { found: Boolean(result.ok && line && line.endsWith('True')) };
 }
 
+/** The one line faster-whisper prints so detection can read its version. */
+const WHISPER_SCRIPT =
+  'import importlib.metadata as metadata;import faster_whisper;print("SCWH|"+metadata.version("faster-whisper"))';
+
+/**
+ * Is faster-whisper importable by this Python?
+ * @param {string[]} command
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Promise<{found: boolean, version: string|null}>}
+ */
+export async function detectFasterWhisper(command, env) {
+  const result = await run(command, ['-c', WHISPER_SCRIPT], STEP_TIMEOUT_MS.probe, env);
+  const line = String(result.stdout)
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith('SCWH|'));
+  if (!result.ok || !line) return { found: false, version: null };
+  return { found: true, version: line.slice('SCWH|'.length) || null };
+}
+
 /**
  * Everything detection knows, in one object.
  * @param {string[][]} [candidates]
  * @param {NodeJS.ProcessEnv} [env] from `researchHelperChildEnv`, for a managed environment's own command.
- * @returns {Promise<{python: Awaited<ReturnType<typeof detectPython>>, crawl4ai: {found: boolean, version: string|null, compatible: boolean}, chromium: {found: boolean}, state: 'connected'|'degraded'|'not_connected'}>}
+ * @returns {Promise<{python: Awaited<ReturnType<typeof detectPython>>, scrapling: {found: boolean, version: string|null, compatible: boolean}, chromium: {found: boolean}, state: 'connected'|'degraded'|'not_connected'}>}
  */
 export async function detect(candidates = pythonCandidates(), env) {
   const key = JSON.stringify([candidates, env?.PLAYWRIGHT_BROWSERS_PATH ?? null]);
@@ -479,7 +547,7 @@ export async function detect(candidates = pythonCandidates(), env) {
   return value;
 }
 
-/** Detection spawns up to five processes, and the doctor and the status
+/** Detection spawns up to four processes, and the doctor and the status
  * tool both ask within moments of each other. Cached the same way and for the same
  * reason `probeBinary` caches its own answers. */
 const DETECT_CACHE = new Map();
@@ -497,66 +565,15 @@ export function clearDetectCache() {
 async function detectUncached(candidates, env) {
   const python = await detectPython(candidates);
   if (!python.found || !python.command) {
-    return { python, crawl4ai: { found: false, version: null, compatible: false }, chromium: { found: false }, state: 'not_connected' };
+    return { python, scrapling: { found: false, version: null, compatible: false }, chromium: { found: false }, state: 'not_connected' };
   }
-  const crawl4ai = await detectCrawl4ai(python.command, env);
-  const chromium = crawl4ai.found ? await detectChromium(python.command, env) : { found: false };
-  const state = crawl4ai.compatible && chromium.found ? 'connected' : crawl4ai.found ? 'degraded' : 'not_connected';
-  return { python, crawl4ai, chromium, state };
+  const scrapling = await detectScrapling(python.command, env);
+  const chromium = scrapling.found ? await detectChromium(python.command, env) : { found: false };
+  const state = scrapling.compatible && chromium.found ? 'connected' : scrapling.found ? 'degraded' : 'not_connected';
+  return { python, scrapling, chromium, state };
 }
 
 // --- the pinned set: what is installed against what is expected ---
-
-/**
- * Normalise a distribution name the way pip does (case, dashes, dots and underscores).
- * @param {string} name
- * @returns {string}
- */
-function normalizeDistName(name) {
-  return String(name).toLowerCase().replace(/[-_.]+/g, '-');
-}
-
-/**
- * The site-packages folder of a virtual environment, or null.
- * @param {string} environmentRoot
- * @returns {string|null}
- */
-export function sitePackagesOf(environmentRoot) {
-  try {
-    const windows = join(environmentRoot, 'Lib', 'site-packages');
-    if (existsSync(windows)) return windows;
-    const lib = join(environmentRoot, 'lib');
-    for (const entry of readdirSync(lib)) {
-      const candidate = join(lib, entry, 'site-packages');
-      if (/^python3/.test(entry) && existsSync(candidate)) return candidate;
-    }
-  } catch {
-    // no such environment
-  }
-  return null;
-}
-
-/**
- * Installed package versions read from the *.dist-info folder names: no process is started,
- * so this answers in milliseconds.
- * @param {string} environmentRoot
- * @returns {Map<string, string>|null} null when the environment has no site-packages.
- */
-export function installedVersions(environmentRoot) {
-  const site = sitePackagesOf(environmentRoot);
-  if (!site) return null;
-  /** @type {Map<string, string>} */
-  const versions = new Map();
-  try {
-    for (const entry of readdirSync(site)) {
-      const match = entry.match(/^(.+?)-(\d[^-]*)\.dist-info$/);
-      if (match) versions.set(normalizeDistName(match[1]), match[2]);
-    }
-  } catch {
-    return null;
-  }
-  return versions;
-}
 
 /**
  * Where Playwright keeps its browsers for this environment.
@@ -574,25 +591,43 @@ function browsersFolder(environmentRoot) {
 }
 
 /**
- * Whether the Chromium that a package version expects is on disk. Each Playwright release
- * names the browser build it wants in its own browsers.json, so a package upgrade that
- * wants a newer build shows up here as missing.
+ * The browser builds a package version expects, read from the browsers.json that ships inside it: the folder names its
+ * Chromium and the headless shell it runs in headless mode live under.
+ * @param {string} environmentRoot
+ * @param {'playwright'|'patchright'} pkg
+ * @returns {string[]|null} folder names such as `chromium-1243`, or null when the package is not readable.
+ */
+export function browserFoldersFor(environmentRoot, pkg) {
+  const site = sitePackagesOf(environmentRoot);
+  if (!site) return null;
+  try {
+    const listing = JSON.parse(readFileSync(join(site, pkg, 'driver', 'package', 'browsers.json'), 'utf8'));
+    const browsers = Array.isArray(listing?.browsers) ? listing.browsers : [];
+    /** @type {string[]} */
+    const folders = [];
+    for (const name of ['chromium', 'chromium-headless-shell']) {
+      const entry = browsers.find((/** @type {any} */ item) => item?.name === name);
+      if (entry?.revision) folders.push(`${name.replace(/-/g, '_')}-${entry.revision}`);
+    }
+    return folders.length > 0 ? folders : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the Chromium that a package version expects is on disk. Each release names the browser build it wants in its
+ * own browsers.json, so a package upgrade that wants a newer build shows up here as missing. The headless shell counts
+ * too: the reader runs headless, which is the shell.
  * @param {string} environmentRoot
  * @param {'playwright'|'patchright'} pkg
  * @returns {boolean}
  */
 export function chromiumPresentFor(environmentRoot, pkg) {
-  const site = sitePackagesOf(environmentRoot);
-  if (!site) return false;
-  try {
-    const listing = JSON.parse(readFileSync(join(site, pkg, 'driver', 'package', 'browsers.json'), 'utf8'));
-    const entry = (Array.isArray(listing?.browsers) ? listing.browsers : []).find((/** @type {any} */ item) => item?.name === 'chromium');
-    const revision = entry?.revision;
-    if (!revision) return false;
-    return existsSync(join(browsersFolder(environmentRoot), `chromium-${revision}`));
-  } catch {
-    return false;
-  }
+  const folders = browserFoldersFor(environmentRoot, pkg);
+  if (!folders) return false;
+  const root = browsersFolder(environmentRoot);
+  return folders.every((folder) => existsSync(join(root, folder)));
 }
 
 /**
@@ -609,7 +644,6 @@ export function writeConstraintsFile(environmentRoot) {
       `playwright==${PLAYWRIGHT_VERSION}`,
       `patchright==${PATCHRIGHT_VERSION}`,
       `curl_cffi==${CURL_CFFI_VERSION}`,
-      `crawl4ai==${CRAWL4AI_VERSION}`,
     ];
     const text = `${lines.join('\n')}\n`;
     let current = '';
@@ -630,21 +664,42 @@ function constraintArgs(file) {
   return file ? ['-c', file] : [];
 }
 
+/** pip writes 2026.09.29 as 2026.9.29; the age helper wants the padded date. */
+function paddedDate(version) {
+  return String(version).replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`);
+}
+
+/**
+ * @typedef {object} VersionRow
+ * @property {string} id the package's normalised name.
+ * @property {string} name its plain name.
+ * @property {string|null} installed
+ * @property {string|null} expected the version Social Campaign keeps it at; null when it follows the newest.
+ * @property {string|null} latest the newest pip last reported (cached; null when never checked).
+ * @property {'current'|'missing'|'outdated'|'newer_available'} state `newer_available`: the kept version is installed and a
+ * newer one exists, which Social Campaign tests before it moves to it.
+ */
+
 /**
  * @typedef {object} ResearchToolsState
  * @property {boolean} venv the managed Python environment exists.
  * @property {string[]} missing plain names of what is not installed.
  * @property {string[]} outdated plain names of what is installed at the wrong version.
+ * @property {string[]} stale plain names of installed packages that nothing calls any more and an update removes.
  * @property {string[]} manual missing system tools only the person can install (FFmpeg).
- * @property {boolean} needsUpdate something the installer can fix is missing or outdated.
+ * @property {boolean} needsUpdate something the installer can fix is missing, outdated or retired.
  * @property {Record<string, string|null>} versions what is installed, by package.
+ * @property {VersionRow[]} rows the same, one row per package, with what is expected and what is newest.
+ * @property {{installed: boolean, version: string|null, wanted: boolean, modelReady: boolean}} speech local speech to text.
+ * @property {string|null} latestCheckedAt when pip was last asked for the newest versions.
  */
 
 /**
  * Compare what is installed against the pin set. File reads only, so it is safe to call
  * from the session start hook and from a tool that must answer in a few seconds.
  * @param {string} [environmentRoot]
- * @param {{now?: number, ffmpeg?: boolean}} [options] `ffmpeg` overrides the PATH lookup, for tests.
+ * @param {{now?: number, ffmpeg?: boolean, speechWanted?: boolean, latest?: Record<string, string>|null, latestCheckedAt?: string|null}} [options]
+ * `ffmpeg` overrides the PATH lookup, for tests; `speechWanted` is whether the person said yes to local speech to text.
  * @returns {ResearchToolsState}
  */
 export function researchToolsState(environmentRoot = managedEnvironmentRoot(), options = {}) {
@@ -653,40 +708,88 @@ export function researchToolsState(environmentRoot = managedEnvironmentRoot(), o
   /** @type {string[]} */
   const outdated = [];
   /** @type {string[]} */
+  const stale = [];
+  /** @type {string[]} */
   const manual = [];
   /** @type {Record<string, string|null>} */
   const versions = {};
+  /** @type {VersionRow[]} */
+  const rows = [];
+  const latest = options.latest ?? {};
   const venv = existsSync(managedPythonPath(environmentRoot));
   const installed = venv ? installedVersions(environmentRoot) : null;
+  const speech = { installed: false, version: /** @type {string|null} */ (null), wanted: Boolean(options.speechWanted), modelReady: false };
   if (!venv || !installed) {
     missing.push('Python environment');
   } else {
-    const names = { scrapling: 'Scrapling', playwright: 'Playwright', patchright: 'Patchright', 'curl-cffi': 'curl_cffi', crawl4ai: 'Crawl4AI' };
     for (const [pkg, expected] of Object.entries(PINNED_VERSIONS)) {
       const have = installed.get(pkg) ?? null;
       versions[pkg] = have;
-      const label = /** @type {Record<string, string>} */ (names)[pkg];
-      if (!have) missing.push(label);
-      else if (have !== expected) outdated.push(label);
-    }
-    for (const pkg of ['playwright', 'patchright']) {
-      if (installed.get(pkg) && !chromiumPresentFor(environmentRoot, /** @type {'playwright'|'patchright'} */ (pkg))) {
-        missing.push(`${pkg === 'playwright' ? 'Playwright' : 'Patchright'} browser`);
+      const label = PACKAGE_NAMES[/** @type {keyof typeof PACKAGE_NAMES} */ (pkg)];
+      const newest = latest[pkg] ?? null;
+      /** @type {VersionRow['state']} */
+      let state = 'current';
+      if (!have) {
+        missing.push(label);
+        state = 'missing';
+      } else if (have !== expected) {
+        outdated.push(label);
+        state = 'outdated';
+      } else if (newest && compareVersions(have, newest) < 0) {
+        state = 'newer_available';
       }
+      rows.push({ id: pkg, name: label, installed: have, expected, latest: newest, state });
     }
+    if (installed.get('patchright') && !chromiumPresentFor(environmentRoot, 'patchright')) missing.push('Browser');
     const ytdlp = installed.get('yt-dlp') ?? null;
     versions['yt-dlp'] = ytdlp;
-    if (!ytdlp) missing.push('yt-dlp');
-    else {
-      // pip writes 2026.09.29 as 2026.9.29; the age helper wants the padded date.
-      const padded = ytdlp.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`);
-      const age = ytdlpAgeDays(padded, options.now);
-      if (age !== null && age > YTDLP_STALE_DAYS) outdated.push('yt-dlp');
+    const newestYtdlp = latest['yt-dlp'] ?? null;
+    /** @type {VersionRow['state']} */
+    let ytdlpState = 'current';
+    if (!ytdlp) {
+      missing.push('yt-dlp');
+      ytdlpState = 'missing';
+    } else {
+      const age = ytdlpAgeDays(paddedDate(ytdlp), options.now);
+      const behind = newestYtdlp ? compareVersions(ytdlp, newestYtdlp) < 0 : false;
+      if ((age !== null && age > YTDLP_STALE_DAYS) || (behind && age !== null && age > YTDLP_BEHIND_DAYS)) {
+        outdated.push('yt-dlp');
+        ytdlpState = 'outdated';
+      } else if (behind) {
+        ytdlpState = 'newer_available';
+      }
+    }
+    rows.push({ id: 'yt-dlp', name: 'yt-dlp', installed: ytdlp, expected: null, latest: newestYtdlp, state: ytdlpState });
+    for (const name of STALE_PACKAGES) {
+      if (installed.has(name)) stale.push(STALE_LABELS[/** @type {keyof typeof STALE_LABELS} */ (name)] ?? name);
+    }
+    const whisper = installed.get('faster-whisper') ?? null;
+    speech.installed = Boolean(whisper);
+    speech.version = whisper;
+    speech.modelReady = speechModelPresent(SPEECH_MODEL);
+    if (whisper) {
+      const newestWhisper = latest['faster-whisper'] ?? null;
+      rows.push({ id: 'faster-whisper', name: 'faster-whisper', installed: whisper, expected: null, latest: newestWhisper, state: newestWhisper && compareVersions(whisper, newestWhisper) < 0 ? 'newer_available' : 'current' });
+    }
+    if (options.speechWanted) {
+      if (!whisper) missing.push('Local speech to text');
+      else if (!speech.modelReady) missing.push('Speech model');
     }
   }
   const hasFfmpeg = options.ffmpeg ?? (findOnPath('ffmpeg') !== null && findOnPath('ffprobe') !== null);
   if (!hasFfmpeg) manual.push('FFmpeg');
-  return { venv, missing, outdated, manual, needsUpdate: missing.length > 0 || outdated.length > 0, versions };
+  return {
+    venv,
+    missing,
+    outdated,
+    stale,
+    manual,
+    needsUpdate: missing.length > 0 || outdated.length > 0 || stale.length > 0,
+    versions,
+    rows,
+    speech,
+    latestCheckedAt: options.latestCheckedAt ?? null,
+  };
 }
 
 // --- what is remembered between sessions ---
@@ -719,6 +822,17 @@ export function writeRecord(workspace, record) {
 // --- the install, which runs in the background and is watched through installProgress() ---
 
 /**
+ * @typedef {object} SpeechProgress
+ * @property {'not_installed'|'installing'|'installed'|'failed'} state
+ * @property {string} step `speech_package` or `speech_model`.
+ * @property {string} stepLabel that step in words.
+ * @property {number} percent how far the model download is, 0 to 100.
+ * @property {string|null} message one plain sentence about it.
+ * @property {string|null} error
+ * @property {string|null} model
+ */
+
+/**
  * @typedef {object} InstallProgress
  * @property {'not_installed'|'installing'|'installed'|'failed'} state
  * @property {string} step the id of the step running now, or the last one that ran.
@@ -726,9 +840,11 @@ export function writeRecord(workspace, record) {
  * @property {number} percent
  * @property {string|null} error the plain reason it failed, with what to do about it.
  * @property {string|null} pythonVersion
- * @property {string|null} crawl4aiVersion
+ * @property {string|null} scraplingVersion
  * @property {string|null} startedAt
  * @property {string|null} finishedAt
+ * @property {boolean} [consentNeeded] nothing was started because the person has not said yes to the install yet.
+ * @property {SpeechProgress} [speech] the optional local speech to text, which installs after the helper is ready.
  */
 
 /** @returns {InstallProgress} */
@@ -740,7 +856,7 @@ function initialProgress() {
     percent: 0,
     error: null,
     pythonVersion: null,
-    crawl4aiVersion: null,
+    scraplingVersion: null,
     startedAt: null,
     finishedAt: null,
   };
@@ -788,6 +904,27 @@ function commandFromRecord(record) {
 }
 
 /**
+ * The speech block of the durable record, in the shape the status shows.
+ * @param {Record<string, any>|null} record
+ * @returns {SpeechProgress|undefined}
+ */
+function speechFromRecord(record) {
+  const saved = record?.speech && typeof record.speech === 'object' ? record.speech : null;
+  if (!saved) return undefined;
+  const state = ['installing', 'installed', 'failed'].includes(saved.state) ? saved.state : 'not_installed';
+  const step = SPEECH_STEPS.find((entry) => entry.id === saved.step) ?? SPEECH_STEPS[0];
+  return {
+    state,
+    step: step.id,
+    stepLabel: step.label,
+    percent: Number.isFinite(Number(saved.percent)) ? Number(saved.percent) : state === 'installed' ? 100 : 0,
+    message: typeof saved.message === 'string' ? saved.message : null,
+    error: typeof saved.error === 'string' ? saved.error : null,
+    model: typeof saved.model === 'string' ? saved.model : null,
+  };
+}
+
+/**
  * Reconstruct the progress shape from the durable record when another
  * process owns the installer job. This is deliberately a projection of persisted
  * data, so it never claims local ownership or creates a second installer.
@@ -809,6 +946,7 @@ function progressFromRecord(record) {
   if (!state) return null;
   const step = String(install?.step ?? (state === 'installed' ? 'done' : INSTALL_STEPS[0].id));
   const stepInfo = INSTALL_STEPS.find((entry) => entry.id === step) ?? INSTALL_STEPS[0];
+  const speech = speechFromRecord(record);
   return {
     state,
     step: stepInfo.id,
@@ -816,9 +954,10 @@ function progressFromRecord(record) {
     percent: Number.isFinite(Number(install?.percent)) ? Number(install.percent) : state === 'installed' ? 100 : stepInfo.percent,
     error: typeof record.last_error === 'string' ? record.last_error : typeof install?.error === 'string' ? install.error : null,
     pythonVersion: typeof record.python_version === 'string' ? record.python_version : null,
-    crawl4aiVersion: typeof record.crawl4ai_version === 'string' ? record.crawl4ai_version : null,
+    scraplingVersion: typeof record.scrapling_version === 'string' ? record.scrapling_version : null,
     startedAt: typeof install?.started_at === 'string' ? install.started_at : null,
     finishedAt: typeof install?.finished_at === 'string' ? install.finished_at : null,
+    ...(speech ? { speech } : {}),
   };
 }
 
@@ -905,10 +1044,11 @@ export function manualCommands() {
     : process.platform === 'win32'
       ? `$env:PLAYWRIGHT_BROWSERS_PATH=${JSON.stringify(browsers)}; `
       : `PLAYWRIGHT_BROWSERS_PATH=${JSON.stringify(browsers)} `;
+  const requirements = [...PINNED_REQUIREMENTS, VIDEO_TOOLS_REQUIREMENT].map((entry) => JSON.stringify(entry)).join(' ');
   return [
     install,
-    `${py} -m venv ${JSON.stringify(environment)} && ${JSON.stringify(runtime)} -m pip install crawl4ai==${CRAWL4AI_VERSION}`,
-    `${browsersPrefix}${JSON.stringify(runtime)} -m playwright install chromium`,
+    `${py} -m venv ${JSON.stringify(environment)} && ${JSON.stringify(runtime)} -m pip install ${requirements}`,
+    `${browsersPrefix}${JSON.stringify(runtime)} -m patchright install chromium`,
   ];
 }
 
@@ -932,7 +1072,11 @@ export function noPythonReason() {
  * What installing the helper would put on this computer, in plain words, for the
  * person to say yes or no to. Returned by every install entry point that was
  * called without `confirm: true`, and by `workspace_initialize`.
- * @returns {{summary: string, needs: string, size: string, location: string, removal: string}}
+ *
+ * Sizes are measured: the browser takes about 700 MB on disk (Chromium and its headless shell, 433 MB and 271 MB), the
+ * Python packages about 250 MB after retired ones are removed, and the download is roughly 400 MB. Local speech to text is
+ * a separate yes inside the same question: about 150 MB of packages and a speech model of about 480 MB.
+ * @returns {{summary: string, needs: string, size: string, location: string, removal: string, speech: {summary: string, size: string}}}
  */
 export function installPlan() {
   const environment = managedEnvironmentRoot();
@@ -940,16 +1084,42 @@ export function installPlan() {
   const inPluginData = pluginDataEnvironmentRoot() !== null && resolve(environment) === pluginDataEnvironmentRoot();
   return {
     summary:
-      'An optional research helper lets Social Campaign read web pages that show almost nothing to a plain ' +
-      'page reader, such as some social profiles and shops. It installs the Crawl4AI page reader (a Python ' +
-      'package) and a private copy of the Chromium browser it drives. Research works without it, on public pages and web search.',
+      'An optional research helper lets Social Campaign read pages and profiles that show almost nothing to a plain ' +
+      'page reader, such as TikTok and Instagram profiles, protected shops and ad libraries, and download reference videos. ' +
+      'It installs Scrapling (a Python page reader), yt-dlp and a private copy of the Chromium browser they drive. ' +
+      'Research works without it, on public pages and web search.',
     needs: 'Python 3.10 or newer already on this computer. Social Campaign never installs Python itself.',
-    size: 'Chromium alone is about 150 MB, and the page reader\'s Python packages add a few hundred MB more. It takes several minutes.',
+    size: 'A download of roughly 400 MB, about 1 GB on disk (the browser is about 700 MB of that). It takes several minutes and carries on in the background.',
     location: home,
     removal: inPluginData
       ? 'Uninstalling the Social Campaign plugin removes it.'
       : `To remove it later, delete the folder ${home}${managedBrowsersPath(environment) ? '' : ' and Playwright\'s browser cache'}.`,
+    speech: {
+      summary: 'Optional, in the same yes: local speech to text, so a video without captions can be transcribed on this computer for free (faster-whisper, CPU only).',
+      size: `${SPEECH_SIZE_WORDS.packages} and ${SPEECH_SIZE_WORDS.model}, downloaded once in the background.`,
+    },
   };
+}
+
+/**
+ * Describe the install for the person to say yes or no to, including whether Python is here. This is what the setup
+ * question is built from; it installs nothing.
+ * @returns {Promise<{plan: ReturnType<typeof installPlan>, python: {found: boolean, version: string|null, explanation: string, command: string|null}}>}
+ */
+export async function describeInstall() {
+  const plan = installPlan();
+  const found = await detectPython();
+  const [first] = manualCommands();
+  const explanation = found.found
+    ? `Python ${found.version} is already on this computer, so nothing else needs installing first.`
+    : found.storeStub
+      ? 'Windows is offering its Store placeholder instead of a real Python. Python 3.10 or newer has to be installed first.'
+      : found.xcodeStub
+        ? 'This Mac only offers to install the Command Line Tools placeholder, not a real Python. Python 3.10 or newer has to be installed first.'
+        : found.tooOld
+          ? 'The Python on this computer is older than version 3.10, so a newer one has to be installed first.'
+          : 'There is no Python on this computer yet, and the helper needs Python 3.10 or newer.';
+  return { plan, python: { found: found.found, version: found.version, explanation, command: found.found ? null : first } };
 }
 
 /**
@@ -964,7 +1134,7 @@ function reasonFor(stepId, result, subject = '') {
   const lines = `${String(result.stderr ?? '')}\n${String(result.stdout ?? '')}`
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter(Boolean);
   const failure = lines.find((line) =>
     /\b(error|failed?|failure|fatal|exception|traceback|permission|denied|cannot|could not|no module|not found|unable|refused|invalid|timed out|timeout)\b/i.test(line),
   );
@@ -980,11 +1150,12 @@ function reasonFor(stepId, result, subject = '') {
   const detail = detailLine ? ` It said: ${detailLine}${punctuation}${status}` : status;
   const [first, second, third] = manualCommands();
   if (stepId === 'python') return `Installing Python did not finish.${detail} You can install it yourself with: ${first}`;
-  if (stepId === 'crawl4ai') {
-    const thing = subject || 'the page reader';
+  if (stepId === 'readers') {
+    const thing = subject || 'the page readers';
     return `Installing ${thing} did not finish.${detail} You can install it yourself with: ${second}`;
   }
   if (stepId === 'browser') return `Installing the browser did not finish.${detail} You can install it yourself with: ${third}`;
+  if (stepId === 'speech') return `Local speech to text did not install.${detail}`;
   return `The test page could not be read, so the helper is installed but not working yet.${detail}`;
 }
 
@@ -1002,7 +1173,7 @@ function reasonFor(stepId, result, subject = '') {
  * Nothing here changes behaviour when pip already works: the very first check is
  * `pip --version`, and any answer other than "no module named pip" is left alone, so
  * a pip that is merely old or broken in some other way still fails, and fails with
- * its own real message, at the crawl4ai step that actually needed it.
+ * its own real message, at the readers step that actually needed it.
  * @param {string[]} python
  * @param {{allowRealInstall?: boolean}} [options]
  * @returns {Promise<{ok: boolean, reason: string|null}>}
@@ -1011,9 +1182,9 @@ async function ensurePipReady(python, options = {}) {
   const check = await run(python, ['-m', 'pip', '--version'], STEP_TIMEOUT_MS.probe);
   if (check.ok || !isPipMissing(check)) return { ok: true, reason: null };
 
-  let ensured = await runInstallCommand(python, ['-m', 'ensurepip', '--upgrade', '--default-pip'], STEP_TIMEOUT_MS.crawl4ai, options);
+  let ensured = await runInstallCommand(python, ['-m', 'ensurepip', '--upgrade', '--default-pip'], STEP_TIMEOUT_MS.readers, options);
   if (!ensured.ok) {
-    ensured = await runInstallCommand(python, ['-m', 'ensurepip', '--upgrade', '--default-pip'], STEP_TIMEOUT_MS.crawl4ai, options);
+    ensured = await runInstallCommand(python, ['-m', 'ensurepip', '--upgrade', '--default-pip'], STEP_TIMEOUT_MS.readers, options);
   }
 
   const recheck = ensured.ok ? await run(python, ['-m', 'pip', '--version'], STEP_TIMEOUT_MS.probe) : ensured;
@@ -1023,7 +1194,7 @@ async function ensurePipReady(python, options = {}) {
   // told to run ensurepip first, then the pip install that would otherwise just fail
   // again the same way.
   const ensurepipCommand = [...python, '-m', 'ensurepip', '--upgrade', '--default-pip'].join(' ');
-  const pipCommand = [...python, '-m', 'pip', 'install', `crawl4ai==${CRAWL4AI_VERSION}`].join(' ');
+  const pipCommand = [...python, '-m', 'pip', 'install', ...PINNED_REQUIREMENTS].join(' ');
   return {
     ok: false,
     reason: `This Python has no pip, and ensurepip could not install it either. You can install it yourself with: ${ensurepipCommand} then ${pipCommand}`,
@@ -1031,12 +1202,29 @@ async function ensurePipReady(python, options = {}) {
 }
 
 /**
+ * Whether the person has said yes to installing the helper here: a yes recorded for this workspace, an explicit
+ * `confirmed`, or an environment that already exists on this computer (it only exists because somebody said yes, and the
+ * update of a copy that is already there downloads nothing new). Local speech to text is separate: see `speechConsent`.
+ * @param {Record<string, any>|null} record
+ * @param {{confirmed?: boolean}} options
+ * @param {string} environmentRoot
+ * @returns {boolean}
+ */
+function installConsented(record, options, environmentRoot) {
+  return options.confirmed === true || Boolean(record?.consent_at) || existsSync(managedPythonPath(environmentRoot));
+}
+
+/**
  * Install whatever is missing, in order, reporting each step as it goes.
  *
  * Returns immediately. The result is watched through `installProgress()` and recorded
  * in integrations.json when it ends, either way.
+ *
+ * A fresh install is started only with the person's yes: `confirmed: true`. Without it, and with no copy of the helper on
+ * this computer already, nothing is started and the answer says `consentNeeded`. `speech: true` adds the optional local
+ * speech to text (its own yes, taken in the same question).
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], update?: boolean}} [options]
+ * @param {{candidates?: string[][], environmentRoot?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], update?: boolean, confirmed?: boolean, speech?: boolean, speechScript?: string, speechPollMs?: number}} [options]
  * `runtimeCommand` is a test fixture hook and is never supplied by a product tool. `update: true` runs the
  * install again over a healthy install to add or refresh the pinned tools; without it a healthy install is left alone.
  * @returns {InstallProgress} the state as of this call, always `installing` unless one was already finished.
@@ -1057,23 +1245,37 @@ export function startInstall(workspace, options = {}) {
   // A completed record is reusable only when the current versioned contract and
   // every path it names are still usable. This check stays at the record level so
   // an older reader cannot make an incomplete `installed` flag suppress repair.
-  if (persisted?.state === 'installed' && healthyResearchHelperRecord(persistedRecord) && !options.update) {
+  if (persisted?.state === 'installed' && healthyResearchHelperRecord(persistedRecord) && !options.update && options.speech !== true) {
     lastJobRoot = root;
     fallbackProgress = persisted;
     return { ...persisted };
+  }
+  const environmentRoot = options.environmentRoot ?? managedEnvironmentRoot();
+  if (!installConsented(persistedRecord, options, environmentRoot)) {
+    return { ...initialProgress(), consentNeeded: true };
+  }
+  const now = nowIso();
+  try {
+    updateResearchHelperRecord(root, (previous) => ({
+      ...(previous ?? {}),
+      ...(options.confirmed === true && !previous?.consent_at ? { consent_at: now } : {}),
+      ...(options.speech === true && !previous?.speech_consent_at ? { speech_consent_at: now } : {}),
+    }));
+  } catch {
+    // an unwritable record is a doctor problem; the install can still run
   }
   const job = {
     root,
     jobId: newId(),
     ownerId: INSTALL_OWNER_ID,
     progress: {
-      state: 'installing',
+      state: /** @type {const} */ ('installing'),
       step: 'detecting',
       stepLabel: INSTALL_STEPS[0].label,
       percent: INSTALL_STEPS[0].percent,
       error: null,
       pythonVersion: null,
-      crawl4aiVersion: null,
+      scraplingVersion: null,
       startedAt: nowIso(),
       finishedAt: null,
     },
@@ -1092,7 +1294,9 @@ export function startInstall(workspace, options = {}) {
       job.progress = {
         ...job.progress,
         state: 'failed',
-        error: 'Something went wrong while installing the research helper. Try again from the doctor.',
+        error: error instanceof Error && /still being installed in another/.test(error.message)
+          ? error.message
+          : 'Something went wrong while installing the research helper. Try again from the doctor.',
         finishedAt: nowIso(),
       };
       fallbackProgress = job.progress;
@@ -1134,45 +1338,146 @@ export function researchHelperSummary(workspace) {
 const TOOLS_UPDATE_PAUSE_MS = 30 * 60_000;
 
 /**
+ * Where the tools check reads the environment from: the recorded one, else the managed one.
+ * @param {Record<string, any>|null} record
+ * @param {string|undefined} override
+ * @returns {string}
+ */
+function environmentFor(record, override) {
+  return override ?? (typeof record?.environment_path === 'string' && record.environment_path ? record.environment_path : managedEnvironmentRoot());
+}
+
+/**
+ * @param {string} environmentRoot
+ * @param {Record<string, any>|null} record
+ * @param {{ffmpeg?: boolean, now?: number}} options
+ */
+function stateForCheck(environmentRoot, record, options) {
+  const latest = readLatestVersions(environmentRoot, options.now);
+  return {
+    latest,
+    state: researchToolsState(environmentRoot, {
+      ffmpeg: options.ffmpeg,
+      now: options.now,
+      speechWanted: Boolean(record?.speech_consent_at),
+      latest: latest?.versions ?? null,
+      latestCheckedAt: latest?.checkedAt ?? null,
+    }),
+  };
+}
+
+/**
+ * Ask pip for the newest versions in the background, when the cached answer is old. Never awaited, never throws, and
+ * never runs under the test runner unless a test passes its own Python.
+ * @param {string} environmentRoot
+ * @param {{refreshLatest?: boolean, latestPython?: string[], now?: number}} options
+ */
+function refreshLatestInBackground(environmentRoot, options) {
+  try {
+    const allowed = options.refreshLatest ?? (!isNodeTestProcess() || realInstallAllowed());
+    if (!allowed) return;
+    const python = options.latestPython ?? [managedPythonPath(environmentRoot)];
+    if (!existsSync(python[0])) return;
+    void refreshLatestVersions({
+      environmentRoot,
+      command: python,
+      runner: (command, args, timeoutMs, env) => run(command, args, timeoutMs, env),
+      env: researchHelperChildEnv(environmentRoot),
+      now: options.now,
+    });
+  } catch {
+    // a failed look at the newest versions is never a problem
+  }
+}
+
+/**
  * @typedef {object} ResearchToolsCheck
  * @property {boolean} ok nothing the installer can fix is missing or outdated.
+ * @property {'installed'|'installing'|'update_needed'|'not_installed'|'failed'} state where the helper really stands on this computer.
  * @property {string[]} missing
  * @property {string[]} outdated
+ * @property {Array<{name: string, installed: string, latest: string}>} newerAvailable installed at the version Social Campaign tested; a newer one exists.
+ * @property {string[]} removing retired packages an update removes.
  * @property {string[]} manual system tools the person has to install (FFmpeg).
+ * @property {VersionRow[]} versions every tracked package: installed, expected, newest.
  * @property {boolean} updating a background install or update is running now.
  * @property {boolean} started this call started it.
+ * @property {boolean} linking the only thing running is the connection of this workspace to a helper already on this computer.
+ * @property {boolean} consentNeeded the helper is not on this computer and nothing is installed until the person says yes.
+ * @property {boolean} workspaceLinked this workspace's record points at a working helper.
+ * @property {{installed: boolean, version: string|null, wanted: boolean, modelReady: boolean}} speech
+ * @property {string|null} latestCheckedAt
  * @property {string|null} note one plain sentence, or null.
  */
 
 /**
  * The quick startup check: what is installed against the pin set. When something is missing or
- * outdated it STARTS the normal background install (same lease, same progress record) and returns
- * straight away. Only file reads happen here, so it never blocks for more than a moment, and it
- * never waits for the install.
+ * outdated it STARTS the normal background install or update (same lease, same progress record) and returns
+ * straight away; a fresh computer is never installed on, because that needs the person's yes. Only file reads happen
+ * here, so it never blocks for more than a moment, and it never waits for the install or for the network: the newest
+ * versions come from a cached answer, refreshed in the background when it is old.
  * @param {import('../workspace/index.mjs').Workspace|string} workspace
- * @param {{force?: boolean, environmentRoot?: string, ffmpeg?: boolean, now?: number, install?: Record<string, any>}} [options]
+ * @param {{force?: boolean, environmentRoot?: string, ffmpeg?: boolean, now?: number, install?: Record<string, any>, refreshLatest?: boolean, latestPython?: string[]}} [options]
  * `install` is passed to startInstall (test fixtures use it); `force` ignores the short pause after an earlier attempt.
  * @returns {ResearchToolsCheck}
  */
 export function checkResearchTools(workspace, options = {}) {
   const root = workspaceRootOf(workspace);
   const record = root ? readResearchHelperRecord(root) : null;
-  const environmentRoot = options.environmentRoot ?? (typeof record?.environment_path === 'string' && record.environment_path ? record.environment_path : managedEnvironmentRoot());
-  const state = researchToolsState(environmentRoot, { ffmpeg: options.ffmpeg, now: options.now });
-  /** @type {ResearchToolsCheck} */
-  const result = { ok: !state.needsUpdate, missing: state.missing, outdated: state.outdated, manual: state.manual, updating: false, started: false, note: null };
-  if (!state.needsUpdate) {
-    if (state.manual.length > 0) result.note = `${state.manual.join(' and ')} is not installed. Video and audio features need it; research works without it.`;
-    return result;
-  }
+  const environmentRoot = environmentFor(record, options.environmentRoot);
+  const { latest, state } = stateForCheck(environmentRoot, record, options);
+  if (state.venv && (!latest || !latest.fresh)) refreshLatestInBackground(environmentRoot, options);
+  const linked = healthyResearchHelperRecord(record);
+  const newerAvailable = state.rows
+    .filter((row) => row.state === 'newer_available' && row.installed && row.latest)
+    .map((row) => ({ name: row.name, installed: /** @type {string} */ (row.installed), latest: /** @type {string} */ (row.latest) }));
   const progress = installProgress(workspace);
+  /** @type {ResearchToolsCheck} */
+  const result = {
+    ok: !state.needsUpdate,
+    state: progress.state === 'installing' ? 'installing' : !state.venv ? 'not_installed' : state.needsUpdate ? 'update_needed' : progress.state === 'failed' ? 'failed' : 'installed',
+    missing: state.missing,
+    outdated: state.outdated,
+    newerAvailable,
+    removing: state.stale,
+    manual: state.manual,
+    versions: state.rows,
+    updating: false,
+    started: false,
+    linking: false,
+    consentNeeded: false,
+    workspaceLinked: linked,
+    speech: state.speech,
+    latestCheckedAt: state.latestCheckedAt,
+    note: null,
+  };
+  const ffmpegNote = state.manual.length > 0 ? `${state.manual.join(' and ')} is not installed. Video and audio features need it; research works without it.` : null;
   if (progress.state === 'installing') {
+    if (state.venv && !state.needsUpdate) {
+      // Only the connection of this workspace to the helper that is already here is running: nothing to tell the person.
+      result.linking = true;
+      result.state = 'installed';
+      return result;
+    }
     result.updating = true;
     result.note = 'The research tools are being installed in the background. Carry on; research uses what is ready.';
     return result;
   }
+  if (!state.venv && !record?.consent_at) {
+    // A fresh computer: nothing is installed without the person's yes.
+    result.consentNeeded = true;
+    result.note = 'The research helper is not on this computer yet. It is installed only after the person says yes.';
+    return result;
+  }
+  const needsLink = !state.needsUpdate && !linked && root;
+  if (!state.needsUpdate && !needsLink) {
+    result.note = outdatedSentence(result) ?? ffmpegNote;
+    return result;
+  }
   if (!root) {
-    result.note = 'No workspace is set up yet, so the research tools are not installed. They install when the workspace is set up.';
+    result.note = state.needsUpdate
+      ? 'No workspace is set up yet, so the research tools are not updated. They update when the workspace is set up.'
+      : null;
     return result;
   }
   // Under the test runner only fixtures that stand a fake Python in may start an install.
@@ -1194,26 +1499,60 @@ export function checkResearchTools(workspace, options = {}) {
     // an unwritable record is a doctor problem; the update can still run
   }
   const started = startInstall(workspace, { ...(options.install ?? {}), update: true });
-  result.updating = started.state === 'installing';
-  result.started = result.updating;
+  const running = started.state === 'installing';
+  const doing = [...state.missing, ...state.outdated];
+  if (running && !state.needsUpdate) {
+    // Only linking this workspace to the helper already on this computer: it is installed, and there is nothing to say.
+    result.linking = true;
+    result.state = 'installed';
+    result.started = true;
+    return result;
+  }
+  result.updating = running;
+  result.started = running;
+  if (started.consentNeeded) result.consentNeeded = true;
+  result.state = result.updating ? 'installing' : result.state;
   result.note = result.updating
-    ? `Installing or updating ${[...state.missing, ...state.outdated].join(', ')} in the background. Carry on; research uses what is ready.`
+    ? `${[doing.length > 0 ? `Installing or updating ${doing.join(', ')}` : null, state.stale.length > 0 ? `removing ${state.stale.join(', ')}, which nothing uses any more` : null].filter(Boolean).join(' and ')} in the background. Carry on; research uses what is ready.`
     : started.error ?? null;
   return result;
+}
+
+/**
+ * One plain sentence about what is outdated or has a newer version, or null when nothing is.
+ * @param {ResearchToolsCheck} check
+ * @returns {string|null}
+ */
+function outdatedSentence(check) {
+  const parts = [];
+  if (check.outdated.length > 0) parts.push(`${check.outdated.join(', ')} ${check.outdated.length === 1 ? 'is' : 'are'} out of date`);
+  if (check.newerAvailable.length > 0) {
+    parts.push(`newer versions exist of ${check.newerAvailable.map((item) => `${item.name} (${item.installed} installed, ${item.latest} out)`).join(', ')}, which Social Campaign keeps at the version it tested until its own release moves them`);
+  }
+  return parts.length > 0 ? `${parts.join('; ')}.` : null;
 }
 
 /** The code the detached updater runs: check, start the update, wait for it, exit. */
 const BACKGROUND_UPDATE_SCRIPT =
   'const [moduleUrl, root] = process.argv.slice(1);' +
-  'try { const m = await import(moduleUrl); m.checkResearchTools(root); await m.whenInstallSettles(root); } catch {}' +
+  'try { const m = await import(moduleUrl); m.checkResearchTools(root); await m.whenInstallSettles(root); await m.whenResearchLatestSettles(m.managedEnvironmentForCheck(root)); } catch {}' +
   'process.exit(0);';
+
+/**
+ * The environment the check for one workspace reads. Used by the detached updater to wait for the version lookup.
+ * @param {string} workspaceRoot
+ * @returns {string}
+ */
+export function managedEnvironmentForCheck(workspaceRoot) {
+  return environmentFor(readResearchHelperRecord(workspaceRoot), undefined);
+}
 
 /**
  * For the session start hook: when the research tools are missing or out of date, run the
  * normal update in a detached background process and return at once. It never throws, never
  * blocks, and does nothing at all unless a research helper was set up before (a record or a
  * managed environment exists), so a fresh computer is left to workspace setup. The caller
- * limits how often this runs.
+ * limits how often this runs. The same process refreshes the cached newest versions when they are a day old.
  * @param {string} workspaceRoot
  * @param {{env?: NodeJS.ProcessEnv, environmentRoot?: string, spawnFn?: typeof spawn, ffmpeg?: boolean}} [options]
  * @returns {'started'|'up_to_date'|'not_set_up'|'disabled'|'failed'}
@@ -1223,10 +1562,11 @@ export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
     const env = options.env ?? process.env;
     if (env.SOCIAL_CAMPAIGN_NO_AUTO_UPDATE || env.NODE_TEST_CONTEXT) return 'disabled';
     const record = readResearchHelperRecord(workspaceRoot);
-    const environmentRoot = options.environmentRoot ?? (typeof record?.environment_path === 'string' && record.environment_path ? record.environment_path : managedEnvironmentRoot());
+    const environmentRoot = environmentFor(record, options.environmentRoot);
     if (!record && !existsSync(managedPythonPath(environmentRoot))) return 'not_set_up';
-    const state = researchToolsState(environmentRoot, { ffmpeg: options.ffmpeg ?? true });
-    if (!state.needsUpdate) return 'up_to_date';
+    const { latest, state } = stateForCheck(environmentRoot, record, { ffmpeg: options.ffmpeg ?? true });
+    const refreshDue = state.venv && (!latest || !latest.fresh);
+    if (!state.needsUpdate && !refreshDue) return 'up_to_date';
     const child = (options.spawnFn ?? spawn)(
       process.execPath,
       ['--input-type=module', '-e', BACKGROUND_UPDATE_SCRIPT, import.meta.url, workspaceRoot],
@@ -1241,28 +1581,31 @@ export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
 }
 
 /**
- * Setup installs the helper on its own, so the person is never asked. The helper
- * lives once per computer, so a copy an earlier workspace installed is found and
- * reused within seconds. The install runs in the background and nothing waits on
- * it; without Python 3.10 or newer it stops quietly and research works without it.
+ * Setup's part of the helper. It never installs anything the person has not said yes to: a fresh computer gets
+ * `consentNeeded` and the plan to put to them (`offer`). A copy that is already on this computer is attached to the new
+ * workspace at once, because that downloads nothing; it also brings that copy up to date. The install runs in the
+ * background and nothing waits on it.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @returns {{installed: boolean, state: InstallProgress['state'], started: boolean}}
+ * @returns {{installed: boolean, state: InstallProgress['state'], started: boolean, consentNeeded: boolean, offer?: ReturnType<typeof installPlan>}}
  */
 export function ensureResearchHelper(workspace) {
   const summary = researchHelperSummary(workspace);
-  if (summary.installed || summary.state === 'installing') return { installed: summary.installed, state: summary.state, started: false };
+  if (summary.installed || summary.state === 'installing') return { installed: summary.installed, state: summary.state, started: false, consentNeeded: false };
   // Under the test runner only installer tests, which stand a fake Python in, start one.
   if (isNodeTestProcess() && !process.env.SOCIAL_CAMPAIGN_TEST_PYTHON && !realInstallAllowed()) {
-    return { installed: false, state: summary.state, started: false };
+    return { installed: false, state: summary.state, started: false, consentNeeded: !existsSync(managedPythonPath(managedEnvironmentRoot())) };
   }
   const progress = startInstall(workspace);
-  return { installed: progress.state === 'installed', state: progress.state, started: progress.state === 'installing' };
+  if (progress.consentNeeded) {
+    return { installed: false, state: 'not_installed', started: false, consentNeeded: true, offer: installPlan() };
+  }
+  return { installed: progress.state === 'installed', state: progress.state, started: progress.state === 'installing', consentNeeded: false };
 }
 
 /**
  * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
  * @param {'connected'|'not_connected'|'degraded'|'installing'} state
- * @param {{pythonPath?: string|null, pythonArgs?: string[], environmentRoot?: string|null, workerPath?: string|null, workerSha256?: string|null, packageVersions?: Record<string, string|null>}} [extra]
+ * @param {{pythonPath?: string|null, pythonArgs?: string[], environmentRoot?: string|null, packageVersions?: Record<string, string|null>}} [extra]
  */
 function persist(job, state, extra = {}) {
   try {
@@ -1277,10 +1620,7 @@ function persist(job, state, extra = {}) {
       python: extra.pythonPath ?? previous?.python ?? null,
       python_args: extra.pythonArgs ?? previous?.python_args ?? [],
       environment_path: extra.environmentRoot ?? previous?.environment_path ?? managedEnvironmentRoot(),
-      worker_path: extra.workerPath ?? previous?.worker_path ?? DEFAULT_WORKER_PATH,
-      worker_sha256: extra.workerSha256 ?? previous?.worker_sha256 ?? null,
       python_version: job.progress.pythonVersion,
-      crawl4ai_version: job.progress.crawl4aiVersion,
       ...(extra.packageVersions
         ? {
             scrapling_version: extra.packageVersions.scrapling ?? null,
@@ -1288,6 +1628,7 @@ function persist(job, state, extra = {}) {
             patchright_version: extra.packageVersions.patchright ?? null,
             curl_cffi_version: extra.packageVersions['curl-cffi'] ?? null,
             yt_dlp_version: extra.packageVersions['yt-dlp'] ?? null,
+            faster_whisper_version: extra.packageVersions['faster-whisper'] ?? null,
           }
         : {}),
       last_error: job.progress.error,
@@ -1302,6 +1643,18 @@ function persist(job, state, extra = {}) {
         finished_at: job.progress.finishedAt,
         error: job.progress.error,
       },
+      ...(job.progress.speech
+        ? {
+            speech: {
+              state: job.progress.speech.state,
+              step: job.progress.speech.step,
+              percent: job.progress.speech.percent,
+              message: job.progress.speech.message,
+              error: job.progress.speech.error,
+              model: job.progress.speech.model,
+            },
+          }
+        : {}),
     }));
   } catch (error) {
     // A workspace that cannot be written to is already a doctor problem of its own.
@@ -1317,7 +1670,7 @@ function persist(job, state, extra = {}) {
 function updateProgress(job, patch) {
   job.progress = { ...job.progress, ...patch };
   fallbackProgress = job.progress;
-  persist(job, 'installing');
+  persist(job, job.progress.state === 'installed' ? 'connected' : 'installing');
 }
 
 /**
@@ -1381,7 +1734,7 @@ async function acquireInstallLease(job, environmentRoot) {
 
 /**
  * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
- * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[]}} options
+ * @param {Record<string, any>} options
  * @returns {Promise<InstallProgress>}
  */
 async function runInstall(job, options) {
@@ -1394,18 +1747,147 @@ async function runInstall(job, options) {
 }
 
 /**
+ * Whether a Python lives inside the environment, so an uninstall can only ever reach the helper's own packages.
+ * @param {string} python
+ * @param {string} environmentRoot
+ * @returns {boolean}
+ */
+function insideEnvironment(python, environmentRoot) {
+  const prefix = resolve(environmentRoot) + sep;
+  return resolve(python).toLowerCase().startsWith(prefix.toLowerCase());
+}
+
+/**
+ * Remove, from the helper's environment only, the packages nothing calls any more (see STALE_PACKAGES) and
+ * the ones only they needed. Logged, recorded, and never fatal: a package that will not uninstall is left, and the next
+ * update tries again.
+ * @param {string[]} python
+ * @param {string} environmentRoot
+ * @param {{wantSpeech: boolean, installOptions: Record<string, any>, trusted: boolean}} context `trusted` is a test fixture: its Python is not inside the folder.
+ * @returns {Promise<{removed: string[], failed: boolean}>}
+ */
+export async function pruneStalePackages(python, environmentRoot, context) {
+  const plan = planPrune(environmentRoot, { speech: context.wantSpeech });
+  if (!plan.ok || plan.remove.length === 0) {
+    if (!plan.ok) log.info('research helper prune skipped', { reason: plan.reason });
+    return { removed: [], failed: false };
+  }
+  // Never touch a Python that is not the helper's own: this is the line that keeps the system Python out of reach.
+  if (!context.trusted && !insideEnvironment(python[0], environmentRoot)) {
+    log.warn('research helper prune refused: the Python is not inside the helper environment', { python: python[0] });
+    return { removed: [], failed: true };
+  }
+  const done = await runInstallCommand(python, ['-m', 'pip', 'uninstall', '-y', ...plan.remove], STEP_TIMEOUT_MS.prune, context.installOptions);
+  log.info('research helper pruned retired packages', { removed: plan.remove, ok: done.ok, stale: plan.stale });
+  return { removed: done.ok ? plan.remove : [], failed: !done.ok };
+}
+
+/**
+ * Delete browser builds in the helper's own browsers folder that no installed package expects any more (an older
+ * Chromium left behind by an upgrade). Only the plugin data folder is touched: Playwright's shared cache may be used by
+ * other tools, so builds there are never deleted.
+ * @param {string} environmentRoot
+ * @returns {string[]} the folders removed.
+ */
+export function pruneOldBrowserBuilds(environmentRoot) {
+  const own = managedBrowsersPath(environmentRoot);
+  if (!own || !existsSync(own)) return [];
+  const wanted = new Set([...(browserFoldersFor(environmentRoot, 'patchright') ?? []), ...(browserFoldersFor(environmentRoot, 'playwright') ?? [])]);
+  if (wanted.size === 0) return [];
+  /** @type {string[]} */
+  const removed = [];
+  for (const entry of readdirSync(own)) {
+    if (!/^(chromium|chromium_headless_shell|ffmpeg)-\d+$/.test(entry) || wanted.has(entry)) continue;
+    try {
+      rmSync(join(own, entry), { recursive: true, force: true });
+      removed.push(entry);
+    } catch {
+      // a folder in use is left for the next update
+    }
+  }
+  return removed;
+}
+
+/**
+ * Install the optional local speech to text: the package into the helper's environment, then the speech model, once.
+ * Never fatal to the helper, and recorded with its own progress so the status can say what it is doing.
  * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
- * @param {{candidates?: string[][], environmentRoot?: string, workerPath?: string, smokeUrl?: string, allowRealInstall?: boolean}} options
+ * @param {{python: string[], environmentRoot: string, installOptions: Record<string, any>, options: Record<string, any>, pinArgs: string[]}} context
+ * @returns {Promise<boolean>} whether the package is installed (the model may still be on its way).
+ */
+async function installSpeechPackage(job, context) {
+  const have = installedVersions(context.environmentRoot)?.get('faster-whisper');
+  if (have) return true;
+  job.progress = { ...job.progress, speech: { state: 'installing', step: 'speech_package', stepLabel: SPEECH_STEPS[0].label, percent: SPEECH_STEPS[0].percent, message: 'Installing local speech to text.', error: null, model: null } };
+  persist(job, 'installing');
+  const done = await runInstallCommand(context.python, ['-m', 'pip', 'install', ...context.pinArgs, FASTER_WHISPER_REQUIREMENT], STEP_TIMEOUT_MS.readers, context.installOptions);
+  if (!done.ok) {
+    job.progress = { ...job.progress, speech: { state: 'failed', step: 'speech_package', stepLabel: SPEECH_STEPS[0].label, percent: 0, message: null, error: reasonFor('speech', done), model: null } };
+    persist(job, 'installing');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Download the speech model once, with progress, after the helper is ready.
+ * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
+ * @param {{python: string[], installOptions: Record<string, any>, options: Record<string, any>}} context
+ */
+async function installSpeechModel(job, context) {
+  const model = SPEECH_MODEL;
+  const write = (/** @type {Partial<SpeechProgress>} */ patch) => {
+    const previous = job.progress.speech ?? { state: 'installing', step: 'speech_model', stepLabel: SPEECH_STEPS[1].label, percent: 0, message: null, error: null, model };
+    job.progress = { ...job.progress, speech: { ...previous, ...patch, model } };
+    persist(job, 'connected');
+  };
+  if (speechModelPresent(model)) {
+    write({ state: 'installed', step: 'speech_model', stepLabel: SPEECH_STEPS[1].label, percent: 100, message: 'Local speech to text is ready.', error: null });
+    return;
+  }
+  write({ state: 'installing', step: 'speech_model', stepLabel: SPEECH_STEPS[1].label, percent: 0, message: 'Downloading the speech model (about 480 MB). It carries on in the background.', error: null });
+  let lastWritten = -10;
+  const fetched = await fetchSpeechModel({
+    python: context.python,
+    model,
+    env: context.installOptions.env,
+    script: context.options.speechScript,
+    pollMs: context.options.speechPollMs,
+    runner: (command, args, timeoutMs, env, input) => runInstallCommand(command, args, timeoutMs, { ...context.installOptions, env, input }),
+    onProgress: ({ percent }) => {
+      // Written about every 5 percent, so the record is not rewritten every poll.
+      if (percent >= 100 || percent - lastWritten >= 5) {
+        lastWritten = percent;
+        write({ state: percent >= 100 ? 'installed' : 'installing', percent, message: percent >= 100 ? 'Local speech to text is ready.' : `Downloading the speech model: ${percent}%.` });
+      }
+    },
+  });
+  if (fetched.ok) write({ state: 'installed', percent: 100, message: 'Local speech to text is ready.', error: null });
+  else write({ state: 'failed', message: null, error: fetched.reason });
+  try {
+    const { resetLocalWhisperCache } = await import('../video/local-whisper.mjs');
+    resetLocalWhisperCache();
+  } catch {
+    // the cache simply expires on its own
+  }
+}
+
+/**
+ * @param {{root: string, jobId: string, ownerId: string, progress: InstallProgress, inFlight: Promise<InstallProgress>|null}} job
+ * @param {{candidates?: string[][], environmentRoot?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], speech?: boolean, speechScript?: string, speechPollMs?: number}} options
  * @returns {Promise<InstallProgress>}
  */
 async function runInstallWithLease(job, options) {
   const candidates = options.candidates ?? pythonCandidates();
   const environmentRoot = options.environmentRoot ?? managedEnvironmentRoot();
-  const workerPath = options.workerPath ?? DEFAULT_WORKER_PATH;
   // Every command run with the managed Python sees the same browsers folder, so
   // the browser is downloaded to, and looked for in, one place.
   const env = researchHelperChildEnv(environmentRoot);
   const installOptions = { ...options, env };
+  const recorded = readResearchHelperRecord(job.root);
+  const wantSpeech = options.speech === true || Boolean(recorded?.speech_consent_at);
+  /** @type {string[]|null} a fixture's interpreter, when a test supplies one. */
+  const fixtureRuntime = Array.isArray(options.runtimeCommand) && options.runtimeCommand.length > 0 ? options.runtimeCommand : testRuntimeCommand();
 
   step(job, 'detecting');
   clearDetectCache();
@@ -1413,24 +1895,18 @@ async function runInstallWithLease(job, options) {
   // compatible package in the user's base interpreter is never accepted as an
   // isolated install. Reuse a recorded managed command first, then an existing
   // managed executable, and create the venv for every other case.
+  /** @type {string[]|null} */
   let python = null;
-  let runtimeEnvironment = environmentRoot;
   let runtimeProbe = null;
-  const recorded = readResearchHelperRecord(job.root);
   const recordedCommand = commandFromRecord(recorded);
-  if (
-    recordedCommand &&
-    recorded?.environment_path === environmentRoot &&
-    recorded?.worker_path === workerPath
-  ) {
+  if (recordedCommand && recorded?.environment_path === environmentRoot) {
     clearDetectCache();
     const checked = await detect(recordedCommand, env);
-    if (checked.python.found && checked.crawl4ai.compatible && checked.chromium.found) {
+    if (checked.python.found && checked.scrapling.found) {
       python = recordedCommand;
       runtimeProbe = checked;
     }
   }
-
   // The managed environment is machine owned, so it can remain usable even when
   // the base Python that originally created it is no longer on PATH. Check it before
   // asking for a base interpreter, which also lets a second workspace attach after
@@ -1438,15 +1914,16 @@ async function runInstallWithLease(job, options) {
   const managedPath = managedPythonPath(environmentRoot);
   if (!python && existsSync(managedPath)) {
     clearDetectCache();
-    const checked = await detect([[managedPath]], env);
-    if (checked.python.found && checked.crawl4ai.compatible && checked.chromium.found) {
-      python = [managedPath];
+    const managedCommand = fixtureRuntime ?? [managedPath];
+    const checked = await detect([managedCommand], env);
+    if (checked.python.found) {
+      python = managedCommand;
       runtimeProbe = checked;
     }
   }
 
-  let found = runtimeProbe;
   let basePython = null;
+  let found = runtimeProbe;
   if (!python) {
     found = await detect(candidates);
     if (!found.python.found) {
@@ -1457,149 +1934,127 @@ async function runInstallWithLease(job, options) {
     }
     basePython = /** @type {string[]} */ (found.python.command);
     updateProgress(job, { pythonVersion: found.python.version });
+  } else {
+    updateProgress(job, { pythonVersion: runtimeProbe?.python.version ?? null });
   }
 
+  const constraints = writeConstraintsFile(environmentRoot);
+  const pinArgs = constraintArgs(constraints);
+  const trusted = fixtureRuntime !== null;
+
   if (!python) {
-    step(job, 'crawl4ai');
+    step(job, 'readers');
     mkdirSync(dirname(environmentRoot), { recursive: true });
-    const created = await runInstallCommand(/** @type {string[]} */ (basePython), ['-m', 'venv', environmentRoot], STEP_TIMEOUT_MS.crawl4ai, installOptions);
-    if (!created.ok) return fail(job, reasonFor('crawl4ai', created, 'managed environment'));
-    python = Array.isArray(options.runtimeCommand) && options.runtimeCommand.length > 0
-      ? [...options.runtimeCommand]
-      : [managedPath];
-    if (!options.runtimeCommand && !existsSync(managedPath)) {
+    const created = await runInstallCommand(/** @type {string[]} */ (basePython), ['-m', 'venv', environmentRoot], STEP_TIMEOUT_MS.readers, installOptions);
+    if (!created.ok) return fail(job, reasonFor('readers', created, 'managed environment'));
+    python = fixtureRuntime ? [...fixtureRuntime] : [managedPath];
+    if (!trusted && !existsSync(managedPath)) {
       return fail(job, 'Python did not create the managed virtual environment. Remove its folder and try again.');
     }
     const pipReady = await ensurePipReady(python, installOptions);
     if (!pipReady.ok) return fail(job, /** @type {string} */ (pipReady.reason));
-    const installed = await runInstallCommand(
-      python,
-      ['-m', 'pip', 'install', ...constraintArgs(writeConstraintsFile(environmentRoot)), `crawl4ai==${CRAWL4AI_VERSION}`],
-      STEP_TIMEOUT_MS.crawl4ai,
-      installOptions,
-    );
-    if (!installed.ok) return fail(job, reasonFor('crawl4ai', installed));
-    const after = await detectCrawl4ai(python, env);
-    if (!after.found || !after.compatible) {
-      return fail(
-        job,
-        after.found
-          ? `The managed environment installed Crawl4AI ${after.version ?? 'an unknown version'}, but ${CRAWL4AI_VERSION} is required.`
-          : 'Crawl4AI installed, but the managed environment could not import its distribution metadata.',
-      );
-    }
-    updateProgress(job, { crawl4aiVersion: after.version });
-    clearDetectCache();
-    runtimeProbe = await detect([python], env);
-  } else {
-    updateProgress(job, { crawl4aiVersion: runtimeProbe?.crawl4ai.version ?? null });
   }
+  const pythonCommand = /** @type {string[]} */ (python);
 
-  if (!runtimeProbe?.python.found || !runtimeProbe.crawl4ai.compatible) {
-    return fail(job, 'The managed environment cannot load the pinned page reader. Try the install again.');
-  }
-  updateProgress(job, { pythonVersion: runtimeProbe.python.version, crawl4aiVersion: runtimeProbe.crawl4ai.version });
-
-  // The rest of the tool set, all under the one constraints file so nothing can move the pinned
-  // packages. Every step here is best effort: a failure leaves the page reader working and is
-  // reported by the tools check, never by failing the install.
-  const constraints = writeConstraintsFile(environmentRoot);
-  const pinArgs = constraintArgs(constraints);
-  const chromiumWasThere = Boolean(runtimeProbe?.chromium.found);
+  // The pinned set. A fresh environment installs it in one pip run, and a failure there ends the install; over an
+  // existing one only what differs from the pins is touched, and a failure leaves the copy that already works.
   const before = installedVersions(environmentRoot);
   const needPin = (/** @type {string} */ pkg, /** @type {string} */ expected) => !before || before.get(pkg) !== expected;
   /** @type {string[]} */
   const pins = [];
-  if (needPin('scrapling', SCRAPLING_VERSION)) pins.push(`scrapling[fetchers]==${SCRAPLING_VERSION}`);
-  if (needPin('playwright', PLAYWRIGHT_VERSION)) pins.push(`playwright==${PLAYWRIGHT_VERSION}`);
-  if (needPin('patchright', PATCHRIGHT_VERSION)) pins.push(`patchright==${PATCHRIGHT_VERSION}`);
-  if (needPin('curl-cffi', CURL_CFFI_VERSION)) pins.push(`curl_cffi==${CURL_CFFI_VERSION}`);
+  if (needPin('scrapling', SCRAPLING_VERSION)) pins.push(PINNED_REQUIREMENTS[0]);
+  if (needPin('playwright', PLAYWRIGHT_VERSION)) pins.push(PINNED_REQUIREMENTS[1]);
+  if (needPin('patchright', PATCHRIGHT_VERSION)) pins.push(PINNED_REQUIREMENTS[2]);
+  if (needPin('curl-cffi', CURL_CFFI_VERSION)) pins.push(PINNED_REQUIREMENTS[3]);
   let pinnedChanged = false;
-  try {
-    if (pins.length > 0) {
-      const done = await runInstallCommand(python, ['-m', 'pip', 'install', ...pinArgs, ...pins], STEP_TIMEOUT_MS.crawl4ai, installOptions);
-      pinnedChanged = done.ok && (!before || pins.some((entry) => entry.startsWith('playwright==') || entry.startsWith('patchright==')));
-    }
-  } catch {
-    // keep going
+  if (pins.length > 0) {
+    step(job, 'readers');
+    const done = await runInstallCommand(pythonCommand, ['-m', 'pip', 'install', ...pinArgs, ...pins], STEP_TIMEOUT_MS.readers, installOptions);
+    pinnedChanged = done.ok;
+    if (!done.ok && (!before || !before.get('scrapling'))) return fail(job, reasonFor('readers', done));
   }
 
   // Video downloads for reference teardowns. Never fatal: without it the research helper still reads pages,
   // and a missing downloader is reported plainly when a video is asked for. yt-dlp is the one package that is
   // kept current (upgrade when it is missing or old); the constraints stop the upgrade moving curl_cffi.
   try {
-    const ytdlpVersion = before?.get('yt-dlp') ?? null;
-    const padded = ytdlpVersion ? ytdlpVersion.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/, (_all, y, m, d) => `${y}.${m.padStart(2, '0')}.${d.padStart(2, '0')}`) : null;
-    const age = padded ? ytdlpAgeDays(padded) : null;
-    if (!before || !ytdlpVersion || (age !== null && age > YTDLP_STALE_DAYS)) {
-      await runInstallCommand(python, ['-m', 'pip', 'install', '--upgrade', ...pinArgs, VIDEO_TOOLS_REQUIREMENT], STEP_TIMEOUT_MS.crawl4ai, installOptions);
+    const latest = readLatestVersions(environmentRoot)?.versions ?? null;
+    const state = researchToolsState(environmentRoot, { latest, ffmpeg: true });
+    if (state.missing.includes('yt-dlp') || state.outdated.includes('yt-dlp')) {
+      await runInstallCommand(pythonCommand, ['-m', 'pip', 'install', '--upgrade', ...pinArgs, VIDEO_TOOLS_REQUIREMENT], STEP_TIMEOUT_MS.readers, installOptions);
     }
   } catch {
     // keep going
   }
 
-  // Playwright's own Chromium is what the page reader drives; it is required on a fresh install.
-  // `scrapling install` is never run: Chromium for both Playwright and Patchright comes from these two commands.
-  if (!chromiumWasThere || (pinnedChanged && !chromiumPresentFor(environmentRoot, 'playwright'))) {
-    step(job, 'browser');
-    const installed = await runInstallCommand(python, ['-m', 'playwright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
-    if (!installed.ok && !chromiumWasThere) return fail(job, reasonFor('browser', installed));
-    clearDetectCache();
-    runtimeProbe = await detect([python], env);
-    if (!chromiumWasThere && (!runtimeProbe.crawl4ai.compatible || !runtimeProbe.chromium.found)) {
-      return fail(job, 'The browser install finished, but the managed environment still cannot load the pinned page reader and Chromium. Try the install again.');
-    }
-  }
+  // The optional speech reader's package goes in before the clean up, so the clean up sees what it needs and keeps it.
+  const speechInstalled = wantSpeech ? await installSpeechPackage(job, { python: pythonCommand, environmentRoot, installOptions, options, pinArgs }) : false;
 
-  // Patchright (the stealth reader's driver) keeps its own Chromium build list. Best effort, and skipped when it is already there.
+  // Retired packages (STALE_PACKAGES) and what only they needed. Best effort.
+  let pruned = { removed: /** @type {string[]} */ ([]), failed: false };
   try {
-    const after = installedVersions(environmentRoot);
-    if (!after || !chromiumPresentFor(environmentRoot, 'patchright')) {
-      await runInstallCommand(python, ['-m', 'patchright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
-    }
+    pruned = await pruneStalePackages(pythonCommand, environmentRoot, { wantSpeech: speechInstalled, installOptions, trusted });
   } catch {
-    // keep going
+    // the next update tries again
   }
 
-  const workerSha256 = researchHelperWorkerSha256(workerPath);
-  if (!workerSha256) return fail(job, 'The browser research worker is missing or is not a regular file. Reinstall Social Campaign and try again.');
+  // The browser: Patchright's Chromium, the one Scrapling's stealth fetcher drives. Playwright shares the same build while
+  // the two versions match, and nothing here runs `playwright install` or `scrapling install`, so there is one download.
+  const browserWasThere = chromiumPresentFor(environmentRoot, 'patchright');
+  if (!browserWasThere || pinnedChanged) {
+    if (!chromiumPresentFor(environmentRoot, 'patchright')) {
+      step(job, 'browser');
+      const installed = await runInstallCommand(pythonCommand, ['-m', 'patchright', 'install', 'chromium'], STEP_TIMEOUT_MS.browser, installOptions);
+      if (!installed.ok && !browserWasThere) return fail(job, reasonFor('browser', installed));
+    }
+  }
+  try {
+    const removedBuilds = pruneOldBrowserBuilds(environmentRoot);
+    if (removedBuilds.length > 0) log.info('research helper removed old browser builds', { removed: removedBuilds });
+  } catch {
+    // old builds are left for the next update
+  }
+  clearDetectCache();
+  runtimeProbe = await detect([pythonCommand], env);
+  if (!runtimeProbe.python.found || !runtimeProbe.scrapling.found || !runtimeProbe.chromium.found) {
+    return fail(job, 'The install finished, but the managed environment still cannot load Scrapling and its browser. Try the install again.');
+  }
+  updateProgress(job, { pythonVersion: runtimeProbe.python.version, scraplingVersion: runtimeProbe.scrapling.version });
+
   step(job, 'smoke');
-  const smoke = await smokeThroughBrowser(python, runtimeEnvironment, workerPath, options.smokeUrl ?? SMOKE_URL, workerSha256);
+  const versions = Object.fromEntries(installedVersions(environmentRoot) ?? []);
+  const smoke = await smokeThroughStealth(pythonCommand, environmentRoot, options.smokeUrl ?? SMOKE_URL, versions.scrapling ?? runtimeProbe.scrapling.version ?? 'unknown');
   if (!smoke.ok) {
     // Everything is on disk but the browser did not come back with a page. That is a
     // working install with a problem, so it is recorded as degraded and the doctor
     // offers to run it again.
     job.progress = { ...job.progress, state: 'failed', error: smoke.reason, finishedAt: nowIso() };
     fallbackProgress = job.progress;
-    persist(job, 'degraded', {
-      pythonPath: python[0],
-      pythonArgs: python.slice(1),
-      environmentRoot: runtimeEnvironment,
-      workerPath,
-      workerSha256,
-      packageVersions: Object.fromEntries(installedVersions(environmentRoot) ?? []),
-    });
+    persist(job, 'degraded', { pythonPath: pythonCommand[0], pythonArgs: pythonCommand.slice(1), environmentRoot, packageVersions: versions });
     return { ...job.progress };
-  }
-
-  // Hash again after the smoke read. A worker replaced while it was being
-  // checked must not be recorded as the bytes that were actually tested.
-  const verifiedWorkerSha256 = researchHelperWorkerSha256(workerPath);
-  if (!verifiedWorkerSha256 || verifiedWorkerSha256 !== workerSha256) {
-    return fail(job, 'The browser research worker changed while it was being checked. Reinstall Social Campaign and try again.');
   }
 
   clearDetectCache();
   step(job, 'done', { state: 'installed', error: null, finishedAt: nowIso() });
-  persist(job, 'connected', {
-    pythonPath: python[0],
-    pythonArgs: python.slice(1),
-    environmentRoot: runtimeEnvironment,
-    workerPath,
-    workerSha256: verifiedWorkerSha256,
-    packageVersions: Object.fromEntries(installedVersions(environmentRoot) ?? []),
-  });
-  log.info('research helper installed', { python: found.python.version, crawl4ai: job.progress.crawl4aiVersion, workspace_root: job.root });
+  persist(job, 'connected', { pythonPath: pythonCommand[0], pythonArgs: pythonCommand.slice(1), environmentRoot, packageVersions: versions });
+  if (pruned.removed.length > 0) {
+    try {
+      updateResearchHelperRecord(job.root, (previous) => ({ ...(previous ?? {}), last_prune: { at: nowIso(), removed: pruned.removed } }));
+    } catch {
+      // the log line above already has it
+    }
+  }
+  log.info('research helper installed', { python: found?.python.version ?? job.progress.pythonVersion, scrapling: job.progress.scraplingVersion, workspace_root: job.root });
+
+  // The speech model is the long download. The helper is already usable, so it is fetched after, in the same job.
+  if (speechInstalled) {
+    try {
+      await installSpeechModel(job, { python: pythonCommand, installOptions, options });
+    } catch (error) {
+      log.warn('speech model download threw', { error: String(error) });
+    }
+    persist(job, 'connected', { pythonPath: pythonCommand[0], pythonArgs: pythonCommand.slice(1), environmentRoot, packageVersions: Object.fromEntries(installedVersions(environmentRoot) ?? []) });
+  }
   return { ...job.progress };
 }
 
@@ -1617,21 +2072,21 @@ function fail(job, reason) {
 }
 
 /**
- * Run the shipped worker through the same BrowserBackend production uses. Keeping
- * the smoke path there catches a missing worker file, an incompatible record and
- * a worker protocol mismatch before the installer reports success.
+ * Read the test page through the same StealthBackend production uses, in a real browser (`render: true`), so the install
+ * is only called ready when the browser itself launches and comes back with a page, and a missing worker file or a
+ * protocol mismatch is caught here and not in the person's first research.
  * @param {string[]} python
  * @param {string} environmentRoot
- * @param {string} workerPath
  * @param {string} url
- * @param {string} workerSha256
+ * @param {string} scraplingVersion
  * @returns {Promise<{ok: true}|{ok: false, reason: string}>}
  */
-async function smokeThroughBrowser(python, environmentRoot, workerPath, url, workerSha256) {
+async function smokeThroughStealth(python, environmentRoot, url, scraplingVersion) {
   try {
-    const { BrowserBackend } = await import('../social/backends/browser.mjs');
-    const backend = new BrowserBackend({
-      scriptPath: workerPath,
+    const { StealthBackend } = await import('../social/backends/stealth.mjs');
+    const backend = new StealthBackend({
+      python: python[0],
+      timeoutMs: STEP_TIMEOUT_MS.smoke,
       state: () => ({
         state: 'connected',
         record_version: RESEARCH_HELPER_RECORD_VERSION,
@@ -1639,18 +2094,85 @@ async function smokeThroughBrowser(python, environmentRoot, workerPath, url, wor
         environment_kind: RESEARCH_HELPER_ENVIRONMENT_KIND,
         environment_path: environmentRoot,
         python_args: python.slice(1),
-        worker_path: workerPath,
-        worker_sha256: workerSha256,
+        scrapling_version: scraplingVersion,
       }),
-      timeoutMs: STEP_TIMEOUT_MS.smoke,
-      killGraceMs: 5_000,
     });
-    const result = await backend.fetch({ url, timeout_ms: STEP_TIMEOUT_MS.smoke });
-    if (!result.ok) return { ok: false, reason: result.reason };
-    if (result.result?.blocked) return { ok: false, reason: 'The test page was blocked by the browser worker.' };
-    if (!String(result.result?.text ?? '').trim()) return { ok: false, reason: 'The test page returned no readable content.' };
+    const result = await backend.page(url, { render: true, timeoutMs: STEP_TIMEOUT_MS.smoke });
+    if (!result.ok) return { ok: false, reason: `The test page could not be read in the browser. ${result.reason}` };
+    if (!String(result.text ?? '').trim()) return { ok: false, reason: 'The test page returned no readable content.' };
     return { ok: true };
   } catch (error) {
-    return { ok: false, reason: `The browser worker could not be checked: ${error instanceof Error ? error.message : String(error)}` };
+    return { ok: false, reason: `The browser reader could not be checked: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
+
+// --- the speech model, outside an install ---
+
+/** @type {Map<string, Promise<void>>} */
+const speechFetches = new Map();
+
+/**
+ * Start the speech model download in the background when a transcription needs it, but only for a person who said yes to
+ * local speech to text and whose helper has the package. Returns at once; the status shows the progress. Safe to call
+ * again while it runs.
+ * @param {import('../workspace/index.mjs').Workspace} workspace
+ * @param {string} [model]
+ * @param {{python?: string[], script?: string, pollMs?: number}} [options] `python` and `script` are test fixture hooks.
+ * @returns {{started: boolean, state: 'downloading'|'no_consent'|'not_installed'|'ready'}}
+ */
+export function ensureSpeechModel(workspace, model = SPEECH_MODEL, options = {}) {
+  const root = workspaceRootOf(workspace);
+  const record = root ? readResearchHelperRecord(root) : null;
+  if (!root || !record?.speech_consent_at) return { started: false, state: 'no_consent' };
+  if (speechModelPresent(model)) return { started: false, state: 'ready' };
+  const environmentRoot = environmentFor(record, undefined);
+  if (!installedVersions(environmentRoot)?.get('faster-whisper')) return { started: false, state: 'not_installed' };
+  const python = options.python ?? commandFromRecord(record) ?? [managedPythonPath(environmentRoot)];
+  if (speechFetches.has(model)) return { started: false, state: 'downloading' };
+  const env = researchHelperChildEnv(environmentRoot);
+  /** @param {Partial<SpeechProgress>} patch */
+  const save = (patch) => {
+    try {
+      updateResearchHelperRecord(root, (previous) => ({
+        ...(previous ?? {}),
+        speech: { ...(previous?.speech ?? {}), step: 'speech_model', model, ...patch },
+      }));
+    } catch {
+      // the download carries on whether or not the record could be written
+    }
+  };
+  save({ state: 'installing', percent: 0, message: 'Downloading the speech model (about 480 MB). It carries on in the background.', error: null });
+  const work = fetchSpeechModel({
+    python,
+    model,
+    env,
+    script: options.script,
+    pollMs: options.pollMs,
+    runner: (command, args, timeoutMs, childEnv, input) => runInstallCommand(command, args, timeoutMs, { env: childEnv, input }),
+    onProgress: ({ percent }) => save({ state: 'installing', percent, message: `Downloading the speech model: ${percent}%.` }),
+  })
+    .then(async (fetched) => {
+      if (fetched.ok) save({ state: 'installed', percent: 100, message: 'Local speech to text is ready.', error: null });
+      else save({ state: 'failed', message: null, error: fetched.reason });
+      try {
+        const { resetLocalWhisperCache } = await import('../video/local-whisper.mjs');
+        resetLocalWhisperCache();
+      } catch {
+        // the cache simply expires on its own
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      speechFetches.delete(model);
+    });
+  speechFetches.set(model, work);
+  return { started: true, state: 'downloading' };
+}
+
+/** Wait for the speech model download in flight, if any. Tests use this. */
+export async function whenSpeechModelSettles() {
+  await Promise.all([...speechFetches.values()]);
+}
+
+/** Exposed for tests: the normalised retired package names an update removes. */
+export const RETIRED_PACKAGES = STALE_PACKAGES.map(normalizeDistName);

@@ -28,9 +28,10 @@ For the brand-onboarding workstream, follow the draft contract pasted in the spa
 If the spawn prompt has no draft contract, ask for it back in your report rather than guessing the draft shape.
 Use a plain date (YYYY-MM-DD) for every `observedAt`; never invent a clock time.
 For the brand-onboarding workstream, the target market comes from the spawn prompt and is Singapore when none is named.
+For the brand-onboarding workstream, take at most 5 of the top videos apart (3 own, 2 competitors) with `pipeline_video_teardown` and `media_transcribe` as the research skill's "Taking the best videos apart" says, within the budget, and skip a video with a gap line when its download fails.
 For job research, competitor and market work uses the market from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.
-The draft file at `draftPath` already holds the right keys, so fill it in place and never add, rename or remove a key.
-When the spawn prompt passes `problems`, fix exactly those in the draft file and finish.
+The draft file at `draftPath` already holds the right keys, so read it, fill in its values and write the whole file back with Write (you have no Edit tool), and never add, rename or remove a key.
+When the spawn prompt passes `problems`, read the draft file, change exactly those, rewrite the whole file with Write, copying each quote exactly from its capture, and finish.
 
 social_post_get, social_comments_get, social_search, social_profile_get, social_outliers_find, social_ad_search, and web_crawl are read-only: use them only to gather evidence for a Sources, Research, or Read the posts task, never to generate or publish anything.
 

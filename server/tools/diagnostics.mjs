@@ -162,6 +162,10 @@ export const diagnosticsTools = [
           description:
             'research_helper only: true after the user has agreed to install it. Without it nothing is installed and the result describes what would be.',
         },
+        speech: {
+          type: 'boolean',
+          description: 'research_helper only: true if the user also agreed to local speech to text (about 630 MB, downloaded in the background).',
+        },
       },
       required: ['check'],
       additionalProperties: false,
@@ -555,7 +559,7 @@ async function researchHelperCheck(workspace) {
     recordedCommand ?? undefined,
     recordUsable ? researchHelperChildEnv(record.environment_path) : undefined,
   );
-  if (recordUsable && found.state === 'connected' && found.crawl4ai.compatible) {
+  if (recordUsable && found.state === 'connected' && found.scrapling.compatible) {
     return {
       ...base,
       status: 'ok',
@@ -574,8 +578,8 @@ async function researchHelperCheck(workspace) {
       ...base,
       status: 'warn',
       detail: lastFailure
-        ? `The page reader is installed, but the browser it drives is not. Last time: ${lastFailure}`
-        : 'The page reader is installed, but the browser it drives is not.',
+        ? `The page readers are installed, but the browser they drive is not. Last time: ${lastFailure}`
+        : 'The page readers are installed, but the browser they drive is not.',
       fix: `Say yes and I will finish setting it up. To do it yourself: ${third}`,
     };
   }
@@ -589,7 +593,7 @@ async function researchHelperCheck(workspace) {
         : found.python.tooOld
           ? 'Not installed. The Python on this computer is older than version 3.10.'
           : 'Not installed.'
-    : 'Not installed. Python is here, but the page reader is not.';
+    : 'Not installed. Python is here, but the page readers are not.';
   return {
     ...base,
     status: 'warn',
@@ -597,8 +601,8 @@ async function researchHelperCheck(workspace) {
       ? `${detail} Research still runs on public pages and web search. Last time: ${lastFailure}`
       : `${detail} Research still runs on public pages and web search.`,
     fix: !found.python.found
-      ? `It needs Python 3.10 or newer first, which Social Campaign does not install. Run ${manualCommands()[0]} yourself, then say yes and I will add the page reader and the browser it drives (several hundred MB). Or do it all yourself: ${second} then ${third}`
-      : `Say yes and I will set it up: the page reader and the browser it drives (several hundred MB). To do it yourself: ${second} then ${third}`,
+      ? `It needs Python 3.10 or newer first, which Social Campaign does not install. Run ${manualCommands()[0]} yourself, then say yes and I will add the page readers and the browser they drive (a download of roughly 400 MB, about 1 GB on disk). Or do it all yourself: ${second} then ${third}`
+      : `Say yes and I will set it up: the page readers and the browser they drive (a download of roughly 400 MB, about 1 GB on disk). To do it yourself: ${second} then ${third}`,
   };
 }
 
@@ -834,7 +838,7 @@ const REPAIRS = {
     // Kicked off, not waited on: the install takes minutes and no tool call is
     // allowed to sit on one. Running the doctor again is how a person watches it
     // finish.
-    const state = startInstall(workspace);
+    const state = startInstall(workspace, { confirmed: true, speech: args?.speech === true, update: true });
     return {
       repaired: state.state === 'installing',
       detail:

@@ -14,6 +14,12 @@
  *     (source brand or competitor, with the competitor's name and the post's link, views and date; an Instagram post, which
  *     shows no views to a signed-out reader, carries its likes instead), the same call
  *     brand_bank_save makes, so saving the same run twice adds nothing.
+ *   - for the few top videos the run took apart (pipeline_video_teardown, with media_transcribe for the words), a post also
+ *     carries a `breakdown` of what the video shows: the spoken opening line, the on-screen text hook, its format, shot types,
+ *     pacing (cuts per 10 seconds), whether a presenter is on camera, the sound, and the call to action. The spoken hook (else the
+ *     on-screen one) is the item's text and the caption becomes its note; the format, the style and the call to action go to the
+ *     same bank as proven `format`, `style` and `cta` items with the post's link as their evidence, and the breakdowns are
+ *     written into brand/platform-playbook.md (brand-files.js) and the research files.
  *
  * The industry the person picks afterwards is not saved here: the onboard-brand skill saves it with brand_bank_save as an
  * `industry` item of the `yours` bank, which the Strategy gate's industry row (strategy-options.mjs) pre-selects.
@@ -37,6 +43,13 @@ const evidence = require(join(HERE, '..', '..', 'pipeline', 'scripts', 'lib-onbo
 
 export const TOP_POST_PLATFORMS = Object.freeze(['instagram', 'tiktok', 'facebook']);
 export const MAX_TOP_POSTS = 12;
+/** The videos a run takes apart: the brand's own best and the competitors' best, 5 in all (each teardown is one fetch of the run's budget). */
+export const MAX_OWN_BREAKDOWNS = 3;
+export const MAX_COMPETITOR_BREAKDOWNS = 2;
+export const MAX_BREAKDOWNS = MAX_OWN_BREAKDOWNS + MAX_COMPETITOR_BREAKDOWNS;
+export const BREAKDOWN_SOUNDS = Object.freeze(['music', 'voiceover', 'music and voiceover', 'none']);
+const POST_FIELDS = Object.freeze(['source', 'competitor', 'platform', 'url', 'text', 'caption', 'views', 'likes', 'date', 'breakdown']);
+const BREAKDOWN_FIELDS = Object.freeze(['spokenHook', 'onScreenHook', 'format', 'style', 'shotTypes', 'cutsPer10s', 'presenter', 'sound', 'cta']);
 const OWN_PER_PLATFORM = 3;
 const PER_COMPETITOR = 2;
 const POST_TEXT_MAX = 600;
@@ -57,11 +70,91 @@ function hostMatches(url, platform) {
   return host === `${platform}.com` || host.endsWith(`.${platform}.com`);
 }
 
+// ---------------------------------------------------------------- the video breakdowns in the draft
+const sameWords = (a, b) => plain(a).toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '') === plain(b).toLowerCase().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '');
+
+/**
+ * Check one post's `breakdown`: what the researcher saw and heard when it took the video apart with pipeline_video_teardown and
+ * media_transcribe. { spokenHook?, onScreenHook?, format, style?, shotTypes?: [text], cutsPer10s?, presenter?: boolean, sound?, cta? }.
+ * `format` is needed (what kind of video it is); the hooks are the words as they are said or shown, left out when there are none;
+ * cutsPer10s is the teardown's cut count over its length, times ten. Returns the cleaned breakdown, or null when it has a problem.
+ */
+function breakdownOf(raw, field, fail) {
+  if (!isObject(raw)) { fail('breakdown', 'breakdown must be an object, or left out for a post that was not taken apart.'); return null; }
+  let ok = true;
+  const bad = (key, problem) => { ok = false; fail(`breakdown.${key}`, problem); };
+  for (const key of Object.keys(raw)) if (!BREAKDOWN_FIELDS.includes(key)) bad(key, `"${key}" is not a breakdown field. Use ${BREAKDOWN_FIELDS.join(', ')}.`);
+  const text = (key, max, required = false) => {
+    const value = raw[key];
+    if (value === undefined || value === null || value === '') { if (required) bad(key, `${key} is required: say what kind of video it is.`); return ''; }
+    if (typeof value !== 'string') { bad(key, `${key} must be text.`); return ''; }
+    const words = plain(value);
+    if (words.length > max) bad(key, `${key} must be at most ${max} characters (has ${words.length}).`);
+    return words;
+  };
+  const out = {};
+  const spokenHook = text('spokenHook', 300);
+  const onScreenHook = text('onScreenHook', 300);
+  const format = text('format', 120, true);
+  const style = text('style', 160);
+  const cta = text('cta', 160);
+  if (spokenHook) out.spokenHook = spokenHook;
+  if (onScreenHook) out.onScreenHook = onScreenHook;
+  if (format) out.format = format;
+  if (style) out.style = style;
+  if (raw.shotTypes !== undefined && raw.shotTypes !== null) {
+    if (!Array.isArray(raw.shotTypes)) bad('shotTypes', 'shotTypes must be a list of short shot names such as "close up".');
+    else {
+      if (raw.shotTypes.length > 6) bad('shotTypes', `shotTypes holds at most 6 shots (has ${raw.shotTypes.length}).`);
+      const shots = raw.shotTypes.slice(0, 6).map((item) => (typeof item === 'string' ? plain(item) : ''));
+      if (shots.some((item) => !item || item.length > 60)) bad('shotTypes', 'Each shot type is a short name, at most 60 characters.');
+      else if (shots.length) out.shotTypes = shots;
+    }
+  }
+  if (raw.cutsPer10s !== undefined && raw.cutsPer10s !== null) {
+    if (typeof raw.cutsPer10s !== 'number' || !Number.isFinite(raw.cutsPer10s) || raw.cutsPer10s < 0 || raw.cutsPer10s > 40) bad('cutsPer10s', 'cutsPer10s must be a number from 0 to 40: the teardown\'s cut count over the video\'s length in seconds, times 10.');
+    else out.cutsPer10s = Math.round(raw.cutsPer10s * 10) / 10;
+  }
+  if (raw.presenter !== undefined && raw.presenter !== null) {
+    if (typeof raw.presenter !== 'boolean') bad('presenter', 'presenter must be true when a person talks or shows themselves on camera, false when none does, or left out when unclear.');
+    else out.presenter = raw.presenter;
+  }
+  if (raw.sound !== undefined && raw.sound !== null && raw.sound !== '') {
+    const sound = typeof raw.sound === 'string' ? plain(raw.sound).toLowerCase() : '';
+    if (!BREAKDOWN_SOUNDS.includes(sound)) bad('sound', `sound must be one of ${BREAKDOWN_SOUNDS.join(', ')}.`);
+    else out.sound = sound;
+  }
+  if (cta) out.cta = cta;
+  return ok ? out : null;
+}
+
+/** How fast the cuts come, in words, from cuts per 10 seconds. */
+export function pacingWords(cutsPer10s) {
+  if (!Number.isFinite(cutsPer10s)) return null;
+  if (cutsPer10s >= 6) return 'fast cuts';
+  if (cutsPer10s >= 2) return 'steady cuts';
+  return 'few cuts';
+}
+
+/** The style line of a breakdown: the researcher's own words, else one made from what was measured (pacing, presenter, sound). */
+export function styleOf(breakdown) {
+  if (breakdown?.style) return breakdown.style;
+  const parts = [
+    pacingWords(breakdown?.cutsPer10s) ? `${pacingWords(breakdown.cutsPer10s)} (about ${breakdown.cutsPer10s} per 10 seconds)` : null,
+    breakdown?.presenter === true ? 'a presenter on camera' : breakdown?.presenter === false ? 'no presenter' : null,
+    breakdown?.sound && breakdown.sound !== 'none' ? breakdown.sound : breakdown?.sound === 'none' ? 'no sound' : null,
+  ].filter(Boolean);
+  return parts.length >= 2 ? parts.join(', ') : null;
+}
+
 // ---------------------------------------------------------------- the top posts in the draft
 /**
  * Check a draft's `topPosts`: the best posts social_outliers_find (or social_profile_get) showed on the brand's own accounts
- * and on its competitors'. Each is { source: 'brand' | 'competitor', competitor?, platform, url, text, views, likes?, date }.
- * `text` is the post's opening words exactly as its caption has them. A post without a caption, views or date is left out of the
+ * and on its competitors'. Each is { source: 'brand' | 'competitor', competitor?, platform, url, text, views, likes?, date, caption?, breakdown? }.
+ * `text` is the post's opening words exactly as its caption has them. A post the run took apart (at most 3 of the brand's own and 2 of
+ * its competitors') carries a `breakdown` (see breakdownOf); its `text` is then the spoken hook when it has one, else the on-screen
+ * hook, and the caption becomes `caption`, so whichever way the draft gives them the checked post has the hook as its text and the
+ * caption as its note. A post without a caption, views or date is left out of the
  * draft by the researcher, never filled in or rounded. Instagram shows no view counts to a signed-out reader, so an Instagram post
  * may carry `likes` instead of `views`; a post that has both keeps both, with views as the headline. Every other platform needs views.
  * A checked post always has both keys: `views` and `likes` are a whole number or null.
@@ -76,12 +169,15 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
   const value = [];
   const own = {};
   const theirs = {};
+  let breakdowns = 0;
+  let ownBreakdowns = 0;
+  let competitorBreakdowns = 0;
   input.slice(0, MAX_TOP_POSTS).forEach((item, index) => {
     const field = `topPosts[${index}]`;
     const fail = (key, problem) => problems.push({ field: `${field}.${key}`, problem });
     if (!isObject(item)) { problems.push({ field, problem: 'Each post must be an object.' }); return; }
     for (const key of Object.keys(item)) {
-      if (!['source', 'competitor', 'platform', 'url', 'text', 'views', 'likes', 'date'].includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views (likes instead of views for Instagram), date.`);
+      if (!POST_FIELDS.includes(key)) fail(key, `"${key}" is not a post field. Use source, competitor, platform, url, text, views (likes instead of views for Instagram), date, and caption and breakdown for a video that was taken apart.`);
     }
     const source = item.source;
     if (source !== 'brand' && source !== 'competitor') fail('source', 'source must be brand (one of the brand\'s own posts) or competitor.');
@@ -90,9 +186,28 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
     const url = runtime.webLink(item.url);
     if (!url) fail('url', 'url must be the https link of the post.');
     else if (TOP_POST_PLATFORMS.includes(platform) && !hostMatches(url, platform)) fail('url', `url must be a link on ${platform}.`);
-    const text = plain(item.text);
+    let text = plain(item.text);
     if (!text) fail('text', 'text is empty. Use the post\'s opening words exactly as its caption has them, or leave the post out.');
     else if (text.length > POST_TEXT_MAX) fail('text', `text must be at most ${POST_TEXT_MAX} characters (has ${text.length}).`);
+    let caption = '';
+    if (item.caption !== undefined && item.caption !== null && item.caption !== '') {
+      if (typeof item.caption !== 'string') fail('caption', 'caption must be text: the post\'s caption.');
+      else if (plain(item.caption).length > POST_TEXT_MAX) fail('caption', `caption must be at most ${POST_TEXT_MAX} characters.`);
+      else caption = plain(item.caption);
+    }
+    let breakdown = null;
+    if (item.breakdown !== undefined && item.breakdown !== null) {
+      breakdown = breakdownOf(item.breakdown, field, fail);
+      if (breakdown) {
+        const hook = breakdown.spokenHook || breakdown.onScreenHook || '';
+        // The hook that was said (else shown) is the item's text; the caption it replaces is kept as a note.
+        if (hook && text && !sameWords(text, hook)) { if (!caption) caption = text; text = hook; }
+        else if (hook && !text) text = hook;
+        breakdowns += 1;
+        if (item.source === 'brand') ownBreakdowns += 1;
+        if (item.source === 'competitor') competitorBreakdowns += 1;
+      }
+    }
     const count = (raw) => (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.round(raw) : null);
     const views = count(item.views);
     const likes = count(item.likes);
@@ -121,9 +236,17 @@ export function topPostsProblems(input, { competitors = [], now = new Date() } =
       theirs[competitor] = (theirs[competitor] ?? 0) + 1;
       if (theirs[competitor] === PER_COMPETITOR + 1) problems.push({ field: 'topPosts', problem: `Keep at most ${PER_COMPETITOR} posts per competitor (${competitor} has more).` });
     }
-    value.push({ source, competitor, platform, url, text, views, likes, date });
+    value.push({ source, competitor, platform, url, text, ...(caption && caption !== text ? { caption } : {}), views, likes, date, ...(breakdown ? { breakdown } : {}) });
   });
+  if (ownBreakdowns > MAX_OWN_BREAKDOWNS) problems.push({ field: 'topPosts', problem: `Take apart at most ${MAX_OWN_BREAKDOWNS} of the brand's own videos (${ownBreakdowns} have a breakdown).` });
+  if (competitorBreakdowns > MAX_COMPETITOR_BREAKDOWNS) problems.push({ field: 'topPosts', problem: `Take apart at most ${MAX_COMPETITOR_BREAKDOWNS} competitor videos in all (${competitorBreakdowns} have a breakdown).` });
   return { value, problems };
+}
+
+/** How many of the checked posts carry a breakdown, and how many of them are the brand's own. */
+export function breakdownCounts(posts) {
+  const list = (Array.isArray(posts) ? posts : []).filter((post) => post && post.breakdown);
+  return { total: list.length, own: list.filter((post) => post.source === 'brand').length, competitor: list.filter((post) => post.source === 'competitor').length };
 }
 
 /** The evidence a post leaves in the proven bank: {url, likes, date} for a post with likes and no views (Instagram), {url, views, date} otherwise. */
@@ -133,25 +256,49 @@ function evidenceOfPost(post) {
 }
 
 /**
+ * The lines a post gives the bank besides its main hook, as { kind, text, note? }: the on-screen hook when it differs from the spoken
+ * one (a second hook, noted as shown on screen), the format, the style and the call to action of a video that was taken apart.
+ */
+export function breakdownLines(post) {
+  const breakdown = post?.breakdown;
+  if (!breakdown) return [];
+  const lines = [];
+  if (breakdown.spokenHook && breakdown.onScreenHook && !sameWords(breakdown.spokenHook, breakdown.onScreenHook)) lines.push({ kind: 'hook', text: breakdown.onScreenHook, note: 'The text shown on screen at the start of the video.' });
+  if (breakdown.format) lines.push({ kind: 'format', text: breakdown.format });
+  const style = styleOf(breakdown);
+  if (style) lines.push({ kind: 'style', text: style });
+  if (breakdown.cta) lines.push({ kind: 'cta', text: breakdown.cta });
+  return lines;
+}
+
+/**
  * Save the posts as proven hooks, once each. A post whose words are already in the bank is not added again, so a second save of
- * the same run, or a second run that finds the same post, changes nothing.
- * @returns {{ saved: number, existing: number, skipped: number }}
+ * the same run, or a second run that finds the same post, changes nothing. A post that was taken apart also gives its on-screen hook,
+ * format, style and call to action as proven items with the same link as their evidence (`breakdowns` counts those), and a hook
+ * that is not the caption keeps the caption as its note.
+ * @returns {{ saved: number, existing: number, skipped: number, breakdowns?: { videos: number, saved: number, existing: number } }} breakdowns is there only when a post was taken apart
  */
 export function fileTopPosts({ root, brand, posts, now }) {
   let saved = 0;
   let existing = 0;
   let skipped = 0;
+  const breakdowns = { videos: 0, saved: 0, existing: 0 };
   for (const post of Array.isArray(posts) ? posts : []) {
+    const common = { root, brand, bank: 'proven', evidence: evidenceOfPost(post), source: post.source, competitor: post.source === 'competitor' ? post.competitor : null, now };
     try {
-      const out = addToBank({
-        root, brand, bank: 'proven', kind: 'hook', text: post.text,
-        evidence: evidenceOfPost(post),
-        source: post.source, competitor: post.source === 'competitor' ? post.competitor : null, now,
-      });
+      const out = addToBank({ ...common, kind: 'hook', text: post.text, note: post.caption ? `The post's caption: ${post.caption}` : null });
       if (out.saved) saved += 1; else existing += 1;
-    } catch { skipped += 1; }
+    } catch { skipped += 1; continue; }
+    if (!post.breakdown) continue;
+    breakdowns.videos += 1;
+    for (const line of breakdownLines(post)) {
+      try {
+        const out = addToBank({ ...common, kind: line.kind, text: line.text, note: line.note ?? null });
+        if (out.saved) breakdowns.saved += 1; else breakdowns.existing += 1;
+      } catch { skipped += 1; }
+    }
   }
-  return { saved, existing, skipped };
+  return { saved, existing, skipped, ...(breakdowns.videos ? { breakdowns } : {}) };
 }
 
 // ---------------------------------------------------------------- the research files
@@ -169,7 +316,26 @@ function findingText(value) {
 }
 
 function post(item) {
-  return `- ${item.platform}: "${clip(item.text, 200)}" - ${[countText(item), item.date, item.url].filter(Boolean).join(', ')}`;
+  const head = `- ${item.platform}: "${clip(item.text, 200)}" - ${[countText(item), item.date, item.url].filter(Boolean).join(', ')}`;
+  const more = [];
+  if (item.caption) more.push(`  Caption: "${clip(item.caption, 200)}"`);
+  const video = item.breakdown ? videoFacts(item.breakdown) : '';
+  if (video) more.push(`  Taken apart: ${video}`);
+  return [head, ...more].join('\n');
+}
+
+/** What a breakdown found, in one line: format, pacing, presenter, sound, call to action and the shots. */
+export function videoFacts(breakdown) {
+  const parts = [
+    breakdown.format,
+    Number.isFinite(breakdown.cutsPer10s) ? `${breakdown.cutsPer10s} cuts per 10 seconds` : null,
+    breakdown.presenter === true ? 'presenter on camera' : breakdown.presenter === false ? 'no presenter' : null,
+    breakdown.sound ? (breakdown.sound === 'none' ? 'no music or voice-over' : breakdown.sound) : null,
+    Array.isArray(breakdown.shotTypes) && breakdown.shotTypes.length ? `shots: ${breakdown.shotTypes.join(', ')}` : null,
+    breakdown.onScreenHook ? `on screen: "${clip(breakdown.onScreenHook, 120)}"` : null,
+    breakdown.cta ? `call to action: "${clip(breakdown.cta, 120)}"` : null,
+  ].filter(Boolean);
+  return parts.join('; ');
 }
 
 function sourceLine(source, base) {

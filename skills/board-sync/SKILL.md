@@ -40,9 +40,9 @@ Before any of this, if this session's first successful `pipeline_status`, `pipel
 When the artifact tools are not available, stop and name the missing host tool.
 
 At the start of every new session or resume, and whenever a reminder says to re-arm the board's wake-up, read the bound board with the Artifact tool's `read` action (together with its `list` action, `scope: "files"`, as board-setup's order describes), then republish that same page to the same `url` right away, even when nothing else changed.
-Only the one-time migration from the old large board has a saved file to Read completely, in line-sized parallel chunks, before publishing, as board-setup's order describes.
+Only the one-time migration from the old large board has a saved file to Read completely, in the parallel Reads sized by characters that board-setup's migration step describes, before publishing.
 Reading it that way records its long id as the alias automatically; there is no separate call to make for that.
-When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source`, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action, publish the returned `filePath` and `files` to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
+When a reminder says the board page is out of date instead, refresh it rather than republishing the same page: call `pipeline_board_source` with `url` set to the bound board's address, apply that update check to its result if no earlier result this session was checked, read the bound board with the Artifact tool's `read` action (issuing every Read in the result's `reads` in the same message), publish the returned `filePath` and `files` (only the files that changed) to that same `url` with the returned `capabilities` and `icon`, then call `pipeline_board_bind` with that same `url` and the returned `sourceHash` and `sourceVersion`, exactly as board-setup's refresh path describes.
 That refresh already re-arms the wake-up too, so no separate republish is needed after it.
 Then list the board's saved `requests` and handle every one still marked `requested` through Land and apply requests below, exactly as if a comment had just woken the session.
 A comment that names the board by its long `claude.ai/code/artifact/<uuid>` form is the same board as the bound `claude.ai/artifact/<id>` link; treat either address as this session's board.
@@ -56,6 +56,7 @@ A reminder that some made files aren't saved means outputs are still waiting on 
 ## Publish current state
 
 Reuse the current workspace projection when the latest response from `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` or `pipeline_review_present` already includes it.
+A connector check changes what the Connectors step shows, and the projection from before it is out of date: after `integration_probe`, `integration_probes_save`, `pipeline_metricool_brands_save` or `pipeline_ad_accounts_save`, call `pipeline_status` again and write the documents it returns, so a connected connector reads Connected on its card.
 Use the workspace's existing artifact binding from `pipeline_board_open`.
 `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` and `pipeline_review_present` return `documents`: a list of `{collection, doc_id, file_path}` entries, the job documents first and the workspace projection last.
 Get full job detail from `pipeline_job_read`; `pipeline_status` gives each job's `brand`, `title`, `jobId`, `revision`, `state` and `waitingOn` for a summary line, not a job's full content or pending review details.
@@ -78,7 +79,7 @@ If a write fails, retain all local data and report that the artifact is waiting 
 Write the documents again whenever research or strategy lands, whenever a stage produces reviewable output, and after every applied request or decision, so the board always shows the current stage and its output.
 For each video job, call `pipeline_handoff_post_status` before writing, and follow `skills/send-to-post/SKILL.md` when it says to offer, wait or bring the final video back.
 
-When `pipeline_board_open` reports `sourceStatus: needs_refresh`, call `pipeline_board_source`, read the existing board with the Artifact tool's `read` action, then publish the returned `filePath` and `files` with that same `url` and the returned `capabilities`, which declare the `jobDocs` collection.
+When `pipeline_board_open` reports `sourceStatus: needs_refresh`, call `pipeline_board_source` with `url` set to the bound board's address, read the existing board with the Artifact tool's `read` action (issuing every Read in the result's `reads` in the same message, as board-setup's order describes), then publish the returned `filePath` and `files` with that same `url` and the returned `capabilities`, which declare the `jobDocs` collection.
 Call `pipeline_board_bind` with the same URL and the new publish receipt only after the host update succeeds.
 A changed source hash does not prove that the host update happened.
 Keep the source file path out of the artifact database.
@@ -247,7 +248,7 @@ For a `continue_job` request, apply it once and pass its returned snapshot to `n
 Never create a replacement job to answer missing intake fields.
 Local imports use a source folder selected on the runner's computer, never a Drive URL.
 
-For `skip_provider`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request.
+The board no longer offers a Skip button on a connector card; a `skip_provider` request left by an older board page is applied immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request.
 It records the choice in the workspace's `integrations.json` and never touches the other connector.
 
 For `connectors_continue` (the Continue on the setup Connectors step), apply it immediately the same way, then publish the workspace projection so the board moves on to the brand.
@@ -271,12 +272,18 @@ Find Meta ads by the tool base name `ads_get_ad_accounts` and TikTok ads by `aut
 Call only that read-only listing tool, then `integration_probe` with provider `meta_ads` or `tiktok_ads`, then `pipeline_ad_accounts_save` with the list exactly as returned.
 Apply the request only when the probe was `ok: true`; when the connector is missing or the call fails, probe with `ok: false`, decline the request with one plain reason, and publish the workspace projection.
 Never call an ad tool that creates, updates, activates, pauses or deletes anything while handling a connection request.
-When a person answers the "Which Meta ad account belongs to ..." or "Which TikTok ad account belongs to ..." question in chat, call `pipeline_ad_account_choose`; a board answer is applied for you.
+When a person answers the "Which Meta ad account belongs to ..." or "Which TikTok ad account belongs to ..." question in chat, call `pipeline_ad_account_choose` with the account id, or with `none` when they have no ad account yet or `later` when they are not sure; a board answer (its last two buttons are "No Meta ad account yet" and "Not sure, decide later") is applied for you.
+A single connection check can also use `integration_probes_save` with one entry, the same as setup does for all of them at once.
 
 For `answer_question`, apply it immediately with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request, then read the saved answer with `pipeline_board_questions`; see Questions on the board below.
 
 A `bank_remove` request is the person removing one of their own items from the Brand library on the board: land it, remove the item it names with `brand_bank_save`, apply it immediately with `pipeline_board_request_apply`, then publish the workspace projection.
 If the removal fails, decline the request with `pipeline_board_request_decline` and one plain reason.
+
+A `brand_folder_add` request is the person adding a folder of the brand's videos, photos or fonts on the onboarding page (its args are `brand`, `folder`, `rights` and an optional `label`; the rights are their own answer, never change them).
+Land it and apply it immediately with `pipeline_board_request_apply`: the apply imports the folder the way `brand_footage_import` does and reads it in the background, for free, without copying or changing a file.
+Then publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md` to look at a few files, ask before a full pass and report what was found.
+If the apply refuses it (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
 
 When an artifact request is applied, project only its `artifactReceipt` back to the artifact: `status`, `requestId`, `appliedAt`, and a short `detail` or `message` when present.
 Keep the original request envelope and `args` unchanged for idempotent retries.

@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.35.
+Current version: 0.17.36.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -300,8 +300,8 @@ It is also what reads colours from a social profile picture when a website gives
 **Recommended:** yt-dlp, for TikTok posts and video addresses.
 
 **Optional:** a browser-driven research helper, for sites that show almost nothing to a plain page fetch.
-It needs Python 3.10 or later, and it installs itself in the background once your workspace is set up.
-Nothing else waits for it.
+It needs Python 3.10 or later, and it installs only after you say yes, in the one question setup asks (a download of roughly 400 MB, about 1 GB on disk, in the background; free speech to text for videos without captions is a separate choice in the same question, about 630 MB more).
+Nothing else waits for it, and it keeps itself current, removing what it no longer uses.
 `/social-campaign:doctor` reports on it and offers a repair.
 
 ### 4. Connect 3echo Studio, ElevenLabs and Metricool
@@ -315,7 +315,7 @@ The plugin has no sign-in of its own and stores no keys.
 - Metricool schedules, saves as drafts and posts to Facebook, Instagram and TikTok. It is optional: without it, you get a posting kit and post yourself.
 
 Setup detects a connector you already added and shows it as Connected.
-It asks about 3echo Studio and ElevenLabs when they are missing, each with Connect or Skip for now.
+It offers 3echo Studio and ElevenLabs when they are missing, each with Connect, and one Continue moves on from any that are not connected yet.
 A skipped connector is asked about again only when a stage needs it.
 Metricool never holds setup up: its card stays on the board, and you can connect it any time.
 With one Metricool brand, your brand uses it.

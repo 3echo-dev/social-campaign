@@ -135,6 +135,19 @@ function workspaceIdOf(root) {
   return plainObject(config) && typeof config.workspaceId === 'string' ? config.workspaceId : null;
 }
 
+// The hash of every published file of the board, by published path, as recorded when its source was bound: the files
+// of a refresh that did not change are left out of the next publish. Anything that is not a map of paths to SHA-256 hex
+// digests reads as nothing recorded, so a damaged record only means every file is published again.
+export function normalizeFileHashes(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const hashes = {};
+  for (const [path, hash] of Object.entries(value)) {
+    if (!/^[A-Za-z0-9._-]{1,80}$/.test(path) || typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+    hashes[path] = hash.toLowerCase();
+  }
+  return Object.keys(hashes).length ? hashes : null;
+}
+
 export function readBoardLink(root) {
   if (!root) return null;
   const config = readJson(join(resolve(root), '.social-pipeline', 'config.json'));
@@ -148,12 +161,12 @@ export function readBoardLink(root) {
       const url = canonicalArtifactUrl(record.url);
       const sourceVersion = typeof record.sourceVersion === 'string' && record.sourceVersion ? record.sourceVersion : null;
       const sourceHash = typeof record.sourceHash === 'string' && record.sourceHash ? record.sourceHash : null;
-      return url ? { url, aliasUrl: canonicalArtifactUrl(record.aliasUrl), sourceVersion, sourceHash } : null;
+      return url ? { url, aliasUrl: canonicalArtifactUrl(record.aliasUrl), sourceVersion, sourceHash, fileHashes: normalizeFileHashes(record.fileHashes) } : null;
     }
     if (record.workspaceId != null) return null;
   }
   const legacy = plainObject(config) ? canonicalArtifactUrl(config.board?.ref) : null;
-  return legacy ? { url: legacy, aliasUrl: null, sourceVersion: null, sourceHash: null } : null;
+  return legacy ? { url: legacy, aliasUrl: null, sourceVersion: null, sourceHash: null, fileHashes: null } : null;
 }
 
 export function currentBoardSourceHash(root) {
@@ -289,7 +302,7 @@ export function boardSessionLines(root, sessionId) {
     const lines = [
       `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`,
       boardSourceOutdated(link, root)
-        ? 'The board page is out of date. Before replying, refresh it: call pipeline_board_source, read the bound board with the Artifact tool, publish the returned file to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true, or no pluginVersion, publish nothing: Social Campaign was just updated, so tell the person once to open a new chat and type /social-campaign to carry on.'
+        ? 'The board page is out of date. Before replying, refresh it: call pipeline_board_source with the bound url, read the bound board with the Artifact tool, publish the returned page and files to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true, or no pluginVersion, publish nothing: Social Campaign was just updated, so tell the person once to open a new chat and type /social-campaign to carry on.'
         : `Before replying, re-arm its wake-up: read ${link.url} with the Artifact tool, then republish that same page to the same url. Then list the board's saved requests and handle them through board-sync.`,
     ];
     if (waiting) {

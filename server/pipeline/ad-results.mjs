@@ -18,7 +18,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 
 import * as runtime from './runtime.mjs';
-import { AD_PROVIDERS, readBrandAdAccount } from './ad-accounts.mjs';
+import { AD_PROVIDERS, askAdAccountAgain, readBrandAdAccount, readBrandAdChoice } from './ad-accounts.mjs';
 import { recordAdResultsQuietly } from './brand-results.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -157,6 +157,26 @@ function brandEntry(root, slug) {
 }
 
 /**
+ * What a step that needs the brand's ad account says when it has none: the person said there is none yet, said they were
+ * not sure (the question is asked again now, in Needs you), or never answered.
+ */
+function noAdAccountMessage({ root, brand, path, provider }) {
+  const words = PROVIDER_WORDS[provider];
+  const choice = readBrandAdChoice(path, provider);
+  if (choice?.kind === 'none') {
+    return `This brand has no ${words} ad account yet, so there are no ad results to read for it. Say that plainly. The question comes back on its own if a ${words} ad account is added later.`;
+  }
+  if (choice?.kind === 'later') {
+    let asked = false;
+    try { asked = askAdAccountAgain({ root, brand, provider }).asked.length > 0; } catch { asked = false; }
+    return asked
+      ? `The ${words} ad account for this brand was left to decide later. The question is now waiting in Needs you; tell the person once and stop until they answer.`
+      : `The ${words} ad account for this brand was left to decide later and could not be asked again yet. Check the ${words} connection first so its accounts are listed.`;
+  }
+  return `This brand has no ${words} ad account chosen yet. Check the connection first so one is chosen.`;
+}
+
+/**
  * Save one ad account's results for one date range into the job. The account must be the one
  * chosen for the job's brand, so results from another business never land in this job.
  */
@@ -164,8 +184,9 @@ export function saveAdResults({ root, brand, jobId, provider, accountId, dateSta
   if (!AD_PROVIDERS.includes(provider)) throw new Error(`Use one of ${AD_PROVIDERS.join(', ')}.`);
   if (!AD_RESULT_LEVELS.includes(level)) throw new Error(`level must be one of ${AD_RESULT_LEVELS.join(', ')}.`);
   const job = runtime.resolveJobDir({ root, brand, jobId });
-  const chosen = readBrandAdAccount(brandEntry(job.root, job.brand).path, provider);
-  if (!chosen) throw new Error(`This brand has no ${PROVIDER_WORDS[provider]} ad account chosen yet. Check the connection first so one is chosen.`);
+  const brandPath = brandEntry(job.root, job.brand).path;
+  const chosen = readBrandAdAccount(brandPath, provider);
+  if (!chosen) throw new Error(noAdAccountMessage({ root: job.root, brand: job.brand, path: brandPath, provider }));
   const account = text(accountId, 80);
   if (!account || account !== chosen.id) throw new Error(`These results are from a different ${PROVIDER_WORDS[provider]} ad account than the one chosen for this brand (${chosen.name || chosen.id}).`);
   const start = validDate(dateStart, 'dateStart');

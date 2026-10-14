@@ -521,25 +521,27 @@ function applyKit(brandDir, normalized, options = {}) {
   return { profilePatch, commit };
 }
 
+/** Writes an uploaded logo (a validated 'upload' logo) under assets/provided and returns its record, or null for anything else. */
+function writeProvidedLogo(brandDir, logoInput, source) {
+  if (!logoInput || logoInput.action !== 'upload') return null;
+  const ext = MIME_EXT[logoInput.mimeType] || 'png';
+  const destRel = `assets/provided/logo.${ext}`;
+  writeFileSafe(path.join(brandDir, 'brand', destRel), logoInput.buffer);
+  let destThumbRel = null;
+  if (logoInput.thumbBuffer) {
+    const thumbExt = MIME_EXT[logoInput.thumbMimeType] || ext;
+    destThumbRel = `assets/provided/logo-thumb.${thumbExt}`;
+    writeFileSafe(path.join(brandDir, 'brand', destThumbRel), logoInput.thumbBuffer);
+  }
+  return { file: destRel, thumb: destThumbRel, mimeType: logoInput.mimeType, width: logoInput.width ?? null, height: logoInput.height ?? null, source: source || 'upload' };
+}
+
 /** Kickoff-time storage of a kit offered before the brand is complete. Status stays pending. */
 function recordProvided(brandDir, normalized, options = {}) {
   const nowIso = toIso(options.now);
   const requestId = options.requestId ? String(options.requestId) : null;
   ensurePending(brandDir, { now: options.now });
-  const logoInput = normalized && normalized.logo;
-  let logoRecord = null;
-  if (logoInput && logoInput.action === 'upload') {
-    const ext = MIME_EXT[logoInput.mimeType] || 'png';
-    const destRel = `assets/provided/logo.${ext}`;
-    writeFileSafe(path.join(brandDir, 'brand', destRel), logoInput.buffer);
-    let destThumbRel = null;
-    if (logoInput.thumbBuffer) {
-      const thumbExt = MIME_EXT[logoInput.thumbMimeType] || ext;
-      destThumbRel = `assets/provided/logo-thumb.${thumbExt}`;
-      writeFileSafe(path.join(brandDir, 'brand', destThumbRel), logoInput.thumbBuffer);
-    }
-    logoRecord = { file: destRel, thumb: destThumbRel, mimeType: logoInput.mimeType, width: logoInput.width ?? null, height: logoInput.height ?? null, source: 'upload' };
-  }
+  const logoRecord = writeProvidedLogo(brandDir, normalized && normalized.logo);
   const palette = normalized && normalized.palette !== undefined ? normalized.palette : [];
   const fonts = normalized && normalized.fonts !== undefined ? normalized.fonts : [];
   const file = kitFile(brandDir);
@@ -553,6 +555,45 @@ function recordProvided(brandDir, normalized, options = {}) {
     return JSON.stringify(existing, null, 2) + '\n';
   }, '');
   return record;
+}
+
+/**
+ * Add a logo and/or fonts the person gave after the kickoff (found in their own folders) to `provided`, keeping what is already there:
+ * `parts` is { logo?: a validated 'upload' logo, fonts?: [{family, use}], source?: string }. Fonts join the fonts already shown (the
+ * provided ones, else the proposed ones), skip a family already there and stop at the limit. The kit's status does not change, so the
+ * person still confirms it with Save and continue. Returns { record, fonts, added: [family], logo: boolean }.
+ */
+function addProvided(brandDir, parts = {}, options = {}) {
+  const nowIso = toIso(options.now);
+  const logoRecord = writeProvidedLogo(brandDir, parts.logo, parts.source);
+  const wanted = Array.isArray(parts.fonts) ? parts.fonts : null;
+  const added = [];
+  let fonts = null;
+  let record;
+  durable.update(kitFile(brandDir), (raw) => {
+    let existing;
+    try { existing = JSON.parse(raw); } catch { existing = null; }
+    if (!existing || existing.version !== 1) existing = defaultRecord(brandDir, nowIso);
+    const provided = existing.provided || { at: nowIso, requestId: null, logo: null, palette: [], fonts: [] };
+    const next = { ...provided, at: nowIso };
+    if (logoRecord) next.logo = logoRecord;
+    if (wanted) {
+      const current = Array.isArray(provided.fonts) && provided.fonts.length ? provided.fonts : ((existing.proposed && existing.proposed.fonts) || []);
+      fonts = current.map((f) => ({ family: f.family, use: f.use }));
+      added.length = 0;
+      for (const font of wanted) {
+        if (fonts.length >= LIMITS.fontsMax) break;
+        if (fonts.some((f) => String(f.family).toLowerCase() === String(font.family).toLowerCase())) continue;
+        fonts.push({ family: font.family, use: font.use });
+        added.push(font.family);
+      }
+      next.fonts = fonts;
+    }
+    existing.provided = next;
+    record = existing;
+    return JSON.stringify(existing, null, 2) + '\n';
+  }, '');
+  return { record, fonts, added, logo: Boolean(logoRecord) };
 }
 
 function providedParts(brandDir) {
@@ -734,6 +775,7 @@ module.exports = {
   validateKitInput,
   applyKit,
   recordProvided,
+  addProvided,
   providedParts,
   projection,
   writeBrandMarks,

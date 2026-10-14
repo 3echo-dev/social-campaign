@@ -103,7 +103,7 @@ Use it for the competitors and for any market-specific evidence, and never fill 
 | Fetches per section | 2 |
 | Competitors | 3 |
 | Items per competitor | 3 |
-| Brand onboarding totals | 12 searches, 16 fetches, 40 turns (a campaign job's budget) |
+| Brand onboarding totals | 12 searches, 16 fetches, 40 turns (a campaign job's budget); a video teardown counts as a fetch, and at most 5 videos are taken apart |
 | `simple_post` totals | 6 searches, 8 fetches, 25 turns |
 | `campaign` totals | 12 searches, 16 fetches, 40 turns |
 
@@ -121,7 +121,7 @@ Use it for the competitors and for the audience suggestion, and never fill it in
 Onboarding research is as good as a job's research: the same tools, the same budget, the same discovery ladder, and a saved capture behind every source.
 Competitors are the declared first 3, else the top competitors for that product in the target market, up to 3 in total.
 The file at `draftPath` already holds the right keys.
-Fill it in place and never add, rename or remove a key.
+Read it, fill in its values and write the whole file back with Write (the researcher has no Edit tool), and never add, rename or remove a key.
 The keys you add inside `research.findings` and inside `brandFiles` below are the exception.
 The file looks like this, with only the fields still blank in `fills`:
 
@@ -142,7 +142,7 @@ Evidence, citations and run details never belong in a fill; save validates this 
 
 ### Tools
 
-Use these tools, one attempt each, and count every call against the budget in Hard limits (12 searches, 16 fetches, 40 turns).
+Use these tools, one attempt each, and count every call against the budget in Hard limits (12 searches, 16 fetches, 40 turns; a video teardown is a fetch).
 `web_crawl` reads the brand's website and each competitor's website, one page per call; `WebFetch` is its one fallback.
 `social_profile_get` reads a declared own account or a competitor handle once: followers, bio and recent posts.
 `social_outliers_find` reads the same account once more: the posts that beat that account's own usual.
@@ -271,12 +271,37 @@ A phrase is words a customer or the audience used, taken from comments, reviews 
 ### Top posts
 
 `topPosts` lists the best posts `social_outliers_find` showed, at most 3 per declared own account and 2 per competitor.
-Each is `{source, competitor, platform, url, text, views, date}`; an Instagram post carries `likes` in place of `views`.
+Each is `{source, competitor, platform, url, text, views, date}`; an Instagram post carries `likes` in place of `views`, and a video that was taken apart (next section) also carries `caption` and `breakdown`.
 `source` is `brand` or `competitor`, and `competitor` is the competitor's name from `competitorDetails`.
 `text` is the post's opening words exactly as its caption has them, `views` is the number shown, and `date` is the day it was published as YYYY-MM-DD.
 Instagram shows no view counts to a signed out reader, so for an Instagram post give `likes` (the number shown on the post, from `social_outliers_find`, which ranks Instagram by likes) and leave `views` out; the library labels it as likes.
 Leave out a post with no caption, no views (no likes for Instagram) or no date, and never fill in or round a figure.
 Save files them in the brand library as proven hooks.
+
+### Taking the best videos apart
+
+A caption says little about why a video worked, so take the best videos themselves apart, as the last step, once the accounts are read.
+Take apart at most 5: the 3 best own videos by views (likes for Instagram) and the 2 best competitor videos in all, a TikTok or an Instagram Reel first.
+Each teardown is one fetch of the budget, so do this only with fetches left; with none left, skip it and add one entry to `research.gaps` saying so.
+For each video call `pipeline_video_teardown` with the brand, `jobId` set to `onboarding-<runId>` (the `runId` from the start, so the video and its teardown are saved in the run's own folder) and the post's `url`.
+It downloads the video, finds the cuts, saves frames, and returns the shot list, the cut count, the music title and a timed transcript when the platform has captions.
+Read at most 4 of the frames it returns: the frames at 0 s and 1 s (the hook) and the first two shots.
+When it says `needsTranscription`, or the transcript is empty, call `media_transcribe` with the `path` of the saved video: it uses the free local reader when that is installed, and when it says a paid provider is needed, leave the spoken words out.
+Skip a video cleanly when its download or its teardown fails: leave its `breakdown` out, keep the post as it is, and add one entry to `research.gaps` that says which video and why in plain words, for example "Could not break down the TikTok video of 2026-09-14: the download needs a sign-in".
+Never retry a failed teardown and never take apart a replacement for it.
+Put what you saw in the post's `breakdown`: `{spokenHook, onScreenHook, format, style, shotTypes, cutsPer10s, presenter, sound, cta}`.
+`spokenHook` is the first spoken sentence exactly as the transcript has it, and `onScreenHook` is the text shown at the start exactly as the frames show it; leave either out when the video has none.
+`format` is what kind of video it is in a few words, such as "talking head", "screen recording with captions" or "product demo"; it is required.
+`style` is one short line on how it feels, such as "fast-cut talking head with trending music".
+`shotTypes` is up to 6 short names such as "close up" or "over the shoulder", from the frames you read.
+`cutsPer10s` is the teardown's cut count divided by the video's length in seconds, times 10.
+`presenter` is `true` when a person talks or shows themselves on camera and `false` when none does.
+`sound` is `music`, `voiceover`, `music and voiceover` or `none`, from the teardown's music and the transcript.
+`cta` is the call to action said or shown, exactly as it is, or left out.
+Anything the teardown did not show is left out, never guessed.
+For a post with a breakdown, `text` is the spoken hook when it has one (else the on-screen hook) and the post's caption goes in `caption`; save makes the same swap when the draft puts the caption in `text`.
+Save then files the hook in the proven bank with the caption as its note, files the format, style and call to action there as proven `format`, `style` and `cta` items with the post's link as their evidence, and adds a "What the best videos do" table to the platform playbook.
+Save refuses a breakdown the tool log shows no teardown for, and more than 3 own and 2 competitor breakdowns.
 
 ### Audience fallback
 
@@ -297,7 +322,7 @@ A fill never contains a URL, a domain, a date, the word "fetched", the word "obs
 All of that belongs in `research.sources`, `research.evidenceMatrix` and `research.findings`, never in `fills`.
 `pipeline_brand_research_save` checks the whole draft before writing anything and returns every problem at once, naming the field and the rule it broke.
 The run stays open and nothing is written; rewrite each named field as plain board content and save again.
-When the spawn prompt passes `problems`, fix exactly those in the file at `draftPath` and finish.
+When the spawn prompt passes `problems`, read the file at `draftPath`, change exactly those, rewrite the whole file with Write (you have no Edit tool), copying each quote exactly from its capture, and finish.
 
 ## Steps
 

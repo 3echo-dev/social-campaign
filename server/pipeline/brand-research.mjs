@@ -19,7 +19,7 @@ import { UserFacingError } from '../lib/errors.mjs';
 import * as runtime from './runtime.mjs';
 import { askQuestion, listQuestions, plainWordsProblem, withdrawQuestion } from './questions.mjs';
 import { readClaimRecord, takeClaim, windowSessionId } from './session-claims.mjs';
-import { fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
+import { MAX_BREAKDOWNS, breakdownCounts, fileOnboardingResearch, fileTopPosts, topPostsProblems } from './brand-onboarding-library.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = join(HERE, '..', '..', 'pipeline');
@@ -133,6 +133,20 @@ function blanksAndCompetitors(profile) {
   const items = profile.competitors && Array.isArray(profile.competitors.items) ? profile.competitors.items : [];
   const declared = items.slice(0, brandProfile.MAX_COMPETITORS);
   return { blankFields, declared, toFind: brandProfile.MAX_COMPETITORS - declared.length };
+}
+
+/**
+ * The folder of a brand research run that is still going, for pipeline_video_teardown during onboarding research: the tool is given
+ * jobId `onboarding-<runId>` (the id the run's library entry has too) and saves the video and its teardown in the run's own folder,
+ * since the run has no job. Returns the folder, or null when the id is not a run's.
+ */
+export function researchRunFolder({ root, brand, jobId }) {
+  const match = /^onboarding-(run-\d{8}T\d{6}Z-[a-f0-9]{6})$/.exec(String(jobId || ''));
+  if (!match) return null;
+  const entry = requireOnboardedBrand(root, brand);
+  const run = onboardingRun.read(entry.path, match[1]);
+  if (!run || run.status !== 'running') throw new UserFacingError('That brand research run is not running, so a video cannot be taken apart for it.', { code: 'research_run_not_running', fix: 'Use the runId from pipeline_brand_research_start while the run is open.' });
+  return onboardingRun.runDir(entry.path, run.runId);
 }
 
 function draftPathFor(brandDir, runId) {
@@ -613,6 +627,17 @@ function draftProblems(draft, ctx) {
     && !['social_outliers_find', 'social_profile_get', 'chrome'].some((tool) => ctx.calls.byTool[tool] && ctx.calls.byTool[tool].ok > 0)) {
     problems.push({ field: 'topPosts', problem: 'The tool log of this run shows no successful social_outliers_find or social_profile_get call, so these posts were not read from an account. Read the accounts, or remove the posts.' });
   }
+  // A video was taken apart only when the tool log shows the teardown, and a run takes apart 5 videos at most.
+  const taken = breakdownCounts(postsChecked.value);
+  if (taken.total && ctx.calls && ctx.calls.recorded) {
+    const teardowns = ctx.calls.byTool.pipeline_video_teardown;
+    if (!teardowns || teardowns.ok < taken.total) {
+      problems.push({ field: 'topPosts', problem: `${taken.total} post${taken.total === 1 ? ' has' : 's have'} a breakdown, but the tool log of this run shows ${teardowns ? teardowns.ok : 'no'} successful pipeline_video_teardown call${teardowns && teardowns.ok === 1 ? '' : 's'}. A breakdown is written only from a video that was taken apart; remove the breakdown of any video that was not.` });
+    }
+  }
+  if (ctx.calls && ctx.calls.recorded && ctx.calls.byTool.pipeline_video_teardown && ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed > MAX_BREAKDOWNS) {
+    problems.push({ field: 'topPosts', problem: `The run took ${ctx.calls.byTool.pipeline_video_teardown.ok + ctx.calls.byTool.pipeline_video_teardown.failed} videos apart. A run takes apart at most ${MAX_BREAKDOWNS}: 3 of the brand's own and 2 of its competitors'.` });
+  }
   const shapeCount = problems.length;
   let needsAudience = false;
   if (ctx.audienceBlank && !filled(safeFills.audience) && !ctx.audienceUnavailable) {
@@ -859,7 +884,7 @@ function fileResults({ root, entry, brandDir, runId, savedResearch, checked }) {
   const out = {};
   const now = new Date();
   try {
-    const written = brandFiles.write(brandDir, { data: checked.brandFiles, runId, now });
+    const written = brandFiles.write(brandDir, { data: checked.brandFiles, runId, now, videos: checked.topPosts.filter((item) => item.breakdown) });
     out.brandFiles = {
       audience: written.files.audience.status,
       positioning: written.files.positioning.status,

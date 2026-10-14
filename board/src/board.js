@@ -1,3 +1,4 @@
+// @module core
 // Social Campaign board. Transport returns persisted data; missing measurements stay missing.
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const esc = escapeHtml;
@@ -106,7 +107,6 @@ export const isReportJob = project => PIPELINE_KINDS[project?.kind]?.report === 
 export const LINK_LIMIT = 20;
 export const LINK_MAX_LENGTH = 2000;
 const VIDEO_FILE_HINT = 'For a video file on your computer, give it to Claude in chat.';
-const REPORT_MARK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
 export function parseLinks(text) {
   const links = [];
   let error = null;
@@ -219,15 +219,6 @@ export function kitImageSrc(value) {
   if (typeof value !== 'string') return null;
   if (/^data:image\/(png|jpeg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(value)) return value;
   return safePreviewUrl(value);
-}
-function unpack(result) {
-  if (result?.isError) throw new Error(result.content?.find(x => x.type === 'text')?.text || 'Studio could not complete the request.');
-  if (result?.structuredContent) return result.structuredContent;
-  if (Array.isArray(result?.content)) {
-    const text = result.content.find(x => x.type === 'text')?.text;
-    if (text) return JSON.parse(text);
-  }
-  return result;
 }
 
 const ARTIFACT_WORKSPACE_DOC = 'socialCampaign/workspace';
@@ -514,6 +505,7 @@ export function contextField(field, values = {}, prefilled = {}, unlocked = {}, 
   return `<div class="context-field"><div class="context-field-head"><label for="context-${field.name}">${esc(field.label)}</label>${suggested ? '<span class="pill">Suggested, please check</span>' : ''}${editButton}</div><textarea id="context-${field.name}" name="${field.name}" class="context-textarea" ${field.maxlength ? `maxlength="${field.maxlength}"` : ''} placeholder="${esc(field.placeholder)}" ${readOnly ? 'readonly' : ''} aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${esc(value)}</textarea>${count}${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}</div>`;
 }
 
+// @module kit
 // Section 8: the "Logo, colours and fonts" fieldset inside the onboarding
 // card. `kit` here is the small in-progress edit state kept on the inline
 // draft (state.kit): only what the person has touched, defaulting to the
@@ -526,6 +518,41 @@ export const KIT_LIMITS = Object.freeze({ maxColors: 8, maxFonts: 4 });
 export const KIT_PHOTOS_MAX = 5;
 export const KIT_PHOTOS_NOTE = 'Real photos of your place, your people and your product in use make the pictures feel like you. Add 3 to 5 if you have them. You can skip this and add them later.';
 const KIT_SOCIAL_PLATFORMS = Object.freeze({ instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook' });
+
+// Folders of the brand's own videos, photos and fonts, added on the onboarding page (the board request `brand_folder_add`). The board runs in
+// a browser and cannot open a folder on this computer, so the person types or pastes its full path and says whose footage it is; Claude reads
+// the files where they are (nothing is copied or uploaded), learns from the videos and photos, and offers the fonts to the kit.
+export const KIT_FOLDER_NOTE = 'Add folders of your videos, photos and fonts. Claude reads them where they are on this computer: nothing is copied or uploaded. It learns your hooks and styles from the videos, offers photos for "Photos of your world", and adds your fonts to the kit.';
+export const KIT_FOLDER_RIGHTS = Object.freeze([
+  { value: 'ours', label: 'Ours, free to use' },
+  { value: 'client_ask', label: 'Client work, ask first' },
+  { value: 'never', label: 'Never use' },
+]);
+const KIT_FOLDER_KINDS = Object.freeze([['video', 'video', 'videos'], ['image', 'photo', 'photos'], ['audio', 'audio file', 'audio files'], ['font', 'font', 'fonts']]);
+const KIT_FOLDER_STATES = Object.freeze({ indexing: 'Reading the files', stopped: 'Stopped part-way', moved: 'Folder not found' });
+const KIT_FOLDER_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/;
+const KIT_FOLDER_SHOWN_MS = 120000;
+const folderNumber = value => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+
+// "12 videos, 40 photos, 2 fonts" from a folder's counts by kind ({video, image, audio, font}); empty when it holds none of them.
+export function folderCountsLine(kinds) {
+  const counts = kinds && typeof kinds === 'object' ? kinds : {};
+  return KIT_FOLDER_KINDS.map(([key, one, many]) => [folderNumber(counts[key]), one, many]).filter(([count]) => count).map(([count, one, many]) => `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`).join(', ');
+}
+
+// What the Add a folder control sends: { args: { folder, rights, label? }, name } or { error }. The rights answer is the person's own and is
+// never defaulted. The name is what the row shows (the label, else the folder's last part); the full path appears nowhere on the page.
+export function folderRequestArgs({ path, label, rights } = {}) {
+  const folder = String(path ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
+  if (!folder) return { error: 'Type or paste the full path of the folder.' };
+  if (!KIT_FOLDER_PATH.test(folder)) return { error: 'Use the full path of the folder, starting at the drive, for example C:\\Users\\you\\Brand videos.' };
+  if (folder.length > 1000) return { error: 'That path is too long.' };
+  if (!KIT_FOLDER_RIGHTS.some(option => option.value === rights)) return { error: 'Choose whose footage this is.' };
+  const words = String(label ?? '').replace(/\s+/g, ' ').trim();
+  if (words.length > 120) return { error: 'Keep the name under 120 characters.' };
+  const last = folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder;
+  return { args: { folder, rights, ...(words ? { label: words } : {}) }, name: words || last };
+}
 
 // A hex colour, with or without '#', 3 or 6 digits, normalized to
 // '#RRGGBB' uppercase. Anything else (empty, malformed) returns null so a
@@ -842,6 +869,8 @@ export function pruneRemoving(state = {}, refs = [], now = Date.now()) {
 const PICK_PREVIEW_EDGE = 160;
 const pickPreviews = new WeakMap();
 let onPickPreviewReady = () => {};
+// The page sets this once, from its own module: an imported name cannot be assigned there.
+export function setPickPreviewReady(callback) { onPickPreviewReady = callback; }
 export function pickedPreview(file) {
   if (!file || typeof file !== 'object') return '';
   if (pickPreviews.has(file)) return pickPreviews.get(file) || '';
@@ -1036,6 +1065,7 @@ export function newJobReferences(refs = freshNewJobRefs(), { busy = false } = {}
   return `<details class="new-refs field-wide" data-open-key="new:refs"${open ? ' open' : ''}><summary>References (optional)${items.length ? ` <span class="count">${items.length}</span>` : ''}</summary><div class="new-refs-body"><p class="field-hint">Pictures, clips, audio, wording or other files you want used for this job.</p>${list}${control}${refs.error ? `<p class="field-error" role="alert">${esc(refs.error)}</p>` : ''}</div></details>`;
 }
 
+// @module forms
 // After a kit action (add or remove a colour or font row, remove or replace
 // the logo) mutates the draft and calls render(), the section re-renders
 // fresh: the "+ Add colour"/"+ Add font" buttons carry no form `name` (so
@@ -1056,6 +1086,7 @@ export function kitFocusSelector(action, index, count) {
   if (action === 'remove-font') return count > 0 ? `[name="kit_font_family_${Math.min(index, count - 1)}"]` : '[data-kit-action="add-font"]';
   if (action === 'remove-logo' || action === 'replace-logo') return '#kit-logo-file';
   if (action === 'remove-ref' || action === 'add-ref') return '#kit-ref-file';
+  if (action === 'add-folder') return '#kit-folder-path';
   return null;
 }
 
@@ -1082,6 +1113,53 @@ const KIT_ICONS = Object.freeze({
 // "Audience" above it, with the "Added by you" pill where their Edit button sits.
 function kitBlock(key, label, body, tag = '', extraClass = '') {
   return `<div class="context-field kit-block${extraClass ? ` ${extraClass}` : ''}" role="group" aria-labelledby="kit-${key}-label"><div class="context-field-head"><span class="kit-label" id="kit-${key}-label">${esc(label)}</span>${tag}</div><div class="kit-stack">${body}</div></div>`;
+}
+
+// One folder the brand's footage holds, as `brand.library.footage.list` gives it: its name, whose footage it is, what it holds by kind
+// and how far Claude got (reading the files, then looking at the videos and photos). No path is shown.
+function kitFolderRow(folder) {
+  const rights = KIT_FOLDER_RIGHTS.find(option => option.value === folder.rights)?.label || '';
+  const lookable = folderNumber(folder.kinds?.video) + folderNumber(folder.kinds?.image) + folderNumber(folder.kinds?.audio);
+  const described = Math.min(folderNumber(folder.described), lookable);
+  const reading = folder.state === 'indexing' && folderNumber(folder.total) > 0 ? `${KIT_FOLDER_STATES.indexing} ${folderNumber(folder.processed)} of ${folderNumber(folder.total)}` : KIT_FOLDER_STATES[folder.state] || '';
+  const looked = folder.state === 'ready' || !folder.state ? (lookable ? (described ? `Looked at ${described} of ${lookable}` : 'Not looked at yet') : '') : '';
+  const held = folderCountsLine(folder.kinds) || (folderNumber(folder.files) ? `${folderNumber(folder.files)} ${folderNumber(folder.files) === 1 ? 'file' : 'files'}` : '');
+  const meta = [rights, held, folderNumber(folder.missing) ? `${folderNumber(folder.missing)} missing` : '', reading, looked].filter(Boolean).map(esc).join(' &middot; ');
+  return `<li class="library-item kit-folder"><div class="library-main"><span class="library-text">${esc(trimmed(folder.name) || 'Folder')}</span><span class="library-meta">${meta}</span></div></li>`;
+}
+
+// A folder just added on this page, before the brand's footage lists it: waiting for Claude, read, or turned down with the reason.
+function kitFolderPending(entry, index) {
+  const rights = KIT_FOLDER_RIGHTS.find(option => option.value === entry.rights)?.label || '';
+  const failed = entry.status === 'declined' || entry.status === 'error';
+  const status = entry.status === 'sent' ? 'Sending...' : entry.status === 'waiting' ? 'Waiting for Claude' : entry.status === 'applied' ? 'Added. Reading the files' : '';
+  const meta = [rights, status].filter(Boolean).map(esc).join(' &middot; ');
+  const dismiss = failed ? `<button type="button" class="quiet" data-kit-action="dismiss-folder" data-index="${index}" aria-label="${esc(`Dismiss: ${entry.name}`)}">Dismiss</button>` : '';
+  return `<li class="library-item kit-folder${failed ? ' is-failed' : ' is-pending'}"><div class="library-main"><span class="library-text">${esc(entry.name)}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${failed ? `<span class="field-error" role="alert">${esc(entry.message || 'Claude could not add this folder.')}</span>` : ''}</div>${dismiss}</li>`;
+}
+
+// The "Folders of your videos, photos and fonts" block of the kit: the folders added so far with their status and counts (the brand's
+// footage list, plus requests still waiting for Claude), then the control to add one. `folders` is the draft's own state:
+// { path, label, rights, error, busy, pending: [{ requestId, name, rights, status, message, folderId, appliedAt }] }. Without a brand
+// (before onboarding has started) there is nowhere to keep a folder yet, so the control waits.
+export function kitFolders(brand, folders = {}, disabled = false, now = Date.now()) {
+  const state = folders && typeof folders === 'object' ? folders : {};
+  const footage = brand?.library?.footage && typeof brand.library.footage === 'object' ? brand.library.footage : null;
+  const listed = Array.isArray(footage?.list) ? footage.list.filter(item => item && typeof item === 'object') : [];
+  const ids = new Set(listed.map(item => item.id));
+  // Each request keeps its place in the draft's list (the Dismiss button names it), whichever of them are drawn.
+  const pending = (Array.isArray(state.pending) ? state.pending : []).map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry && !(entry.status === 'applied' && (ids.has(entry.folderId) || now - (entry.appliedAt || now) > KIT_FOLDER_SHOWN_MS)));
+  const rows = pending.map(({ entry, index }) => kitFolderPending(entry, index)).join('') + listed.map(kitFolderRow).join('');
+  const fonts = Array.isArray(footage?.fonts) ? footage.fonts.map(name => trimmed(name)).filter(Boolean) : [];
+  const waiting = !brand;
+  const off = disabled || waiting || state.busy ? 'disabled' : '';
+  const errorId = 'kit-folder-error';
+  const radios = KIT_FOLDER_RIGHTS.map(option => `<label class="kit-radio"><input type="radio" name="kit_folder_rights" value="${option.value}" data-kit-folder="rights" ${state.rights === option.value ? 'checked' : ''} ${off}><span>${esc(option.label)}</span></label>`).join('');
+  const add = `<div class="kit-folder-add"><div class="kit-folder-fields"><label class="kit-folder-field" for="kit-folder-path"><span>Folder on this computer</span><input type="text" id="kit-folder-path" name="kit_folder_path" data-kit-folder="path" value="${esc(state.path || '')}" placeholder="C:\\Users\\you\\Brand videos" autocomplete="off" spellcheck="false" aria-invalid="${state.error ? 'true' : 'false'}" ${state.error ? `aria-describedby="${errorId}"` : ''} ${off}></label><label class="kit-folder-field" for="kit-folder-label"><span>Name (optional)</span><input type="text" id="kit-folder-label" name="kit_folder_label" data-kit-folder="label" maxlength="120" value="${esc(state.label || '')}" placeholder="Summer shoot 2024" autocomplete="off" ${off}></label></div><div class="kit-rights" role="radiogroup" aria-labelledby="kit-folder-rights-label"><span class="kit-sublabel" id="kit-folder-rights-label">Whose footage is this?</span>${radios}</div>${state.error ? `<p class="field-error" id="${errorId}" role="alert">${esc(state.error)}</p>` : ''}<button type="button" class="kit-add" data-kit-action="add-folder" ${off}>${KIT_ICONS.plus}<span>${state.busy ? 'Adding...' : 'Add folder'}</span></button></div>`;
+  const intro = `<p class="muted">${esc(waiting ? 'Folders can be added as soon as onboarding has started.' : KIT_FOLDER_NOTE)}</p>`;
+  const found = fonts.length ? `<p class="muted kit-folder-fonts">Fonts found: ${fonts.map(esc).join(', ')}</p>` : '';
+  return kitBlock('folders', 'Folders of your videos, photos and fonts', `${intro}${rows ? `<ul class="library-list kit-folder-list">${rows}</ul>` : ''}${found}${add}`, '', 'kit-folders-block');
 }
 
 export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
@@ -1149,13 +1227,14 @@ export function kitSection(brand, kit = {}, fieldErrors = null, held = false) {
     : '';
   const photosBody = `<p class="muted">${esc(KIT_PHOTOS_NOTE)}</p>${photoState}${photoThumbs ? `<div class="kit-photos">${photoThumbs}</div>` : ''}${kit.referencesError ? `<p class="field-error" role="alert">${esc(kit.referencesError)}</p>` : ''}${photoAdd}`;
   const photosBlock = kitBlock('photos', 'Photos of your world', photosBody, '', 'kit-photos-block');
+  const foldersBlock = kitFolders(brand, kit.folders, loading);
 
   const note = loading
     ? 'Reading your logo, colours and fonts...'
     : phase === 'new'
       ? 'Have your logo, brand colours or fonts? Add them now and Claude will skip looking for them.'
       : 'Check these and change anything that is not right.';
-  return `<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading ? ' aria-busy="true"' : ''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}${photosBlock}</div></fieldset>`;
+  return `<fieldset class="kit-fieldset" ${dis} aria-labelledby="kit-heading"${loading ? ' aria-busy="true"' : ''}><div class="kit-head"><h3 id="kit-heading">Logo, colours and fonts</h3><p class="muted">${note}</p></div><div class="kit-grid">${logoBlock}${colorsBlock}${fontsBlock}${photosBlock}${foldersBlock}</div></fieldset>`;
 }
 
 // brandReady (section 3/8): readyForJobs when the projection reports it,
@@ -1284,6 +1363,7 @@ export function composerForm(state = {}, { brands = [], variant = 'card' } = {})
   return `<section class="start-card new-job composer"><div class="start-head"><h2 id="composer-title">${COMPOSER_QUESTION}</h2></div>${notice}${form}</section>`;
 }
 
+// @module brands
 // The one line under a job's title that says which pipeline Claude chose and why, with a quiet way to say it is wrong.
 // It shows only for a job Claude planned from the person's words: the pipeline's name comes from the catalogue and the
 // reason is the line Claude saved with it. Once the person has said it is wrong, the button is replaced by a plain note.
@@ -1375,6 +1455,8 @@ export function brandAdAccountsLine(brand) {
     const item = saved[provider];
     if (!item) continue;
     if (item.unreadable) { parts.push(`${label} could not be read`); continue; }
+    if (item.none) { parts.push(`No ${label} yet`); continue; }
+    if (item.later) { parts.push(`${label} to be decided`); continue; }
     parts.push(`${label} <strong>${esc(item.name)}</strong>${item.found === false ? ' (no longer listed)' : ''}`);
   }
   return parts.length ? `<div class="brand-chip-publish"><p class="muted">Ad results: ${parts.join(' &middot; ')}</p></div>` : '';
@@ -1605,7 +1687,7 @@ export function brandStudioWorkspaceLine(brand) {
 // One connector on the Connectors setup step, also reused when the header's
 // "Connectors" link reopens the same step later: a small provider mark with
 // its initials (the same two-letter convention as the brand avatar), name
-// and description on the left, and either its Connect/Skip actions or a
+// and description on the left, and either its Connect action or a
 // state pill on the right. `busy` disables the actions while a request for
 // this connector is in flight.
 const CONNECTOR_GUIDANCE = Object.freeze({
@@ -1630,7 +1712,7 @@ export function connectorCard(connector, { busy = false } = {}) {
     ? `<span class="pill connected">Connected</span>${refreshable ? connect(' title="Read the brand list again after you add a brand or a social account in Metricool"', 'Refresh brands') : ''}`
     : state === 'skipped'
       ? `<span class="pill skipped">Skipped</span>${connect()}`
-      : `${connect(' class="primary"')}<button data-skip="${key}" ${busy ? 'disabled' : ''}>Skip for now</button>`;
+      : connect(' class="primary"');
   const guidance = state !== 'connected' ? CONNECTOR_GUIDANCE[connector.key] : null;
   const optional = connector.optional ? '<span class="pill connector-optional">Optional</span>' : '';
   const count = state === 'connected' && Number.isInteger(connector.brandCount)
@@ -1715,6 +1797,7 @@ export function usageFooter({ project, brands = [], projects = [], now = Date.no
   return `<section class="panel usage-footer"><div class="section-head"><h2>Usage by stage</h2></div>${table}${credits}</section>`;
 }
 
+// @module report
 // A small, safe markdown renderer for job documents: everything is escaped
 // first, then headings, lists, tables, quotes, code, bold, italic and https
 // links are rebuilt. Headings start at h3 so a file sits inside a panel.
@@ -1994,6 +2077,7 @@ export function downloadOutcome(code) {
 
 // ---- Intake form ----------------------------------------------------------
 
+// @module intake
 // The form's starting values: what the projection says Claude already filled
 // in, overlaid with whatever the person has typed since (the draft).
 export function intakeValues(intake, draft = {}) {
@@ -2054,7 +2138,6 @@ const VIDEO_FORMATS = ['ugc', 'brand_video', 'motion_graphic'];
 const STORY_FORMATS = ['static_image', 'ugc', 'brand_video', 'motion_graphic'];
 const PHOTO_FORMATS = ['static_image', 'carousel'];
 const VERTICAL_TYPES = ['reel', 'story', 'video'];
-const POST_TYPE_WORDS = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 export const isVerticalPostType = (platform, placement) => VERTICAL_TYPES.includes(placement) && (placement !== 'video' || platform === 'tiktok');
 export function placementIssue(platform, placement, format, ratios = []) {
   if (!placement) return '';
@@ -2353,6 +2436,7 @@ export function intakeForm(project, state = {}, signal = {}) {
 
 // ---- Reviews --------------------------------------------------------------
 
+// @module job
 const DRAWER_TAB_LABELS = Object.freeze({ output: 'Output', prompt: 'Prompt', trace: 'How it was made', about: 'About' });
 
 export function drawerTabs(file) {
@@ -2638,6 +2722,7 @@ export function conceptStrategy(summary, extra = '') {
   return `<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl>${extra}</section>`;
 }
 
+// @module picks
 // Opening lines. A concept offers the lines its "Hook options" field lists; the person may also edit any of them or add their own.
 // Those stay in the review's UI state (`own`: the added lines per concept, `edited`: the new text per concept and listed line) and
 // are not saved by the board: the approval carries them in its note (see decisionArgs) and Claude files them.
@@ -3122,6 +3207,7 @@ export function recipePanel(doc, recipeState, recipeStatus, { disabled = false }
 }
 
 
+// @module panels
 // The deliverable this item (a storyboard or a final post) is for, in a
 // person's words: the readable label once job-document.mjs provides one,
 // else platform and format together, and only ever `fallback` when nothing
@@ -3500,6 +3586,7 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false, uplo
   return `<div class="price-workspace price-workspace-edit"><label for="studio-workspace-select">${esc(label)}</label><select id="studio-workspace-select" name="studio_workspace_select" ${locked ? 'disabled' : ''}>${options}</select>${brandOption}${error}${notice}<div class="review-buttons"><button type="button" class="primary" data-workspace-action="save" ${locked ? 'disabled' : ''}>${busy ? 'Saving...' : submitted ? 'Waiting for Claude' : 'Set workspace'}</button>${cancel}</div></div>`;
 }
 
+// @module publish
 // The publish gate. Everything shown comes from `review.publish`, the projection the server builds from the
 // posting plan the approval covers: the route and the routes on offer, where posts go, and one row per post.
 // Ids never reach the page as words, only the text the projection carries.
@@ -4149,6 +4236,7 @@ export function postingKitPanel(kit, postStates = {}, { signal = {}, now = Date.
   return `<section class="panel posting-kit" aria-labelledby="posting-kit-title"><div class="section-head"><h2 id="posting-kit-title">Your posting kit</h2><span class="count">${esc(count)}</span></div><p class="muted kit-intro">${esc(intro)}</p>${kitDownloadButton(kit)}<div class="publish-posts" role="list">${posts.map(post => kitPost(post, postStates?.[post.id] || {}, ctx)).join('')}</div></section>`;
 }
 
+// @module review
 function reviewFilesHtml(doc, paths) {
   const files = new Map((doc?.files || []).map(file => [file.path, file]));
   return paths.map(path => {
@@ -4645,6 +4733,7 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
   return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
 }
 
+// @module inbox
 export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
@@ -4709,6 +4798,11 @@ export function onboardingInboxItems(brands = [], drafts = []) {
   });
 }
 
+// Whether an Inbox item waits on the person, for every count of "waiting". The research-done item (state 'review') is news with a
+// button that opens the brand profile: the Director says it, but nothing is waiting on it, so it never counts. A research that could
+// not finish does (the profile has to be filled in by hand).
+export const waitsOnPerson = item => (item?.kind !== 'onboarding' && !item?.closing) || (item?.needsYou === true && item.state !== 'review');
+
 // A job that is stuck is a row of its own, unless the list already holds the question or decision that asks the person about it.
 export function stuckInboxItems(projects = [], items = []) {
   const asked = new Set((Array.isArray(items) ? items : []).filter(item => item?.jobId && item.kind !== 'post').map(item => item.jobId));
@@ -4721,7 +4815,7 @@ export function stuckInboxItems(projects = [], items = []) {
 export function workspaceInbox(snapshot, { drafts = [] } = {}) {
   const inbox = snapshot?.inbox && typeof snapshot.inbox === 'object' ? snapshot.inbox : null;
   const onboarding = onboardingInboxItems(snapshot?.brands, drafts);
-  const asks = onboarding.filter(item => item.needsYou).length;
+  const asks = onboarding.filter(waitsOnPerson).length;
   if (inbox && Array.isArray(inbox.items)) {
     const rest = inbox.items.filter(item => item?.kind !== 'onboarding');
     const stuck = stuckInboxItems(snapshot?.projects, rest);
@@ -5113,7 +5207,7 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
     return list.every((other, j) => other.kind !== 'question' || other.inChat || other.jobId !== item.jobId || isAnswered(j));
   }).length;
   const hidden = Number.isSafeInteger(count) ? Math.max(0, count - all.length) : 0;
-  const needs = Math.max(0, list.filter(item => (item.kind !== 'onboarding' && !item.closing) || item.needsYou).length - answered + hidden);
+  const needs = Math.max(0, list.filter(waitsOnPerson).length - answered + hidden);
   const tag = needs ? `<span class="pill needed">${needs} ${needs === 1 ? 'needs' : 'need'} you</span>` : '';
   const empty = trimmed(announcement) || (workspace ? INBOX_EMPTY : '');
   const briefs = list.filter(item => item.kind === 'brief' && item.inline && item.field);
@@ -5134,7 +5228,7 @@ export function inboxPanel({ items = [], count = null, announcement = '', worksp
       jobs.get(item.jobId).push(index);
     });
     // Within a kind the list is newest first, so the oldest question (the one asked first) is the last of its kind.
-    const open = at => !isAnswered(at) && ((list[at].kind !== 'onboarding' && !list[at].closing) || list[at].needsYou);
+    const open = at => !isAnswered(at) && waitsOnPerson(list[at]);
     // An answered question steps aside so the next one shows straight away.
     const lead = indexes => [...indexes].sort((a, b) => Number(isAnswered(a)) - Number(isAnswered(b)) || order(list[a]) - order(list[b]) || (list[a].kind === 'question' ? b - a : a - b))[0];
     const groups = [...[...jobs.values()].map(indexes => ({ indexes, at: lead(indexes) })), ...loose.map(([index]) => ({ indexes: [index], at: index }))]
@@ -5185,6 +5279,7 @@ export function stageApprovals(stage) {
   }).join('');
 }
 
+// @module rail
 const RAIL_SETTLED = new Set(['complete', 'pending', 'cancelled']);
 const RAIL_UPCOMING = new Set(['pending', 'waiting', 'running']);
 const RAIL_HERE_HELD = Object.freeze({ BLOCKED: 'Held up', ESCALATED: 'Held up', CHANGES_REQUESTED: 'Making the changes you asked for' });
@@ -5411,14 +5506,6 @@ export function agentBoxOf(doc) {
   const director = all.find(isDirectorAgent) || null;
   return { all: director ? [director, ...all.filter(agent => agent !== director)] : all, director, others: all.filter(agent => !isDirectorAgent(agent)), unassigned: source.unassigned && typeof source.unassigned === 'object' ? source.unassigned : {} };
 }
-export function agentElapsed(since, now = Date.now()) {
-  const start = Date.parse(since);
-  if (!Number.isFinite(start) || start > now) return '';
-  const minutes = Math.floor((now - start) / 60000);
-  if (minutes < 1) return 'under a minute';
-  if (minutes < 60) return `${minutes} min`;
-  return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${Math.floor(minutes / 60)} h`;
-}
 function agentTime(value) {
   const at = new Date(value);
   if (!value || Number.isNaN(at.getTime())) return '';
@@ -5500,6 +5587,7 @@ function agentFilesBody(box, { chipContext, jobId, openKeys, omitted }) {
 // a step is shown by its short name, an agent's own report text is never shown, and a file is shown by its title.
 // ---------------------------------------------------------------------------
 
+// @module art
 // A picture for each kind of step: Microsoft Fluent 3D emoji (MIT licence, see THIRD_PARTY_NOTICES.md), shrunk to 92 px WebP (twice the 46 px they show at)
 // and embedded so the page needs no network.
 const STEP_IMG = Object.freeze({
@@ -5591,6 +5679,7 @@ export function agentAgo(value, now = Date.now()) {
   return days < 7 ? `${days}d` : agentTime(value);
 }
 
+// @module flow
 // Replies the person has opened. A per-viewer convenience kept in the browser, so every read and write of it is guarded.
 const SEEN_REPLIES_KEY = 'socialCampaign.seenReplies';
 const seenReplies = new Set();
@@ -5919,10 +6008,12 @@ function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = ''
 /**
  * One agent's chat, in the Inbox's column. ctx: `tasks` (this agent's steps, from the plan), `chipContext` (the job's files),
  * `needs` (the Director's open questions and decisions, as they already render), `stuck`, `item` (when the agent's step is at a
- * gate), `status` (one plain line), and `compose` (the composer, when the person can message this agent).
+ * gate), `status` (one plain line), and `compose` (the composer, when the person can message this agent). `asks` and `waiting` are
+ * the Brand onboarding page's: the Director's messages, one per open item (each already drawn, with its own buttons), and how many of
+ * them wait on the person, which the header says as "Waiting on you · 3".
  */
 export function agentChat(agent, ctx = {}) {
-  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '' } = ctx;
+  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '', asks = [], waiting = 0 } = ctx;
   const view = agentView(agent);
   const name = agentNameOf(agent);
   const director = isDirectorAgent(agent);
@@ -5932,7 +6023,9 @@ export function agentChat(agent, ctx = {}) {
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
-  return `<aside class="thread chat" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost icon" data-ab-back aria-label="Back to the inbox" title="Back to the inbox">${icon('back')}</button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(view.word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
+  const askBubbles = (Array.isArray(asks) ? asks : []).join('');
+  const word = waiting > 0 ? `${view.word} · ${waiting}` : view.word;
+  return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost icon" data-ab-back aria-label="Back to the inbox" title="Back to the inbox">${icon('back')}</button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
 }
 
 // What the agent did lately, in a small fold at the end of its chat: short plain lines, newest last.
@@ -6107,19 +6200,61 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
   return { html: stages.length ? `<ol class="flow" aria-label="Steps of this job">${stages.join('')}</ol>` : '', placed, askPlaced };
 }
 
+/**
+ * What the Director says on a brand's onboarding page: this brand's open items, each its own message with the item's own buttons
+ * (the same cards, requests and answers as the Needs you box they replace). The brand's items are its onboarding item (research
+ * done, or research that could not finish) and the questions asked for it or for the whole workspace; a job's items stay with
+ * its job, and another brand's stay with theirs. The onboarding item leads, then the questions in the order they were asked.
+ */
+export function brandAsks(items, brandSlug) {
+  const when = item => { const at = Date.parse(item?.at ?? ''); return Number.isFinite(at) ? at : Number.MAX_SAFE_INTEGER; };
+  const own = (Array.isArray(items) ? items : []).filter(item => item && typeof item === 'object' && (
+    (item.kind === 'onboarding' && item.brand === brandSlug && item.state !== 'running')
+    || (item.kind === 'question' && !item.jobId && (!item.brand || item.brand === brandSlug))));
+  const questions = own.map((item, index) => ({ item, index })).filter(({ item }) => item.kind === 'question')
+    .sort((a, b) => when(a.item) - when(b.item) || a.index - b.index).map(({ item }) => item);
+  return [...own.filter(item => item.kind === 'onboarding'), ...questions];
+}
+
+/**
+ * The Director's messages for those items: one bubble each, holding the same card the Needs you box drew (`inboxCard`, so every
+ * button sends the request it always did), and how many of them wait on the person. An answered question and the research-done item
+ * are not waiting. `first` is the words of the first one that waits, for the Director's row in the Inbox.
+ * context: item -> the page state of that card, as `inboxPanel` takes it.
+ */
+export function directorAsks(items, { context = () => ({}), signal = {} } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const contexts = list.map(item => context(item) || {});
+  const answered = at => list[at].kind === 'question' && Boolean(contexts[at].question?.submitted || contexts[at].question?.answered);
+  const waits = list.map((item, at) => waitsOnPerson(item) && !answered(at));
+  const messages = list.map((item, at) => `<div class="msg-r a bub-wide" data-ask="${esc(inboxKey(item))}"><div class="bub bub-need"><ol class="inbox-list">${inboxCard(item, { signal, ...contexts[at], index: at })}</ol></div></div>`);
+  const first = list.find((item, at) => waits[at]);
+  return { messages, waiting: waits.filter(Boolean).length, first: first ? inboxItemText(first) : '' };
+}
+
 // The Brand onboarding page's own Inbox and chat: the Director and the Researcher (and anyone else who ran), from brand.agents.
-// Nobody can be messaged here, so a chat shows who the agent is and what it is doing. The page knows research was just
-// requested before the server does, so the Director is Working at once.
-export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId = null) {
+// The Director is the only one who asks: its chat holds the brand's open items as messages (`brandAsks`), with "Waiting on you · N"
+// on its header and in the Inbox, and a chat opens on it at once when it has something to say (chatId undefined; null is the
+// Inbox the person went back to). Nobody can be messaged here, so any other chat shows who the agent is and what it is doing.
+// The page knows research was just requested before the server does, so the Director is Working at once.
+export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId, { items = [], context, signal } = {}) {
   const list = (Array.isArray(brand?.agents?.list) ? brand.agents.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
   if (!list.length) return '';
   const running = brandResearchPhase(brand, draft, now) === 'running';
-  const agents = list.map(agent => (isDirectorAgent(agent) && running && agent.state === 'needs_you' ? { ...agent, state: 'working', task: 'Getting your brand ready' } : agent));
-  const open = chatId ? agents.find(agent => agent.id === chatId) : null;
-  if (open) return agentChat(open, { status: agentPlain(open.task) });
-  return `<div class="onboard-agents">${agentInbox(agents, { now, waitingOnYou: agents.filter(agent => agentView(agent).state === 'needs_you').length })}</div>`;
+  const asks = directorAsks(brandAsks(items, brand?.slug), { context, signal });
+  const agents = list.map(agent => {
+    if (!isDirectorAgent(agent)) return agent;
+    if (asks.waiting > 0) return { ...agent, state: 'needs_you', task: asks.first || agent.task };
+    return running && agent.state === 'needs_you' ? { ...agent, state: 'working', task: 'Getting your brand ready' } : agent;
+  });
+  const director = agents.find(isDirectorAgent) || null;
+  const open = (chatId === undefined ? (asks.messages.length ? director?.id : null) : chatId) || null;
+  const chat = open ? agents.find(agent => agent.id === open) : null;
+  if (chat) return agentChat(chat, isDirectorAgent(chat) && asks.messages.length ? { asks: asks.messages, waiting: asks.waiting } : { status: agentPlain(chat.task) });
+  return `<div class="onboard-agents">${agentInbox(agents, { now, needText: asks.first, questions: asks.waiting, waitingOnYou: asks.waiting })}</div>`;
 }
 
+// @module transport
 // Subscribe to the workspace projection and recover from exactly one class of
 // failure: a terminal "unavailable" from a dead platform bridge. Per db.d.ts a
 // fresh onSnapshot is the only recovery for that code, so clear the dead
@@ -6261,8 +6396,6 @@ export function requestComment(operation, args = {}) {
       return args?.title ? `Carry on with "${truncateText(args.title, 120)}".` : 'Carry on with this job.';
     case 'import_inputs':
       return `Source files requested${quotedTitle(args?.title)}.`;
-    case 'skip_provider':
-      return `Skip ${args?.providerName || 'this connector'} for now.`;
     case 'connectors_continue':
       return 'Connectors done. On to your brand.';
     case 'connect_provider':
@@ -6273,6 +6406,10 @@ export function requestComment(operation, args = {}) {
       return `Metricool brand for ${args?.brandName || 'this brand'} set to ${args?.label || 'a different brand'}.`;
     case 'bank_remove':
       return 'Remove an item from the brand library.';
+    case 'brand_folder_add': {
+      const name = trimmed(args?.label) || String(args?.folder || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+      return name ? `Add the folder "${truncateText(name, 80)}" to the brand's footage.` : "Add a folder to the brand's footage.";
+    }
     case 'choose_publish_route':
       return `Posts will go out this way: ${PUBLISH_ROUTE_WORDS[args?.route] || 'a different route'}.`;
     case 'choose_post_type':
@@ -6609,6 +6746,7 @@ export async function createTransport(config = {}, host = globalThis) {
   };
 }
 
+// @module app
 if (typeof document !== 'undefined') {
   const config = JSON.parse(document.getElementById('board-config')?.textContent || '{}');
   configurePipelines(config);
@@ -6698,9 +6836,9 @@ if (typeof document !== 'undefined') {
     const connectors = data.connectors || [];
     const back = forced ? '' : '<div class="toolbar"><button class="quiet" data-action="connectors-close">&larr; Back</button></div>';
     const optional = connectors.some(connector => connector.optional) ? ' Metricool, Meta ads and TikTok ads are optional: Metricool schedules your posts, the ad connectors only read ad results, and setup does not wait for any of them.' : '';
-    const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional}${forced ? ' You can skip and connect later from Connectors at the top.' : ''}</p>`;
+    const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional}${forced ? ' Press Continue when you are ready; anything left can be connected later from Connectors at the top.' : ''}</p>`;
     const busy = connectorPending.size > 0;
-    const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected is skipped for now.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
+    const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected can be added later from Connectors at the top.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
     return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key) })).join('')}</section>${next}`;
   }
   async function continueConnectors() {
@@ -7314,23 +7452,29 @@ if (typeof document !== 'undefined') {
     const strip = brandStrip();
     // On the Brand onboarding page the agent cards say who is working, so they stand in for the "research has started" note.
     const onboardBrand = inline?.kind === 'onboard' && inline.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
-    const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat);
-    if (!agentsPanel) onboardChat = null;
     const workspaceItems = workspaceInbox(data, { drafts: [inline, ...inlineDrafts.values()].filter(Boolean) });
-    const inbox = agentsPanel ? { ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
+    // The Director asks the brand's open items in its own chat, so this page has no Needs you box of its own: each question keeps its
+    // buttons (and its answer request) on the Director's message. The cards register here for the answer handlers.
+    inboxQuestions.clear();
+    inboxDecisions.clear();
+    inboxBriefs.clear();
+    const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo() });
+    if (!agentsPanel) onboardChat = undefined;
+    const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
     const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? 'No jobs yet. Describe what you want below.' : 'No jobs yet. Complete brand onboarding, then describe the first campaign.'}</p>`}</section>`;
-    const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}${aside}</div>` : aside);
+    // With the Director's chat on the page the side column is that chat alone; without one (a brand with no agents yet) it is the Needs you box.
+    const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}</div>` : aside());
     if (firstRun) {
       syncInboxDocuments();
       if (!inbox.items.length && !agentsPanel) return `${head}${onboarding}${strip}`;
-      return `${head}<div class="layout"><div>${onboarding}${strip}</div>${side(inbox.items.length ? inboxAside(inbox, { workspace: true }) : '')}</div>`;
+      return `${head}<div class="layout"><div>${onboarding}${strip}</div>${side(() => (inbox.items.length ? inboxAside(inbox, { workspace: true }) : ''))}</div>`;
     }
     const doors = pipelineDoors(projects, inbox.items);
     const doorRow = doors.length && inline?.kind !== 'onboard' ? `<section class="doors" aria-label="Kinds of job">${doors.map(door => doorHtml(door)).join('')}</section>` : '';
     if (inline?.kind === 'onboard') {
-      syncInboxDocuments(inbox.items.filter(answeredInPlace).map(item => item.jobId));
-      return `${head}${doorRow}<div class="layout"><div>${overviewColumn({ strip, jobs: jobsHtml(), onboarding, onboardFirst: true })}</div>${side(inboxAside(inbox, { workspace: true }))}</div>`;
+      syncInboxDocuments(agentsPanel ? [] : inbox.items.filter(answeredInPlace).map(item => item.jobId));
+      return `${head}${doorRow}<div class="layout"><div>${overviewColumn({ strip, jobs: jobsHtml(), onboarding, onboardFirst: true })}</div>${side(() => inboxAside(inbox, { workspace: true }))}</div>`;
     }
     // Home and the new-job page: "Needs you" comes first and holds every open item, the job ones included, with the same
     // cards (pictures, Approve, Ask for changes) as the Director's chat. Then the jobs, one row each from brief to posted,
@@ -7416,7 +7560,7 @@ if (typeof document !== 'undefined') {
     const form = app.querySelector('#starter-form');
     if (form) starterValues = Object.fromEntries(new FormData(form));
   }
-  onPickPreviewReady = () => render();
+  setPickPreviewReady(() => render());
   function render() {
     const project = current();
     captureStarter();
@@ -7587,6 +7731,70 @@ if (typeof document !== 'undefined') {
   function close() { captureInlineValues(); if(viewer){viewer=null;}else{drawer=null;} render(); const back = returnFocus?.isConnected ? returnFocus : returnSelector ? app.querySelector(returnSelector) : null; back?.focus({preventScroll:true}); }
   function draftKey(value) { return value?.kind === 'onboard' ? 'onboard:' + (value.brand || 'new') : value?.kind || 'new'; }
   function ensureInlineKit() { inline ||= {kind:'onboard', brand:null, values:{}}; inline.kit ||= {}; return inline.kit; }
+  // Folders of videos, photos and fonts added on the onboarding page (see kitFolders): the draft keeps what is typed and the requests still
+  // waiting. Each is a `brand_folder_add` board request that Claude applies; the row stays until the brand's footage lists the folder.
+  function folderUiOf(create = false) {
+    if (!inline || inline.kind !== 'onboard') return null;
+    if (create) return (ensureInlineKit().folders ||= { path: '', label: '', rights: '', error: '', busy: false, pending: [] });
+    return inline.kit?.folders || null;
+  }
+  function stopFolderWatch(entry) {
+    if (typeof entry?.unsubscribe === 'function') entry.unsubscribe();
+    if (entry) entry.unsubscribe = null;
+  }
+  function watchFolderAdd(entry) {
+    stopFolderWatch(entry);
+    if (!transport?.subscribeRequest) return;
+    entry.unsubscribe = transport.subscribeRequest(entry.requestId, receipt => {
+      if (!receipt) return;
+      const acknowledgement = receipt.artifactReceipt || receipt;
+      const status = String(acknowledgement.status || receipt.status || 'requested');
+      if (status === 'applied') {
+        const result = acknowledgement.result || receipt.result || {};
+        Object.assign(entry, { status: 'applied', folderId: typeof result.folderId === 'string' ? result.folderId : null, appliedAt: Date.now(), message: '' });
+        stopFolderWatch(entry);
+        void refresh();
+      } else if (status === 'declined') {
+        Object.assign(entry, { status: 'declined', message: acknowledgement.message || receipt.message || 'Declined in chat. Nothing was added.' });
+        stopFolderWatch(entry);
+      } else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
+        Object.assign(entry, { status: 'error', message: acknowledgement.message || receipt.message || 'Claude could not read that folder. It needs checking before another try.' });
+        stopFolderWatch(entry);
+      } else return;
+      render();
+    }, () => {});
+  }
+  async function submitFolderAdd() {
+    const ui = folderUiOf(true);
+    const slug = inline?.brand;
+    if (!transport || !ui || !slug || ui.busy) return;
+    captureInlineValues();
+    const checked = folderRequestArgs(ui);
+    if (checked.error) { ui.error = checked.error; inline.kitFocus = kitFocusSelector('add-folder'); render(); return; }
+    const requestId = randomId(globalThis);
+    const entry = { requestId, name: checked.name, rights: checked.args.rights, status: 'sent', message: '' };
+    ui.error = ''; ui.busy = true; render();
+    try {
+      const result = await transport.call('brand_folder_add', { requestId, brand: slug, ...checked.args });
+      entry.status = 'waiting';
+      ui.pending.push(entry);
+      Object.assign(ui, { path: '', label: '', rights: '' });
+      watchFolderAdd(entry);
+      notify(result?.message || 'Request saved. Claude will read the folder.');
+    } catch (e) {
+      ui.error = e.message || 'Could not send that.';
+    } finally {
+      ui.busy = false;
+      render();
+    }
+  }
+  function dismissFolder(index) {
+    const ui = folderUiOf();
+    if (!ui || !Number.isInteger(index) || !ui.pending[index]) return;
+    stopFolderWatch(ui.pending[index]);
+    ui.pending.splice(index, 1);
+    render();
+  }
   // Read a File into a decoded <img>, ready to draw to canvas. SVGs load the
   // same way as raster types since the browser rasterizes the data URL.
   function loadImageFromFile(file) {
@@ -8155,6 +8363,8 @@ if (typeof document !== 'undefined') {
       const brandForKit = inline?.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
       const projected = brandForKit?.kit || {};
       const action = target.dataset.kitAction;
+      if (action === 'add-folder') { void submitFolderAdd(); return; }
+      if (action === 'dismiss-folder') { dismissFolder(Number(target.dataset.index)); return; }
       if (action === 'add-color') {
         kit.palette = (Array.isArray(kit.palette) ? kit.palette : (projected.palette || [])).map(c => ({...c}));
         if (kit.palette.length < KIT_LIMITS.maxColors) kit.palette.push({ value: '#000000', role: 'other' });
@@ -8215,7 +8425,6 @@ if (typeof document !== 'undefined') {
     if(target.dataset.metricoolSave!==undefined){void submitMetricoolBrand(target.dataset.metricoolSave);return;}
     if(target.dataset.bankRemove!==undefined){void submitBankRemove(target.dataset.bankBrand,target.dataset.bankRemove);return;}
     if(target.dataset.connect){void submitConnectorAction('connect_provider', target.dataset.connect);return;}
-    if(target.dataset.skip){void submitConnectorAction('skip_provider', target.dataset.skip);return;}
     if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
     if(target.dataset.nav){location.hash=target.dataset.nav;return;}
     if(target.dataset.abRetry!==undefined){const shown=current();if(shown)void submitRetryStep(shown);return;}
@@ -8784,7 +8993,8 @@ if (typeof document !== 'undefined') {
     return (ui.agentBox ||= { to: '', draft: '', drafts: {}, chat: null, error: '', send: {}, retry: {}, handoff: {} });
   }
   // ---- the Inbox and the chats: opening and closing a chat, a draft for each agent, and keeping each list where it was scrolled ----
-  let onboardChat = null;
+  // undefined: the Brand onboarding page opens the Director's chat by itself when it has something to say; null: the person went back to the Inbox.
+  let onboardChat;
   const narrowScreen = () => Boolean(globalThis.matchMedia?.('(max-width: 960px)')?.matches);
   function capturePaneScroll() {
     const saved = new Map();
@@ -8817,7 +9027,7 @@ if (typeof document !== 'undefined') {
       was = box.chat;
       if (was) box.drafts[was] = box.draft;
       Object.assign(box, { chat: null, draft: '', error: '' });
-    } else { was = onboardChat; onboardChat = null; }
+    } else { was = onboardChat === undefined ? 'producer' : onboardChat; onboardChat = null; }
     render();
     if (focus && was) focusQuietly(`[data-ab-open="${CSS.escape(was)}"]`);
   }
@@ -9315,6 +9525,14 @@ if (typeof document !== 'undefined') {
       if (box.error) { box.error = ''; field.removeAttribute('aria-invalid'); document.getElementById('ab-error')?.remove(); }
       return;
     }
+    if (field.dataset?.kitFolder === 'path' || field.dataset?.kitFolder === 'label') {
+      const ui = folderUiOf(true);
+      if (ui) {
+        ui[field.dataset.kitFolder] = field.value;
+        if (ui.error) { ui.error = ''; document.getElementById('kit-folder-path')?.removeAttribute('aria-invalid'); document.getElementById('kit-folder-error')?.remove(); }
+      }
+      return;
+    }
     if (intakeEdit(field)) return;
     if (inline?.kind === 'onboard' && field.closest?.('#inline-form')) {
       markContextEdited(inline, field.name);
@@ -9360,6 +9578,10 @@ if (typeof document !== 'undefined') {
   });
   app.addEventListener('keydown', event => {
     const field = event.target;
+    if (field instanceof HTMLInputElement && (field.dataset.kitFolder === 'path' || field.dataset.kitFolder === 'label')) {
+      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); void submitFolderAdd(); }
+      return;
+    }
     // The box for an opening line: Enter saves it, Escape drops it.
     if (field instanceof HTMLInputElement && field.dataset.hookInput !== undefined) {
       if (event.isComposing) return;
@@ -9539,6 +9761,11 @@ if (typeof document !== 'undefined') {
   app.addEventListener('change', event => {
     const field = event.target;
     const name = field.name || '';
+    if (field.dataset?.kitFolder === 'rights') {
+      const ui = folderUiOf(true);
+      if (ui) { ui.rights = field.value; if (ui.error) { ui.error = ''; document.getElementById('kit-folder-error')?.remove(); document.getElementById('kit-folder-path')?.removeAttribute('aria-invalid'); } }
+      return;
+    }
     if (name === 'kit_logo_file') { void handleLogoFile(field.files?.[0] || null); return; }
     if (name === 'kit_ref_file') { void handleRefFiles(field.files); return; }
     const colorIndex = /^kit_color_(swatch|hex|role)_(\d+)$/.exec(name);

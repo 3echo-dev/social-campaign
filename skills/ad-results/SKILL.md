@@ -29,6 +29,8 @@ Use the job they name, or the paid job they last handed off; ask which job only 
 The job's brand needs a chosen ad account for that platform.
 If none is chosen, run the connection check the setup skill describes for Meta ads or TikTok ads first.
 If the connector is not there, say in one line how to add it (setup describes where) and stop.
+The person may have answered the account question with "No Meta ad account yet" (or TikTok): then there is no ad account to read, so say that plainly in one line and stop; the question comes back on its own if a new account appears.
+If they answered "Not sure, decide later", saving results asks the question again in Needs you; tell them once that it is waiting there and stop until they answer.
 
 ## Steps
 

@@ -4,7 +4,8 @@
  *
  *   workspaces/<brand>/library/footage/
  *     folders.jsonl       {id, path, rights: 'ours'|'client_ask'|'never', label?, at, changedAt?, removed?}   each folder the person imported
- *     index.jsonl         {id, folderId, relPath, sha256, kind: video|image|audio, bytes, mtime, durationSec?, width?, height?, thumb?, at, alsoAt?}
+ *     index.jsonl         {id, folderId, relPath, sha256, kind: video|image|audio|font, bytes, mtime, durationSec?, width?, height?, thumb?,
+ *                          font?: {family, style?, fullName?, format}, at, alsoAt?}
  *     analysis/<id>.json  {fileId, sha256, quick?: {...}, full?: {...}, wantFull?, markedAt?, updatedAt}   what was seen, in two stages
  *     progress/<folderId>.json   how far indexing a folder got (resumable)
  *     thumbs/<id>.jpg     the only files written next to the list: one small picture per video or image
@@ -13,7 +14,9 @@
  * path), so when a folder moves the files show as missing and the person is asked for the new place (the `relink` action), not lost.
  *
  * Indexing is local and free: it lists the folder (server/media/inventory.mjs), hashes each file (sha256), reads its length and size
- * (ffprobe) and makes a thumbnail (ffmpeg); there is no model call. A file is one record per content: a copy of the same bytes in
+ * (ffprobe) and makes a thumbnail (ffmpeg); there is no model call. A font file (.ttf, .otf, .woff, .woff2) is indexed too: its family
+ * is read from its own name table (server/media/font-name.mjs). A font is never described by a model and is offered to the brand kit
+ * by brand-footage-digest.mjs. A file is one record per content: a copy of the same bytes in
  * another place (another folder, or another name) is not a second file, it is one more place in `alsoAt` of the first. The id is
  * `m-` and the first 16 characters of the sha256, so the same content has the same id everywhere and its analysis stays with it.
  * Both line files are only ever appended to: a change appends the whole record again with the same id, and a read keeps the last
@@ -26,9 +29,10 @@
  *
  * Analysis comes in two stages and is written by an agent that looked at the file (the model work is the agent's; this module only
  * keeps it):
- *   quick  {opening, spoken?, products?, mood?, shotTypes?, scenes?}   the opening seconds and the first spoken words
- *   full   {summary, hook?, scenes: [{start, end, description, shotType?}], shotTypes, products, mood, onScreenText,
- *           spoken?, usableMoments: [{start, end, what, why?}]}   a full breakdown with timecodes in seconds
+ *   quick  {opening, spoken?, hook?, style?, products?, mood?, shotTypes?, scenes?, logoVisible?, isLogo?}   the opening seconds and the first
+ *          spoken words (for a picture: what is in it)
+ *   full   {summary, hook?, style?, scenes: [{start, end, description, shotType?}], shotTypes, products, mood, onScreenText,
+ *           spoken?, usableMoments: [{start, end, what, why?}], logoVisible?, isLogo?}   a full breakdown with timecodes in seconds
  * The person marks the files that get a full breakdown (`wantFull`), and the agent tells them what it costs before it starts.
  *
  * Rights. Every folder carries one: ours (free to use), client_ask (ask the person before posting) or never (never use). A file
@@ -46,12 +50,18 @@ import { log } from '../lib/log.mjs';
 import { isTooBroadSourceFolder } from '../lib/paths.mjs';
 import { sha256File } from '../media/hash.mjs';
 import { inventoryFolder } from '../media/inventory.mjs';
+import { readFontNames } from '../media/font-name.mjs';
 import { KNOWN_TYPES, detectType } from '../media/mime.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { extractThumbnail } from '../media/frames.mjs';
 
 export const RIGHTS = Object.freeze(['ours', 'client_ask', 'never']);
-export const FOOTAGE_KINDS = Object.freeze(['video', 'image', 'audio']);
+export const FOOTAGE_KINDS = Object.freeze(['video', 'image', 'audio', 'font']);
+/** The kinds a model can look at. A font is read from its name table instead. */
+export const LOOKABLE_KINDS = Object.freeze(['video', 'image', 'audio']);
+export const FONT_EXTENSIONS = Object.freeze(['.ttf', '.otf', '.woff', '.woff2']);
+/** The footage kind an extension stands for, or undefined. */
+const kindOfExtension = extension => (FONT_EXTENSIONS.includes(extension) ? 'font' : KNOWN_TYPES[extension]?.kind);
 export const STAGES = Object.freeze(['quick', 'full']);
 export const RIGHTS_WORDS = Object.freeze({ ours: 'ours to use', client_ask: 'ask the person before posting', never: 'never use' });
 const RIGHTS_NOTES = Object.freeze({
@@ -68,7 +78,7 @@ export const MAX_FILES_PER_FOLDER = 50_000;
 /** How long the board and the briefs reuse the counts (the missing check looks at every file). */
 export const SUMMARY_CACHE_MS = 30_000;
 
-const TEXT = Object.freeze({ short: 120, line: 300, opening: 600, summary: 800, spoken: 1500 });
+const TEXT = Object.freeze({ short: 120, line: 300, opening: 600, summary: 800, spoken: 1500, style: 120 });
 const ERROR_LIMIT = 20;
 
 // ---------------------------------------------------------------- small helpers
@@ -181,7 +191,7 @@ export function readFolders({ root, brand, includeRemoved = false } = {}) {
 
 const cleanPath = value => {
   const text = String(value ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
-  if (!text || !isAbsolute(text)) throw new InvalidInputError('Say which folder, with its full path on this computer (starting at the drive, for example C:\Footage).');
+  if (!text || !isAbsolute(text)) throw new InvalidInputError('Say which folder, with its full path on this computer (starting at the drive, for example C:\\Footage).');
   return resolve(text);
 };
 
@@ -196,6 +206,27 @@ function folderGuards({ root, brand, path }) {
   if (mine === own || mine.startsWith(`${own}${sep}`) || mine === hidden || mine.startsWith(`${hidden}${sep}`)) {
     throw new InvalidInputError('That folder is Social Campaign storage, not a media folder.');
   }
+}
+
+/**
+ * A folder the person asked for on the board (the brand_folder_add request), checked the way importFolder will check it, without
+ * writing anything: the brand exists, the rights are one of the three, the path is a full path and, when `live`, a real folder that is
+ * not too broad or Social Campaign's own, and not already imported with other rights. Returns { brand, path, rights, label }.
+ * Without `live` only the shape is checked, so a request can be saved before the folder is looked at.
+ */
+export function checkFolderRequest({ root, brand, folder, rights, label = null, live = true } = {}) {
+  const dir = requireBrand(root, brand);
+  checkRights(rights);
+  const path = cleanPath(folder);
+  const words = typeof label === 'string' && label.trim() ? clip(label, TEXT.short) : null;
+  if (live) {
+    folderGuards({ root, brand, path });
+    const known = [...foldFile(foldersFile(dir)).values()].find(item => !item.removed && samePath(item.path, path));
+    if (known && known.rights !== rights) {
+      throw new InvalidInputError(`That folder is already added as "${RIGHTS_WORDS[known.rights]}".`, { fix: 'If the person wants different rights for it, change them with brand_footage_folder (action rights).' });
+    }
+  }
+  return { brand, path, rights, label: words };
 }
 
 /**
@@ -283,7 +314,7 @@ function snapshotOf(root, brand) {
 }
 
 const zeroCounts = () => ({
-  folders: 0, files: 0, video: 0, image: 0, audio: 0, videoSeconds: 0, analysedQuick: 0, analysedFull: 0, missing: 0,
+  folders: 0, files: 0, video: 0, image: 0, audio: 0, font: 0, videoSeconds: 0, analysedQuick: 0, analysedFull: 0, missing: 0,
   pendingQuick: 0, fullMarked: 0, pendingFull: 0, pendingFullSeconds: 0, ours: 0, client_ask: 0, never: 0,
 });
 
@@ -301,11 +332,11 @@ function countsOf(snapshot) {
     else if (stage === 'quick') out.analysedQuick += 1;
     const present = entry.presentLoc() !== null;
     if (!present) out.missing += 1;
-    if (doc?.wantFull && stage !== 'full') {
+    if (doc?.wantFull && stage !== 'full' && LOOKABLE_KINDS.includes(record.kind)) {
       out.fullMarked += 1;
       if (present && rights !== 'never') { out.pendingFull += 1; out.pendingFullSeconds += Number.isFinite(record.durationSec) ? record.durationSec : 0; }
     }
-    if (present && rights !== 'never' && stage === 'none') out.pendingQuick += 1;
+    if (present && rights !== 'never' && stage === 'none' && LOOKABLE_KINDS.includes(record.kind)) out.pendingQuick += 1;
   }
   out.videoSeconds = round2(out.videoSeconds);
   out.pendingFullSeconds = round2(out.pendingFullSeconds);
@@ -350,7 +381,7 @@ async function runPass({ root, brand, dir, folderId, control, batchSize, now }) 
       return;
     }
     const found = inventoryFolder(folder.path, { maxFiles: MAX_FILES_PER_FOLDER });
-    const entries = found.filter(entry => FOOTAGE_KINDS.includes(KNOWN_TYPES[entry.extension]?.kind));
+    const entries = found.filter(entry => FOOTAGE_KINDS.includes(kindOfExtension(entry.extension)));
     save({ total: entries.length, ...(found.length >= MAX_FILES_PER_FOLDER ? { truncated: true } : {}) });
 
     const current = new Map(foldFile(indexFile(dir)));
@@ -409,8 +440,15 @@ async function runPass({ root, brand, dir, folderId, control, batchSize, now }) 
  * leaves it out.
  */
 async function newRecord({ dir, entry, place, sha256, id, at }) {
+  if (kindOfExtension(entry.extension) === 'font') {
+    const names = await readFontNames(entry.path);
+    return {
+      id, folderId: place.folderId, relPath: place.relPath, mtime: place.mtime, sha256, kind: 'font', bytes: entry.bytes,
+      ...(names ? { font: names } : {}), at,
+    };
+  }
   const type = detectType(entry.path);
-  if (!FOOTAGE_KINDS.includes(type.kind)) throw new Error('That does not look like a video, picture or audio file.');
+  if (!FOOTAGE_KINDS.includes(type.kind)) throw new Error('That does not look like a video, picture, audio or font file.');
   const withThumbnail = type.kind === 'video' || type.kind === 'image';
   const [facts, thumbFile] = await Promise.all([
     probeFile(entry.path).catch(error => { log.debug('footage probe failed', { path: entry.path, error: String(error) }); return null; }),
@@ -470,12 +508,42 @@ export function isIndexing({ root, brand, folderId } = {}) {
 }
 
 // ---------------------------------------------------------------- what the rest of the plugin reads
+const FONT_NAMES_ON_BOARD = 8;
+
+/**
+ * The font families the footage holds, from the name table of each font file: [{ family, files, styles[], fileIds[], rights }], the most
+ * files first. Fonts in a `never` folder and fonts whose name could not be read are left out; rights is the strictest of a family's files.
+ */
+export function fontFamiliesOf(entries) {
+  return groupFontFamilies(entries.map(entry => ({ id: entry.record.id, kind: entry.record.kind, font: entry.record.font, rights: entry.rights })));
+}
+
+/** The same grouping for plain items: [{ id, kind, font: { family, style? }, rights }]. */
+export function groupFontFamilies(items) {
+  const byFamily = new Map();
+  for (const { id, kind, font, rights } of items) {
+    if (kind !== 'font' || rights === 'never' || !font?.family) continue;
+    const key = font.family.toLowerCase();
+    const row = byFamily.get(key) ?? { family: font.family, files: 0, styles: [], fileIds: [], rights: 'ours' };
+    row.files += 1;
+    if (font.style && !row.styles.includes(font.style)) row.styles.push(font.style);
+    row.fileIds.push(id);
+    row.rights = strictest(row.rights, rights);
+    byFamily.set(key, row);
+  }
+  return [...byFamily.values()].sort((a, b) => b.files - a.files || a.family.localeCompare(b.family, 'en'));
+}
+
+const zeroKinds = () => ({ video: 0, image: 0, audio: 0, font: 0 });
+
 function folderViews(snapshot) {
-  const perFolder = new Map(snapshot.folders.map(folder => [folder.id, { files: 0, missing: 0 }]));
+  const perFolder = new Map(snapshot.folders.map(folder => [folder.id, { files: 0, missing: 0, kinds: zeroKinds(), described: 0 }]));
   for (const entry of snapshot.entries) {
     for (const loc of entry.locs) {
       const row = perFolder.get(loc.folderId);
       row.files += 1;
+      if (FOOTAGE_KINDS.includes(entry.record.kind)) row.kinds[entry.record.kind] += 1;
+      if (stageOf(entry.doc) !== 'none') row.described += 1;
       if (!loc.present()) row.missing += 1;
     }
   }
@@ -484,7 +552,7 @@ function folderViews(snapshot) {
     return {
       id: folder.id, label: folder.label ?? null, name: folder.label || basename(folder.path) || folder.path, path: folder.path,
       rights: folder.rights, rightsNote: RIGHTS_NOTES[folder.rights], addedAt: folder.at ?? null,
-      folderFound: snapshot.folderOk.get(folder.id) === true, files: row.files, missing: row.missing,
+      folderFound: snapshot.folderOk.get(folder.id) === true, files: row.files, missing: row.missing, kinds: row.kinds, described: row.described,
       indexing: progressView(snapshot.dir, folder.id),
     };
   });
@@ -512,7 +580,7 @@ export function footageStatus({ root, brand } = {}) {
     brand,
     folders,
     counts: {
-      folders: counts.folders, files: counts.files, video: counts.video, image: counts.image, audio: counts.audio, videoSeconds: counts.videoSeconds,
+      folders: counts.folders, files: counts.files, video: counts.video, image: counts.image, audio: counts.audio, font: counts.font, videoSeconds: counts.videoSeconds,
       analysedQuick: counts.analysedQuick, analysedFull: counts.analysedFull, missing: counts.missing,
       byRights: { ours: counts.ours, client_ask: counts.client_ask, never: counts.never },
     },
@@ -532,14 +600,17 @@ export function footageSummary({ root, brand, cacheMs = 0 } = {}) {
   return summaryOf({ root, brand, cacheMs }).summary;
 }
 
-/** The summary plus a short list of folders for the board's Footage line. No path leaves the computer in it. */
+/**
+ * The summary plus a short list of folders for the board's Footage line, the files by kind and the font families found. No path leaves
+ * the computer in it.
+ */
 export function boardFootage({ root, brand, cacheMs = SUMMARY_CACHE_MS } = {}) {
-  const { summary, list } = summaryOf({ root, brand, cacheMs });
-  return { ...summary, list };
+  const { summary, list, kinds, fonts } = summaryOf({ root, brand, cacheMs });
+  return { ...summary, kinds, fonts, list };
 }
 
 function summaryOf({ root, brand, cacheMs }) {
-  const empty = { summary: { folders: 0, files: 0, analysedQuick: 0, analysedFull: 0, missing: 0 }, list: [], byRights: { ours: 0, client_ask: 0, never: 0 } };
+  const empty = { summary: { folders: 0, files: 0, analysedQuick: 0, analysedFull: 0, missing: 0 }, list: [], kinds: zeroKinds(), fonts: [], byRights: { ours: 0, client_ask: 0, never: 0 } };
   let dir;
   try { dir = footageDir(root, brand); } catch { return empty; }
   if (!existsSync(foldersFile(dir))) return empty;
@@ -550,10 +621,12 @@ function summaryOf({ root, brand, cacheMs }) {
   const value = {
     summary: { folders: counts.folders, files: counts.files, analysedQuick: counts.analysedQuick, analysedFull: counts.analysedFull, missing: counts.missing },
     byRights: { ours: counts.ours, client_ask: counts.client_ask, never: counts.never },
+    kinds: { video: counts.video, image: counts.image, audio: counts.audio, font: counts.font },
+    fonts: fontFamiliesOf(snapshot.entries).slice(0, FONT_NAMES_ON_BOARD).map(item => item.family),
     list: folderViews(snapshot).map(folder => {
       const { state, processed, total } = folder.indexing;
       return {
-        id: folder.id, name: folder.name, rights: folder.rights, files: folder.files, missing: folder.missing,
+        id: folder.id, name: folder.name, rights: folder.rights, files: folder.files, missing: folder.missing, kinds: folder.kinds, described: folder.described,
         state: !folder.folderFound ? 'moved' : state === 'running' || state === 'queued' ? 'indexing' : state === 'stopped' ? 'stopped' : 'ready',
         ...(state === 'running' ? { processed, total } : {}),
       };
@@ -573,6 +646,15 @@ export function footageLine({ root, brand, cacheMs = SUMMARY_CACHE_MS } = {}) {
   const rights = [`${byRights.ours.toLocaleString('en-US')} ours`, `${byRights.client_ask.toLocaleString('en-US')} client_ask (ask the person before posting)`, `${byRights.never.toLocaleString('en-US')} never (never use)`];
   const rest = [`${described.toLocaleString('en-US')} described`, ...(summary.missing ? [`${summary.missing.toLocaleString('en-US')} missing from their folder`] : [])];
   return `Footage: ${plural(summary.files, 'file')} from ${plural(summary.folders, 'folder')} (${rights.join(', ')}); ${rest.join(', ')}. For a repurpose job, search it with brand_footage_search before planning new shots. Each result carries its rights; searches leave out the never files.`;
+}
+
+/**
+ * Every file of the brand's footage as search would show it (path, rights, how far it is described, the whole analysis), `never` files
+ * included: the caller applies the rights rule. For the layer that digests footage into the brand kit and the bank.
+ */
+export function footageFiles({ root, brand } = {}) {
+  const snapshot = snapshotOf(root, brand);
+  return snapshot.entries.map(entry => fileView(entry, snapshot.dir, { detail: true }));
 }
 
 // ---------------------------------------------------------------- searching
@@ -599,7 +681,7 @@ function analysisFields(doc) {
   };
 }
 
-const KIND_RANK = { video: 0, image: 1, audio: 2 };
+const KIND_RANK = { video: 0, image: 1, audio: 2, font: 3 };
 const STAGE_RANK = { full: 2, quick: 1, none: 0 };
 
 function normaliseAnalysedFilter(value) {
@@ -623,6 +705,9 @@ function fileView(entry, dir, { detail = false } = {}) {
     kind: record.kind,
     path: place ? place.abs : null,
     missing: !place,
+    bytes: Number.isFinite(record.bytes) ? record.bytes : null,
+    modified: typeof main.mtime === 'string' ? main.mtime.slice(0, 10) : null,
+    ...(record.font ? { font: record.font } : {}),
     ...(Number.isFinite(record.durationSec) ? { durationSec: record.durationSec } : {}),
     ...(Number.isInteger(record.width) ? { width: record.width, height: record.height } : {}),
     thumbnail: record.thumb ? join(dir, ...record.thumb.split('/')) : null,
@@ -635,6 +720,9 @@ function fileView(entry, dir, { detail = false } = {}) {
       summary: clip(read.summary || read.opening || '', 300),
       ...(read.products?.length ? { products: read.products } : {}),
       ...(read.mood ? { mood: read.mood } : {}),
+      ...(read.style ? { style: read.style } : {}),
+      ...(read.isLogo ? { isLogo: true } : {}),
+      ...(read.logoVisible ? { logoVisible: true } : {}),
       ...(read.shotTypes?.length ? { shotTypes: read.shotTypes } : {}),
       ...(doc.full?.usableMoments?.length ? { usableMoments: doc.full.usableMoments.slice(0, 5) } : {}),
     } : {}),
@@ -676,7 +764,7 @@ export function searchFootage({ root, brand, query = null, kind = null, rights =
     let score = 0;
     const matched = new Set();
     if (terms.length) {
-      const name = tokenSet(entry.locs.map(loc => `${loc.relPath} ${loc.folder.label ?? ''}`).join(' '));
+      const name = tokenSet(`${entry.locs.map(loc => `${loc.relPath} ${loc.folder.label ?? ''}`).join(' ')} ${record.font?.family ?? ''}`);
       const fields = analysisFields(doc);
       for (const term of terms) {
         if (matches(term, fields.structured)) { score += 3; matched.add('what is in it'); }
@@ -751,13 +839,14 @@ export function cleanAnalysis(stage, input, { kind = 'video', durationSec = null
   const problems = [];
   const common = {
     products: listOf(input.products, 12, 80), mood: textOf(input.mood, 80), shotTypes: listOf(input.shotTypes, 12, 60),
+    style: textOf(input.style, TEXT.style), logoVisible: input.logoVisible === true ? true : '', isLogo: input.isLogo === true ? true : '',
   };
   let clean;
   if (stage === 'quick') {
     const opening = textOf(input.opening, TEXT.opening);
     if (!opening) problems.push('opening must say what the first seconds show.');
     clean = {
-      opening, spoken: textOf(input.spoken, TEXT.opening), ...common,
+      opening, spoken: textOf(input.spoken, TEXT.opening), hook: textOf(input.hook, TEXT.line), ...common,
       scenes: listOf(input.scenes, 12, 120),
     };
   } else {
@@ -795,6 +884,7 @@ export function saveAnalysis({ root, brand, fileId, stage, analysis, now } = {})
   const snapshot = snapshotOf(root, brand);
   const entry = findEntry(snapshot, fileId);
   if (entry.rights === 'never') throw new InvalidInputError('That file is in a folder the person marked never use, so it is not analysed.');
+  if (!LOOKABLE_KINDS.includes(entry.record.kind)) throw new InvalidInputError('A font file is not described. Its family name is read from the file itself.');
   const clean = cleanAnalysis(stage, analysis, { kind: entry.record.kind, durationSec: entry.record.durationSec ?? null });
   const previous = entry.doc && typeof entry.doc === 'object' ? entry.doc : {};
   const same = previous[stage] && stable({ ...previous[stage], at: null }) === stable({ ...clean, at: null });
@@ -828,6 +918,7 @@ export function markForFull({ root, brand, fileIds, wantFull = true, now } = {})
     const entry = byId.get(id);
     if (!entry) { out.unknown.push(id); continue; }
     if (wantFull && entry.rights === 'never') { out.skipped.push({ fileId: id, reason: 'In a folder marked never use.' }); continue; }
+    if (wantFull && !LOOKABLE_KINDS.includes(entry.record.kind)) { out.skipped.push({ fileId: id, reason: 'A font file is not described.' }); continue; }
     const doc = entry.doc && typeof entry.doc === 'object' ? entry.doc : {};
     if (wantFull) {
       if (doc.wantFull === true) { out.alreadyMarked += 1; continue; }

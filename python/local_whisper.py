@@ -10,6 +10,10 @@ Result:   {"status": "ok|no_speech|model_missing|not_installed|error", "detail":
 
 It never installs anything and never downloads a model unless the request says allow_download: a model that is not
 already on this computer is reported as model_missing, with the model name, so the caller can say what to fetch.
+
+The one other request is a fetch, which the research helper makes once, in the background, after the person agreed to
+the speech reader:  {"fetch_model": "small"}  ->  {"status": "ok|not_installed|error", "model": "small", "detail": "..."}.
+It downloads that model into the usual Hugging Face cache and does nothing else.
 The model runs on the CPU with int8 weights ("small", or "small.en" when the speech is English), which is what a
 laptop can do in roughly a quarter of the audio's length. faster-whisper reads video files directly (it decodes the
 audio track itself), so no ffmpeg step is needed here.
@@ -52,6 +56,28 @@ def model_missing(error):
     )
 
 
+ALLOWED_MODELS = ("small", "small.en")
+
+
+def fetch_model(name):
+    """Download one model into the Hugging Face cache; reports what happened and never raises."""
+    if name not in ALLOWED_MODELS:
+        emit({"status": "error", "detail": "That speech model is not one this reader uses.", "model": name})
+        return 0
+    try:
+        from faster_whisper.utils import download_model
+    except Exception:  # noqa: BLE001
+        emit({"status": "not_installed", "detail": "faster-whisper is not installed in this Python.", "model": name})
+        return 0
+    try:
+        download_model(name)
+    except Exception as error:  # noqa: BLE001
+        emit({"status": "error", "detail": "The speech model could not be downloaded: %s." % type(error).__name__, "model": name})
+        return 0
+    emit({"status": "ok", "model": name})
+    return 0
+
+
 def main():
     configure_output()
     try:
@@ -61,6 +87,9 @@ def main():
     except Exception:  # noqa: BLE001
         emit({"status": "error", "detail": "The request was not valid JSON."})
         return 0
+    fetch = request.get("fetch_model")
+    if fetch:
+        return fetch_model(str(fetch))
     path = str(request.get("path") or "")
     if not path or not os.path.isfile(path):
         emit({"status": "error", "detail": "That media file could not be found."})

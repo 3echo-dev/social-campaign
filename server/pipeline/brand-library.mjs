@@ -5,7 +5,10 @@
  *     bank/yours.jsonl       {id, kind, text, concept?, jobId?, edited?, was?, at, removed?}   the person's own lines
  *     bank/proven.jsonl      {id, kind, text, evidence:{url, views|likes, date}, source?, competitor?, jobId?, at, removed?}   what worked, with its proof
  *                            (evidence counts views; a post whose platform shows none to a signed-out reader, Instagram, counts likes instead)
+ *                            (an item learned from the brand's own footage has the file as its evidence, not a link: {file:{fileId, name, kind?, folder?}, date};
+ *                            fileId is the footage file's id in the brand's footage library, never a path)
  *                            (source is 'brand' or 'competitor', with the competitor's name; an item without one is the brand's own)
+ *                            (note, when there is one: a line about the item, for example the caption of the post whose spoken hook it holds)
  *     research/<jobId>.json  {jobId, at, files:[{path, sha256, topic, at}], industry?}   the research a job left, by path
  *     jobs/<jobId>.json      the filed job record (below)
  *     footage/               the brand's imported archive of past videos, pictures and audio: links to the originals with rights, plus
@@ -187,23 +190,43 @@ export function countText(source) {
   return null;
 }
 
-/** Evidence counts one measure: {url, views, date}, or {url, likes, date} when the post has likes and no views (Instagram). */
+/**
+ * The footage file an item was learned from: { fileId, name, kind, folder? }, or null. The id is the file's id in the brand's footage
+ * library (`m-` and 16 hex characters); a path never goes in, so nothing about the person's computer rides in the bank.
+ */
+function fileRefOf(value) {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  if (!input || typeof input.fileId !== 'string' || !/^m-[0-9a-f]{16}$/.test(input.fileId)) return null;
+  const name = clip(String(input.name ?? '').split(/[\\/]/).pop(), 120);
+  if (!name) return null;
+  const kind = ['video', 'image'].includes(input.kind) ? input.kind : null;
+  const folder = clip(input.folder, 80);
+  return { fileId: input.fileId, name, ...(kind ? { kind } : {}), ...(folder ? { folder } : {}) };
+}
+
+/**
+ * Evidence counts one measure: {url, views, date}, or {url, likes, date} when the post has likes and no views (Instagram). An item
+ * learned from the brand's own footage has the file instead of a link: {file, date}.
+ */
 function evidenceOf(value) {
   const input = value && typeof value === 'object' ? value : {};
   const url = runtime.webLink(input.url);
-  const views = wholeCount(input.views);
-  const likes = views === null ? wholeCount(input.likes) : null;
   const when = input.date ?? input.posted_at;
   const date = typeof when === 'string' && when.trim() ? clip(when, 40) : null;
+  const file = url ? null : fileRefOf(input.file);
+  if (file) return { file, date };
+  const views = wholeCount(input.views);
+  const likes = views === null ? wholeCount(input.likes) : null;
   return likes !== null ? { url, likes, date } : { url, views, date };
 }
 
 /**
  * Put one item in a bank, once. Returns { item, saved }: saved is false when the same words are already there (that item is returned).
  * `yours` keeps the person's own lines; an item the person edited from an agent's line carries edited: true and was.
- * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram) and date when known.
+ * `proven` needs the https link of the post it comes from, with its views (its likes when the platform shows none: Instagram) and date when known;
+ * an item learned from the brand's own footage names the footage file instead ({ file: { fileId, name, kind?, folder? }, date }) and is the brand's own.
  */
-export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, now } = {}) {
+export function addToBank({ root, brand, bank = 'yours', kind, text, concept = null, jobId = null, edited = false, was = null, evidence = null, source = null, competitor = null, promotedFrom = null, note = null, now } = {}) {
   checkBank(bank);
   checkKind(kind);
   const words = clip(text, TEXT_LIMIT);
@@ -216,10 +239,12 @@ export function addToBank({ root, brand, bank = 'yours', kind, text, concept = n
   let item;
   if (bank === 'proven') {
     const proof = evidenceOf(evidence);
-    if (!proof.url) throw new InvalidInputError('A proven item needs the link to the post it comes from.', { fix: 'Pass evidence with an https url, and its views (likes for Instagram) and date when you know them.' });
+    if (!proof.url && !proof.file) throw new InvalidInputError('A proven item needs the link to the post it comes from, or the footage file it was learned from.', { fix: 'Pass evidence with an https url, and its views (likes for Instagram) and date when you know them, or evidence.file with the footage fileId and name.' });
     if (source !== null && source !== undefined && !PROVEN_SOURCES.includes(source)) throw new InvalidInputError('The source is brand (one of the brand\'s own posts) or competitor.');
+    if (proof.file && source === 'competitor') throw new InvalidInputError('A file from the brand\'s own footage cannot be a competitor\'s.');
     const who = source === 'competitor' && typeof competitor === 'string' && competitor.trim() ? clip(competitor, 80) : null;
-    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), at };
+    const aside = typeof note === 'string' && note.trim() ? clip(note, 300) : null;
+    item = { id, kind, text: words, evidence: proof, ...(source ? { source } : {}), ...(who ? { competitor: who } : {}), ...(jobId ? { jobId: String(jobId) } : {}), ...(promotedFrom ? { promotedFrom: String(promotedFrom) } : {}), ...(aside ? { note: aside } : {}), at };
   } else {
     item = {
       id, kind, text: words,
@@ -715,7 +740,7 @@ function libraryBlockWithoutFootage({ root, brand, now } = {}) {
   }
   if (proven.length) {
     lines.push('Proven, with the post that shows it:');
-    for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", countText(item.evidence), item.evidence?.date, item.evidence?.url].filter(Boolean).join(', ')})`);
+    for (const item of proven) lines.push(`- ${item.kind}: ${quoted(item.text)} (${[item.source === 'competitor' ? `competitor${item.competitor ? ` ${clip(item.competitor, 40)}` : ''}` : "the brand's own", countText(item.evidence), item.evidence?.date, item.evidence?.url, item.evidence?.file ? `learned from the brand's own footage file ${clip(item.evidence.file.name, 80)}` : null].filter(Boolean).join(', ')})`);
   }
   if (research.length) {
     lines.push('Research already done. Reuse brand and competitor research under 30 days old and trends under 7 days old; refresh only the rest, and say which you reused:');
