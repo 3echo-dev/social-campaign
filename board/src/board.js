@@ -3067,6 +3067,124 @@ export function conceptSourceOf(concept) {
   // A source this board has no word for is shown as written, when it is short enough to be a label.
   return head && head.length <= 32 ? { kind: 'other', label: head[0].toUpperCase() + head.slice(1), detail } : null;
 }
+// conceptProofOf(text): turn free-text research evidence into up to 6 "proof tile" items.
+// Approach: every URL anchors an item. Text between two URLs is cut at the first ")" or ";"
+// (else after the last ", "), so a URL owns the data that trails it and the remainder is the
+// next URL's lead-in (after its last ")"). Closed "(...)" groups left over that still carry a
+// count / lift / days become URL-less items. Fields are read by regex from the item's own zone
+// only (quotes, URLs and bank ids removed first), so nothing is invented.
+const URL_RE = /https?:\/\/[^\s)\]>"'<“”]+/g;
+const MD_LINK = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+const ID_RE = /\b(?:ip|p|t)-[0-9a-f]{6,}\b/gi;
+const QUOTE_RE = /["“]([^"”]+)["”]/;
+const COUNT_RE = /(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(views?|plays?|likes?)\b/i;
+const LIFT_RE = /(?<![\w.])(\d+(?:\.\d+)?)\s*[x×](?![A-Za-z0-9])/i;
+const DAYS_RE = /running\s+(?:for\s+)?(\d+)\s*days?|(\d+)\s*days?\s+(?:running|live)/i;
+const DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
+const NAMES = { tiktok: 'TikTok', instagram: 'Instagram', youtube: 'YouTube', facebook: 'Facebook', 'meta-ad': 'Meta ad', web: 'Web' };
+const MULT = { k: 1e3, m: 1e6, b: 1e9 };
+
+function platformOf(u) {
+  if (/facebook\.com\/ads\/library/i.test(u)) return 'meta-ad';
+  if (/tiktok\.com/i.test(u)) return 'tiktok';
+  if (/instagram\.com|instagr\.am/i.test(u)) return 'instagram';
+  if (/youtube\.com|youtu\.be/i.test(u)) return 'youtube';
+  if (/facebook\.com|fb\.watch|fb\.com/i.test(u)) return 'facebook';
+  return 'web';
+}
+
+function platformFromWords(t) {
+  const hits = [['tiktok', /tiktok/i], ['instagram', /instagram|\breels?\b/i], ['youtube', /youtube|\bshorts\b/i],
+    ['meta-ad', /meta ads?\b/i], ['facebook', /facebook/i]]
+    .map(([p, re]) => [p, t.search(re)]).filter(([, i]) => i >= 0).sort((a, b) => a[1] - b[1]);
+  return hits.length ? hits[0][0] : 'web';
+}
+
+function cutPoint(s, from, to, last) {
+  const gap = s.slice(from, to);
+  const m = gap.search(/[;)\n]/);
+  if (m >= 0) return from + m + (gap[m] === ")" ? 1 : 0);
+  if (last) return to;
+  const commas = [...gap.matchAll(/,\s+/g)];
+  const c = commas[commas.length - 1];
+  return c ? from + c.index + c[0].length : from;
+}
+
+function pickDate(z) {
+  const since = z.match(/since\s+(\d{4}-\d{2}-\d{2})/i);
+  const ok = (y, mo, d) => +mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31;
+  if (since && ok(...since[1].split('-'))) return since[1];
+  for (const m of z.matchAll(DATE_RE)) {
+    if (/(seen|as of|checked|captured)\s*(on\s*)?$/i.test(z.slice(Math.max(0, m.index - 14), m.index))) continue;
+    if (ok(m[1], m[2], m[3])) return m[0];
+  }
+  return null;
+}
+
+function labelOf(body, head, platform) {
+  const q = body.match(QUOTE_RE);
+  let t = q ? q[1] : head.split(/[;:]/).pop().split(/,\s+/).pop();
+  t = t.replace(ID_RE, '').replace(/\s+/g, ' ').trim();
+  if (!q) t = t.replace(/^[\s\-*•–—.,]+/, '').replace(/^(?:and|or|plus)\s+/i, '').replace(/[\s,;:.\-–—]+$/, '');
+  if (!/[A-Za-z]{3}/.test(t)) t = NAMES[platform];
+  return t.length > 70 ? t.slice(0, 69).trimEnd() + '…' : t;
+}
+
+function makeItem(head, body, url) {
+  const z = body.replace(new RegExp(QUOTE_RE.source, 'g'), ' ').replace(URL_RE, ' ').replace(ID_RE, ' ');
+  const c = z.match(COUNT_RE), l = z.match(LIFT_RE), d = z.match(DAYS_RE);
+  if (!url && !c && !l && !d) return null;
+  const platform = url ? platformOf(url) : platformFromWords(body);
+  let liftLabel = null;
+  if (l) {
+    const after = z.slice(l.index + l[0].length, l.index + l[0].length + 40).split(/[;,()]/)[0];
+    const who = after.trim().split(/\s+/)[0].toLowerCase();
+    if (/\bmedian\b/i.test(after)) liftLabel = 'median';
+    else if (/\busual\b/i.test(after)) liftLabel = ['his', 'her', 'their'].includes(who) ? `${who} usual` : 'usual';
+  }
+  return {
+    platform, url: url || null,
+    count: c ? Math.round(parseFloat(c[1].replace(/,/g, '')) * (MULT[(c[2] || '').toLowerCase()] || 1)) : null,
+    unit: c ? { v: 'views', p: 'plays', l: 'likes' }[c[3][0].toLowerCase()] : null,
+    lift: l ? parseFloat(l[1]) : null, liftLabel: l ? liftLabel : null,
+    date: pickDate(z), daysRunning: d ? +(d[1] || d[2]) : null,
+    label: labelOf(body, head, platform),
+  };
+}
+
+export function conceptProofOf(text) {
+  try {
+    if (typeof text !== 'string' || !text.trim()) return [];
+    const s = text.replace(MD_LINK, '$1 $2 ');
+    const urls = [...s.matchAll(URL_RE)].map((m) => ({ url: m[0].replace(/[.,;:!?]+$/, ''), start: m.index, end: m.index + m[0].length }));
+    const out = [];
+    const leftovers = (chunk, offset) => {
+      let p = offset;
+      for (const piece of chunk.match(/[^)]*\)|[^)]+$/g) || []) {
+        const item = makeItem(piece.split('(')[0], piece, null);
+        if (item) out.push({ pos: p, item });
+        p += piece.length;
+      }
+    };
+    let from = 0;
+    urls.forEach((u, i) => {
+      const before = s.slice(from, u.start);
+      const lp = before.lastIndexOf(')') + 1; // closed groups before this URL are URL-less candidates
+      leftovers(before.slice(0, lp), from);
+      const preStart = from + lp;
+      const last = i === urls.length - 1;
+      const cut = cutPoint(s, u.end, last ? s.length : urls[i + 1].start, last);
+      const lead = s.slice(preStart, u.start);
+      const head = lead.includes('(') ? lead.slice(0, lead.lastIndexOf('(')) : lead;
+      out.push({ pos: u.start, item: makeItem(head, s.slice(preStart, cut), u.url) });
+      from = cut;
+    });
+    leftovers(s.slice(from), from);
+    return out.sort((a, b) => a.pos - b.pos).slice(0, 6).map((o) => o.item);
+  } catch {
+    return [];
+  }
+}
 
 // The strategy summary at the top of concepts.md, above the first concept: one `Label: value` line each (industry, viewer
 // problem, ad style...). A parsed document that already carries it (`concepts.summary`) is used as it is; for one that does not,
@@ -3428,54 +3546,246 @@ function pickRowHtml(row, { concept = null, edit = null, disabled = false } = {}
 }
 
 /** The Industry row, which sits under the strategy summary: '' when the document offers no industries to choose from. */
+// Only the current pick shows, as a chip with a Change link; the whole list opens after Change (strategy.industryOpen), and stays
+// open while the person is picking or typing in its box.
 export function industryRow(strategy, { disabled = false } = {}) {
   const options = strategy?.options;
   const row = options ? pickRowOf(options, 'industry', 'industry', pickFallback(options, 'industry'), strategy) : null;
-  return row?.options.length ? `<div class="pick-industry">${pickRowHtml(row, { edit: strategy.edit, disabled })}</div>` : '';
+  if (!row?.options.length) return '';
+  const now = row.options.find(item => item.id === row.picked);
+  const open = Boolean(strategy.industryOpen) || strategy.edit?.row === 'industry';
+  const chip = now
+    ? `<span class="cc-ind-now">${esc(pickShown(now))}${now.yours ? '<span class="pick-tag">yours</span>' : ''}</span>`
+    : '<span class="cc-ind-now is-none">Not chosen yet</span>';
+  const list = open ? `<div class="cc-ind-list" id="cc-industry-list">${pickRowHtml(row, { edit: strategy.edit, disabled })}</div>` : '';
+  return `<div class="pick-industry cc-industry"><div class="cc-ind-head"><span class="cc-label">Industry</span>${chip}<button type="button" class="cc-link" data-industry-toggle aria-expanded="${open}" aria-controls="cc-industry-list">${open ? 'Done' : 'Change'}</button></div>${list}</div>`;
+}
+
+/** The rows of a concept's strategy picks (funnel stage, ad style, format, call to action...), or '' when the document offers none. */
+function conceptPickRows(concept, strategy, disabled) {
+  const options = strategy?.options;
+  if (!options || !concept) return null;
+  const rows = CONCEPT_PICK_FIELDS.map(field => pickRowOf(options, field, pickRowKey(concept.id, field), pickFallback(options, field, concept), strategy)).filter(Boolean);
+  return rows.length ? rows : null;
 }
 
 /** A concept's folded "Strategy picks" block: the picks as they stand in its summary, the four rows inside. */
 function conceptPickBlock(concept, strategy, disabled) {
-  const options = strategy?.options;
-  if (!options || !concept) return '';
-  const rows = CONCEPT_PICK_FIELDS.map(field => pickRowOf(options, field, pickRowKey(concept.id, field), pickFallback(options, field, concept), strategy)).filter(Boolean);
-  if (!rows.length) return '';
+  const rows = conceptPickRows(concept, strategy, disabled);
+  if (!rows) return '';
   const now = rows.map(row => { const option = row.options.find(item => item.id === row.picked); return option ? pickShown(option) : ''; }).filter(Boolean);
   const key = `strategy-picks:${concept.id}`;
   const open = Boolean(strategy.openKeys?.has(key)) || rows.some(row => strategy.edit?.row === row.rowKey);
   return `<details class="strategy-picks" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="strategy-picks-title">Strategy picks</span><span class="strategy-picks-now">${now.length ? esc(now.join(' · ')) : 'None chosen yet'}</span></summary><div class="strategy-picks-body">${rows.map(row => pickRowHtml(row, { concept, edit: strategy.edit, disabled })).join('')}</div></details>`;
 }
 
-export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null } = {}) {
+// ---- The "Pick a concept" cards ----
+// One concept per row: the idea on the left (title, source, one sentence, the opening line, four facts), the proof on the right (a
+// sentence, up to three tiles, the strength). "View details" opens a side panel with everything else (state.conceptPanel names the
+// concept it shows); nothing a concept says is left out of it.
+const CC_ICON = Object.freeze({
+  brand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
+  competitors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M15.5 14.2c2.6-.3 4.8 1.2 5.5 4.3"/></svg>',
+  trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>',
+  tiktok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.5 2.8 2.4 4.5 5 4.7"/></svg>',
+  youtube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
+  meta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 15c0-4 2-8 4.5-8C11 7 13 17 16.5 17 19 17 21 14.5 21 12c0-3-1.6-5-3.8-5C14 7 10 17 6.5 17 4.5 17 3 16.3 3 15z"/></svg>',
+  web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg>',
+});
+const CC_PLATFORMS = Object.freeze({
+  tiktok: { name: 'TikTok', icon: 'tiktok' }, instagram: { name: 'Instagram', icon: 'instagram' }, youtube: { name: 'YouTube', icon: 'youtube' },
+  facebook: { name: 'Facebook', icon: 'meta' }, 'meta-ad': { name: 'Meta ad', icon: 'meta' }, web: { name: 'Web', icon: 'web' },
+});
+const CC_WHY = Object.freeze({
+  brand: 'Built on what already works for this brand.',
+  competitors: "Borrows the shape of a competitor's winner, never their words or claims.",
+  trending: 'Rides a topic people in this niche keep watching.',
+});
+const CC_FIELD = Object.freeze({
+  source: /^sources?$/i, insight: /^insight\b/i, anchor: /^anchor\b/i, stage: /^awareness[\s_-]*stage\b/i, angle: /^angle\b/i,
+  subtopic: /^sub[\s_-]*topic\b/i, format: /^format\b/i, cta: /^(?:cta\b|call[\s_-]*to[\s_-]*action\b)/i, length: /^(?:target[\s_-]*)?(?:duration|length)\b/i,
+  oneliner: /^in[\s_-]*one[\s_-]*line\b/i, wins: /^why[\s_-]*this[\s_-]*wins\b/i, rubric: /^rubric\b/i, ranking: /^ranking\b/i,
+  hooks: /^hook[\s_-]*options\b/i, beats: /^beats\b/i,
+});
+// The rows of "How the video plays", in this order; any other field the concept has follows them under its own label.
+const CC_PLAY_ROWS = Object.freeze([
+  ['Problem line', /^problem[\s_-]*line\b/i], ['Proof moment', /^proof[\s_-]*moment\b/i], ['Product moment', /^product[\s_-]*moment\b/i],
+  ['Honest trade-off', /^honest[\s_-]*trade/i], ['Camera and sound', /^camera\b/i], ['Target duration', CC_FIELD.length], ['Loop', /^loop\b/i],
+  ['Narrative pattern', /^narrative[\s_-]*pattern\b/i], ['Proof pattern', /^proof[\s_-]*pattern\b/i],
+]);
+const CC_MONTHS = Object.freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+const ccLabel = field => String(field?.label || '').trim().replace(/:$/, '');
+/** Text as plain words: links, bare addresses and markdown marks taken out. */
+const ccPlain = value => String(value ?? '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, '').replace(/[`*_]{1,3}/g, '').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
+const ccCut = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, '').replace(/[\s,;:.–—-]+$/, '')}…`);
+/** A field value as a short fact: its first line, without a library id in front or a file reference behind. */
+function ccShort(value, max = 44) {
+  let text = ccPlain(String(value ?? '').split('\n')[0]);
+  text = text.replace(/\s*\([^)]*\.(?:md|json)[^)]*\)\s*$/i, '').replace(/^[A-Z]{1,5}(?:-[A-Za-z0-9]+)+\s*(?:[-–—:]\s+)?/, '').trim();
+  return ccCut(text, max);
+}
+function ccCount(n) {
+  if (n >= 1e4) {
+    const tidy = value => value.toFixed(1).replace(/\.0$/, '');
+    const k = n / 1e3;
+    return k >= 999.95 ? `${tidy(n / 1e6)}M` : `${tidy(k)}K`;
+  }
+  return Math.round(n).toLocaleString('en-US');
+}
+function ccDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  return match && Number(match[2]) >= 1 && Number(match[2]) <= 12 ? `${Number(match[3])} ${CC_MONTHS[Number(match[2]) - 1]} ${match[1]}` : '';
+}
+/** One piece of proof as a tile: the platform, the big number (with how far above usual), a line of label and date, a link. */
+function ccTile(tile, full = false) {
+  const platform = CC_PLATFORMS[tile?.platform] || CC_PLATFORMS.web;
+  const days = Number.isFinite(tile?.daysRunning) ? tile.daysRunning : null;
+  const count = Number.isFinite(tile?.count) ? tile.count : null;
+  let main = '';
+  if (tile?.platform === 'meta-ad' && days !== null) main = plural(days, 'day', 'days') + ' running';
+  else if (count !== null) main = `${ccCount(count)} ${tile.unit || 'views'}`;
+  else if (days !== null) main = plural(days, 'day', 'days') + ' running';
+  const lift = Number.isFinite(tile?.lift) && tile.lift >= 1 ? `<em>${esc(`${tile.lift.toFixed(1)}× ${tile.liftLabel || 'usual'}`)}</em>` : '';
+  const label = String(tile?.label || '').trim();
+  const sub = [main ? label : '', ccDate(tile?.date)].filter(Boolean).join(' · ') || (main ? '' : label);
+  const link = /^https?:\/\//i.test(tile?.url || '') ? `<a href="${esc(tile.url)}" target="_blank" rel="noopener" aria-label="${esc(`Open this ${platform.name} post`)}">Open ↗</a>` : '<span></span>';
+  return `<div class="cc-tile${full ? ' is-full' : ''}"><span class="cc-plat" title="${esc(platform.name)}">${CC_ICON[platform.icon]}<span class="visually-hidden">${esc(platform.name)}</span></span><span class="cc-tile-main"><span class="cc-tile-num">${esc(main || platform.name)}${lift}</span>${sub ? `<span class="cc-tile-sub" title="${esc(sub)}">${esc(sub)}</span>` : ''}</span>${link}</div>`;
+}
+/** "hook 8/10, problem 7/10 ..." as [{label, value}]; [] when the text is not written that way. */
+function ccScoresOf(value) {
+  const out = [];
+  const pattern = /([A-Za-z][A-Za-z' &/-]{0,28}?)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*\/\s*10\b/g;
+  let match;
+  while ((match = pattern.exec(String(value || '')))) {
+    const label = match[1].trim().replace(/^(?:and|&)\s+/i, '');
+    const score = Number(match[2]);
+    if (label && score >= 0 && score <= 10) out.push({ label: label[0].toUpperCase() + label.slice(1), value: score });
+  }
+  return out;
+}
+/** "1) beat - takeaway 2) ..." as [{beat, takeaway}]; null when the text is not a numbered list. */
+function ccBeatsOf(value) {
+  const text = String(value || '').trim();
+  if (!/^1[).]\s/.test(text)) return null;
+  const parts = text.split(/(?:^|\s|\n)\d{1,2}[).]\s+/).map(part => part.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts.map(part => {
+    const cut = /\s[-–—]\s/.exec(part);
+    return cut ? { beat: part.slice(0, cut.index).trim(), takeaway: part.slice(cut.index + cut[0].length).trim() } : { beat: part, takeaway: '' };
+  });
+}
+const ccMeter = (score, extra = '') => `<span class="cc-meter${extra}" role="img" aria-label="${esc(`${score} out of 10`)}"><i style="width:${Math.max(0, Math.min(100, score * 10))}%"></i></span>`;
+const ccSourcePill = source => (source ? `<span class="cc-src cc-src-${esc(source.kind)}">${CC_ICON[source.kind] || ''}<span class="visually-hidden">Source: </span>${esc(source.label)}</span>` : '');
+
+export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null, panel = null } = {}) {
   const list = concepts?.concepts || [];
   if (!list.length) return '<p class="muted">No concepts were found in this file.</p>';
-  return `<div class="concept-grid" role="radiogroup" aria-label="Concepts">${list.map(concept => {
-    const credits = Number.isInteger(concept.credits) ? `${concept.credits.toLocaleString()} credits for media` : '';
+  const lock = disabled || Boolean(strategy?.disabled);
+  const model = concept => {
+    const fields = (concept.fields || []).filter(field => field && String(field.value ?? '').trim());
+    const find = pattern => fields.find(field => pattern.test(ccLabel(field))) || null;
     const source = conceptSourceOf(concept);
-    const fields = (concept.fields || []).filter(field => String(field.value || '').trim());
-    const hookField = fields.find(field => /^hook options/i.test(field.label || '')) || null;
-    // Opening lines are picks: the person chooses one (or edits it, or writes their own), and the approval carries it.
-    // A concept with no "Hook options" field still offers to add one, after its other fields.
-    const picks = hookPicks(concept, hookField, { hooks, own, edited, edit, disabled });
-    const fieldRows = fields.map(field => {
-      if (field === hookField) return picks;
-      // The source shows as the badge in the head; only the evidence it names stays as a row.
-      if (source && /^sources?$/i.test(String(field.label || '').trim())) {
-        return source.detail ? `<div><dt>Evidence</dt><dd${/\n/.test(source.detail) ? ' class="lines"' : ''}>${inlineMarkdown(source.detail)}</dd></div>` : '';
-      }
-      // A funnel stage, ad style, format or call to action the person picked something else for says the pick, not the concept's own words.
-      const picked = pickFieldNow(concept, field, strategy);
-      if (picked !== null) return `<div><dt>${esc(field.label)}</dt><dd>${esc(picked)}</dd></div>`;
-      const isSourceRef = /^insight it rests on$/i.test(field.label || '');
-      const humanized = isSourceRef ? humanizeSourceRef(field.value) : null;
-      const value = humanized ? esc(humanized) : inlineMarkdown(field.value);
-      return `<div>${field.label ? `<dt>${esc(field.label)}</dt>` : ''}<dd${/\n/.test(field.value) ? ' class="lines"' : ''}>${value}</dd></div>`;
-    }).join('') + (hookField ? '' : picks);
-    const badge = source ? `<span class="pill concept-source source-${esc(source.kind)}"><span class="visually-hidden">Source: </span>${esc(source.label)}</span>` : '';
-    // Funnel stage, ad style, format and call to action: folded, with the picks as they stand in its summary.
-    const strategyPicks = conceptPickBlock(concept, strategy, disabled || Boolean(strategy?.disabled));
-    return `<label class="concept-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${esc(concept.id)}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="concept-body"><span class="concept-head"><span class="concept-id" aria-hidden="true">${esc(concept.id)}</span><span class="concept-title"><strong>${esc(concept.title)}</strong>${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}${badge}</span><span class="concept-radio" aria-hidden="true"></span></span><dl class="review-fields">${fieldRows}</dl>${strategyPicks}${credits ? `<span class="concept-foot">${esc(credits)}</span>` : ''}</span></label>`;
-  }).join('')}</div>`;
+    const sourceField = find(CC_FIELD.source);
+    const hookField = find(CC_FIELD.hooks);
+    const { lines } = hookLinesOf(concept, { own, edited });
+    const picked = Number.isInteger(hooks?.[concept.id]) && lines[hooks[concept.id]] ? hooks[concept.id] : 0;
+    const scores = ccScoresOf(find(CC_FIELD.rubric)?.value);
+    const strength = scores.length ? Math.round((scores.reduce((sum, item) => sum + item.value, 0) / scores.length) * 10) / 10 : null;
+    const winsText = ccPlain(find(CC_FIELD.wins)?.value);
+    const oneline = ccPlain(find(CC_FIELD.oneliner)?.value) || (winsText ? ccCut(/^.+?[.!?](?=\s|$)/.exec(winsText)?.[0] || winsText, 220) : '');
+    const proof = (() => { try { const tiles = conceptProofOf(source?.detail || ''); return Array.isArray(tiles) ? tiles.filter(tile => tile && typeof tile === 'object') : []; } catch { return []; } })();
+    return { concept, fields, find, source, sourceField, hookField, lines, picked, scores, strength, oneline, proof };
+  };
+  const models = list.map(model);
+  const factOf = (item, pattern) => {
+    const field = item.find(pattern);
+    if (!field) return '';
+    const now = pickFieldNow(item.concept, field, strategy);
+    return ccShort(now !== null ? now : field.value);
+  };
+  const card = item => {
+    const { concept, source, lines, picked, proof } = item;
+    const id = esc(concept.id);
+    const facts = [['Format', factOf(item, CC_FIELD.format) || factOf(item, /^visual[\s_-]*format\b/i)], ['Subtopic', factOf(item, CC_FIELD.subtopic)], ['Length', factOf(item, CC_FIELD.length)], ['Call to action', factOf(item, CC_FIELD.cta)]]
+      .filter(([, value]) => value).map(([label, value]) => `<span class="cc-fact"><span>${esc(label)}</span><b title="${esc(value)}">${esc(value)}</b></span>`).join('');
+    const opens = lines.length
+      ? `<span class="cc-opens"><span class="cc-label">Opens with</span><q>${esc(lines[picked].text)}</q><span class="cc-opens-foot">Line ${picked + 1} of ${lines.length}<button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="hooks">Change opening line</button></span></span>`
+      : `<span class="cc-opens is-empty"><span class="cc-label">Opens with</span><span class="cc-opens-none">No opening line is listed yet.</span><span class="cc-opens-foot"><button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="hooks">Add an opening line</button></span></span>`;
+    const why = source && CC_WHY[source.kind] ? `<p class="cc-why">${esc(CC_WHY[source.kind])}</p>` : '';
+    let evidence = '';
+    if (proof.length) evidence = `<span class="cc-tiles">${proof.slice(0, 3).map(tile => ccTile(tile)).join('')}</span>`;
+    else if (source?.detail) evidence = `<p class="cc-evidence">${esc(ccCut(ccPlain(source.detail), 160))}</p><button type="button" class="cc-link" data-concept-open="${id}" data-concept-focus="why">See the research in details</button>`;
+    else if (!source) evidence = '<p class="cc-evidence">No research is attached to this concept.</p>';
+    const strength = item.strength === null ? '' : `<span class="cc-strength"><span class="cc-strength-row">Strength score<b>${item.strength.toFixed(1)} / 10</b></span>${ccMeter(item.strength)}</span>`;
+    const credits = Number.isInteger(concept.credits) ? `<span class="cc-credits">${esc(`${concept.credits.toLocaleString()} credits for media`)}</span>` : '';
+    return `<label class="cc-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${id}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="cc-face">`
+      + `<span class="cc-idea"><span class="cc-head"><span class="cc-letter" aria-hidden="true">${id}</span><span class="cc-title-block"><strong class="cc-title">${esc(concept.title)}</strong><span class="cc-badges">${ccSourcePill(source)}${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}</span></span><span class="cc-radio" aria-hidden="true"></span></span>`
+      + `${item.oneline ? `<p class="cc-oneliner">${esc(item.oneline)}</p>` : ''}${opens}${facts ? `<span class="cc-facts">${facts}</span>` : ''}`
+      + `<span class="cc-actions"><button type="button" data-concept-open="${id}" aria-haspopup="dialog">View details</button><span class="cc-chosen">✓ Your pick</span>${credits}</span></span>`
+      + `<span class="cc-proof"><span class="cc-label">Why we think it works</span>${why}${evidence}${strength}</span></span></label>`;
+  };
+  return `<div class="cc-stack" role="radiogroup" aria-label="Concepts">${models.map(card).join('')}</div>${conceptPanelHtml(models.find(item => item.concept.id === panel), { choice, disabled, hooks, own, edited, edit, strategy, lock })}`;
+}
+
+/** The side panel of one concept: everything the card leaves out. '' when no concept is open. */
+function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, strategy, lock }) {
+  if (!item) return '';
+  const { concept, fields, find, source, sourceField, hookField, proof, scores } = item;
+  const id = esc(concept.id);
+  const used = new Set([sourceField, hookField].filter(Boolean));
+  const take = pattern => { const field = fields.find(entry => !used.has(entry) && pattern.test(ccLabel(entry))); if (field) used.add(field); return field || null; };
+  const textOf = field => {
+    const now = pickFieldNow(concept, field, strategy);
+    return now !== null ? esc(now) : inlineMarkdown(field.value);
+  };
+  const row = (label, html, field) => `<div class="cc-kv-row"><dt>${esc(label)}</dt><dd${field && /\n/.test(field.value) ? ' class="lines"' : ''}>${html}</dd></div>`;
+  const fieldRow = (label, field) => (field ? row(label, textOf(field), field) : '');
+  // Opening line
+  const hooksSection = `<section class="cc-sec" data-cc-sec="hooks"><h3>Opening line</h3><p class="cc-sec-intro">The first 2 seconds. Pick one, or write your own.</p><dl class="cc-hook-dl" id="cc-hooks-${id}">${hookPicks(concept, hookField, { hooks, own, edited, edit, disabled })}</dl></section>`;
+  // Why it works
+  const insight = take(CC_FIELD.insight);
+  const anchor = take(CC_FIELD.anchor);
+  const stage = take(CC_FIELD.stage);
+  const angle = take(CC_FIELD.angle);
+  const wins = take(CC_FIELD.wins);
+  const oneline = take(CC_FIELD.oneliner);
+  const humanized = insight ? humanizeSourceRef(insight.value) : null;
+  const stageNow = stage ? pickFieldNow(concept, stage, strategy) : null;
+  const stageHtml = stage ? (stageNow !== null ? esc(stageNow) : /^[a-z]+(?:_[a-z]+)*$/.test(String(stage.value).trim()) ? esc(humanize(String(stage.value).trim())) : inlineMarkdown(stage.value)) : '';
+  const whyRows = [
+    anchor ? row('The audience says', textOf(anchor), anchor) : '', insight ? row('Insight it rests on', humanized ? esc(humanized) : inlineMarkdown(insight.value), insight) : '',
+    stage ? row('Where viewers are', stageHtml, stage) : '', fieldRow('Angle', angle), fieldRow('In one line', oneline), fieldRow('Why this wins', wins),
+  ].join('');
+  const tiles = proof.length ? `<span class="cc-tiles">${proof.map(tile => ccTile(tile, true)).join('')}</span>` : '';
+  const whySection = (whyRows || tiles) ? `<section class="cc-sec" data-cc-sec="why"><h3>Why it works</h3>${source && CC_WHY[source.kind] ? `<p class="cc-sec-intro">${esc(CC_WHY[source.kind])}</p>` : ''}${whyRows ? `<dl class="cc-kv">${whyRows}</dl>` : ''}${tiles}</section>` : '';
+  // How the video plays
+  const beatsField = take(CC_FIELD.beats);
+  const beats = beatsField ? ccBeatsOf(beatsField.value) : null;
+  const beatsHtml = beatsField ? (beats ? `<ol class="cc-beats">${beats.map(item => `<li><span>${inlineMarkdown(item.beat)}${item.takeaway ? `<small>${inlineMarkdown(item.takeaway)}</small>` : ''}</span></li>`).join('')}</ol>` : `<p class="cc-text${/\n/.test(beatsField.value) ? ' lines' : ''}">${inlineMarkdown(beatsField.value)}</p>`) : '';
+  const rubricField = take(CC_FIELD.rubric);
+  const rankingField = take(CC_FIELD.ranking);
+  const playRows = CC_PLAY_ROWS.map(([label, pattern]) => fieldRow(label, take(pattern))).join('');
+  const rest = fields.filter(field => !used.has(field));
+  rest.forEach(field => used.add(field));
+  const restRows = rest.map(field => fieldRow(ccLabel(field) || 'Note', field)).join('');
+  const playSection = (beatsHtml || playRows || restRows) ? `<section class="cc-sec" data-cc-sec="plays"><h3>How the video plays</h3>${beatsHtml}${playRows || restRows ? `<dl class="cc-kv">${playRows}${restRows}</dl>` : ''}</section>` : '';
+  // Strategy picks
+  const pickRows = conceptPickRows(concept, strategy, lock);
+  const picksSection = pickRows ? `<section class="cc-sec" data-cc-sec="picks"><h3>Strategy picks</h3><p class="cc-sec-intro">Already set from the research. Change any of them.</p><div class="cc-picks">${pickRows.map(entry => pickRowHtml(entry, { concept, edit: strategy.edit, disabled: lock })).join('')}</div></section>` : '';
+  // Scores
+  const average = item.strength === null ? '' : `<p class="cc-score-total"><span>Strength score</span><b>${item.strength.toFixed(1)} / 10</b></p>`;
+  const bars = scores.length ? `<div class="cc-scores">${scores.map(score => `<div class="cc-score"><span class="cc-strength-row">${esc(score.label)}<b>${score.value}/10</b></span>${ccMeter(score.value)}</div>`).join('')}</div>` : (rubricField ? `<p class="cc-text${/\n/.test(rubricField.value) ? ' lines' : ''}">${inlineMarkdown(rubricField.value)}</p>` : '');
+  const scoresSection = (average || bars || rankingField) ? `<section class="cc-sec" data-cc-sec="scores"><h3>Scores</h3>${average}${bars}${rankingField ? `<dl class="cc-kv">${fieldRow('Ranking', rankingField)}</dl>` : ''}</section>` : '';
+  // Research notes, as written
+  const rawKey = `concept-raw:${concept.id}`;
+  const raw = sourceField ? `<section class="cc-sec" data-cc-sec="raw"><details class="cc-raw" data-open-key="${esc(rawKey)}"${strategy?.openKeys?.has(rawKey) ? ' open' : ''}><summary>Research notes (as written)</summary><p class="cc-raw-text lines">${inlineMarkdown(sourceField.value)}</p></details></section>` : '';
+  const credits = Number.isInteger(concept.credits) ? `<p class="cc-credits-line">${esc(`${concept.credits.toLocaleString()} credits for media`)}</p>` : '';
+  return `<button type="button" class="cc-scrim" data-concept-close tabindex="-1" aria-label="Close details"></button>`
+    + `<aside class="cc-panel" role="dialog" aria-modal="true" aria-labelledby="cc-title-${id}" data-concept-panel="${id}">`
+    + `<div class="cc-panel-head"><span class="cc-letter" aria-hidden="true">${id}</span><div class="cc-title-block"><h2 id="cc-title-${id}" class="cc-title">${esc(concept.title)}</h2><span class="cc-badges">${ccSourcePill(source)}${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}</span></div><button type="button" class="quiet cc-x" data-concept-close aria-label="Close details">✕</button></div>`
+    + `<div class="cc-panel-body">${hooksSection}${whySection}${playSection}${picksSection}${scoresSection}${raw}${credits}</div>`
+    + `<div class="cc-panel-foot"><button type="button" data-concept-close>Close</button><button type="button" class="primary" data-concept-choose="${id}" ${disabled ? 'disabled' : ''}>Choose this concept</button></div></aside>`;
 }
 
 const RECIPE_FIELDS = Object.freeze(['pillar', 'angle', 'hookFamily', 'cta', 'hashtags']);
@@ -4678,9 +4988,9 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   }
   if (gate === 'concept' && review.concepts) {
     // The picks (industry under the strategy, funnel stage, ad style, format and call to action on each card) come with the options the document offers.
-    const strategy = { options: strategyOptionsOf(doc), chosen: state.strategyPicks || {}, added: state.strategyOwn || {}, edit: state.strategyEdit || null, openKeys, disabled: locked };
+    const strategy = { options: strategyOptionsOf(doc), chosen: state.strategyPicks || {}, added: state.strategyOwn || {}, edit: state.strategyEdit || null, openKeys, disabled: locked, industryOpen: Boolean(state.industryOpen) };
     parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc), industryRow(strategy, { disabled: locked })));
-    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy }));
+    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy, panel: state.conceptPanel || null }));
   }
   if (gate === 'concept') parts.push(recipeReviewSection(doc, recipeState, { disabled: state.busy || state.submitted }));
   // Panel-by-panel decisions belong to the storyboard approval only (the server refuses them anywhere else), so a later
@@ -9357,6 +9667,10 @@ if (typeof document !== 'undefined') {
     if(target.dataset.sbAction){panelAction(target.dataset.sbAction);return;}
     if(target.dataset.mrAction){mediaPanelAction(target.dataset.mrAction, target.dataset.mrKey);return;}
     if(target.dataset.flagAccept||target.dataset.flagUndo){flagAction(target.dataset.flagAccept || target.dataset.flagUndo, Boolean(target.dataset.flagAccept));return;}
+    if(target.dataset.conceptOpen!==undefined){event.preventDefault();openConceptPanel(target.dataset.conceptOpen,target.dataset.conceptFocus,target);return;}
+    if(target.dataset.conceptClose!==undefined){closeConceptPanel();return;}
+    if(target.dataset.conceptChoose!==undefined){chooseConceptFromPanel(target.dataset.conceptChoose);return;}
+    if(target.dataset.industryToggle!==undefined){toggleIndustryList();return;}
     if(target.dataset.hookAdd!==undefined){startHookEdit(target.dataset.hookAdd,'new');return;}
     if(target.dataset.hookEdit!==undefined){const cut=target.dataset.hookEdit.lastIndexOf(':');startHookEdit(target.dataset.hookEdit.slice(0,cut),Number(target.dataset.hookEdit.slice(cut+1)));return;}
     if(target.dataset.hookSave!==undefined){saveHookEdit();return;}
@@ -9820,6 +10134,53 @@ if (typeof document !== 'undefined') {
   // Opening lines on a concept card: add one, edit one, or take one back. They live in the review state only (ownLines, editedLines and
   // the box being typed in, hookEdit); the approval carries them in its note (see decisionArgs) and nothing is saved from here.
   const hookKey = (id, at) => `${id}:${at}`;
+  // The concept panel ("View details"): which concept it shows is state.conceptPanel, so it survives every redraw (editing an opening
+  // line inside it redraws the review). It is drawn inside the review, so the pick and opening-line handlers reach it; it only overlays.
+  let conceptOpener = null;
+  const conceptShell = () => { const project = current(); return project ? { project, state: uiFor(project).review } : null; };
+  function openConceptPanel(id, focus, opener) {
+    const found = conceptShell();
+    if (!found) return;
+    conceptOpener = opener?.closest?.('[data-concept-open]') ? { selector: `[data-concept-open="${CSS.escape(id)}"]${opener.dataset.conceptFocus ? `[data-concept-focus="${CSS.escape(opener.dataset.conceptFocus)}"]` : ':not([data-concept-focus])'}` } : null;
+    found.state.conceptPanel = id;
+    render();
+    const panel = app.querySelector('.cc-panel');
+    if (!panel) return;
+    panel.classList.add('is-entering');
+    app.querySelector('.cc-scrim')?.classList.add('is-entering');
+    const body = panel.querySelector('.cc-panel-body');
+    const target = focus === 'hooks' ? (panel.querySelector('[data-cc-sec="hooks"] input:checked') || panel.querySelector('[data-cc-sec="hooks"] button:not(:disabled)')) : null;
+    if (focus === 'why') panel.querySelector('[data-cc-sec="why"]')?.scrollIntoView({ block: 'start' });
+    (target || panel.querySelector('.cc-x') || panel).focus({ preventScroll: true });
+    if (body && focus !== 'why') body.scrollTop = 0;
+  }
+  function closeConceptPanel() {
+    const found = conceptShell();
+    if (!found || !found.state.conceptPanel) return;
+    const id = found.state.conceptPanel;
+    found.state.conceptPanel = null;
+    render();
+    const back = (conceptOpener && app.querySelector(conceptOpener.selector)) || app.querySelector(`[data-concept-open="${CSS.escape(id)}"]`);
+    conceptOpener = null;
+    back?.focus({ preventScroll: true });
+  }
+  // "Choose this concept" in the panel is the same as clicking the concept's radio, then the panel closes.
+  function chooseConceptFromPanel(id) {
+    const found = conceptShell();
+    if (!found || found.state.busy || found.state.submitted) return;
+    found.state.choice = id;
+    found.state.error = '';
+    closeConceptPanel();
+  }
+  function toggleIndustryList() {
+    const found = conceptShell();
+    if (!found) return;
+    const open = !(found.state.industryOpen || found.state.strategyEdit?.row === 'industry');
+    found.state.industryOpen = open;
+    if (!open && found.state.strategyEdit?.row === 'industry') found.state.strategyEdit = null;
+    render();
+    app.querySelector('[data-industry-toggle]')?.focus({ preventScroll: true });
+  }
   function hookTarget() {
     const project = current();
     if (!project) return null;
@@ -10897,6 +11258,10 @@ if (typeof document !== 'undefined') {
     }
   });
   document.addEventListener('keydown',event=>{
+    if(!drawer&&!viewer&&current()&&uiFor(current()).review.conceptPanel&&app.querySelector('.cc-panel')){
+      if(event.key==='Escape'){event.preventDefault();closeConceptPanel();return;}
+      if(event.key==='Tab'){const box=app.querySelector('.cc-panel');const controls=[...box.querySelectorAll('button:not(:disabled),input:not(:disabled),select,textarea,summary,a[href]')].filter(item=>item.getClientRects().length);const first=controls[0],last=controls.at(-1);if(!box.contains(document.activeElement)){event.preventDefault();first?.focus();}else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}return;}
+    }
     if(event.key==='Escape'&&(drawer||viewer)){close();return;}
     if(event.key==='Tab'&&(drawer||viewer)){const box=app.querySelector(viewer?'.viewer':'.drawer');const controls=[...box.querySelectorAll('button:not(:disabled),input,select,textarea,a[href],video[controls],audio[controls]')];const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
   });

@@ -30,6 +30,7 @@ Every concept names one value for each idea part (anchor, stage, angle, format, 
 
 ## Concept A: {title}  (recommended)
 
+- In one line: {the idea in one plain sentence, under 25 words; the board shows it first on the card}
 - Source: from the brand | from top competitors | from what's trending, with the posts it rests on (link, views, date)
 - Insight it rests on: `research/{file}.md#{anchor}`
 - Anchor: "{the pain or desire, in the audience's own words}"
