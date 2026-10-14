@@ -674,15 +674,15 @@ export function suggestedColoursNote(palette = []) {
 export const KIT_FOLDER_NOTE = 'Read in place. Nothing is copied or uploaded.';
 export const KIT_FOLDER_RIGHTS = Object.freeze([
   { value: 'ours', label: 'Ours', hint: 'Can be used in posts.' },
-  { value: 'client_ask', label: TXT_CLIENT_WORK_ASK_FIRST, hint: 'Asks before use in a post.' },
+  { value: 'client_ask', label: "Client work, ask first", hint: 'Asks before use in a post.' },
   { value: 'never', label: 'Reference only', hint: 'Listed only. Never studied or posted.' },
 ]);
 export const KIT_FOLDER_OWNER_QUESTION = 'Who owns these files?';
 export const KIT_FOLDER_PICK_HINT = '';
-export const KIT_FOLDER_PICK_WAIT = TXT_CHOOSE_AN_OWNER_FIRST;
+export const KIT_FOLDER_PICK_WAIT = "Choose an owner first.";
 export const KIT_FOLDER_PICK_OPENED = 'Folder picker opened';
 const KIT_FOLDER_KINDS = Object.freeze([['video', 'video', 'videos'], ['image', 'photo', 'photos'], ['audio', 'audio file', 'audio files'], ['font', 'font', 'fonts']]);
-const KIT_FOLDER_STATES = Object.freeze({ indexing: TXT_READING_THE_FILES, stopped: 'Stopped part-way', moved: TXT_FOLDER_NOT_FOUND });
+const KIT_FOLDER_STATES = Object.freeze({ indexing: "Reading the files", stopped: 'Stopped part-way', moved: "Folder not found" });
 const KIT_FOLDER_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/;
 const KIT_FOLDER_SHOWN_MS = 120000;
 const folderNumber = value => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
@@ -1894,7 +1894,7 @@ export function brandChip(brand, metricool = {}) {
 // captions, calls to action, formats, ad styles) with its count and its top items, the person's own items among them each with a Remove that
 // asks Claude to take it out; a library without `banks` (an older server) draws the person's items and the proven items as two lists. The
 // jobs filed most recently follow. Nothing is drawn for a brand with no library.
-const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: TXT_CALL_TO_ACTION, caption: 'Post text', format: 'Format', industry: 'Industry', funnel: 'Funnel stage', pain: 'Pain point', desire: 'Desire', objection: 'Objection' });
+const LIBRARY_KIND_WORDS = Object.freeze({ hook: 'Opening line', angle: 'Angle', style: 'Ad style', cta: "Call to action", caption: 'Post text', format: 'Format', industry: 'Industry', funnel: 'Funnel stage', pain: 'Pain point', desire: 'Desire', objection: 'Objection' });
 const LIBRARY_BANK_TITLES = Object.freeze({ pain: 'Pain points', desire: 'Desires', objection: 'Objections', angle: 'Angles', hook: 'Opening lines', caption: 'Post texts', cta: 'Calls to action', format: 'Formats', style: 'Ad styles', funnel: 'Funnel stages', industry: 'Industry' });
 // Where a banked item came from, in the words of the person: what the audience said, a competitor's, an ad, or the plugin's own starter line.
 const LIBRARY_SOURCE_WORDS = Object.freeze({ competitor: 'From a competitor', community: 'From forums and comments', review: 'From reviews', ad: 'From an ad', starter: 'Starter line' });
@@ -1917,8 +1917,8 @@ export function libraryCountsLine(library) {
 // The Footage line of the Brand library: the brand's archive of past videos, pictures and audio, from `library.footage` ({folders, files,
 // analysedQuick, analysedFull, missing, list: [{id, name, rights, files, missing, state, processed?, total?}]}, which the server adds when
 // the brand has imported footage). The counts, then each folder with whose footage it is. Nothing is drawn for a brand with none.
-const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours', client_ask: TXT_CLIENT_WORK_ASK_FIRST, never: 'Reference only' });
-const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: TXT_READING_THE_FILES, stopped: 'Stopped part-way', moved: TXT_FOLDER_NOT_FOUND });
+const FOOTAGE_RIGHTS_WORDS = Object.freeze({ ours: 'Ours', client_ask: "Client work, ask first", never: 'Reference only' });
+const FOOTAGE_STATE_WORDS = Object.freeze({ indexing: "Reading the files", stopped: 'Stopped part-way', moved: "Folder not found" });
 const footageCount = value => (Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0);
 function libraryFootage(library) {
   const footage = library && typeof library === 'object' ? library.footage : null;
@@ -2476,7 +2476,7 @@ export function reportFileName(title, extension) {
   return `${base || 'report'}.${extension}`;
 }
 
-const SHORTENED_COPY = NOTE_SHORTENED;
+const SHORTENED_COPY = "Shortened. The full file is on your computer.";
 
 export function reportMarkdownFile(report, title) {
   const stills = Array.isArray(report?.stills) ? report.stills : [];
@@ -2540,8 +2540,8 @@ export function reportHtmlFile(report, title) {
 
 const DOWNLOAD_NOTES = Object.freeze({
   rate_limited: 'Try again shortly.',
-  extension_not_enabled: NOTE_FORMAT_UNSAVABLE,
-  rejected_extension: NOTE_FORMAT_UNSAVABLE,
+  extension_not_enabled: "This format can't be saved here.",
+  rejected_extension: "This format can't be saved here.",
   too_large: 'This file is too big.',
 });
 const DOWNLOAD_FAILED = new Set(['bad_request', 'transform_error', 'request_unknown']);
@@ -2971,7 +2971,7 @@ const GATE_TITLES = Object.freeze({
 const REVIEW_WAITING = Object.freeze({
   preparing: 'Claude is preparing the files.',
   loading: 'Loading this review...',
-  syncing: TXT_WAITING_FOR_CLAUDE_2,
+  syncing: "Waiting for Claude.",
   changed: 'Changed since you saw it. Ask Claude to show it again.',
 });
 const PLATFORM_NAMES = Object.freeze({ facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', youtube: 'YouTube' });
@@ -3331,7 +3331,7 @@ const STRATEGY_ICON = Object.freeze({
   cta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   other: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg>',
 });
-const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: 'Their problem', cta: TXT_CALL_TO_ACTION });
+const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: 'Their problem', cta: "Call to action" });
 /** The first clause of a strategy line, plain and capitalised, cut to `limit` characters on a word. */
 export function strategyShort(value, limit = 70, { clause = true } = {}) {
   let text = String(value ?? '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
@@ -3492,7 +3492,7 @@ const PICK_ROWS = Object.freeze([
   { field: 'funnel', title: 'Funnel stage', noun: 'funnel stage', picked: 'Funnel stage', own: 'funnel stage' },
   { field: 'style', title: 'Ad style', noun: 'ad style', picked: 'Ad style', own: 'ad style' },
   { field: 'format', title: 'Format', noun: 'format', picked: 'Format', own: 'format' },
-  { field: 'cta', title: TXT_CALL_TO_ACTION, noun: 'call to action', picked: 'CTA', own: 'CTA' },
+  { field: 'cta', title: "Call to action", noun: 'call to action', picked: 'CTA', own: 'CTA' },
   { field: 'pain', title: 'Problem', noun: 'problem', picked: 'Problem', own: 'problem', limit: HOOK_LINE_LIMIT },
   { field: 'angle', title: 'Angle', noun: 'angle', picked: 'Angle', own: 'angle', limit: HOOK_LINE_LIMIT },
   { field: 'subtopic', title: 'Subtopic', noun: 'subtopic', picked: 'Subtopic', own: 'subtopic' },
@@ -4465,14 +4465,14 @@ export const PUBLISH_ROUTE_WORDS = Object.freeze({
   metricool_draft: 'Save as Draft',
   self: "I'll Post It Myself",
 });
-export const PUBLISH_OUTDATED_LINE = TXT_THE_PLAN_IS_BEING;
-export const PUBLISH_CHANGED_LINE = TXT_THE_PLAN_IS_BEING;
+export const PUBLISH_OUTDATED_LINE = "The plan is being rebuilt.";
+export const PUBLISH_CHANGED_LINE = "The plan is being rebuilt.";
 // While any posting-card request is out (a route, a post type or a posting time), the card says so once, at its top, and every
 // control on it is held. The rows say the plan is being updated; nothing else on the card says "saving".
 export const PUBLISH_SAVING_LINE = 'Saving your choice...';
 export const PUBLISH_UPDATING_LINE = 'Updating the plan...';
-export const PUBLISH_WAITING_LINE = NOTE_WAITING_SAVE;
-export const PUBLISH_SAVED_LINE = NOTE_SAVED_SOON;
+export const PUBLISH_WAITING_LINE = "Waiting for Claude to save this.";
+export const PUBLISH_SAVED_LINE = "Saved. The board will update shortly.";
 /** The pause after an arrow key before the route it landed on is saved. */
 export const PUBLISH_ROUTE_KEY_PAUSE_MS = 700;
 
@@ -4865,11 +4865,11 @@ export const POST_CHECK_QUESTION = 'Is this post in Metricool?';
 export const POST_IN_METRICOOL = 'It is in Metricool';
 export const POST_NOT_IN_METRICOOL = 'It is not in Metricool';
 export const POST_ANSWER_SAVING_LINE = 'Saving your answer...';
-export const POST_ANSWER_WAITING_LINE = NOTE_WAITING_SAVE;
-export const POST_ANSWER_SAVED_LINE = NOTE_SAVED_SOON;
+export const POST_ANSWER_WAITING_LINE = "Waiting for Claude to save this.";
+export const POST_ANSWER_SAVED_LINE = "Saved. The board will update shortly.";
 export const POST_MARK_SAVING_LINE = 'Saving...';
-export const POST_MARK_WAITING_LINE = NOTE_WAITING_SAVE;
-export const POST_MARK_SAVED_LINE = NOTE_SAVED_SOON;
+export const POST_MARK_WAITING_LINE = "Waiting for Claude to save this.";
+export const POST_MARK_SAVED_LINE = "Saved. The board will update shortly.";
 export const KIT_LINK_LIMIT = 500;
 export const KIT_COPIED_MS = 2000;
 export const KIT_DOWNLOAD_WAITING = 'Preparing the download link';
@@ -5849,7 +5849,7 @@ function decisionCard(item, ctx = {}) {
 }
 
 const INBOX_FIELD_INPUTS = new Set(['select', 'checkboxes', 'textarea', 'url']);
-const FIX_HIGHLIGHTED = NOTE_FIX_ANSWERS;
+const FIX_HIGHLIGHTED = "Fix the highlighted answers first.";
 
 function fieldAnswered(field, values, intake) {
   if (field.input !== 'deliverables') return !intakeFieldEmpty(field, values);
@@ -5935,7 +5935,7 @@ export function newestJobsFirst(list) {
   return (Array.isArray(list) ? list : []).map((project, at) => ({ project, at, time: jobOpenedAt(project) })).sort((a, b) => b.time - a.time || a.at - b.at).map(entry => entry.project);
 }
 
-const INBOX_TEXT_FALLBACK = Object.freeze({ decision: NOTE_DECISION_WAITING, brief: BRIEF_MISSING, question: '' });
+const INBOX_TEXT_FALLBACK = Object.freeze({ decision: "A decision is waiting for you.", brief: BRIEF_MISSING, question: '' });
 
 export function inboxKey(item) {
   if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}`;
@@ -6140,7 +6140,7 @@ const RAIL_HERE_HELD = Object.freeze({ BLOCKED: 'Held up', ESCALATED: 'Held up',
 const RAIL_NEEDS_HELP = new Set(['BLOCKED', 'ESCALATED']);
 const RAIL_JUMPS = Object.freeze({ decision: ['review', 'Review'], brief: ['brief', 'Finish the brief'] });
 const RAIL_TEXT = Object.freeze({
-  notStarted: TXT_NOT_STARTED_YET,
+  notStarted: "Not started yet",
   finished: 'Finished',
   posting: 'Posting',
   lastStep: 'This is the last step.',
@@ -6507,7 +6507,7 @@ export function blob(name, mood, size = 34) {
 // an agent whose work waits on a decision reads "Waiting" with the note "Handed to the Director for your decision". An agent
 // nobody has used yet is "not called yet".
 const AGENT_VIEWS = Object.freeze({
-  needs_you: { word: TXT_WAITING_ON_YOU, tone: 'ask', mood: 'surprised' },
+  needs_you: { word: "Waiting on you", tone: 'ask', mood: 'surprised' },
   working: { word: 'Working', tone: 'working', mood: 'thinking' },
   waiting: { word: 'Waiting', tone: 'draft', mood: 'idle' },
   up_next: { word: 'Up next', tone: 'idle', mood: 'sleepy' },
@@ -6606,7 +6606,7 @@ const tookWords = ms => (Number.isFinite(ms) && ms > 0 ? (ms < 90000 ? `${Math.m
 // A step is a window of time (when it began, when it finished). Its trace is who did it, what it made, and what that agent ran,
 // said and was told inside the window. A step with no recorded time shows who and what only, never another step's activity.
 const traceMs = value => { const at = Date.parse(value ?? ''); return Number.isFinite(at) ? at : null; };
-const TRACE_RUN_WORDS = Object.freeze({ finished: 'Finished', failed: TXT_COULD_NOT_FINISH, stopped: 'Finished', running: 'Working now', lost: 'Stopped responding' });
+const TRACE_RUN_WORDS = Object.freeze({ finished: 'Finished', failed: "Could not finish", stopped: 'Finished', running: 'Working now', lost: 'Stopped responding' });
 // The activity rows that only repeat a message the Messages list already shows.
 const TRACE_MESSAGE_ROWS = /^(You sent a message|Your message was passed on|Your message was answered|The Director answered your message)$/;
 const traceWhen = value => (traceMs(value) === null ? '' : time(value));
@@ -6836,7 +6836,7 @@ export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} }
 // The agent's own tasks on this job, in plan order, at the top of its chat. A task that began (done, working or waiting) opens to its
 // history, the same trace the stage card shows; one not started yet is disabled. An agent with no plan rows (the Researcher on
 // brand onboarding) lists its runs instead, each openable.
-const TASK_PILLS = Object.freeze({ finished: ['done', 'Done'], failed: ['pending', TXT_COULD_NOT_FINISH], stopped: ['done', 'Done'], running: ['running', 'Working'], lost: ['pending', 'Stopped responding'] });
+const TASK_PILLS = Object.freeze({ finished: ['done', 'Done'], failed: ['pending', "Could not finish"], stopped: ['done', 'Done'], running: ['running', 'Working'], lost: ['pending', 'Stopped responding'] });
 function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = '' } = {}) {
   const view = agentView(agent);
   const person = { name: agentNameOf(agent), mood: view.mood };
@@ -6892,7 +6892,7 @@ function chatDetails(agent, { openKeys, jobId }) {
 }
 
 // Step statuses as the server projects them: done, running, waiting (on the person) or pending.
-const STEP_STATUS_WORDS = Object.freeze({ done: 'Done', running: 'Working', waiting: TXT_WAITING_ON_YOU, pending: 'Not started' });
+const STEP_STATUS_WORDS = Object.freeze({ done: 'Done', running: 'Working', waiting: "Waiting on you", pending: 'Not started' });
 // The stage turns running as soon as the one before it is done, a moment before the Director calls its agent.
 const STEP_STARTING_WORD = 'Starting';
 const STEP_STATUSES = new Set(Object.keys(STEP_STATUS_WORDS));

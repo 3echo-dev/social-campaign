@@ -5,10 +5,10 @@
 // script compiles, the versions agree, every hook and plugin-root path exists, the generated board matches its source,
 // and the MCP server starts and lists its tools.
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const problems = [];
@@ -59,6 +59,20 @@ try {
   if (buildBoard() !== readFileSync(join(ROOT, 'board/social-campaign.html'), 'utf8')) problems.push('board/social-campaign.html is out of date: run node scripts/build-board.mjs');
 } catch (error) {
   problems.push(`the board could not be built: ${String(error.message).split('\n').find(Boolean)}`);
+}
+
+// The published board loads as separate modules that import each other; load them the same way so a name used before
+// its module has run (which leaves the page stuck on "Opening your workspace") fails here, not on the board.
+try {
+  const { buildBoardShell } = await import('./build-board.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'board-modules-'));
+  const fileOf = name => (name === 'app' ? 'board.mjs' : `board-${name}.mjs`);
+  for (const file of buildBoardShell().files.filter(f => f.kind === 'js')) {
+    writeFileSync(join(dir, fileOf(file.name)), file.text.replace(/(["'])board\/([a-z0-9-]+)\1/g, (_, quote, name) => `${quote}./${fileOf(name)}${quote}`));
+  }
+  await import(pathToFileURL(join(dir, 'board.mjs')).href);
+} catch (error) {
+  problems.push(`the published board does not load: ${String(error.message).split('\n').find(Boolean)}`);
 }
 
 // The MCP server starts and lists its tools.
