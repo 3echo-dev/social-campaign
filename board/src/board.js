@@ -1953,16 +1953,17 @@ const CONNECTOR_GUIDANCE = Object.freeze({
 // Marks for connectors whose first two letters would match another's (Metricool and Meta ads are both ME).
 const CONNECTOR_MARKS = Object.freeze({ metricool: 'MC', meta_ads: 'MA' });
 
-export function connectorCard(connector, { busy = false } = {}) {
+export function connectorCard(connector, { busy = false, waiting = false } = {}) {
   const state = connector.state;
   const mark = esc(CONNECTOR_MARKS[connector.key] || String(connector.name || '').slice(0, 2).toUpperCase());
   const key = esc(connector.key);
   // Metricool is added in claude.ai and then looked for. Once connected, the same connect request reads its brands
   // again, so the button says what it does: Refresh brands, for after a brand or social account is added in Metricool.
   const refreshable = connector.key === 'metricool';
-  const connect = (extra = '', label = 'Connect') => `<button${extra} data-connect="${key}" ${busy ? 'disabled' : ''}>${label}</button>`;
+  // After a click the request waits for Claude, so the button stays disabled and says so until the connector's state changes.
+  const connect = (extra = '', label = 'Connect') => `<button${extra} data-connect="${key}" ${busy || waiting ? 'disabled aria-busy="true"' : ''}>${waiting ? (label === 'Refresh brands' ? 'Refreshing…' : 'Connecting…') : label}</button>`;
   const actions = state === 'connected'
-    ? `<span class="pill connected">Connected</span>${refreshable ? connect(' title="Read the brand list again after you add a brand or a social account in Metricool"', 'Refresh brands') : ''}`
+    ? `${refreshable ? connect(' title="Read the brand list again after you add a brand or a social account in Metricool"', 'Refresh brands') : ''}<span class="pill connected">Connected</span>`
     : state === 'skipped'
       ? `<span class="pill skipped">Skipped</span>${connect()}`
       : connect(' class="primary"');
@@ -7388,6 +7389,16 @@ if (typeof document !== 'undefined') {
   const gateSeen = new Set();
   function gateOpen(key, open) { if (!gateSeen.has(key)) { gateSeen.add(key); if (open) openKeys.add(key); } return openKeys.has(key); }
   const connectorPending = new Set();
+  // provider -> { at, state, brandCount }: a connect or refresh sent to Claude, shown as waiting until the board shows a change.
+  const connectorWaiting = new Map();
+  const CONNECTOR_WAIT_MS = 3 * 60 * 1000;
+  function connectorIsWaiting(connector) {
+    const sent = connectorWaiting.get(connector.key);
+    if (!sent) return false;
+    const changed = connector.state !== sent.state || (connector.brandCount ?? null) !== sent.brandCount;
+    if (changed || Date.now() - sent.at > CONNECTOR_WAIT_MS) { connectorWaiting.delete(connector.key); return false; }
+    return true;
+  }
   // The Metricool brand picker on a brand card: which cards have it open, which are saving, and
   // the pick and last error per brand.
   const metricoolUi = { open: new Set(), busy: new Set(), picks: new Map(), errors: new Map() };
@@ -7461,7 +7472,7 @@ if (typeof document !== 'undefined') {
     const intro = `<p class="muted">Connect the tools Claude uses to make images, video and voice.${optional}${forced ? ' Press Continue when you are ready; anything left can be connected later from Connectors at the top.' : ''}</p>`;
     const busy = connectorPending.size > 0;
     const next = forced ? `<div class="connectors-next"><p class="muted">${connectors.some(connector => connector.state === 'not_connected') ? 'Anything not connected can be added later from Connectors at the top.' : 'All set.'}</p><button class="primary" data-action="connectors-continue"${busy ? ' disabled' : ''}>Continue</button></div>` : '';
-    return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key) })).join('')}</section>${next}`;
+    return `<div class="slate-head"><h1>Connectors</h1>${back}</div>${intro}<section class="connectors-grid">${connectors.map(connector => connectorCard(connector, { busy: connectorPending.has(connector.key), waiting: connectorIsWaiting(connector) })).join('')}</section>${next}`;
   }
   async function continueConnectors() {
     if (!transport || connectorsContinued) return;
@@ -7482,8 +7493,10 @@ if (typeof document !== 'undefined') {
     connectorPending.add(provider);
     render();
     try {
-      const providerName = (data.connectors || []).find(item => item.key === provider)?.name;
+      const current = (data.connectors || []).find(item => item.key === provider);
+      const providerName = current?.name;
       const result = await transport.call(operation, {requestId: randomId(globalThis), provider, ...(providerName ? { providerName } : {})});
+      if (operation === 'connect_provider') connectorWaiting.set(provider, { at: Date.now(), state: current?.state ?? null, brandCount: current?.brandCount ?? null });
       notify(result?.message || 'Request saved. Claude will validate it and update this board.');
       await refresh();
     } catch (e) {
