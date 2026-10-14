@@ -95,6 +95,12 @@ export const agentTools = [
     },
     handler: async (args, { workspace }) => {
       const root = local(workspace);
+      // Brand onboarding runs have no job folder: their agents get the brand library block only.
+      if (/^onboarding-run-[A-Za-z0-9-]+$/.test(String(args.jobId || ''))) {
+        if (!activeAgentIds().has(args.agent)) throw new InvalidInputError('That agent is not part of this job.');
+        const block = args.agent === DIRECTOR ? null : libraryBlock({ root, brand: args.brand });
+        return { jobId: args.jobId, brand: args.brand, agent: args.agent, count: 0, ids: [], messages: [], answers: [], block: block || null, onboarding: true };
+      }
       const job = jobFor(root, args);
       const waiting = pendingMessages(job.dir, args.agent);
       const messages = waiting.map(({ id, text, at }) => ({ id, text, at }));
