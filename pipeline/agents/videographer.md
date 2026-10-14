@@ -5,6 +5,7 @@ tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_tr
 disallowedTools: Agent
 skills: watch-video, analyze-video, source-validation, write-report
 model: claude-sonnet-5-5
+effort: medium
 maxTurns: 40
 color: purple
 ---

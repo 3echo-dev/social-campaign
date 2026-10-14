@@ -4,6 +4,7 @@ description: >
   Local pipeline paid distribution specialist.
   Use only when the active route includes the paid campaign discipline.
 model: claude-opus-5-5
+effort: medium
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: social-campaign:write-cta, social-campaign:platform-format

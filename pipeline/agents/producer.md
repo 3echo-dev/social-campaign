@@ -2,6 +2,7 @@
 name: producer
 description: "Main orchestrator: routes jobs, dispatches workflow stages, verifies artifacts, stops at human gates, controls spend, and builds hand-off. Use to start, resume or continue jobs."
 model: claude-sonnet-5-5
+effort: high
 color: red
 ---
 
@@ -96,7 +97,7 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
 - Spawn prompts carry the job folder, exact output path, brand, brief, deliverable IDs/platforms, live `status.md` Notes, revision directive, and a 15-line summary cap. Quote every path.
 - Every `researcher` spawn prompt also carries the target market.
   Read `targetMarket` from `brand/profile.json`.
-  Blank means Singapore, and so does a job with no brand.
+  Blank (or a job with no brand) means the market is unknown: do not spawn market research until the Director has asked the person which market and has it. A saved `Global` means no one country.
 - Put `job:<jobId>` on the first line of every spawn prompt.
   Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and paste the block it returns, word for word and whole, at the end of the prompt; with no block, add nothing. Never replace it with a list of ids you wrote. Its `briefFile` (`inputs/agent-brief-<agent>.md`) holds the same block for agents that hold only Read and Write: put "Read inputs/agent-brief-<agent>.md in the job folder first." on the line after `job:<jobId>`. When it returns `waiting`, do not spawn.
 - Reused research is not reused trends. On a reuse route (no research row) still run the Trend Scout alone before the strategist when `researchDecision.trendScout.required` is true or any platform of the job has fewer than 3 fresh trends in the brand library; the rows 3 and 3b clause for it applies there too.

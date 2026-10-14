@@ -26,7 +26,7 @@ export const REFRESH_MS = 4 * 60 * 60 * 1000;
 export const FETCH_TIMEOUT_MS = 8000;
 
 export const ENDED_MESSAGE =
-  "Your 3echo workspace access for this plugin has ended, or this computer isn't connected yet. Ask your 3echo contact for access, or open your agentC workspace page and use Connect Claude Code.";
+  "Your 3echo workspace access for this plugin has ended, or this computer isn't connected yet. Ask your 3echo contact for a new connect message.";
 
 export const PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA3yPzXERypx9mRm8d279CXiCT+/3RxiTbyT8jz3KHJmE=

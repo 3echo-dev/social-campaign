@@ -8,6 +8,7 @@ const { hashFile } = require('./hash-artifact.js');
 const ws = require('./lib-workspace.js');
 const execution = require('./lib-execution-availability.js');
 const states = require('./lib-states.js');
+const { staleBasis } = require('./lib-approval-basis.js');
 
 const argv = process.argv.slice(2);
 const json = argv.includes('--json');
@@ -20,7 +21,7 @@ const availability = states.GATE_IDS.includes(gate)
   : execution.checkExecutionAvailability({ workflowId: 'performance-review' });
 if (!availability.available) {
   const result = { gate, approvalId: null, decision: null, artifacts: [], valid: false,
-    changed: [], missing: [], reason: availability.message, retired: true };
+    changed: [], missing: [], staleBasis: [], reason: availability.message, retired: true };
   if (json) console.log(JSON.stringify(result, null, 2));
   else console.error('UNSUPPORTED: ' + availability.message);
   process.exit(4);
@@ -37,7 +38,8 @@ const result = {
   artifacts: latest ? latest.artifacts.map(a => a.path) : [],
   valid: false,
   changed: [],
-  missing: []
+  missing: [],
+  staleBasis: []
 };
 
 if (!latest || latest.decision !== 'approved') {
@@ -51,7 +53,10 @@ for (const a of latest.artifacts) {
   const h = hashFile(p);
   if (h.sha256 !== a.sha256) result.changed.push({ path: a.path, approved: a.sha256.slice(0, 12), now: h.sha256.slice(0, 12) });
 }
-result.valid = !result.changed.length && !result.missing.length;
+// Upstream inputs (brief, concepts, plan, chosen concept) the approval was recorded against.
+// Records written before `basis` existed have none and are checked as before.
+result.staleBasis = staleBasis(jobDir, latest);
+result.valid = !result.changed.length && !result.missing.length && !result.staleBasis.length;
 if (json) console.log(JSON.stringify(result, null, 2));
 else if (result.valid && argv.includes('--human')) console.log('Still the version you approved.');
 else if (result.valid) console.log('ok: ' + latest.approvalId + ' still covers ' + latest.artifacts.length + ' artifact(s), approved by ' + latest.decidedBy + ' at ' + latest.decidedAt);
@@ -60,10 +65,12 @@ else {
     console.error('This has changed since you approved it, so the approval no longer covers it.');
     for (const c of result.changed) console.error('  changed: ' + c.path);
     for (const m of result.missing) console.error('  gone: ' + m);
+    for (const s of result.staleBasis) console.error('  changed upstream: ' + s.path);
     process.exit(1);
   }
   for (const c of result.changed) console.error('CHANGED since approval: ' + c.path + ' (' + c.approved + ' -> ' + c.now + ')');
   for (const m of result.missing) console.error('MISSING since approval: ' + m);
+  for (const s of result.staleBasis) console.error('UPSTREAM CHANGED since approval: ' + s.path + ' (' + s.approved + ' -> ' + s.now + ')');
   console.error('Re-send the changed artifact and ask for a new verdict. The approval ' + latest.approvalId + ' no longer applies.');
 }
 process.exit(result.valid ? 0 : 1);

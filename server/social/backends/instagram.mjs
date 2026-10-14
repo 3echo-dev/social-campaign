@@ -58,19 +58,6 @@ export function instagramPostUrl(code, kind) {
 }
 
 /**
- * The topic slug Instagram's /popular/ pages use: letters and digits, lower case, no spaces.
- * @param {string} query a topic, a #hashtag or a phrase.
- * @returns {string}
- */
-export function popularTopicSlug(query) {
-  return String(query ?? '')
-    .trim()
-    .replace(/^#/, '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}_]/gu, '');
-}
-
-/**
  * What Instagram topic page a search query can be read from. Instagram's /popular/<topic>/ pages are single hashtags:
  * "kayatoast" has one, "kaya toast singapore" does not, and building a slug out of a longer phrase sends the reader to a
  * page that does not exist, which Instagram answers with its sign-in wall (live 2026-10-14).

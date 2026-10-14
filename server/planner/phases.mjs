@@ -111,30 +111,6 @@ export function currentPhase(plan) {
 }
 
 /**
- * Look up the current phase for a campaign, for tools that only have a campaign id
- * and a database handle (every review gate).
- *
- * This reads the same source as everything else: the current plan's stages, each
- * carrying the status its newest execution record gives it. It used to read the
- * saved plan JSON while stage moves were written to a different table, which is how
- * the phase strip could disagree with work that was demonstrably finished. Returns
- * null when the campaign has no plan yet, so callers can omit `phase` rather than
- * send a wrong guess.
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} campaignId
- * @returns {string|null}
- */
-export function phaseForCampaign(db, campaignId) {
-  try {
-    const stages = progressStages(db, campaignId);
-    if (stages.length === 0) return null;
-    return currentPhase({ stages });
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Group a JobExecutionPlan's `stages[]` by phase, in phase order, dropping phases
  * with no stages in this particular plan only when building the detail list (the
  * caller still shows all five markers regardless).

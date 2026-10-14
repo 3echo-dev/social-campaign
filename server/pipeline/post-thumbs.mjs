@@ -102,11 +102,6 @@ function listing(dir) {
   try { return new Set(readdirSync(dir)); } catch { return new Set(); }
 }
 
-/** Whether the post of this link has a picture on this computer. */
-export function hasPostThumb(root, brand, url) {
-  try { return Boolean(foundIn(thumbsDir(root, brand), listing(thumbsDir(root, brand)), postThumbId(url), false)); } catch { return false; }
-}
-
 const dataUriOf = (file, mime) => `data:${mime};base64,${readFileSync(file.path).toString('base64')}`;
 
 function readIndex(dir) {
@@ -259,24 +254,6 @@ async function makeThumb({ dir, id, frames, file, remote, page = null, current, 
     || (page && (await attempt('remote', async () => fetchPicture(await freshAddress(page)))));
   if (done) return done;
   return { id, saved: false, source: null, reason: ffmpegMissing ? 'ffmpeg' : tried.length ? `could not use ${tried.join(', ')}` : 'nothing better to use' };
-}
-
-/**
- * Keep the picture of one post: from its teardown frames (each { kind, timeS, path }), its yt-dlp thumbnail file, or its thumbnail address.
- * Returns { id, saved, source, reason? }. Never throws.
- */
-export async function savePostThumb({ root, brand, url, frames = [], file = null, remote = null, page = null, force = false } = {}) {
-  try {
-    const dir = thumbsDir(root, brand);
-    const id = postThumbId(url);
-    const index = readIndex(dir);
-    const have = foundIn(dir, listing(dir), id, false);
-    const result = await makeThumb({ dir, id, frames, file, remote, page, current: have ? index.sources[id] ?? 'remote' : null, force });
-    if (result.saved) { index.sources[id] = result.source; delete index.failed[id]; writeIndex(dir, index); }
-    return result;
-  } catch {
-    return { id: postThumbId(url), saved: false, source: null, reason: 'could not be saved' };
-  }
 }
 
 // ---------------------------------------------------------------- the posts the library shows

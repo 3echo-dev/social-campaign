@@ -200,6 +200,15 @@ function ensureDraftSkeleton(draftPath, runId, blankFields, toFind) {
   durable.atomicWrite(draftPath, JSON.stringify(draftSkeleton(runId, blankFields, toFind), null, 2) + '\n');
 }
 
+function marketUnknownError(slug) {
+  return new UserFacingError(
+    `The target market for "${slug}" is not set, so research cannot start yet. Ask the person which market the brand sells to, in chat with buttons: `
+    + 'their likely country (guess it from the website or social accounts), "Global (no one country)", and "Other". '
+    + 'Save the answer as the target market on the brand profile (use "Global" for no one country), then start the research again.',
+    { code: 'target_market_unknown', details: { brand: slug } },
+  );
+}
+
 /**
  * Start (or resume) the one onboarding research pass for a brand.
  * @returns {object} the section 1 `started`/`already_running`/`skipped` shape.
@@ -210,6 +219,7 @@ export function startBrandResearch({ root, brand }) {
   const profile = brandProfile.read(brandDir);
   if (!profile) throw new UserFacingError('Save the brand profile before brand research.', { code: 'brand_onboarding_incomplete' });
   const { blankFields, declared } = blanksAndCompetitors(profile);
+  const market = brandProfile.targetMarketOf(profile);
   const existingResearch = brandResearch.read(brandDir);
   const researchRevision = existingResearch ? existingResearch.revision : 0;
 
@@ -229,6 +239,9 @@ export function startBrandResearch({ root, brand }) {
       researchRevision,
     };
   }
+
+  // The market scopes every competitor, audience and trend search, so it is never guessed: without one the person is asked first.
+  if (!market) throw marketUnknownError(entry.slug);
 
   // 30 searches, 56 fetches, 120 turns: onboarding is always the deep pass, so it needs far more than a job's research (a campaign has 12, 16
   // and 40). The calls of every agent working inside the run count here, the Trend Scout's too. Fetches: the website and each competitor's
@@ -252,7 +265,7 @@ export function startBrandResearch({ root, brand }) {
       limits,
       profileRevision: profile.revision,
       researchRevision,
-      market: brandProfile.targetMarketOf(profile),
+      market,
       now: new Date(),
     });
   } catch (error) {
@@ -296,7 +309,7 @@ export function startBrandResearch({ root, brand }) {
     runId: run.runId,
     brand: entry.slug,
     brandId: entry.id,
-    market: run.market || brandProfile.targetMarketOf(profile),
+    market: run.market || market,
     blankFields: run.blankFields || blankFields,
     alsoFill,
     competitors: { declared: declaredCompetitors, toFind },
@@ -317,7 +330,8 @@ export function startBrandResearch({ root, brand }) {
   };
 }
 
-const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'SKILL.md');
+// The onboarding workstream lives in its own file, so job researchers loading the skill do not read it.
+const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'references', 'brand-onboarding.md');
 
 /**
  * The brand onboarding section of the research skill, read from this plugin's own copy so it can go
@@ -360,7 +374,8 @@ function readDraft(draftPath) {
 function scopePlace(profile) {
   const market = brandProfile.targetMarketOf(profile);
   const named = Boolean(profile && typeof profile.targetMarket === 'string' && profile.targetMarket.trim());
-  return { market, geography: named ? market : 'SG' };
+  // A named country is the geography; Global or an unset market has no country filter, so there is none to give.
+  return { market, geography: named && !brandProfile.isGlobalMarket(market) ? market : undefined };
 }
 
 function defaultResearchScope(slug, place) {
@@ -604,7 +619,7 @@ function researchProblems(researchDraft, slug, place, problems, ctx = {}) {
 }
 
 function audienceProblemText(market) {
-  return `The audience is blank. Add the brand's own audience, or suggest one from the top competitors' audiences in ${market} using sources from the last 12 months and list audience under suggested.`;
+  return `The audience is blank. Add the brand's own audience, or suggest one from the top competitors' audiences in ${market || 'the target market'} using sources from the last 12 months and list audience under suggested.`;
 }
 
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;

@@ -62,9 +62,9 @@ import { readStudioWorkspaceChoice, readStudioWorkspaceList } from './studio-wor
 
 export { PUBLISH_INTENT_FILE, PUBLISH_ROUTES, probeMedia };
 export const MEDIA_FACTS_FILE = 'publish/media-facts.json';
-export const SEND_LOG_FILE = 'publish/metricool.jsonl';
 
 const require = createRequire(import.meta.url);
+const { staleBasis } = require('../../pipeline/scripts/lib-approval-basis.js');
 const SCRIPTS = join(runtime.runtimeConstants.pipelineRoot, 'scripts');
 const frontmatter = require(join(SCRIPTS, 'lib-frontmatter.js'));
 const rules = require(join(SCRIPTS, 'lib-deliverable.js'));
@@ -301,6 +301,8 @@ function contentApproval(jobDir) {
   }).filter(item => Number.isFinite(item.round)).sort((a, b) => a.round - b.round);
   const latest = records[records.length - 1]?.record;
   if (!latest || latest.decision !== 'approved' || !Array.isArray(latest.artifacts)) return null;
+  // Approved before the brief or the chosen concept changed: it covers nothing now.
+  if (staleBasis(jobDir, latest).length) return null;
   const covered = new Map();
   for (const item of latest.artifacts) {
     if (plain(item) && typeof item.path === 'string' && typeof item.sha256 === 'string') covered.set(forward(item.path), item.sha256.toLowerCase());

@@ -1,0 +1,22 @@
+name: Plugin checks
+
+# Source-only checks on every push and pull request. The behaviour tests stay local and are never run here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check the plugin
+        run: node --no-warnings=ExperimentalWarning scripts/check-plugin.mjs

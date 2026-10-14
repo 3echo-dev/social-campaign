@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.17.46.
+Current version: 0.17.51.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -143,7 +143,7 @@ If the site does not say who the brand is for, research suggests an audience fro
 **Research with sources.**
 Audience, competitors and product evidence, each claim traced to where it came from.
 Competitor work covers at most three competitors.
-Brand research uses the target market you name, and Singapore when you leave it blank.
+Brand research uses the target market you name, and asks you for it (a country, Global, or another market) before it starts when you leave it blank.
 Research never stalls: each source gets one attempt and at most one fallback, and anything that cannot be fetched is left blank and listed once at the end.
 Reference videos that are found are downloaded and watched (3 by default). If fewer than you asked for can be opened, the brief goes ahead with `References: n of N verified` and Claude asks once for links, without waiting.
 Competitor ads come from the Meta Ads connector's ad library search when it is connected, and from the public ad libraries otherwise.
@@ -280,7 +280,7 @@ claude plugin marketplace update 3echo-social-campaign
 claude plugin update social-campaign@3echo-social-campaign
 ```
 
-Then open a new chat.
+Social Campaign switches to the new version by itself in a chat that is already open; you do not type anything.
 Your workspace, brands and jobs are kept, because they live in your working folder and not in the plugin.
 If the update reports an error, remove the marketplace with `claude plugin marketplace remove 3echo-social-campaign`, then add and install it again as in step 1.
 
@@ -332,8 +332,9 @@ Setup may also ask once to let the plugin's tools and the board update run witho
 
 ### 6. After a plugin update
 
-Open a new chat and type `/social-campaign`.
-A running chat keeps the old version until you do.
+Nothing to type. Ask Social Campaign to update (or tap Yes when it offers), and it runs the update itself.
+A chat that is already open moves to the new version by itself: the tools switch within a few seconds and the board page is republished without a click.
+Only if that switch fails will it tell you to open a new chat.
 Quitting Claude is not needed.
 Your jobs and board are kept.
 
@@ -354,7 +355,7 @@ It then asks what you need: a post or campaign, research, an analysis of a post 
 ### Onboard a brand
 
 A post or campaign needs a brand that is ready.
-On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, the target market if it is not Singapore, and anything you already know about the audience, positioning, voice, content pillars and competitors.
+On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, the target market (or Global), and anything you already know about the audience, positioning, voice, content pillars and competitors.
 Each link can be marked Not available.
 Upload a logo if you have one, and add colours and fonts if you already know them.
 Click Start onboarding.

@@ -4,6 +4,7 @@ description: >
   Local pipeline orchestrator.
   Use for a routed job when the active plan needs dispatch, artifact verification, state transitions, gates, or handoff.
 model: claude-sonnet-5-5
+effort: high
 color: red
 user-invocable: false
 ---
@@ -52,7 +53,7 @@ Reuse existing artifacts whose paths, revisions, and hashes still match the snap
 
 Put the brand's target market in every researcher spawn prompt.
 Read `targetMarket` from `brand/profile.json`.
-Blank means Singapore, and so does a job with no brand.
+Blank (or a job with no brand) means the market is unknown: do not spawn market research until the Director has asked the person which market and has it. A saved `Global` means no one country.
 
 For a job that makes content and has a concepts step (every job but a repurpose of a video the person supplied), also spawn the Trend Scout during research, in the same message as the researcher spawns.
 It is its own agent, not a research workstream: the research decision does not list it, and it is not a workstream the plan omits.
@@ -153,7 +154,7 @@ The root runtime owns workspace identity, job identity, input revisions, and app
 
 Use these exact calls and nothing else for this job.
 - Caption stage: when the copywriter writes the caption, pass at most 5 frame paths in the spawn prompt, spread from the first to the last, even when `pipeline_qc_frames` saved more.
-- Platform check: `node "${CLAUDE_PLUGIN_ROOT}/scripts/platform-check.js" {brand} {jobId} --root "{workspace root}"`.
+- Platform check: `node "${CLAUDE_PLUGIN_ROOT}/pipeline/scripts/platform-check.js" {brand} {jobId} --root "{workspace root}"`.
 - Show the final post: `pipeline_review_present {brand, jobId, gate:'content'}`, with no `paths`: every post file and every supplied file is presented.
 - Posting decision on a Metricool route: this job has no price step, so first call 3echo `list_workspaces` and `pipeline_studio_workspaces_save` with that list. With exactly one workspace, call `pipeline_studio_workspace_choose {brand, jobId, workspaceId}` without asking; with several, ask which one in plain words, on the board and in chat, and save the first answer the same way.
 - Review copies: `pipeline_review_copies_prepare {brand, jobId}`, upload each `toUpload[].path`, and only when the upload was not matched, `pipeline_review_copies_record {brand, jobId, items:[{path, assetId, url}]}`, one item per copy.

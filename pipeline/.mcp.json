@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "3echo": {
-      "type": "http",
-      "url": "https://agentc.3echo.ai/api/mcp"
-    }
-  }
-}

@@ -173,7 +173,7 @@
     "research": {
       "name": "Research",
       "purpose": "A written report about a product, a brand or its competitors, with a source for every claim.",
-      "examples": ["What do customers say about our three closest competitors?", "What is the market for a vitamin C serum in Singapore?"],
+      "examples": ["What do customers say about our three closest competitors?", "What is the market for a vitamin C serum in the Philippines?"],
       "notFor": ["Making posts", "Looking at one post or one video you already have (use Post or campaign analysis or Video breakdown)"],
       "inputs": [
         { "field": "sourceRefs", "words": "Links or files you want it to read" }

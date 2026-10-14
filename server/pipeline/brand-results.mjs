@@ -85,7 +85,6 @@ const TEXT_LIMIT = 600;
 const PROVIDER_PLATFORM = Object.freeze({ meta_ads: 'facebook', tiktok_ads: 'tiktok' });
 const PLATFORM_ALIASES = Object.freeze({ fb: 'facebook', meta: 'facebook', meta_ads: 'facebook', tiktok_ads: 'tiktok', ig: 'instagram', insta: 'instagram', tik_tok: 'tiktok', yt: 'youtube', shorts: 'youtube', youtube_shorts: 'youtube', twitter: 'x' });
 const COUNT_FIELDS = Object.freeze(['views', 'reach', 'impressions', 'likes', 'comments', 'shares', 'saves', 'clicks', 'linkClicks', 'thruplays', 'results']);
-const MONEY_FIELDS = Object.freeze(['spend', 'cpa', 'cpc', 'cpm']);
 const FIELD_ALIASES = Object.freeze({
   views: ['views', 'videoviews', 'plays', 'videoplays'],
   reach: ['reach'],

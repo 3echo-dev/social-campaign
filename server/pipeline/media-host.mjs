@@ -34,11 +34,14 @@ import { createHash } from 'node:crypto';
 import { closeSync, createReadStream, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import { createRequire } from 'node:module';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import { sniffMagic } from '../media/mime.mjs';
 import { ELEVEN_LABS, jobFromDir, readLanded, readRecords } from './facts.mjs';
+
+const { staleBasis } = createRequire(import.meta.url)('../../pipeline/scripts/lib-approval-basis.js');
 
 export const HOSTED_MEDIA_FILE = 'publish/hosted-media.json';
 export const PUBLISH_INTENT_FILE = 'publish/intent.json';
@@ -233,6 +236,8 @@ function approvedIntent(jobDir) {
   if (typeof covered.sha256 !== 'string' || covered.sha256.toLowerCase() !== sha256) {
     throw refuse('plan_changed', 'The post plan changed after you approved it.');
   }
+  // An approval also stands on the brief and the concept chosen: when either changed since, it no longer covers the post.
+  if (staleBasis(jobDir, approval).length) throw refuse('plan_changed', 'The brief or the chosen concept changed after you approved this, so approve the post plan again.');
   // The final post approved again after this approval replaces it: the old plan is never uploaded or sent.
   if (!hasPublishApproval(jobDir)) throw refuse('not_approved', 'The final post was approved again after you approved this plan, so approve the post plan again first.');
   let document = null;

@@ -80,9 +80,6 @@ import { globalConfigDir } from '../lib/paths.mjs';
 import { killTree } from '../social/backends/ytdlp.mjs';
 import { YTDLP_STALE_DAYS, findOnPath, ytdlpAgeDays } from '../lib/install-hints.mjs';
 
-/** The capability this helper backs. The resolver reads the recorded state under this name. */
-export const RESEARCH_CAPABILITY = 'research.browser';
-
 /** The key inside integrations.json. */
 export { RESEARCH_HELPER_KEY, RESEARCH_HELPER_RECORD_VERSION } from './research-helper-record.mjs';
 export { installedVersions, sitePackagesOf } from './helper-packages.mjs';
@@ -510,26 +507,6 @@ export async function detectChromium(command, env) {
     .map((entry) => entry.trim())
     .find((entry) => entry.startsWith('SCCR|'));
   return { found: Boolean(result.ok && line && line.endsWith('True')) };
-}
-
-/** The one line faster-whisper prints so detection can read its version. */
-const WHISPER_SCRIPT =
-  'import importlib.metadata as metadata;import faster_whisper;print("SCWH|"+metadata.version("faster-whisper"))';
-
-/**
- * Is faster-whisper importable by this Python?
- * @param {string[]} command
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {Promise<{found: boolean, version: string|null}>}
- */
-export async function detectFasterWhisper(command, env) {
-  const result = await run(command, ['-c', WHISPER_SCRIPT], STEP_TIMEOUT_MS.probe, env);
-  const line = String(result.stdout)
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith('SCWH|'));
-  if (!result.ok || !line) return { found: false, version: null };
-  return { found: true, version: line.slice('SCWH|'.length) || null };
 }
 
 /**
@@ -1537,15 +1514,6 @@ const BACKGROUND_UPDATE_SCRIPT =
   'const [moduleUrl, root] = process.argv.slice(1);' +
   'try { const m = await import(moduleUrl); m.checkResearchTools(root); await m.whenInstallSettles(root); await m.whenResearchLatestSettles(m.managedEnvironmentForCheck(root)); } catch {}' +
   'process.exit(0);';
-
-/**
- * The environment the check for one workspace reads. Used by the detached updater to wait for the version lookup.
- * @param {string} workspaceRoot
- * @returns {string}
- */
-export function managedEnvironmentForCheck(workspaceRoot) {
-  return environmentFor(readResearchHelperRecord(workspaceRoot), undefined);
-}
 
 /**
  * For the session start hook: when the research tools are missing or out of date, run the

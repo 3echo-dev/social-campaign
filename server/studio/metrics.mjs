@@ -301,4 +301,3 @@ export function projectJobMetrics({ events = [], report = null } = {}) {
   return projectMetrics(events, { report });
 }
 
-export const __private = Object.freeze({ NUMBER_FIELDS, finite, mergeCoverage, reportCoverage, applyReportProjection });

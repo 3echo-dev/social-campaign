@@ -34,23 +34,6 @@ export function currentArtifact(db, campaignId, kind) {
 }
 
 /**
- * Read an artifact by its durable identity and version.
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} artifactId
- * @param {number} version
- * @returns {ArtifactRecord|null}
- */
-export function artifactByRef(db, artifactId, version) {
-  const row = db
-    .prepare(
-      'SELECT id, campaign_id, kind, version, path, json, created_at, invalidated_at, invalidation_reason ' +
-        'FROM artifacts WHERE id = ? AND version = ?',
-    )
-    .get(artifactId, Number(version));
-  return row ? toArtifact(row) : null;
-}
-
-/**
  * Whether a durable artifact reference still names the current version.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{id?: string, artifact_id?: string, kind?: string, version?: number}} ref

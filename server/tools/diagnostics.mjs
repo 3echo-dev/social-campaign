@@ -20,7 +20,7 @@ import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { defineTool } from '../mcp/registry.mjs';
-import { PLUGIN_VERSION, updateWaiting } from '../workspace/version.mjs';
+import { versionState } from '../workspace/version.mjs';
 import { CAPABILITIES, CONNECTION_ROWS } from '../capabilities/registry.mjs';
 import { probeBinary, resolveCapabilities } from '../capabilities/resolve.mjs';
 import { currentVersion, listMigrations, openAndMigrate, writeSchemaDump } from '../db/migrate.mjs';
@@ -122,7 +122,8 @@ export const diagnosticsTools = [
       'as status unchecked, not as a problem. Every item comes back with a plain language fix, and the ones Social Campaign can put ' +
       'right on its own are marked repairable so doctor_repair can be offered. Also returns pluginVersion and ' +
       'updateWaiting: when updateWaiting is true, or pluginVersion is missing, this running server is a ' +
-      'superseded install waiting for the session to restart onto the newer one.',
+      'superseded install that could not move to the newer version by itself. runningVersion, swapped and ' +
+      'skillsRoot say which version this server is and where its skills are.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: async (_args, { workspace }) => {
       const checks = await runChecks(workspace);
@@ -138,8 +139,7 @@ export const diagnosticsTools = [
               ? `Everything essential works. ${warning} optional item${warning === 1 ? ' needs' : 's need'} attention.`
               : 'Everything works.',
         healthy: failing === 0,
-        pluginVersion: PLUGIN_VERSION,
-        updateWaiting: updateWaiting(),
+        ...versionState(),
       };
     },
   }),

@@ -24,7 +24,7 @@ Progress updates are one short line in plain words, for example "Researching SK-
 
 Read pipeline/LOCAL-ADAPTER.md (its Agent routing section applies), the workflow file under pipeline/workflows that the route names, pipeline/agents/researcher.md, and pipeline/skills/research/SKILL.md.
 
-For any competitor or market work, the target market comes from the spawn prompt, then `targetMarket` in `brand/profile.json`, and is Singapore when both are blank.
+For any competitor or market work, the target market comes from the spawn prompt, then `targetMarket` in `brand/profile.json`, and is asked of the person (by the Director, in chat) when both are blank; `Global` means no one country.
 
 Reuse a fresh job snapshot supplied by the caller.
 
@@ -45,7 +45,7 @@ Dispatch exactly one workstream named by the active plan, or, for a `research` o
 
 A report job carries no research decision from the router; run its task the moment the active plan names it, never waiting for a decision that will not arrive.
 
-The brand-onboarding workstream and its Hard limits, which a report job's task also keeps to, are defined in pipeline/skills/research/SKILL.md.
+The brand-onboarding workstream is defined in pipeline/skills/research/references/brand-onboarding.md, and its Hard limits, which a report job's task also keeps to, in pipeline/skills/research/SKILL.md.
 
 Brand onboarding research is held to the same standard as a job's: it names its tools (`web_crawl`, `social_profile_get`, `social_outliers_find`, `social_post_get`, `social_search`, `WebSearch`, `WebFetch`), applies the same competitor test, and saves the text of every page it reads before it cites it.
 The brand-onboarding section of pipeline/skills/research/SKILL.md has the rules, and the save refuses a source that has no saved capture.

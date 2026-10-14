@@ -75,48 +75,6 @@ export const eventTools = [
     },
   }),
 
-  defineTool({
-    name: 'events_list',
-    description: 'List recorded events, newest first, optionally filtered by campaign or name.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        campaign_id: { type: 'string' },
-        name: { type: 'string' },
-        limit: { type: 'number', description: 'Default 50, maximum 500.' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => {
-      const db = workspace.requireDb();
-      const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 500);
-      const clauses = [];
-      const values = [];
-      if (typeof args.campaign_id === 'string' && args.campaign_id) {
-        clauses.push('campaign_id = ?');
-        values.push(args.campaign_id);
-      }
-      if (typeof args.name === 'string' && args.name) {
-        clauses.push('name = ?');
-        values.push(args.name);
-      }
-      const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-      const rows = db
-        .prepare(
-          `SELECT id, campaign_id, name, payload, created_at FROM events ${where} ORDER BY created_at DESC, id DESC LIMIT ?`,
-        )
-        .all(...values, limit);
-      return {
-        events: rows.map((row) => ({
-          id: String(row.id),
-          campaign_id: row.campaign_id ? String(row.campaign_id) : null,
-          name: String(row.name),
-          payload: parseJson(String(row.payload ?? '{}'), {}),
-          created_at: String(row.created_at),
-        })),
-      };
-    },
-  }),
 
   defineTool({
     name: 'agent_run_record',
@@ -162,21 +120,6 @@ export const eventTools = [
     },
   }),
 
-  defineTool({
-    name: 'campaign_stats',
-    description:
-      'Per stage wall time, per agent tokens and duration, and job totals, computed from stage.started, ' +
-      'stage.completed and agent.completed events.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        campaign_id: { type: 'string' },
-      },
-      required: ['campaign_id'],
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => computeCampaignStats(workspace.requireDb(), String(args.campaign_id)),
-  }),
 ];
 
 /**

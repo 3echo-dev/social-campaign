@@ -19,6 +19,7 @@ const jobsOf = list => list.map(entry => entry.ref).join(', ');
 
 function stopReason(text, behind, unsaved, copies, more = {}) {
   const reasons = [];
+  if (more.republish) reasons.push(text.republish);
   if (behind.length) reasons.push(text.behind);
   if (unsaved.length) reasons.push(`${text.unsaved} Jobs: ${jobsOf(unsaved)}.`);
   if (copies.length) reasons.push(`${text.copies} Jobs: ${jobsOf(copies)}.`);
@@ -43,22 +44,24 @@ async function main() {
   });
   // A question just put to the person is theirs to answer, so the job is not on Claude's turn.
   const yourTurn = chatAsk ? [] : ownTurn;
-  if (!behind.length && !unsaved.length && !copies.length && !agents.length && !replies.length && !stuck.length && !yourTurn.length && !chatAsk) return;
+  // The board page on the artifact is older than this plugin version (an update just arrived): say so once per window, without asking the person.
+  const republish = fresh.boardSourceOutdated(fresh.readBoardLink(root), root) === true;
+  if (!behind.length && !unsaved.length && !copies.length && !agents.length && !replies.length && !stuck.length && !yourTurn.length && !chatAsk && !republish) return;
   const onPerson = entry => waiting.has(entry.ref);
   const [blockBehind, blockUnsaved, blockCopies] = [behind, unsaved, copies].map(list => list.filter(onPerson));
   // An agent that finished, a message waiting for the Director's reply, a stuck job nobody asked about and a job on Claude's own turn block whoever is waiting.
-  const block = blockBehind.length > 0 || blockUnsaved.length > 0 || blockCopies.length > 0 || agents.length > 0 || replies.length > 0 || stuck.length > 0 || yourTurn.length > 0 || chatAsk !== null;
+  const block = republish || blockBehind.length > 0 || blockUnsaved.length > 0 || blockCopies.length > 0 || agents.length > 0 || replies.length > 0 || stuck.length > 0 || yourTurn.length > 0 || chatAsk !== null;
   // A block repeats when the waiting job's facts change. A note only names which jobs and what kind
   // of gap, so a busy job nobody is waiting on does not bring a new note every turn.
   const refs = list => list.map(entry => entry.ref).sort();
   const signature = sha256(JSON.stringify(block
-    ? { block, behind: blockBehind, unsaved: blockUnsaved, copies: blockCopies, ...(agents.length ? { agents } : {}), ...(replies.length ? { replies } : {}), ...(stuck.length ? { stuck } : {}), ...(yourTurn.length ? { yourTurn: yourTurn.map(({ jobId, state, revision }) => ({ jobId, state, revision })) } : {}), ...(chatAsk ? { chatAsk: { jobId: chatAsk.jobId, hash: chatAsk.hash } } : {}) }
+    ? { block, ...(republish ? { republish: true } : {}), behind: blockBehind, unsaved: blockUnsaved, copies: blockCopies, ...(agents.length ? { agents } : {}), ...(replies.length ? { replies } : {}), ...(stuck.length ? { stuck } : {}), ...(yourTurn.length ? { yourTurn: yourTurn.map(({ jobId, state, revision }) => ({ jobId, state, revision })) } : {}), ...(chatAsk ? { chatAsk: { jobId: chatAsk.jobId, hash: chatAsk.hash } } : {}) }
     : { block, behind: refs(behind), unsaved: refs(unsaved), copies: refs(copies) }));
   // With nobody waiting there is nothing to tell Claude now, and a Stop hook has no model-only
   // channel besides a block, so a systemMessage would show up in the person's chat as "Stop says".
   if (!block) return;
   if (!fresh.claimStopBlock(root, event.session_id, signature)) return;
-  process.stdout.write(JSON.stringify({ decision: 'block', reason: stopReason(fresh.BOARD_TEXT, blockBehind, blockUnsaved, blockCopies, { agents, replies, stuck, yourTurn: yourTurn.length ? fresh.yourTurnReason(yourTurn) : '', chatAsk: chatAsk !== null }) }));
+  process.stdout.write(JSON.stringify({ decision: 'block', reason: stopReason(fresh.BOARD_TEXT, blockBehind, blockUnsaved, blockCopies, { republish, agents, replies, stuck, yourTurn: yourTurn.length ? fresh.yourTurnReason(yourTurn) : '', chatAsk: chatAsk !== null }) }));
 }
 
 main().catch(() => null).finally(() => {

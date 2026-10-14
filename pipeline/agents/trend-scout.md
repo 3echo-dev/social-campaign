@@ -10,6 +10,7 @@ tools: Read, Write, Glob, Grep, WebSearch, WebFetch, mcp__plugin_social-campaign
 disallowedTools: Agent
 skills: research, source-validation
 model: claude-sonnet-5-5
+effort: medium
 maxTurns: 30
 color: orange
 ---
@@ -78,7 +79,7 @@ done when:     research/trends.md exists at the absolute path given, every platf
 
 1. Read the spawn prompt: the brand, the job, the platforms to cover, the industry, the target market and the saved competitor names.
    The industry comes from the spawn prompt, else the `industry` that `brand_library_get` returns (the person's pick), else the market and positioning in `brand/profile.json`.
-   The target market comes from the spawn prompt, else `targetMarket` in `brand/profile.json`, else Singapore.
+   The target market comes from the spawn prompt, else `targetMarket` in `brand/profile.json`. `Global` means no one country; if both are blank, stop and report that the market is unknown instead of guessing one.
    The competitors come from the spawn prompt, else `competitors` in `brand/profile.json`.
 2. Check the library before you search.
    Call `brand_library_get` (or read the library block at the end of your spawn prompt) and look at `trends`: the trends and ad hooks seen under 7 days ago.

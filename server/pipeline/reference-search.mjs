@@ -125,8 +125,6 @@ function num(value) {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-const numStrict = (value) => { const n = Number(value); return Number.isFinite(n) && n >= 0 ? n : null; };
-
 function jsonLines(stdout) {
   const out = [];
   for (const line of String(stdout ?? '').split(/\r?\n/)) {

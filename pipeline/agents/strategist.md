@@ -8,6 +8,7 @@ tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: write-hook, write-cta, brand-check, source-validation
 model: claude-opus-5-5
+effort: high
 maxTurns: 40
 color: purple
 ---

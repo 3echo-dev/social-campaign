@@ -68,7 +68,7 @@ A post that goes straight to copy with no concept step gets the same choices fir
    When `complete` is false, the brand voice is not finished: ask one plain question for what its "Still to fill in" section lists, for example "How should SK-II sound in its posts?", save the answer to the brand profile as `onboard-brand` describes for a ready brand (`pipeline_brand_onboard` with the existing brand), and continue once the voice is complete.
    Never write copy while the voice is unfinished.
 2. Build 2 or 3 options per field for each post from the research the job already has: hooks seen in competitor and brand posts, comment mining and customer words, ad library findings, standout posts, and the brand's own hashtags.
-   Only when a field has no evidence at all, look it up within the hard limits: at most 3 searches for that question, at most 3 competitors, in the brand's target market (Singapore when the profile names none).
+   Only when a field has no evidence at all, look it up within the hard limits: at most 3 searches for that question, at most 3 competitors, in the brand's target market (when the profile names none, ask the person first; `Global` means no one country).
    Every option cites where it comes from: a research file in the job (for example `research/competitors.md#hooks`), a brand file, or a public link to the post or ad.
 3. Shape each field:
    - Pillar: only the brand's saved content pillars, spelled as on the profile.

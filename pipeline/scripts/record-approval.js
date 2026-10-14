@@ -16,6 +16,7 @@ const { validate } = require('./validate-schema.js');
 const ws = require('./lib-workspace.js');
 const states = require('./lib-states.js');
 const execution = require('./lib-execution-availability.js');
+const approvalBasis = require('./lib-approval-basis.js');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -134,10 +135,13 @@ for (const f of files) {
 }
 // An approval is an audit record, so it carries the workspace's zone, not the process's.
 const when = ws.now(brand, process.argv);
+// Only an approval binds the upstream inputs it stood on; a change request or a rejection does not.
+const basis = isApproval ? approvalBasis.basisFor(jobDir, gate, artifacts.map(a => a.path)) : [];
 
 const rec = {
   schemaVersion: '1.0', approvalId: gate + '-' + round, jobId: job, brand, gate, round,
   decision: VERDICTS[verdict], edited: verdict === 'edit', artifacts,
+  ...(basis.length ? { basis } : {}),
   decidedBy: opts.by, decidedAt: when, channel: opts.channel === 'file' ? 'file' : 'chat',
   comment: opts.comment || '',
   ...(expectedRevision !== null ? { artifactRevision: expectedRevision } : {}),

@@ -6,7 +6,8 @@ description: >-
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: publish
-model: claude-haiku-4-5-20251001
+model: claude-haiku-5-5
+effort: low
 maxTurns: 30
 ---
 

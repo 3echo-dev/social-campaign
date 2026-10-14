@@ -501,7 +501,6 @@ function personWaits({ inbox, state }) {
 // Stuck jobs
 // ---------------------------------------------------------------------------
 
-export const STUCK_KINDS = Object.freeze(['missing_info', 'approval', 'clarification', 'account', 'internal']);
 /** No change for this long, with nobody waiting on the person and no agent running, is a stuck job. */
 export const STUCK_QUIET_MS = 6 * 60 * 60 * 1000;
 /** A job quiet for longer than this is paused, not stuck, so old idle jobs never show as stuck. */

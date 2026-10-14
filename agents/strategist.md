@@ -4,6 +4,7 @@ description: >
   Local pipeline strategist.
   Use when the active plan has a strategy task after its required research artifacts are current.
 model: claude-opus-5-5
+effort: high
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
 skills: social-campaign:write-hook, social-campaign:write-cta, social-campaign:brand-check, social-campaign:source-validation

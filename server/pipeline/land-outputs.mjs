@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import { ELEVEN_LABS, appendLanded, finishMediaIfLanded, isFetchableUrl, isLanded, jobAt, parseJobKey, readLanded, readRecords, THREE_ECHO } from './facts.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
+import { checkGeneratedMedia, requestedFor } from './generated-media-check.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const MIME_EXTENSIONS = Object.freeze({
@@ -86,6 +87,14 @@ function isFile(file) {
   } catch {
     return false;
   }
+}
+
+// A picture or clip already turned down by the shape and length check is not downloaded and checked again; that
+// would only repeat the same answer. Regenerating is the person's decision, never made here.
+function failedCheckBefore(job, assetId) {
+  const own = readLanded(job).filter(entry => entry.assetId === assetId);
+  const last = own[own.length - 1];
+  return Boolean(last && last.type === 'failed' && last.reason === 'check_failed' && last.file && existsSync(join(job.dir, ...String(last.file).split('/'))));
 }
 
 const fileHash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -352,7 +361,7 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
       continue;
     }
     try {
-      if (isLanded(job, link.assetId)) {
+      if (isLanded(job, link.assetId) || failedCheckBefore(job, link.assetId)) {
         outcome.skipped.push(link.assetId);
         continue;
       }
@@ -381,6 +390,17 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
       writeFileSync(temp, got.bytes);
       renameReplacing(temp, target);
       const sha256 = createHash('sha256').update(got.bytes).digest('hex');
+      // Is it the shape and length the job asked for? Only a clear mismatch stops it; a check that cannot run is noted and the file goes on.
+      const check = provider === THREE_ECHO && parsed ? checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item)) : { verdict: 'unverified', why: 'only 3Echo pictures and clips are checked' };
+      if (check.verdict === 'mismatch') {
+        // Kept on disk for the person to look at, but not copied into the media folder, so an earlier good file there stays as it is.
+        // The record is a failure, so the report shows this item as failed with the reason, and nothing is made again by itself.
+        outcome.failed.push(appendLanded(job, {
+          type: 'failed', ...base, reason: 'check_failed', httpStatus: null, file, sha256, bytes: got.bytes.length, mimeType,
+          note: `${check.reason} The file is kept at ${file} but was not used. Making it again is a new paid job, so ask the person first.`,
+        }));
+        continue;
+      }
       const promotion = promote(job, { ...task, assetId: link.assetId }, parsed, file);
       outcome.landed.push(appendLanded(job, {
         type: 'landed', ...base, file,
@@ -388,6 +408,7 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
         bytes: got.bytes.length,
         mimeType,
         ...promotion,
+        check: check.verdict === 'ok' ? { status: 'ok' } : { status: 'unverified', why: check.why },
         finalCredits: finalCreditsFor(job, task.providerJobId) ?? task.finalCredits ?? null,
       }));
     } finally {

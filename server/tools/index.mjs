@@ -21,7 +21,6 @@ import { mediaTools } from './media.mjs';
 import { assetTools } from './assets.mjs';
 import { generationTools } from './generation.mjs';
 import { strategyTools } from './strategy.mjs';
-import { methodTools } from './methods.mjs';
 import { socialTools } from './social.mjs';
 import { videoTools } from './video.mjs';
 import { editingTools } from './editing.mjs';
@@ -65,7 +64,6 @@ export const ALL_TOOL_MODULES = [
   assetTools,
   generationTools,
   strategyTools,
-  methodTools,
   socialTools,
   videoTools,
   editingTools,

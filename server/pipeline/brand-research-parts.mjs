@@ -41,7 +41,8 @@ const durable = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 const evidence = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-evidence.js'));
 const onboardingRun = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 
-const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'SKILL.md');
+// The onboarding workstream lives in its own file, so job researchers loading the skill do not read it.
+const RESEARCH_SKILL = join(PIPELINE_ROOT, 'skills', 'research', 'references', 'brand-onboarding.md');
 
 /** The most sources one run saves, all parts together. */
 export const MAX_RESEARCH_SOURCES = 20;
@@ -82,8 +83,6 @@ const LABELS = Object.freeze({
   viral: 'What is viral now',
 });
 
-/** The statuses a part file carries: the starting file is pending, a worker writes working while it goes and done in its last write. */
-export const PART_STATUSES = Object.freeze(['pending', 'working', 'done']);
 const DRAFT_KEYS = Object.freeze(['fills', 'suggested', 'research', 'brandFiles', 'topPosts', 'banks', 'budget']);
 const META_KEYS = Object.freeze(['version', 'runId', 'part', 'status', 'competitor']);
 const BRAND_FILE_LIMITS = Object.freeze({ segments: 3, phrases: 8, objections: 5, notFor: 4, proof: 8, competitors: 3, neverClaim: 6, pillars: 8, cadence: 3, notes: 3 });

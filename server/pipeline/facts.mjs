@@ -30,8 +30,6 @@ const THREE_ECHO_TOOLS = new Set([
   'list_workspaces', 'get_workspace_capabilities', 'estimate_video_job', 'create_image_job', 'create_video_job',
   'wait_for_job', 'get_job', 'get_job_result', 'get_asset', 'fetch_asset_bytes', 'import_asset_from_url', 'cancel_job',
 ]);
-export const THREE_ECHO_RESULTS = Object.freeze(['wait_for_job', 'get_job_result', 'get_asset']);
-export const THREE_ECHO_ESTIMATE = 'estimate_video_job';
 const VOICE_DEFAULT_GENERATIONS = 4;
 const EPSILON = 1e-6;
 
@@ -599,7 +597,12 @@ export function creditsCommitted(job, scope = null, skip = null) {
 
 const FINGERPRINT_GATES = [...lib('lib-states.js').GATE_IDS, 'report', 'price'];
 
-function statEntries(base, rel, out) {
+// Small written text (notes, plans, answers, drafts) is fingerprinted by what it says, so an edit that keeps the size and lands in the
+// same clock tick still shows. Pictures, clips and big files stay on size and time.
+const TEXT_FILE = /\.(md|json|jsonl|txt|csv)$/i;
+const TEXT_FILE_MAX = 2 * 1024 * 1024;
+
+function statEntries(base, rel, out, byContent = false) {
   let entries = [];
   try {
     entries = readdirSync(join(base, rel), { withFileTypes: true });
@@ -609,11 +612,12 @@ function statEntries(base, rel, out) {
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const child = rel ? `${rel}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) statEntries(base, child, out);
+    if (entry.isDirectory()) statEntries(base, child, out, byContent);
     else if (entry.isFile()) {
       try {
         const info = statSync(join(base, child));
-        out.push(`${child}\t${info.size}\t${info.mtimeMs}`);
+        if (byContent && TEXT_FILE.test(child) && info.size <= TEXT_FILE_MAX) out.push(`${child}\tsha256:${sha256(readFileSync(join(base, child)))}`);
+        else out.push(`${child}\t${info.size}\t${info.mtimeMs}`);
       } catch {
         continue;
       }
@@ -634,6 +638,18 @@ export function factsFingerprint(job) {
     lines.push('status.md\tmissing');
   }
   for (const folder of ['pricing', 'generation', 'approvals', 'messages']) statEntries(job.dir, folder, lines);
+  // What people and agents write by hand: the brief, concepts, plan, job settings, answers, research and drafts. The board only
+  // writes into the shared board folder, never into these, so reading them cannot loop.
+  for (const file of ['brief.md', 'concepts.md', 'plan.md', 'job.json', 'inputs/answers.json']) {
+    try {
+      const path = join(job.dir, ...file.split('/'));
+      const info = statSync(path);
+      lines.push(info.size <= TEXT_FILE_MAX ? `${file}\tsha256:${sha256(readFileSync(path))}` : `${file}\t${info.size}\t${info.mtimeMs}`);
+    } catch {
+      lines.push(`${file}\tmissing`);
+    }
+  }
+  for (const folder of ['research', 'drafts']) statEntries(job.dir, folder, lines, true);
   try {
     const info = statSync(join(job.dir, 'agents.jsonl'));
     lines.push(`agents.jsonl\t${info.size}\t${info.mtimeMs}`);
@@ -1296,6 +1312,20 @@ function freePictureDecision(job, price) {
   return { allow: true, cost: IMAGE_CREDITS_EACH, key, provider: THREE_ECHO, free: true };
 }
 
+// The settings that change what a clip is and what it costs. Reference assetIds are left out on purpose: a clip seeded from its
+// storyboard picture only gets that picture's id after it was priced.
+function clipShape(inputs) {
+  const value = asObject(inputs);
+  const number = finite(value.duration);
+  const audio = value.generateAudio;
+  return stableStringify([
+    String(value.ratio ?? '').trim() || null,
+    number,
+    resolutionHeight(value.resolution),
+    audio === undefined || audio === null ? null : audio === true || audio === 'true',
+  ]);
+}
+
 export function spendDecision(job, toolName, toolInput) {
   const base = toolBase(toolName);
   const input = asObject(toolInput);
@@ -1345,6 +1375,9 @@ export function spendDecision(job, toolName, toolInput) {
   else if (base === 'create_video_job') {
     const estimate = latestEstimate(job, priceKey(base, input));
     if (!estimate) return deny(SPEND_DENY.videoNoEstimate);
+    // An item priced from a saved estimate is approved for that clip's shape, length, resolution and sound, not just its price.
+    const approved = item.estimateId ? readEstimates(job).find(entry => entry.estimateId === item.estimateId) : null;
+    if (approved && clipShape(approved.inputs) !== clipShape(input)) return deny(SPEND_DENY.shapeChanged);
     cost = finite(estimate.credits);
   } else {
     const generations = voiceGenerations(base, input);
@@ -1644,7 +1677,7 @@ export function landingReport(job, { now = Date.now() } = {}) {
     if (result && RELEASED_STATUS.has(status) && !outputs.length) return { ...at, status: 'failed', reason: 'not_made' };
     const failures = landed.filter(entry => entry.type === 'failed' && (canonicalJobKey(entry.key) === key || outputs.includes(entry.assetId)) && !savedAssets.has(entry.assetId));
     const failure = failures.length ? failures[failures.length - 1] : null;
-    if (failure) return { ...at, status: failure.reason === 'expired' ? 'expired' : 'failed', reason: 'download', assetIds: [failure.assetId].filter(Boolean), note: failure.note || null };
+    if (failure) return { ...at, status: failure.reason === 'expired' ? 'expired' : 'failed', reason: failure.reason === 'check_failed' ? 'check_failed' : 'download', assetIds: [failure.assetId].filter(Boolean), note: failure.note || null };
     if (outputs.length) return { ...at, status: 'pending', reason: 'waiting_to_save', assetIds: outputs.filter(id => !savedAssets.has(id)) };
     return { ...at, status: 'pending', reason: 'making' };
   });

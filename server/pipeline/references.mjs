@@ -59,8 +59,6 @@ export const NOTE_MAX = 500;
 export const REFERENCES_PER_JOB = 60;
 const MANIFEST = 'manifest.json';
 
-export const referenceTypes = () => Object.keys(REFERENCE_TYPES);
-
 function megabytes(bytes) { return `${Math.round(bytes / (1024 * 1024))} MB`; }
 
 /** The kind of file these first bytes are, or null. Independent of the name the file came with. */

@@ -88,6 +88,7 @@ export const SPEND_DENY = Object.freeze({
   videoNoEstimate: 'Get a price for this clip first.',
   voiceNoEstimate: 'Get a price for this voice line first.',
   oneAtATime: 'Make one version at a time unless more were approved.',
+  shapeChanged: "This clip's shape, length, resolution or sound differs from the price the person approved. Use the approved settings, or price the new settings and get a new yes.",
   itemOver: 'This costs more than the price approved for this item. Get the new price approved first.',
   overBudget: 'This would go over the approved price for this job. Show the new price and get it approved first.',
   alreadyMade: 'This item has already been made. To make it again, ask for a redo on the board.',
@@ -115,8 +116,6 @@ export function toolBase(name) {
   const at = value.lastIndexOf('__');
   return at > 3 ? value.slice(at + 2) : value;
 }
-
-export const isGuardedTool = base => GUARDED_TOOLS.has(base);
 
 /** 'threeEcho' or 'elevenLabs' when the full MCP tool name belongs to one of those servers, else null. */
 export function spendServer(name) {

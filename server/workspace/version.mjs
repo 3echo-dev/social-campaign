@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { appendRotating, log } from '../lib/log.mjs';
 import { bootLogPath } from '../lib/paths.mjs';
 import { nowIso } from '../lib/ids.mjs';
+import { readSwapFailure, samePath } from '../../scripts/lib/plugin-versions.mjs';
 
 const require = createRequire(import.meta.url);
 const manifest = require('../../.claude-plugin/plugin.json');
@@ -33,8 +34,54 @@ export const PLUGIN_VERSION_KEY = 'plugin_version';
 
 const SERVER_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/**
+ * True when this running server is a superseded install that could not hand over to the newer
+ * one: its folder carries .orphaned_at, or the launcher that owns this process recorded that its
+ * swap to the newer version failed. After a successful swap the new server is not orphaned, so
+ * this is false and nobody is told to open a new chat.
+ */
 export function updateWaiting(root = SERVER_ROOT) {
-  return existsSync(join(root, '.orphaned_at'));
+  if (existsSync(join(root, '.orphaned_at'))) return true;
+  return swapFailure(root) !== null;
+}
+
+/** The launcher's record of a failed swap away from this server, else null. */
+export function swapFailure(root = SERVER_ROOT) {
+  try {
+    return readSwapFailure(process.ppid, root);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the launcher told this process. launchRoot is the version folder the chat started with,
+ * which is where its skills and agents text came from; swapped is true when this server is a
+ * different version than that.
+ */
+export function swapState(root = SERVER_ROOT) {
+  const launchRoot = process.env.SOCIAL_CAMPAIGN_LAUNCH_ROOT || '';
+  const swapped = Boolean(launchRoot) && !samePath(launchRoot, root);
+  return { swapped, launchRoot: launchRoot || null, launchVersion: process.env.SOCIAL_CAMPAIGN_LAUNCH_VERSION || null };
+}
+
+/**
+ * The version fields every status reply carries. pluginVersion and updateWaiting are the old pair;
+ * runningVersion, skillsRoot and swapped tell the Director that this server moved on to a newer
+ * version than the skills it is reading, and where the newer skills are.
+ */
+export function versionState(root = SERVER_ROOT) {
+  const { swapped, launchVersion } = swapState(root);
+  const failure = swapFailure(root);
+  return {
+    pluginVersion: PLUGIN_VERSION,
+    runningVersion: PLUGIN_VERSION,
+    updateWaiting: updateWaiting(root),
+    swapped,
+    skillsRoot: join(root, 'skills'),
+    ...(swapped && launchVersion ? { skillsVersion: launchVersion } : {}),
+    ...(failure ? { swapFailed: { toVersion: failure.toVersion ?? null, reason: String(failure.error ?? 'unknown').slice(0, 200) } } : {}),
+  };
 }
 
 /**

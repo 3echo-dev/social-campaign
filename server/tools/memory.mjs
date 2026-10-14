@@ -172,149 +172,16 @@ export const memoryTools = [
     handler: (args, { workspace }) => correctBrandField(workspace.requireDb(), args),
   }),
 
-  defineTool({
-    name: 'creative_profile_get',
-    description: 'Load the current creative profile for a brand, if one has been built.',
-    inputSchema: {
-      type: 'object',
-      required: ['brand_id'],
-      properties: { brand_id: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => getCreativeProfile(workspace.requireDb(), String(args.brand_id)) ?? { brand_id: args.brand_id, profile: null },
-  }),
 
-  defineTool({
-    name: 'creative_profile_propose_update',
-    description:
-      'Propose a refreshed creative profile for a brand. This is always queued for promotion: the Creative ' +
-      'Director cannot write creative memory directly.',
-    inputSchema: {
-      type: 'object',
-      required: ['brand_id', 'profile', 'proposed_by'],
-      properties: { brand_id: { type: 'string' }, profile: { type: 'object' }, proposed_by: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => proposeCreativeProfileUpdate(workspace.requireDb(), args),
-  }),
 
-  defineTool({
-    name: 'competitor_get',
-    description: 'Load tracked competitors for a brand, or one competitor by name, with their analyses.',
-    inputSchema: {
-      type: 'object',
-      required: ['brand_id'],
-      properties: { brand_id: { type: 'string' }, name: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => ({ competitors: getCompetitor(workspace.requireDb(), args) }),
-  }),
 
-  defineTool({
-    name: 'competitor_save_analysis',
-    description: 'Save a competitor analysis. Creates the competitor record if it does not exist yet.',
-    inputSchema: {
-      type: 'object',
-      required: ['brand_id', 'name', 'analysis'],
-      properties: {
-        brand_id: { type: 'string' },
-        name: { type: 'string' },
-        analysis: { type: 'object' },
-        source_ref: { type: 'string' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => saveCompetitorAnalysis(workspace.requireDb(), args),
-  }),
 
-  defineTool({
-    name: 'competitor_list',
-    description: 'List every tracked competitor across all brands.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: (_args, { workspace }) => ({ competitors: listCompetitors(workspace.requireDb()) }),
-  }),
 
-  defineTool({
-    name: 'preference_get',
-    description: 'Load promoted preferences, and evidence for a campaign when one is given.',
-    inputSchema: {
-      type: 'object',
-      properties: { brand_id: { type: 'string' }, campaign_id: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => getPreferences(workspace.requireDb(), args),
-  }),
 
-  defineTool({
-    name: 'preference_record_evidence',
-    description:
-      'Record a preference signal. An explicit signal promotes immediately. An inferred signal is campaign ' +
-      'evidence only, until at least three consistent observations across at least two campaigns promote it. ' +
-      'A one_off signal never promotes.',
-    inputSchema: {
-      type: 'object',
-      required: ['kind', 'signal', 'value'],
-      properties: {
-        kind: { type: 'string', description: 'explicit, inferred or one_off.' },
-        signal: { type: 'string' },
-        value: { type: 'string' },
-        campaign_id: { type: 'string' },
-        brand_id: { type: 'string' },
-        note: { type: 'string' },
-      },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => recordEvidence(workspace.requireDb(), args),
-  }),
 
-  defineTool({
-    name: 'memory_proposals_list',
-    description: 'List memory proposals awaiting promotion, or filtered by status.',
-    inputSchema: {
-      type: 'object',
-      properties: { status: { type: 'string', description: 'proposed, promoted or rejected.' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => ({ proposals: listProposals(workspace.requireDb(), args) }),
-  }),
 
-  defineTool({
-    name: 'memory_promote',
-    description: 'Promote a queued memory proposal into canonical memory.',
-    inputSchema: {
-      type: 'object',
-      required: ['proposal_id'],
-      properties: { proposal_id: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => promoteProposal(workspace.requireDb(), String(args.proposal_id)),
-  }),
 
-  defineTool({
-    name: 'memory_reject',
-    description: 'Reject a queued memory proposal so it is never applied.',
-    inputSchema: {
-      type: 'object',
-      required: ['proposal_id'],
-      properties: { proposal_id: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => rejectProposal(workspace.requireDb(), String(args.proposal_id)),
-  }),
 
-  defineTool({
-    name: 'memory_context',
-    description:
-      'Resolve the merged memory context for a brand and, when given, a campaign: current instruction, ' +
-      'campaign reference, brand guidelines, explicit preferences, creative memory, inferred preferences, ' +
-      'competitor intelligence and trend intelligence, in that order of precedence.',
-    inputSchema: {
-      type: 'object',
-      properties: { brand_id: { type: 'string' }, campaign_id: { type: 'string' }, instruction: { type: 'string' } },
-      additionalProperties: false,
-    },
-    handler: (args, { workspace }) => resolveContext(workspace.requireDb(), args),
-  }),
 
   defineTool({
     name: 'brand_wiki_write',
