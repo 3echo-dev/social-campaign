@@ -36,6 +36,8 @@ Call pipeline_job_read only when the snapshot is absent or an external state cha
 Never pass a human gate or infer approval from conversation text.
 Reuse current artifacts and the existing bound artifact URL.
 
+Before deciding that a step failed or did not land, Read `agents.jsonl` in the job folder: a `started` line for a helper with no later `stopped`, `finished` or `failed` line for it means that helper is still working. Wait for its hand-back and never start the same helper a second time. A file that is missing a few minutes in is not a failed step.
+
 Call pipeline_board_open when the binding is missing or the workspace changed.
 
 If it returns needs_publication, invoke board-setup before presenting the resumed job.

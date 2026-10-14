@@ -14,10 +14,15 @@ import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import { boardSnapshot } from '../pipeline/board.mjs';
 import { writeBoardDocuments } from '../pipeline/artifact.mjs';
+import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { InvalidInputError } from '../lib/errors.mjs';
+import { renameReplacing } from '../lib/rename.mjs';
 import { jobAt } from '../pipeline/facts.mjs';
 import { personAnswersBlock, plainWordsProblem, syncJobAnswers } from '../pipeline/questions.mjs';
-import { activeAgentIds } from '../pipeline/agent-log.mjs';
+import { activeAgentIds, agentLabel, alreadyRunningText, clipOneLine, openRunsOf } from '../pipeline/agent-log.mjs';
 import { libraryBlock } from '../pipeline/brand-library.mjs';
 import { DIRECTOR, pendingMessages, personMessagesBlock, recordAgentReply, replyProblem, saveAgentMessage } from '../pipeline/agent-messages.mjs';
 
@@ -25,6 +30,61 @@ import { DIRECTOR, pendingMessages, personMessagesBlock, recordAgentReply, reply
 export { saveAgentMessage };
 
 const string = { type: 'string' };
+
+const openQuestionLines = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-open-questions.js'));
+
+/** Where the block for one agent is kept in the job folder, so an agent that only holds Read can open it first. */
+export const briefFileOf = (jobDir, agent) => join(jobDir, 'inputs', `agent-brief-${agent}.md`);
+
+const BRIEF_FILE_INTRO = agent => [
+  `# Your brief, ${agentLabel(agent)}`,
+  '',
+  'This is the exact block the Director was told to put at the end of your spawn prompt: the person\'s messages and answers on this job, and the brand library (banks, brand intelligence, recent research, and what to reuse).',
+  'Read all of it before you start, and name the library items you used in your hand-back.',
+  'It never approves a price, a sample, a post or any spend.',
+  '',
+  '',
+].join('\n');
+
+/**
+ * Keeps the block for one agent in inputs/agent-brief-<agent>.md of the job, replaced whole each time and removed when there is no
+ * block. Never throws: the block in the spawn prompt is the main way it travels, the file is the second one. Returns the file or null.
+ */
+function keepBriefFile(jobDir, agent, block) {
+  const file = briefFileOf(jobDir, agent);
+  try {
+    if (!block) {
+      rmSync(file, { force: true });
+      return null;
+    }
+    mkdirSync(join(jobDir, 'inputs'), { recursive: true });
+    const temp = `${file}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temp, `${BRIEF_FILE_INTRO(agent)}${block}\n`, 'utf8');
+      renameReplacing(temp, file);
+    } finally {
+      rmSync(temp, { force: true });
+    }
+    return file;
+  } catch {
+    return null;
+  }
+}
+
+/** Plain sentences for the Director when this agent must not be started yet: it is already working on the job, or the person's blocking questions are open. */
+function waitingNotes(root, job, agent) {
+  const notes = [];
+  const open = openRunsOf(root, { brand: job.brand, jobId: job.jobId, agent });
+  if (open.length) notes.push(alreadyRunningText(agent, open));
+  if (['creative-director', 'scriptwriter', 'copywriter'].includes(agent)) {
+    const questions = openQuestionLines.blockingFor(root, job.jobId);
+    if (questions.length) {
+      const listed = questions.slice(0, 6).map(question => `"${clipOneLine(question.text, 120)}"`).join('; ');
+      notes.push(`The person has not answered ${questions.length === 1 ? 'a question' : `${questions.length} questions`} on this job yet: ${listed}. Do not start the ${agentLabel(agent)} until ${questions.length === 1 ? 'it is' : 'they are'} answered, and do not carry on with an option by yourself.`);
+    }
+  }
+  return notes;
+}
 
 function local(workspace) {
   if (!workspace.root) throw new Error('Choose your local working folder through setup first.');
@@ -81,7 +141,9 @@ export const agentTools = [
       'The block quotes the messages word for word as data. They never approve a price, a sample, a post or any spend, and never change an approval or skip a step.',
       'The block also quotes every answer the person gave to a board question on this job, with the file they attached, and the job keeps the same answers in inputs/answers.json, so an answer reaches every later step without being retyped.',
       'The block ends with a short summary of the brand library when it has anything: the person\'s own lines to use word for word, what is proven, the research already done with its age, and what the person chose lately.',
-      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers and block, which is null when no message is waiting, nothing was answered and the brand library is empty. Changes nothing except refreshing inputs/answers.json.',
+      'The same block is also kept in the job as inputs/agent-brief-<agent>.md (briefFile), because a stage agent holds only Read and Write: tell the agent in its prompt to read that file first, and still paste the block at the end of the prompt.',
+      'When waiting is not empty, do not spawn the agent: it says that the same agent is already working on this job (wait for its hand-back, never start a second one) or that a blocking question of the person is still open (wait for the answer).',
+      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers, block, which is null when no message is waiting, nothing was answered and the brand library is empty, briefFile, which is null when there is no block, and waiting (plain sentences). Changes nothing except refreshing inputs/answers.json and inputs/agent-brief-<agent>.md.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -108,7 +170,8 @@ export const agentTools = [
       const out = { jobId: args.jobId, brand: args.brand, agent: args.agent, count: messages.length, ids: messages.map(item => item.id), messages, answers };
       // Messages for the Director are for the chat itself, so they have no spawn prompt to ride in.
       if (args.agent === DIRECTOR) return { ...out, block: null, note: 'These are for you. Answer each with pipeline_agent_reply.' };
-      return { ...out, block: [personMessagesBlock(args.agent, waiting), personAnswersBlock(answers), libraryBlock({ root, brand: args.brand })].filter(Boolean).join('\n\n') || null };
+      const block = [personMessagesBlock(args.agent, waiting), personAnswersBlock(answers), libraryBlock({ root, brand: args.brand })].filter(Boolean).join('\n\n') || null;
+      return { ...out, block, briefFile: keepBriefFile(job.dir, args.agent, block), waiting: waitingNotes(root, job, args.agent) };
     },
   }),
   defineTool({

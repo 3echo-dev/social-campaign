@@ -21,6 +21,12 @@ function openFor(root, jobId) {
   return open;
 }
 
+// A question asked with blocking true is one whose answer can change the stage or the concepts that come next (a fact the ideas rest on).
+// The next writing step is not started until the person has answered it. A question with no flag is not one of these.
+function blockingFor(root, jobId) {
+  return openFor(root, jobId).filter(record => record.blocking === true);
+}
+
 // Moving on to the brief or the ideas while a question is open would start work the answer may change.
 const BRIEF_STEPS = new Set(['BRIEF_READY', 'CONCEPTS_DRAFTED']);
 function refusal(current, target, open) {
@@ -58,4 +64,4 @@ function refreshStatusLines(dir, root, jobId) {
   return true;
 }
 
-module.exports = { openFor, refusal, refreshStatusLines };
+module.exports = { openFor, blockingFor, refusal, refreshStatusLines };

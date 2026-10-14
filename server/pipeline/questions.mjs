@@ -180,7 +180,7 @@ function questionTakes(root, takes, jobId, brand) {
   });
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined, stills = undefined }) {
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined, stills = undefined, blocking = undefined }) {
   const place = questionPlace(root, { brand, jobId });
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
   const picks = inChat ? [] : questionTakes(root, takes, place.jobId, place.brand);
@@ -190,6 +190,8 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
   const choices = picks.length ? picks.map(take => take.label) : questionOptions(options);
   if (allowText !== undefined && allowText !== null && typeof allowText !== 'boolean') throw new TypeError('allowText must be true or false.');
   if (inChat !== undefined && inChat !== null && typeof inChat !== 'boolean') throw new TypeError('inChat must be true or false.');
+  if (blocking !== undefined && blocking !== null && typeof blocking !== 'boolean') throw new TypeError('blocking must be true or false.');
+  if (blocking === true && !place.jobId) throw new TypeError('A blocking question must be about one job (pass jobId).');
   const wish = inChat ? null : uploadWish(wantsUpload, place.jobId);
   const typed = inChat ? false : typeof allowText === 'boolean' ? allowText : true;
   if (!inChat && !choices.length && !typed) throw new TypeError('Give at least one option, or allow a typed answer.');
@@ -201,6 +203,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     options: choices,
     allowText: typed,
     ...(inChat ? { inChat: true } : {}),
+    ...(blocking === true && !inChat ? { blocking: true } : {}),
     ...(wish ? { wantsUpload: wish } : {}),
     ...(picks.length ? { takes: picks } : {}),
     ...(pictures.length ? { stills: pictures } : {}),

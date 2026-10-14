@@ -416,6 +416,9 @@ When the routed plan names a research stage, it runs only the questions the save
 
 Use the stages returned by pipeline_job_read.
 
+Every helper the producer starts runs with `run_in_background: false`, and a helper that is still working is waited for, never started a second time (see social-campaign's Helpers and hand-backs).
+Questions whose answer can change the ideas are asked, with `blocking: true`, before the ideas are written and answered before they are; the Director's instructions to the producer never say "do not ask the person anything" for those.
+
 Do not assume a fixed stage order.
 
 Read the Agent routing section of pipeline/LOCAL-ADAPTER.md and the workflow file under pipeline/workflows that the route names before dispatching a stage.

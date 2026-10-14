@@ -384,6 +384,9 @@ if (supplied) {
     budget: decision.budget || null,
     stop: decision.stop || null,
     policyVersion: decision.policyVersion || research.POLICY_VERSION,
+    // What is trending is not in the brand's saved research. Even when every research question is covered (a reuse route, which has no
+    // research row), the Trend Scout runs for a job whose platforms do not each have 3 fresh trends in the brand library.
+    trendScout: decision.trendScout || null,
   };
   if (decision.workRequired) {
     need('research');
@@ -419,6 +422,7 @@ if (supplied) {
   } else {
     R.researchDepth = 'reuse';
     say('Rule 7: current applicable evidence covers the material questions; research completes with zero external calls');
+    if (decision.trendScout && decision.trendScout.required) say('Rule 7: research is reused, but ' + decision.trendScout.reason.charAt(0).toLowerCase() + decision.trendScout.reason.slice(1) + ' The Trend Scout still runs.');
   }
 }
 

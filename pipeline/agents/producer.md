@@ -60,8 +60,9 @@ Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `j
 Per pending row, read its `task-contracts.json` entry, pass only `contextRefs`, enforce capabilities,
 then run producer rows or spawn the named agent and wait.
 Wait for a spawned agent's own hand-back, which arrives by itself when it finishes; never poll for its output files with a sleep loop, and never add a fixed sleep after a file appears.
-Spawn each agent in the foreground (no `run_in_background`), and never call `pipeline_review_present` or set a gate state while a spawned agent is still working: it may still be writing the file the review shows, and a file that changes after the person saw it locks their choice.
+Spawn each agent with `run_in_background: false`, written out in every call (the host runs an agent in the background when the flag is left out, and the hand-back then arrives before the helper's file exists), and never call `pipeline_review_present` or set a gate state while a spawned agent is still working: it may still be writing the file the review shows, and a file that changes after the person saw it locks their choice.
 `pipeline_review_present` refuses while an agent is still working on the job; wait for its hand-back, then call it again.
+Never start an agent that is already working on the job. "Launched", "async", "still running", a hand-back that says "not finished" and a file that is not on disk yet all mean wait. Before an agent runs a second time, call `pipeline_agent_brief` for it (its `waiting` lists the earlier run) and Read `agents.jsonl` in the job folder: a `started` line with no later `stopped`, `finished` or `failed` line for that agent means it is still working. Start it again only after `failed` or `stopped` with its file still missing, once, and say so in your hand-back. The agent-run hook refuses a second strategist, Creative Director, Scriptwriter or Media Buyer while the first is working.
 
 Report the stage before and after each row; report long stages as they run:
 
@@ -79,7 +80,7 @@ Verify on disk every file the row owes:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/collect-artifacts.js" {brand} {job-id} "research/audience.md" "drafts/D1/post.md" ...
 ```
 
-Exit 0 marks the row `verified`. Exit 1: re-delegate that agent alone with the quoted absolute output path; a second miss stops the run. Move the state only after the artifact lands:
+Exit 0 marks the row `verified`. Exit 1: first check `agents.jsonl` (an agent that is still working has not missed anything), then re-delegate that agent alone with the quoted absolute output path; a second miss stops the run. Move the state at that hand-back, in the same turn, before the next agent starts or a review is presented, and only after the artifact lands (the board's timeline is drawn from these moves, so a stage whose state never moves reads as no time at all):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/set-state.js" {brand} {job-id} <STATE> --by <who> --note "<what is true now>"
@@ -97,7 +98,10 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
   Read `targetMarket` from `brand/profile.json`.
   Blank means Singapore, and so does a job with no brand.
 - Put `job:<jobId>` on the first line of every spawn prompt.
-  Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and add the block it returns, unchanged, at the end of the prompt; with no block, add nothing.
+  Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and paste the block it returns, word for word and whole, at the end of the prompt; with no block, add nothing. Never replace it with a list of ids you wrote. Its `briefFile` (`inputs/agent-brief-<agent>.md`) holds the same block for agents that hold only Read and Write: put "Read inputs/agent-brief-<agent>.md in the job folder first." on the line after `job:<jobId>`. When it returns `waiting`, do not spawn.
+- Reused research is not reused trends. On a reuse route (no research row) still run the Trend Scout alone before the strategist when `researchDecision.trendScout.required` is true or any platform of the job has fewer than 3 fresh trends in the brand library; the rows 3 and 3b clause for it applies there too.
+- After the brief lands, read its `# Evidence gaps`: a gap a source could close gets one short targeted `researcher` run (15 turns, that one question, the path `research/gap-<short-name>.md`), and its file goes to the Creative Director with the brief.
+- Questions whose answer can change the ideas (from the brief's Supply questions: real screens or an example, which helpers to show, whether a promise is real) are asked with `pipeline_board_ask` and `blocking: true` right after the brief is verified, the recommended option first. The concepts row does not start, no Creative Director, Scriptwriter or Copywriter is spawned and nothing carries on with a default until the person has answered them all; `pipeline_review_present` for the concept pick refuses while any question is open. Questions that only matter for the script or the pictures wait until the idea is picked.
   Answer every message addressed to the Director with `pipeline_agent_reply`.
 
 ## Talking to the person

@@ -2950,7 +2950,26 @@ function snapshotStages(state, planRows, route, context = {}) {
   }
   const derived = deriveStages(routeStages, state, planRows, { ...context, workflowId });
   applyTaskStatuses(derived, planRows, state, context.reached, context.logged);
+  const reused = researchReusedNote(route);
+  const researching = derived.find((stage) => stage.id === 'researching');
+  if (reused && researching && !(researching.tasks || []).length && !researching.note) researching.note = reused;
   return derived;
+}
+
+/**
+ * A route that reuses the brand's saved research has no research row, so the Researching stage would be an empty panel. The line
+ * it shows instead says where the research came from and how old it is (the oldest piece of evidence the route accepted).
+ * Null for a route that runs research, or one with no research decision.
+ */
+function researchReusedNote(route, now = Date.now()) {
+  const decision = route?.researchDecision;
+  if (!decision || typeof decision !== 'object' || !(decision.reuseOnly === true || (decision.action === 'reuse' && decision.required !== true))) return null;
+  const stamps = (Array.isArray(decision.acceptedEvidence) ? decision.acceptedEvidence : [])
+    .map((item) => Date.parse(item?.observedAt ?? ''))
+    .filter((at) => Number.isFinite(at));
+  if (!stamps.length) return 'Research reused from onboarding.';
+  const days = Math.max(0, Math.floor((now - Math.min(...stamps)) / 86400000));
+  return days === 0 ? 'Research reused from onboarding, done today.' : `Research reused from onboarding, ${days} day${days === 1 ? '' : 's'} old.`;
 }
 
 function hashFile(filePath) {
@@ -2982,6 +3001,8 @@ function listArtifacts(dir) {
       if (entry.name.startsWith('.') || skip.has(entry.name)) continue;
       if (!prefix && entry.isDirectory() && factFolders.has(entry.name)) continue;
       if (!prefix && entry.isFile() && factFiles.has(entry.name)) continue;
+      // The block pipeline_agent_brief keeps for each agent (inputs/agent-brief-<agent>.md) is for that agent, never a file on the board.
+      if (prefix === 'inputs' && entry.isFile() && entry.name.startsWith('agent-brief-')) continue;
       const file = join(current, entry.name);
       const rel = forward(join(prefix, entry.name));
       if (entry.isDirectory()) visit(file, rel);

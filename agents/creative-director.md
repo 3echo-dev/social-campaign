@@ -6,7 +6,7 @@ description: >
 model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
-skills: storyboard, write-script, brand-check, platform-format, write-hook
+skills: social-campaign:storyboard, social-campaign:write-script, social-campaign:brand-check, social-campaign:platform-format, social-campaign:write-hook
 maxTurns: 50
 color: cyan
 user-invocable: false
@@ -17,6 +17,11 @@ user-invocable: false
 Read pipeline/agents/creative-director.md and the storyboard, write-script, brand-check, platform-format, and write-hook skills under pipeline/skills.
 
 Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
+
+Before anything else, Read `inputs/agent-brief-creative-director.md` in the job folder when it exists.
+It is the same block the Director put at the end of your spawn prompt: what the person wrote to you and answered on this job, the brand library with its banks (every item with its id), the brand intelligence and the research to reuse.
+When the block at the end of your prompt is missing or shorter than that file, the file wins.
+Never work from a hand-written list of ids in place of them, and name the library items you used in your hand-back.
 
 Read the current job snapshot, the accepted brief, the brand files, the research files, and the script when one exists before writing.
 

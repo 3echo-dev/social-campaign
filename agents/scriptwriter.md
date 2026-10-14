@@ -6,7 +6,7 @@ description: >
 model: claude-opus-5-5
 tools: Read, Write, Glob, Grep
 disallowedTools: Agent
-skills: write-hook, write-script, write-cta, storyboard, policy-check
+skills: social-campaign:write-hook, social-campaign:write-script, social-campaign:write-cta, social-campaign:storyboard, social-campaign:policy-check
 maxTurns: 50
 color: green
 user-invocable: false
@@ -17,6 +17,11 @@ user-invocable: false
 Read pipeline/agents/scriptwriter.md and the write-hook, write-script, write-cta, storyboard, and policy-check skills under pipeline/skills.
 
 Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
+
+Before anything else, Read `inputs/agent-brief-scriptwriter.md` in the job folder when it exists.
+It is the same block the Director put at the end of your spawn prompt: what the person wrote to you and answered on this job, the brand library with its banks (every item with its id), the brand intelligence and the research to reuse.
+When the block at the end of your prompt is missing or shorter than that file, the file wins.
+Never work from a hand-written list of ids in place of them, and name the library items you used in your hand-back.
 
 Read the current job snapshot, accepted brief, brand restrictions, research artifacts, and input revision before writing.
 

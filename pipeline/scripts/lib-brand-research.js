@@ -956,7 +956,7 @@ function evidenceDecision(recordOrDir, options = {}) {
         decision: accepted.decision,
         sourceId: accepted.candidate.sourceId || accepted.candidate._ref,
         source: accepted.candidate.source || accepted.candidate.url || null,
-        observedAt: accepted.candidate.observedAt || null,
+        observedAt: accepted.candidate.observedAt || accepted.candidate.lastVerifiedAt || null,
         reason: accepted.reason,
       });
     } else if (evaluated.some(item => item.decision === 'refresh')) {
@@ -1182,6 +1182,81 @@ function needsRefresh(dir, scope, options = {}) {
   };
 }
 
+// What is trending is not in the brand's onboarding research: the Trend Scout finds it and the brand library keeps it for a week
+// (workspaces/<brand>/library/trends.jsonl, server/pipeline/brand-trends.mjs). One generic job question can match the saved brand
+// research by a couple of shared words, so reusing that research says nothing about trends. The route therefore also asks whether the
+// library holds enough fresh trends for every platform of the job, and when it does not, the Trend Scout runs even on a reuse route.
+const TREND_FRESH_DAYS = 7;
+const TREND_MIN_PER_PLATFORM = 3;
+const RISING_TREND_KINDS = new Set(['topic', 'format', 'sound', 'hashtag']);
+const PLATFORM_ALIASES = Object.freeze({ fb: 'facebook', meta: 'facebook', ig: 'instagram', insta: 'instagram', tik_tok: 'tiktok', yt: 'youtube', shorts: 'youtube', youtube_shorts: 'youtube', twitter: 'x' });
+
+function platformSlug(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return PLATFORM_ALIASES[text] || text;
+}
+
+function readJsonLines(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return []; }
+  const out = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const value = JSON.parse(line);
+      if (value && typeof value === 'object' && !Array.isArray(value)) out.push(value);
+    } catch { /* a damaged line is not a trend */ }
+  }
+  return out;
+}
+
+function trendSquash(text) {
+  const words = String(text === undefined || text === null ? '' : text).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return words || String(text === undefined || text === null ? '' : text).trim().toLowerCase();
+}
+
+/**
+ * For each platform of the job: how many fresh trends the brand library holds (seen under 7 days ago, the kinds that are rising
+ * on a platform, in the brand's industry when both are known), against the 3 a job needs. `required` is true when any platform is
+ * short, or when the job names no platform at all (nothing can then be said to be covered). The file is only ever appended to, so a
+ * trend is its latest sighting (kind, platform and normalised words).
+ */
+function trendCoverage(dir, job = {}, options = {}) {
+  const now = clockNow(options).getTime();
+  const wanted = [];
+  const add = value => { const slug = platformSlug(value); if (slug && !wanted.includes(slug)) wanted.push(slug); };
+  for (const item of Array.isArray(job.platforms) ? job.platforms : []) add(item && typeof item === 'object' ? item.platform : item);
+  for (const item of Array.isArray(job.deliverables) ? job.deliverables : []) add(item && item.platform);
+  const library = path.join(dir, 'library');
+  const yours = readJsonLines(path.join(library, 'bank', 'yours.jsonl')).filter(item => item.kind === 'industry' && item.removed !== true);
+  const industry = yours.length ? trendSquash(yours[yours.length - 1].text) : '';
+  const latest = new Map();
+  for (const item of readJsonLines(path.join(library, 'trends.jsonl'))) {
+    if (!RISING_TREND_KINDS.has(item.kind)) continue;
+    const at = Date.parse(item.seenAt || '');
+    if (!Number.isFinite(at)) continue;
+    const key = [item.kind, platformSlug(item.platform), trendSquash(item.text)].join('|');
+    const known = latest.get(key);
+    if (!known || at > known.at) latest.set(key, { at, platform: platformSlug(item.platform), industry: item.industry ? trendSquash(item.industry) : '' });
+  }
+  const fresh = [...latest.values()].filter(item => now - item.at < TREND_FRESH_DAYS * 86400000 && (!industry || !item.industry || item.industry === industry));
+  const platforms = wanted.map(platform => {
+    const count = fresh.filter(item => item.platform === platform).length;
+    return { platform, fresh: count, need: TREND_MIN_PER_PLATFORM, short: count < TREND_MIN_PER_PLATFORM };
+  });
+  const short = platforms.filter(item => item.short);
+  const required = !platforms.length || short.length > 0;
+  return {
+    required,
+    need: TREND_MIN_PER_PLATFORM,
+    freshDays: TREND_FRESH_DAYS,
+    platforms,
+    reason: !platforms.length ? 'The job names no platform, so no trend can be said to cover it.'
+      : short.length ? 'Fewer than ' + TREND_MIN_PER_PLATFORM + ' fresh trends on ' + short.map(item => item.platform).join(', ') + '.'
+        : 'Every platform of the job has at least ' + TREND_MIN_PER_PLATFORM + ' fresh trends.',
+  };
+}
+
 function routeDecision(dir, options = {}) {
   const job = options.job || {};
   execution.assertExecutionAvailable({ job });
@@ -1226,6 +1301,7 @@ function routeDecision(dir, options = {}) {
     policyVersion: decision.policyVersion,
     budget,
     stop: decision.stop,
+    trendScout: trendCoverage(dir, job, options),
   };
 }
 
@@ -1271,6 +1347,7 @@ module.exports = {
   evaluateEvidence: evidenceDecision,
   researchDecision: evidenceDecision,
   routeDecision,
+  trendCoverage,
   questionsForJob,
   jobAim,
   workstreamsFor,

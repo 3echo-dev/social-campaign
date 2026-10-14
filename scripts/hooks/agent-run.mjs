@@ -6,19 +6,26 @@
 // the spawn prompt, else the session's binding. Everything lands in <job>/agents.jsonl (see server/pipeline/agent-log.mjs).
 // With no job, a `brand:<slug>` tag on the first line of the prompt (brand onboarding research) records the run under the brand,
 // in <brand folder>/onboarding/agents.jsonl; that run has no board messages and no board-sync reminder.
-// It protects no money: it always exits 0 and fails open. It says two things: the board-sync reminder, and the one refusal of a
-// spawn that leaves out the messages the person left for that agent (see server/pipeline/agent-messages.mjs).
+// It protects no money: it always exits 0 and fails open. It says these things: the board-sync reminder, the one refusal of a
+// spawn that leaves out the messages the person left for that agent (see server/pipeline/agent-messages.mjs), the one refusal of a
+// second run of a single-run stage agent while the first is still working on the same job, and the refusal of a writing agent
+// (Creative Director, Scriptwriter, Copywriter) while a blocking question of the job is still open.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createRequire } from 'node:module';
 
 import { jobAt, resolveJobForCall, resolveWorkspaceRoot } from '../../server/pipeline/facts.mjs';
 import {
-  ERROR_LIMIT, DESCRIPTION_LIMIT, SUMMARY_LIMIT, agentLabel, agentOf, appendAgentLine, boardReminderText, claimBoardReminder, clipOneLine, findRun, pairableRun, readRuns, withRuns,
+  ERROR_LIMIT, DESCRIPTION_LIMIT, SUMMARY_LIMIT, agentLabel, agentOf, alreadyRunningText, appendAgentLine, boardReminderText, claimBoardReminder, clipOneLine, findRun, openRunsOf, pairableRun, readRuns, withRuns,
 } from '../../server/pipeline/agent-log.mjs';
 import {
   claimGuardRefusal, deliveredBy, idsInPrompt, markMessagesDelivered, pendingMessages, DIRECTOR,
 } from '../../server/pipeline/agent-messages.mjs';
+
+const openQuestions = createRequire(import.meta.url)(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-open-questions.js'));
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
 const AGENT_TOOL = /^(?:Agent|Task)$/;
@@ -155,12 +162,58 @@ function markDelivered({ job, agent, input, event, agentId }) {
   }
 }
 
+/**
+ * The agents that work one at a time on a job: the strategist writes brief.md and the writing agents write the ideas, the script and the
+ * storyboard, each one file that a second run overwrites. A researcher, a copywriter or a videographer can run in parallel by design.
+ */
+const ONE_AT_A_TIME = new Set(['strategist', 'creative-director', 'scriptwriter', 'media-buyer']);
+
+/** The agents that write the ideas, the script and the post: they wait for the answers to the person's blocking questions. */
+const WAITS_FOR_ANSWERS = new Set(['creative-director', 'scriptwriter', 'copywriter']);
+
+const denial = reason => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
+
+/**
+ * PreToolUse: refuse a second run of a one-at-a-time agent while the first one started and has not stopped on the same job. The
+ * refusal is claimed per set of open runs (agent-guard.json), so the same set never refuses twice: a run that was truly lost
+ * is started again on the second try, and the guard cannot loop. Returns a deny output object, or null.
+ */
+function openRunGuard({ root, job, agent, event }) {
+  if (job.brandOnly || !ONE_AT_A_TIME.has(agent)) return null;
+  try {
+    const open = openRunsOf(root, { brand: job.brand, jobId: job.jobId, agent, exceptToolUseId: word(event.tool_use_id) });
+    if (!open.length) return null;
+    if (!claimGuardRefusal(root, job.brand, job.jobId, `open-run:${agent}`, open.map(run => run.toolUseId))) return null;
+    return denial(`${alreadyRunningText(agent, open)} If it is truly lost, call this again and the spawn goes through.`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PreToolUse: refuse a writing agent while the person has a blocking question on the job that is still open. This one is a hard
+ * wait with no second try: the answer may change the ideas, and the agent never carries on with an option by itself. The answer
+ * (or taking the question back with pipeline_board_withdraw) opens the way. Returns a deny output object, or null.
+ */
+function blockingQuestionGuard({ root, job, agent }) {
+  if (job.brandOnly || !WAITS_FOR_ANSWERS.has(agent)) return null;
+  try {
+    const open = openQuestions.blockingFor(root, job.jobId);
+    if (!open.length) return null;
+    const many = open.length > 1;
+    const listed = open.slice(0, 6).map(question => `"${clipOneLine(question.text, 120)}"`).join('; ');
+    return denial(`The person has not answered ${many ? `${open.length} questions` : 'a question'} on this job yet (${listed}). Do not start the ${agentLabel(agent)}: ${many ? 'the answers' : 'the answer'} can change what it writes. Wait for ${many ? 'them' : 'it'}, which arrive by themselves, and do not carry on with an option by yourself. Then call this again.`);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Agent tool events
 // ---------------------------------------------------------------------------
 
 function onDispatch({ root, job, agent, input, event }) {
-  const refusal = deliveryGuard({ root, job, agent, input, event });
+  const refusal = blockingQuestionGuard({ root, job, agent }) ?? deliveryGuard({ root, job, agent, input, event }) ?? openRunGuard({ root, job, agent, event });
   if (refusal) {
     process.stdout.write(JSON.stringify(refusal));
     return;

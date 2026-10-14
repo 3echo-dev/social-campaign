@@ -203,6 +203,24 @@ export function pairableRun(runs, { sessionId, agent, now = Date.now() }) {
   return open.length === 1 ? open[0] : null;
 }
 
+/**
+ * The runs of one agent on one job that started and have not ended, stopped or failed: the agent is still working. A run older than
+ * STALE_RUN_MS is taken as lost (a killed session never fires SubagentStop). `exceptToolUseId` leaves out the call being checked.
+ */
+export function openRunsOf(root, { brand, jobId, agent, exceptToolUseId = null, now = Date.now() }) {
+  return readRuns(root).filter(run => run.agent === agent && run.brand === brand && run.jobId === jobId
+    && run.toolUseId !== exceptToolUseId && run.startedAt && !run.endedAt && !run.stoppedAt
+    && !(now - Date.parse(run.startedAt) > STALE_RUN_MS));
+}
+
+/** One plain sentence for a model that is about to start an agent that is already working on the job. */
+export function alreadyRunningText(agent, runs, now = Date.now()) {
+  const oldest = Math.min(...runs.map(run => Date.parse(run.startedAt)).filter(Number.isFinite));
+  const minutes = Number.isFinite(oldest) ? Math.max(0, Math.round((now - oldest) / 60000)) : null;
+  const since = minutes === null ? '' : minutes < 1 ? ', started under a minute ago' : `, started about ${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  return `The ${agentLabel(agent)} is already working on this job${since}, and has not handed back yet. Do not start a second one: two of them overwrite each other's file. Wait for its hand-back, which arrives by itself, then use its file. A short file check is not proof that it failed.`;
+}
+
 // ---------------------------------------------------------------------------
 // The board reminder, once per job until a publish is recorded
 // ---------------------------------------------------------------------------

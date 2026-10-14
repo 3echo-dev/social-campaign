@@ -6,7 +6,7 @@ description: >
 model: claude-sonnet-5-5
 tools: Read, Write, Glob, Grep, Bash, mcp__plugin_social-campaign_core__media_transcribe, mcp__plugin_social-campaign_core__transcript_save, mcp__plugin_social-campaign_core__pipeline_video_teardown, mcp__plugin_social-campaign_core__brand_footage_search, mcp__plugin_social-campaign_core__brand_footage_status, mcp__plugin_social-campaign_core__brand_footage_analysis_save
 disallowedTools: Agent
-skills: watch-video, analyze-video, source-validation, write-report
+skills: social-campaign:watch-video, social-campaign:analyze-video, social-campaign:source-validation, social-campaign:write-report
 maxTurns: 40
 color: purple
 user-invocable: false
@@ -17,6 +17,11 @@ user-invocable: false
 Read pipeline/agents/videographer.md and the watch-video, analyze-video, and source-validation skills under pipeline/skills.
 
 Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
+
+Before anything else, Read `inputs/agent-brief-videographer.md` in the job folder when it exists.
+It is the same block the Director put at the end of your spawn prompt: what the person wrote to you and answered on this job, the brand library with its banks (every item with its id), the brand intelligence and the research to reuse.
+When the block at the end of your prompt is missing or shorter than that file, the file wins.
+Never work from a hand-written list of ids in place of them, and name the library items you used in your hand-back.
 
 Read the current job snapshot and the canonical watch report before probing media again.
 

@@ -251,6 +251,13 @@
         },
         "policyVersion": {
           "type": "string"
+        },
+        "trendScout": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Whether the brand library holds enough fresh trends for every platform of the job. When required is true the Trend Scout runs even though research is reused."
         }
       }
     }
