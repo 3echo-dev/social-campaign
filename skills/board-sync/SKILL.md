@@ -57,6 +57,8 @@ A reminder that some made files aren't saved means outputs are still waiting on 
 ## Publish current state
 
 Reuse the current workspace projection when the latest response from `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` or `pipeline_review_present` already includes it.
+For a `refresh_board` request (the header button reads Update board when a newer board page is installed), follow the refresh path above: call `pipeline_board_source` with `url` set to the bound board's address and check `updateWaiting` and `pluginVersion` first. If `updateWaiting` is true or `pluginVersion` is missing, publish nothing, decline the request with one plain reason, and tell the person once to open a new chat and type /social-campaign. Otherwise republish and bind the board as that path says, call `pipeline_status` again and write the documents it returns so the board stops offering the update, then mark the request applied with `pipeline_board_request_apply` and the requestId and confirmedBy, the same as any other non-decision request.
+
 A connector check changes what the Connectors step shows, and the projection from before it is out of date: after `integration_probe`, `integration_probes_save`, `pipeline_metricool_brands_save` or `pipeline_ad_accounts_save`, call `pipeline_status` again and write the documents it returns, so a connected connector reads Connected on its card.
 Use the workspace's existing artifact binding from `pipeline_board_open`.
 `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` and `pipeline_review_present` return `documents`: a list of `{collection, doc_id, file_path}` entries, the job documents first and the workspace projection last.

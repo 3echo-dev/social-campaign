@@ -22,7 +22,8 @@ import { boardShellHashInput, buildBoardShell, buildBoardShellText } from '../..
 import { readJsonFile, updateJsonFile } from '../lib/json.mjs';
 import * as runtime from './runtime.mjs';
 import { boardJobDocuments, boardSnapshot, boardSummary } from './board.mjs';
-import { ARTIFACT_PATH, ARTIFACT_SOURCE_VERSION, artifactIdOf, canonicalArtifactUrl, isBoardUrl, normalizeFileHashes, projectionFileName, projectionHashFromFileName, readBoardLink, recordProjectionWritten } from './board-freshness.mjs';
+import { PLUGIN_VERSION, updateWaiting } from '../workspace/version.mjs';
+import { ARTIFACT_PATH, boardSourceOutdated, ARTIFACT_SOURCE_VERSION, artifactIdOf, canonicalArtifactUrl, isBoardUrl, normalizeFileHashes, projectionFileName, projectionHashFromFileName, readBoardLink, recordProjectionWritten } from './board-freshness.mjs';
 import { boardReadPlan, pathsToPublish, removeStaleBoardFiles } from './board-files.mjs';
 import { JOB_DOCUMENT_COLLECTION } from './job-document.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
@@ -385,7 +386,16 @@ function writeBufferAtomic(filePath, bytes) {
  *
  * @param {{root:string, snapshot:object}} options
  */
+function boardUpdateState(root) {
+  try {
+    return { outdated: boardSourceOutdated(readBoardLink(root), root) === true, pluginVersion: PLUGIN_VERSION, updateWaiting: updateWaiting() === true };
+  } catch {
+    return { outdated: false, pluginVersion: PLUGIN_VERSION, updateWaiting: false };
+  }
+}
+
 export function writeWorkspaceProjection({ root, snapshot }) {
+  snapshot = { ...snapshot, board: boardUpdateState(root) };
   const bytes = Buffer.from(JSON.stringify(snapshot), 'utf8');
   const projectionSha256 = createHash('sha256').update(bytes).digest('hex');
   const filePath = resolve(boardDirPath(root), projectionFileName(projectionSha256));

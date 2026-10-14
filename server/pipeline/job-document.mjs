@@ -529,7 +529,7 @@ function conceptField(label, value) {
 }
 
 // One line of the strategy summary at the top of concepts.md: `Label: value`, bulleted or bold or plain; a wrapped line joins the one above.
-const SUMMARY_LIMIT = 12;
+const SUMMARY_LIMIT = 14;
 function addSummaryLine(summary, raw) {
   const line = raw.trim();
   if (!line || /^[-*_]{3,}$/.test(line)) return;
@@ -563,7 +563,9 @@ export function parseConcepts(text) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line.trim());
     if (heading) {
       open = null;
-      inSummary = !concepts.length && /^(?:concepts\b|(?:the\s+)?strategy\b)/i.test(heading[1].trim());
+      // The summary runs from the top until the first `## Concept <letter>` heading, whatever its sections are called ("What we agreed", ...);
+      // only the "What you're deciding" block (the ask, not the strategy) is left out.
+      inSummary = !concepts.length && !/^what\s+you.?re\s+deciding\b/i.test(heading[1].trim());
       const concept =/^Concept\s+([A-Za-z0-9]{1,8})\s*(?:[:.\-\u2013\u2014]\s*(.*))?$/i.exec(heading[1].trim());
       if (concept) {
         const rawTitle = concept[2] || '';

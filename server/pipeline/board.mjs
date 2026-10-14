@@ -1789,7 +1789,7 @@ const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
   root = rootOf(root);
-  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','subtopics_confirm','plan_cell_start','brand_folder_add','brand_folder_pick','save_brand_details','start_research','brand_rename',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
+  if (!['submit_decision','onboard_brand','create_brand','complete_onboarding','create_job','import_inputs','continue_job','update_intake','attach_product_photo','add_reference','remove_reference','connect_provider','skip_provider','refresh_board','connectors_continue','choose_recipe','choose_studio_workspace','choose_metricool_brand','choose_publish_route','choose_post_type','choose_post_time','resolve_post','mark_posted','answer_question','agent_message','retry_step','bank_remove','subtopics_confirm','plan_cell_start','brand_folder_add','brand_folder_pick','save_brand_details','start_research','brand_rename',...HANDOFF_OPERATIONS].includes(operation)) throw new Error('Unsupported board request.');
   const requestId = args?.requestId || randomUUID();
   if (operation === 'choose_metricool_brand') validateMetricoolChoice(root, args);
   if ((operation === 'onboard_brand' || operation === 'start_research') && args?.metricoolBlogId !== undefined && !(typeof args.metricoolBlogId === 'string' && (args.metricoolBlogId.trim() === 'none' || readMetricoolBrands(root).some(item => item.id === args.metricoolBlogId.trim())))) throw new Error('Choose one of the Metricool brands shown.');
@@ -2874,6 +2874,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
     recordConnectorSkip(root,args.provider);
     return {provider:args.provider,state:'skipped'};
   }
+  if(operation==='refresh_board') return {state:'refreshed'};
   if(operation==='connectors_continue') return recordConnectorsContinue(root);
   if(operation==='connect_provider') {
     if(!CONNECTOR_KEYS.includes(args.provider)) throw new Error('Unsupported connector.');
@@ -3002,6 +3003,7 @@ function safeAppliedResult(operation, result) {
   if (operation === 'connect_provider' || operation === 'skip_provider') {
     return typeof result.provider === 'string' && typeof result.state === 'string' ? { provider: result.provider, state: result.state } : null;
   }
+  if (operation === 'refresh_board') return result.state === 'refreshed' ? { state: result.state } : null;
   if (operation === 'connectors_continue') return result.state === 'continued' ? { state: result.state, skipped: result.skipped } : null;
   if (operation === 'choose_recipe') return result.deliverable ? { deliverable: result.deliverable } : null;
   if (operation === 'choose_studio_workspace') return result.workspaceId ? { workspaceId: result.workspaceId, scope: result.scope } : null;

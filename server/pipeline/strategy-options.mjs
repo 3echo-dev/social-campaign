@@ -212,7 +212,9 @@ function playbookLabels({ root, brand }) {
 // ---------------------------------------------------------------- matching a value to an option
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Ids that cannot be an everyday word (AS-OFFER, problem_aware): only these count when they sit inside a longer value. */
-const CODE_ID = /^[A-Z]{1,4}-|_/;
+const CODE_ID = /^[a-z]{1,4}-|_/i;
+/** The id a value starts with, in any case: letters, digits and hyphens (st-7f2a1, p-0a1b2c3d4e, A-12, F-3, CTA-3, AS-2). */
+const LEADING_ID = /^([a-z]{1,4}-[a-z0-9]+(?:-[a-z0-9]+)*)(?![\w-])/i;
 const mentions = (text, id) => new RegExp(`(?<![\\w-])${escapeRegExp(id)}(?![\\w-])`, 'i').test(text);
 
 /** The id of an item of the brand's banks (a pain or an angle): such an option answers to its own text alone. */
@@ -257,6 +259,9 @@ export function matchOption(value, options, { scan = false } = {}) {
     const found = options.find(option => sameText(option.text, piece) || (key && keysOf(option).includes(key)));
     if (found) return found.id;
   }
+  const lead = LEADING_ID.exec(text)?.[1]?.toLowerCase();
+  const exact = lead ? options.find(option => String(option.id).toLowerCase() === lead) : null;
+  if (exact) return exact.id;
   const byId = options.filter(option => !option.yours && CODE_ID.test(option.id) && mentions(text, option.id)).sort((a, b) => b.id.length - a.id.length)[0];
   if (byId) return byId.id;
   if (scan) {
@@ -341,10 +346,42 @@ export function conceptPicks(concept, options) {
   // The Problem and Angle picks are there only when the concept's Anchor or Angle line says one of the options word for word.
   for (const [kind, pattern] of Object.entries({ ...BANK_FIELDS, ...LIBRARY_FIELDS })) {
     const field = Array.isArray(concept?.fields) ? concept.fields.find(item => pattern.test(String(item?.label ?? ''))) : null;
-    const found = field ? matchOption(field.value, options?.[kind] ?? []) : null;
+    const list = Array.isArray(options?.[kind]) ? options[kind] : null;
+    let found = field ? matchOption(field.value, list ?? []) : null;
+    if (!found && field && list) found = matchByText(field.value, list) ?? addOwnOption(field.value, list);
     if (found) picks[kind] = found;
   }
   return picks;
+}
+
+/** The words of a concept's value without its leading id ("A-4 - Simpler than you think" -> "Simpler than you think"). */
+function valueText(value) {
+  const first = String(value ?? '').split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? '';
+  let text = first.replace(/[`*{}]/g, ' ').replace(/\s+/g, ' ').trim();
+  const lead = LEADING_ID.exec(text);
+  if (lead) text = text.slice(lead[0].length).replace(new RegExp(String.raw`^\s*(?:${DASH}|:)?\s*`), '');
+  return text.replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, '').trim();
+}
+
+/** The option whose text is the value's words (case-insensitive, leading id and its dash dropped, an option's own id prefix dropped), or null. */
+function matchByText(value, options) {
+  const text = valueText(value);
+  const key = tokenKey(text);
+  if (!key) return null;
+  const found = options.find(option => {
+    const own = valueText(option.text);
+    return sameText(own, text) || tokenKey(own) === key || tokenKey(option.text) === key;
+  });
+  return found ? found.id : null;
+}
+
+/** No option says the concept's value: it becomes one more option, the concept's own, so the row has it picked. Returns its id. */
+function addOwnOption(value, options) {
+  const text = clip(valueText(value), TEXT_LIMIT);
+  if (!text) return null;
+  const id = `own:${text.toLowerCase()}`;
+  if (!options.some(option => option.id === id)) options.push({ id, text, yours: true });
+  return id;
 }
 
 /**

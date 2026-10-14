@@ -3189,17 +3189,18 @@ export function conceptProofOf(text) {
 // The strategy summary at the top of concepts.md, above the first concept: one `Label: value` line each (industry, viewer
 // problem, ad style...). A parsed document that already carries it (`concepts.summary`) is used as it is; for one that does not,
 // the lines are read from the concepts file's own text, so an older document still shows it. [] when there are none.
-const SUMMARY_LIMIT = 12;
+const SUMMARY_LIMIT = 14;
 export function strategySummaryOf(text) {
   const out = [];
-  let inSummary = false;
-  for (const raw of String(text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
+  // Everything above the first "## Concept A" heading is the strategy, whatever its sections are called, except the ask.
+  let inSummary = true;
+  for (const raw of String(text ?? '').replace(/\r\n?/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, '').split('\n')) {
     const line = raw.trim();
     const heading = /^#{1,6}\s+(.*)$/.exec(line);
     if (heading) {
       const title = heading[1].trim();
       if (/^Concept\s+[A-Za-z0-9]{1,8}\b/i.test(title)) break;
-      inSummary = /^(?:concepts\b|(?:the\s+)?strategy\b)/i.test(title);
+      inSummary = !/^what\s+you(?:'|\u2019)?re\s+deciding\b/i.test(title);
       continue;
     }
     if (!inSummary || !line || /^[-*_]{3,}$/.test(line)) continue;
@@ -7479,6 +7480,8 @@ export function requestComment(operation, args = {}) {
       return args?.title ? `Carry on with "${truncateText(args.title, 120)}".` : 'Carry on with this job.';
     case 'import_inputs':
       return `Source files requested${quotedTitle(args?.title)}.`;
+    case 'refresh_board':
+      return 'Update the board to the newest version.';
     case 'connectors_continue':
       return 'Connectors done. On to your brand.';
     case 'connect_provider':
@@ -7842,6 +7845,7 @@ if (typeof document !== 'undefined') {
   const logoData = String(globalThis.__boardLogo || document.getElementById('board-logo')?.textContent || '').trim();
   const logoSrc = logoData.startsWith('data:image/') ? logoData : '';
   const app = document.getElementById('app');
+  let boardUpdatePending = false;
   let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {}, starterRefs = freshNewJobRefs();
   let signalAvailability = null, signalAvailabilityPending = false;
   let connectorsView = false;
@@ -7858,6 +7862,30 @@ if (typeof document !== 'undefined') {
   // provider -> { at, state, brandCount }: a connect or refresh sent to Claude, shown as waiting until the board shows a change.
   const connectorWaiting = new Map();
   const CONNECTOR_WAIT_MS = 3 * 60 * 1000;
+  // A board update asked of Claude: the time it was sent, shown as "Updating board…" until the wait runs out (the republished page replaces this one).
+  let boardUpdateSentAt = 0;
+  function boardUpdateAvailable() { return data?.board?.outdated === true && data.board.updateWaiting !== true; }
+  function boardUpdateWaiting() {
+    if (!boardUpdateSentAt) return false;
+    if (Date.now() - boardUpdateSentAt > CONNECTOR_WAIT_MS || !boardUpdateAvailable()) { boardUpdateSentAt = 0; return false; }
+    return true;
+  }
+  async function requestBoardUpdate() {
+    if (!boardUpdateAvailable() || boardUpdateWaiting() || boardUpdatePending) { await refresh(); return; }
+    boardUpdatePending = true;
+    render();
+    try {
+      transport ||= await createTransport(config);
+      const result = await transport.call('refresh_board', { requestId: randomId(globalThis) });
+      boardUpdateSentAt = Date.now();
+      notify(result?.message || 'Request saved. Claude will update the board.');
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      boardUpdatePending = false;
+    }
+    await refresh();
+  }
   function connectorIsWaiting(connector) {
     const sent = connectorWaiting.get(connector.key);
     if (!sent) return false;
@@ -7989,7 +8017,7 @@ if (typeof document !== 'undefined') {
     const back = project ? (door ? { href: `#/pipeline/${encodeURIComponent(door.group)}`, label: door.title } : { href: '#/', label: 'Social Campaign' }) : route.page === 'pipeline' ? { href: '#/', label: 'Social Campaign' } : null;
     const title = project ? kindNameOf(project.kind) || kindLabelOf(project) : route.page === 'pipeline' ? door?.title || 'Social Campaign' : 'Social Campaign';
     const backLink = back ? `<a class="back" href="${esc(back.href)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>${esc(back.label)}</a>` : '';
-    return `<header class="top"><div class="brand">${backLink}<a href="#/" class="brand-logo" aria-label="Social Campaign home">${logo}</a><span class="sep" aria-hidden="true"></span><span class="brand-copy"><strong>${esc(title)}</strong></span></div><div class="header-tools"><span class="connection"><i class="dot ${ready ? 'ready' : ''}"></i><b>${esc(status)}</b><small>${esc(detail)}</small></span><span class="header-actions">${connectorsLink}<button class="header-refresh" data-action="refresh" ${loading ? 'disabled' : ''}>${loading ? 'Refreshing...' : 'Refresh'}</button></span></div></header>`;
+    return `<header class="top"><div class="brand">${backLink}<a href="#/" class="brand-logo" aria-label="Social Campaign home">${logo}</a><span class="sep" aria-hidden="true"></span><span class="brand-copy"><strong>${esc(title)}</strong></span></div><div class="header-tools"><span class="connection"><i class="dot ${ready ? 'ready' : ''}"></i><b>${esc(status)}</b><small>${esc(detail)}</small></span><span class="header-actions">${connectorsLink}${boardUpdateAvailable() ? `<button class="header-refresh" data-action="update-board" title="A newer version of the board is installed. Claude will republish it." ${loading || boardUpdatePending || boardUpdateWaiting() ? 'disabled aria-busy="true"' : ''}>${boardUpdatePending || boardUpdateWaiting() ? 'Updating board…' : loading ? 'Refreshing...' : 'Update board'}</button>` : `<button class="header-refresh" data-action="refresh" ${loading ? 'disabled' : ''}>${loading ? 'Refreshing...' : 'Refresh'}</button>`}</span></div></header>`;
   }
   function ensureSignalAvailability() {
     if (!artifactMode() || signalAvailabilityPending || typeof transport?.checkSignalAvailability !== 'function') return;
@@ -9686,6 +9714,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.reportDownload){void saveReport(target.dataset.reportDownload);return;}
     switch(target.dataset.action){
       case'refresh':await refresh();break;
+      case'update-board':await requestBoardUpdate();break;
       case'start-research':await submitInline(null,'start');break;
       case'close':close();break;
       case'new':openInline(newJobDraft());break;
