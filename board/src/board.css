@@ -812,10 +812,31 @@ button.sb-cell-body:active{transform:none}
 /* The strategy summary above the concept cards. */
 .concept-strategy{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:var(--pad);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
 .concept-strategy h3{margin:0;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-.strategy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--gap) * .75) var(--gap);margin:0}
+.strategy-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 24px;margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+.cs-top{display:flex;flex-direction:column;gap:6px}
+.concept-strategy h3.cs-eyebrow{margin:0}
+.cs-topic{margin:0;color:var(--paper);font-size:19px;font-weight:800;line-height:1.25;text-wrap:balance}
+.cs-message{quotes:"\201C" "\201D";color:var(--dim);font-size:15px;max-width:70ch}
+.cs-message::before,.cs-message::after{color:var(--tape)}
+.cs-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.cs-tile{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--panel)}
+.cs-tile-icon{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:rgba(245,200,75,.1);color:var(--tape)}
+.cs-tile-icon svg{width:17px;height:17px}
+.cs-tile-text{min-width:0}
+.cs-tile-k{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.cs-tile b{font-size:14px;font-weight:700;line-height:1.35;color:var(--paper)}
+.cs-tags{display:flex;flex-wrap:wrap;gap:8px}
+.cs-tag{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:4px 11px;border:1px solid var(--line2);border-radius:999px;font-size:12.5px;font-weight:700;color:var(--paper)}
+.cs-tag span{color:var(--faint);font-weight:600}
+.cs-more summary{cursor:pointer;color:var(--tape);font-weight:700;font-size:13px;list-style:none;display:inline-flex;align-items:center;gap:8px}
+.cs-more summary::-webkit-details-marker{display:none}
+.cs-more summary::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform 150ms ease}
+.cs-more[open] summary::before{transform:rotate(45deg)}
+.strategy-fact dd small{display:block;margin-top:4px;color:var(--faint);font-size:12px}
+@media(max-width:720px){.strategy-facts{grid-template-columns:1fr}}
 .strategy-fact{min-width:0}
 .strategy-fact dt{color:var(--faint);font-size:11px;font-weight:700}
-.strategy-fact dd{margin:2px 0 0;color:var(--dim);overflow-wrap:anywhere}
+.strategy-fact dd{margin:2px 0 0;color:var(--paper);overflow-wrap:anywhere;max-width:60ch}
 .strategy-fact dd.lines{white-space:pre-line}
 .q-stills{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:0 0 10px}
 .q-still{margin:0}

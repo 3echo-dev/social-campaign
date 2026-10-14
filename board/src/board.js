@@ -3232,15 +3232,67 @@ export function conceptSummaryOf(concepts, doc = null) {
   const file = (doc?.files || []).find(item => item?.path && item.path === concepts?.path);
   return typeof file?.text === 'string' ? strategySummaryOf(file.text) : [];
 }
-/**
- * The strategy summary; `extra` (the Industry row, when the document offers one) sits under it, or stands alone when there is no
- * summary. The row says the industry as it stands, so the summary's own Industry line gives way to it.
- */
-export function conceptStrategy(summary, extra = '') {
+// The strategy the three concepts share, said at a glance: the topic as a headline with the message under it, three tiles (who
+// it is for, their problem, the call to action), short tags for the rest, and every line in full behind "View full strategy".
+// `extra` (the Industry row, when the document offers one) sits under it, or stands alone when there is no summary. The row says
+// the industry as it stands, so the summary's own Industry line gives way to it.
+const STRATEGY_ROLE = Object.freeze([
+  ['topic', /^(?:topic|subject)\b/i],
+  ['message', /^(?:message|core message|key message)\b/i],
+  ['ownWords', /^(?:viewer\s+)?problem.*own words|own words/i],
+  ['problem', /^(?:viewer\s+problem|problem|pain)\b/i],
+  ['audience', /^(?:audience|who it'?s for|viewer|target)\b/i],
+  ['cta', /^(?:cta|call to action)\b/i],
+  ['stage', /^(?:awareness|viewer)\s*stage\b/i],
+  ['funnel', /^funnel/i],
+  ['voice', /^(?:voice|tone)\b/i],
+  ['reference', /^reference\b/i],
+]);
+const STRATEGY_TAG_WORDS = Object.freeze({ stage: 'Viewer stage', funnel: 'Funnel', voice: 'Voice', reference: 'Reference' });
+const STRATEGY_ICON = Object.freeze({
+  audience: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>',
+  problem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>',
+  cta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  other: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg>',
+});
+const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: 'Their problem', cta: 'Call to action' });
+/** The first clause of a strategy line, plain and capitalised, cut to `limit` characters on a word. */
+export function strategyShort(value, limit = 70, { clause = true } = {}) {
+  let text = String(value ?? '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  const cut = text.search(/\s\(|;|\s[-–—]\s|:\s|,\s(?:with|because|then|said|and then)\b/);
+  if (clause && cut > 3) text = text.slice(0, cut);
+  text = text.replace(/[.,;:\s]+$/, '').replace(/^["“](.*)["”]$/, '$1');
+  if (text.length > limit) text = `${text.slice(0, limit).replace(/\s+\S*$/, '')}…`;
+  return text ? text[0].toUpperCase() + text.slice(1) : '';
+}
+export function conceptStrategy(summary, extra = '', { openKeys = new Set() } = {}) {
   const rows = (Array.isArray(summary) ? summary : []).filter(item => item?.label && item?.value && !(extra && /^industry$/i.test(String(item.label).trim())));
   if (!rows.length) return extra ? `<section class="concept-strategy is-picks-only" aria-label="Industry">${extra}</section>` : '';
-  const facts = rows.map(item => `<div class="strategy-fact"><dt>${esc(item.label)}</dt><dd${/\n/.test(item.value) ? ' class="lines"' : ''}>${inlineMarkdown(item.value)}</dd></div>`).join('');
-  return `<section class="concept-strategy" aria-labelledby="concept-strategy-title"><h3 id="concept-strategy-title">The strategy you are approving</h3><dl class="strategy-facts">${facts}</dl>${extra}</section>`;
+  const role = new Map();
+  for (const row of rows) {
+    const found = STRATEGY_ROLE.find(([, test]) => test.test(String(row.label).trim()));
+    if (found && !role.has(found[0])) role.set(found[0], row);
+  }
+  // The problem in the audience's own words belongs under the problem, never as a second problem.
+  if (!role.has('problem') && role.has('ownWords')) role.set('problem', role.get('ownWords'));
+  const used = new Set(role.values());
+  const topic = role.get('topic');
+  const message = role.get('message');
+  const head = topic || message
+    ? `<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three concepts share</h3>${topic ? `<p class="cs-topic">${esc(strategyShort(topic.value, 110, { clause: false }))}</p>` : ''}${message ? `<q class="cs-message">${esc(strategyShort(message.value, 200, { clause: false }).replace(/^["“]|["”]$/g, ''))}</q>` : ''}</div>`
+    : '<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three concepts share</h3></div>';
+  let tiles = ['audience', 'problem', 'cta'].filter(key => role.has(key)).map(key => ({ key, row: role.get(key) }));
+  // A summary that names none of those still shows its first lines as tiles, so the glance view is never empty.
+  if (tiles.length < 2) tiles = tiles.concat(rows.filter(row => !used.has(row) && !tiles.some(tile => tile.row === row)).slice(0, 3 - tiles.length).map(row => ({ key: 'other', row })));
+  const tileHtml = tiles.map(({ key, row }) => `<div class="cs-tile"><span class="cs-tile-icon" aria-hidden="true">${STRATEGY_ICON[key] || STRATEGY_ICON.other}</span><span class="cs-tile-text"><span class="cs-tile-k">${esc(STRATEGY_TILE_WORDS[key] || row.label)}</span><b>${esc(strategyShort(row.value))}</b></span></div>`).join('');
+  const tags = Object.keys(STRATEGY_TAG_WORDS).filter(key => role.has(key)).map(key => `<span class="cs-tag"><span>${esc(STRATEGY_TAG_WORDS[key])}</span>${esc(/^no\b/i.test(String(role.get(key).value).trim()) ? 'None' : strategyShort(role.get(key).value, 34))}</span>`).join('');
+  const ownWords = role.get('ownWords');
+  const full = rows.filter(row => row !== ownWords || role.get('problem') === ownWords).map(row => {
+    const under = row === role.get('problem') && ownWords && ownWords !== row ? `<small>In their own words: ${inlineMarkdown(ownWords.value)}</small>` : '';
+    return `<div class="strategy-fact"><dt>${esc(row.label)}</dt><dd${/\n/.test(row.value) ? ' class="lines"' : ''}>${inlineMarkdown(row.value)}${under}</dd></div>`;
+  }).join('');
+  const key = 'concept-strategy:full';
+  return `<section class="concept-strategy" aria-labelledby="concept-strategy-title">${head}${tileHtml ? `<div class="cs-tiles">${tileHtml}</div>` : ''}${tags ? `<div class="cs-tags">${tags}</div>` : ''}<details class="cs-more" data-open-key="${key}"${openKeys.has(key) ? ' open' : ''}><summary>View full strategy</summary><dl class="strategy-facts">${full}</dl></details>${extra}</section>`;
 }
 
 // @module picks
@@ -4990,7 +5042,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   if (gate === 'concept' && review.concepts) {
     // The picks (industry under the strategy, funnel stage, ad style, format and call to action on each card) come with the options the document offers.
     const strategy = { options: strategyOptionsOf(doc), chosen: state.strategyPicks || {}, added: state.strategyOwn || {}, edit: state.strategyEdit || null, openKeys, disabled: locked, industryOpen: Boolean(state.industryOpen) };
-    parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc), industryRow(strategy, { disabled: locked })));
+    parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc), industryRow(strategy, { disabled: locked }), { openKeys }));
     parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy, panel: state.conceptPanel || null }));
   }
   if (gate === 'concept') parts.push(recipeReviewSection(doc, recipeState, { disabled: state.busy || state.submitted }));
