@@ -4,3 +4,15 @@
 *.mp4 binary
 *.zip binary
 *.db binary
+
+# Left out of the release zip (git archive) uploaded to agentC Office > Plugins
+.github export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+pipeline/.gitignore export-ignore
+.claude-plugin/marketplace.json export-ignore
+scripts/check-plugin.mjs export-ignore
+*.test.mjs export-ignore
+*.test.js export-ignore
+**/tests/** export-ignore
+**/fixtures/** export-ignore
