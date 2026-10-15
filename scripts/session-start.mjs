@@ -28,6 +28,7 @@ import { ytdlpCommand } from '../server/social/backends/ytdlp.mjs';
 import { referenceYtdlpBinary } from '../server/pipeline/url-reference.mjs';
 import { resolveActiveWorkspace } from '../server/workspace/index.mjs';
 import { boardSessionLines } from '../server/pipeline/board-freshness.mjs';
+import { accessBlocked } from '../server/licence/licence.mjs';
 import { startToolsUpdateInBackground } from '../server/setup/research-helper.mjs';
 
 /** The oldest Node this plugin runs on, because it uses the built in SQLite. */
@@ -232,7 +233,7 @@ try {
     say(`Social Campaign: workspace found at ${root}, finishing setup on first use.`);
   } else {
     say(`Social Campaign: this folder resolves to the workspace at ${root}.`);
-    for (const line of boardSessionLines(root, hookEvent.session_id)) say(line);
+    if (!accessBlocked()) for (const line of boardSessionLines(root, hookEvent.session_id)) say(line);
   }
 
   if (root && existsSync(root) && hasLegacyPublishingKey(root)) {

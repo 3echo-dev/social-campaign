@@ -34,6 +34,9 @@ function stopReason(text, behind, unsaved, copies, more = {}) {
 async function main() {
   const event = await readEvent();
   if (!event || event.hook_event_name !== 'Stop') return;
+  // With Social Campaign access refused, a board reminder only makes Claude retry tools that fail again.
+  const { accessBlocked } = await import('../../server/licence/licence.mjs');
+  if (accessBlocked()) return;
   const { listJobs, resolveWorkspaceRoot, sha256 } = await import('../../server/pipeline/facts.mjs');
   const fresh = await import('../../server/pipeline/board-freshness.mjs');
   const { sessionHasPluginTools } = await import('../../server/pipeline/session-tools.mjs');

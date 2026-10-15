@@ -5,6 +5,7 @@ import {
   BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteBoardTurn, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed, sessionChatOnly, touchBoardWindow,
 } from '../../server/pipeline/board-freshness.mjs';
 import { sessionHasPluginTools } from '../../server/pipeline/session-tools.mjs';
+import { accessBlocked } from '../../server/licence/licence.mjs';
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
 const TEXT_LIMIT = 64 * 1024;
@@ -137,6 +138,8 @@ function recordArming(ctx) {
 async function main() {
   const event = await readEvent();
   if (!event) return;
+  // With Social Campaign access refused, board instructions only make Claude retry tools that fail again.
+  if (accessBlocked()) return;
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root) return;
   if (event.hook_event_name === 'UserPromptSubmit') {

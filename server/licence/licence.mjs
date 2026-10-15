@@ -26,8 +26,29 @@ export const REFRESH_MS = 4 * 60 * 60 * 1000;
 export const FETCH_TIMEOUT_MS = 20000;
 export const RETRY_MS = 30 * 1000;
 
-export const ENDED_MESSAGE =
-  "Your 3echo workspace access for this plugin has ended, or this computer isn't connected yet. Ask your 3echo contact for a new connect message.";
+const SUPPORT = 'Please contact the 3echo team at sales@3echo.ai if you need help.';
+// Said to Claude with every refusal, so it tells the person once instead of retrying tools or republishing the board.
+const NO_RETRY =
+  'Social Campaign tools and board updates will keep failing until this is resolved. Tell the person this once, in plain words, and do not retry Social Campaign tools or republish the board in this session. Their jobs and board are saved on this computer.';
+
+/** agentC refused the key: the admin revoked it, turned the plugin off for the workspace, or removed the member. */
+export const REVOKED_MESSAGE = `Social Campaign access has been turned off for your 3echo workspace. To restore it, please contact your workspace admin or the 3echo team at sales@3echo.ai. ${NO_RETRY}`;
+
+/** No plugin key on this computer. */
+export const NOT_CONNECTED_MESSAGE = `This computer is not connected to a 3echo workspace yet. Sign in at https://agentc.3echo.ai and choose "Connect to Claude Code", then restart Claude Code. ${SUPPORT} ${NO_RETRY}`;
+
+/** agentC could not be reached, or its answer could not be verified, and there is no valid pass on this computer. */
+export const UNVERIFIED_MESSAGE = `Social Campaign could not confirm your 3echo workspace access right now. Please check your internet connection, restart Claude Code and try again. If this continues, contact the 3echo team at sales@3echo.ai. ${NO_RETRY}`;
+
+/** Kept for callers that only need one text. */
+export const ENDED_MESSAGE = REVOKED_MESSAGE;
+
+/** @param {string} status the last refresh outcome */
+export function refusalMessage(status) {
+  if (status === 'revoked') return REVOKED_MESSAGE;
+  if (status === 'no-key') return NOT_CONNECTED_MESSAGE;
+  return UNVERIFIED_MESSAGE;
+}
 
 export const PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAkt8H2ZnzxUhUOePLPETNGNqS/io1+PPoP88SCjJSicc=
@@ -128,9 +149,16 @@ export function createLicence(options = {}) {
    * @returns {Promise<{status: 'ok'|'no-key'|'revoked'|'offline'|'bad-pass'}>}
    */
   let lastAttempt = 0;
+  let lastStatus = 'offline';
 
   async function refreshPass() {
     lastAttempt = now();
+    const result = await attemptRefresh();
+    lastStatus = result.status;
+    return result;
+  }
+
+  async function attemptRefresh() {
     try {
       const key = readKey();
       if (!key) return { status: 'no-key' };
@@ -189,7 +217,7 @@ export function createLicence(options = {}) {
     if (currentPass()) return null;
     // No pass yet (the startup fetch failed, or access was just granted): ask again, at most every RETRY_MS.
     if (now() - lastAttempt >= (options.retryMs ?? RETRY_MS)) await refreshPass();
-    return currentPass() ? null : ENDED_MESSAGE;
+    return currentPass() ? null : refusalMessage(lastStatus);
   }
 
   return { refreshPass, currentPass, start, check, keyFile, cacheFile, readKey, url };
@@ -205,4 +233,19 @@ export function createGate(options = {}) {
   const licence = createLicence({ onRefreshed: options.onRefreshed });
   licence.start();
   return licence;
+}
+
+/**
+ * For hooks: true when this is an agentC install with no valid pass on this computer, so board
+ * reminders would only make Claude retry tools that are refused. Reads the cached pass only, no network.
+ * @param {{env?: NodeJS.ProcessEnv, home?: string}} [options]
+ */
+export function accessBlocked(options = {}) {
+  try {
+    const env = options.env ?? process.env;
+    if (!shouldEnforce({ env })) return false;
+    return !createLicence({ home: options.home ?? threeechoHome(env) }).currentPass();
+  } catch {
+    return false;
+  }
 }

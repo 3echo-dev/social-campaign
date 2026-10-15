@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { ENDED_MESSAGE, createLicence, shouldEnforce, verifyPass } from './licence.mjs';
+import { ENDED_MESSAGE, NOT_CONNECTED_MESSAGE, REVOKED_MESSAGE, UNVERIFIED_MESSAGE, accessBlocked, createLicence, shouldEnforce, verifyPass } from './licence.mjs';
 import { StdioTransport } from '../mcp/transport.mjs';
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -40,7 +40,7 @@ test('forged pass is rejected and not cached', async () => {
   const { licence } = setup(reply(200, { pass: makePass({}, other.privateKey) }));
   assert.equal((await licence.refreshPass()).status, 'bad-pass');
   assert.equal(licence.currentPass(), null);
-  assert.equal(await licence.check(), ENDED_MESSAGE);
+  assert.equal(await licence.check(), UNVERIFIED_MESSAGE);
 });
 
 test('expired pass is rejected', () => {
@@ -59,7 +59,7 @@ test('403 (and 401) clears the cached pass', async () => {
     assert.ok(licence.currentPass());
     assert.equal((await licence.refreshPass()).status, 'revoked');
     assert.equal(fs.existsSync(licence.cacheFile), false);
-    assert.equal(await licence.check(), ENDED_MESSAGE);
+    assert.equal(await licence.check(), REVOKED_MESSAGE);
   }
 });
 
@@ -92,7 +92,7 @@ test('a failed startup fetch is retried on the next tool call, at most every ret
   assert.equal((await licence.refreshPass()).status, 'offline');
   online = true;
   clock += 10_000;
-  assert.equal(await licence.check(), ENDED_MESSAGE, 'no retry inside retryMs');
+  assert.equal(await licence.check(), UNVERIFIED_MESSAGE, 'no retry inside retryMs');
   assert.equal(calls, 1);
   clock += 30_000;
   assert.equal(await licence.check(), null, 'retried and got a pass');
@@ -105,7 +105,23 @@ test('no key file: status no-key and ended message, no request made', async () =
   const licence = createLicence({ publicKey, home, fetchImpl: async () => { called = true; } });
   assert.equal((await licence.refreshPass()).status, 'no-key');
   assert.equal(called, false);
-  assert.equal(await licence.check(), ENDED_MESSAGE);
+  assert.equal(await licence.check(), NOT_CONNECTED_MESSAGE);
+});
+
+test('refusal texts name the 3echo team and tell Claude not to retry', () => {
+  for (const text of [REVOKED_MESSAGE, NOT_CONNECTED_MESSAGE, UNVERIFIED_MESSAGE]) {
+    assert.match(text, /sales@3echo\.ai/);
+    assert.match(text, /do not retry Social Campaign tools or republish the board/);
+  }
+  assert.match(REVOKED_MESSAGE, /turned off for your 3echo workspace/);
+  assert.match(NOT_CONNECTED_MESSAGE, /Connect to Claude Code/);
+});
+
+test('accessBlocked: only agentC installs without a valid pass', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'licence-'));
+  assert.equal(accessBlocked({ env: {}, home }), false, 'GitHub/dev install never blocked');
+  const env = { THREEECHO_LICENCE_ENFORCE: '1' };
+  assert.equal(accessBlocked({ env, home }), true, 'agentC install, no pass');
 });
 
 test('enforcement detection by path and env', () => {
