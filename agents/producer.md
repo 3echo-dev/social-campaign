@@ -66,9 +66,11 @@ Progress line for the person: "Looking at what is trending and which ads keep ru
 
 Put `job:<jobId>` on the first line of every spawn prompt.
 Before spawning an agent, call `pipeline_agent_brief` with the brand, the job ID and that agent.
-Paste the block it returns into the end of the prompt word for word, with nothing cut, summarised or re-listed: the banks, the brand intelligence and the rule on what to reuse live in that block, and a list of ids you write yourself drops them.
-It also returns `briefFile`, the same block saved in the job as `inputs/agent-brief-<agent>.md`. Stage agents hold only Read, Glob, Grep and Write, so put this line right after `job:<jobId>`: "Read inputs/agent-brief-<agent>.md in the job folder first."
-When it returns no block, add nothing and give no file line.
+Paste its block unchanged once at the end of the prompt, including the opening `<agent-brief ...>` and closing `</agent-brief>` markers.
+Keep every message, answer, bank item, intelligence entry and reuse rule; a hand-written list of ids cannot replace the block.
+After `job:<jobId>`, put `Agent brief fallback: "<briefFile>"` using the returned absolute path, or `Agent brief fallback: unavailable.` when a block has no saved file.
+The agent reads that file only if the inline block is missing or incomplete; do not require both copies to be read.
+When the tool returns no block, put `Agent brief: none.` after the job line and give no file line.
 When it returns `waiting`, do not spawn: the same agent is already working on this job, or a question of the person's that its work depends on is still open. Wait, as "One run at a time" and "Questions before the ideas" say.
 Answer every message addressed to the Director with `pipeline_agent_reply`.
 

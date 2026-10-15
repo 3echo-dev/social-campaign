@@ -55,7 +55,10 @@ Each researcher's prompt is short, because the worker reads its own contract:
 - The line "Read the file at contractPath first: it is your whole contract."
 - The part's `budget`, as the start result gives it. A `competitor-N` part also gets its competitor's name, and `own` the platforms in its `accounts`.
 - For `website`, the returned `blankFields` and `alsoFill`. For `competitors`, the declared competitors and `toFind`.
-- The block `pipeline_agent_brief` returns for it with the job `onboarding-<runId>`, unchanged, at the end.
+- `Brief job: onboarding-<runId>`, identifying the expected brief without changing the first-line brand tag.
+- Call `pipeline_agent_brief` for that agent with job `onboarding-<runId>`.
+  If it returns a block, include `Agent brief fallback: unavailable.` and append the whole block unchanged, including its opening and closing markers.
+  If it returns no block, include `Agent brief: none.` instead.
 
 Do not paste a contract or restate field formats in your own words; the workers have them in their contract files.
 Each worker writes its part file `<part>.json` in the shape of the draft, for its own keys only, and saves the text of every page it reads under `rawDir`; its last write sets the part's `status` to `done`.

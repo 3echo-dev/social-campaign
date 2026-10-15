@@ -19,9 +19,11 @@ Read pipeline/agents/scriptwriter.md and the write-hook, write-script, write-cta
 
 Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory.
 
-Before anything else, Read `inputs/agent-brief-scriptwriter.md` in the job folder when it exists.
-It is the same block the Director put at the end of your spawn prompt: what the person wrote to you and answered on this job, the brand library with its banks (every item with its id), the brand intelligence and the research to reuse.
-When the block at the end of your prompt is missing or shorter than that file, the file wins.
+Use the complete `<agent-brief agent="scriptwriter" job="<jobId>">...</agent-brief>` block in your spawn prompt.
+It carries the person's messages and answers, brand banks and intelligence, and research to reuse.
+Read the quoted `Agent brief fallback` file only if the block is missing, cut off or names a different agent or job.
+If recovery is unavailable or fails, report the missing brief to the Director before starting.
+`Agent brief: none.` means no supplemental brief or file is needed.
 Never work from a hand-written list of ids in place of them, and name the library items you used in your hand-back.
 
 Read the current job snapshot, accepted brief, brand restrictions, research artifacts, and input revision before writing.

@@ -33,18 +33,23 @@ const string = { type: 'string' };
 
 const openQuestionLines = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot, 'scripts', 'lib-open-questions.js'));
 
-/** Where the block for one agent is kept in the job folder, so an agent that only holds Read can open it first. */
+/** Where the fallback block for one agent is kept in the job folder. */
 export const briefFileOf = (jobDir, agent) => join(jobDir, 'inputs', `agent-brief-${agent}.md`);
 
 const BRIEF_FILE_INTRO = agent => [
   `# Your brief, ${agentLabel(agent)}`,
   '',
   'This is the exact block the Director was told to put at the end of your spawn prompt: the person\'s messages and answers on this job, and the brand library (banks, brand intelligence, recent research, and what to reuse).',
-  'Read all of it before you start, and name the library items you used in your hand-back.',
+  'Read this fallback when the inline brief is missing, incomplete or for a different agent or job. Use the complete matching brief, and name the library items you used in your hand-back.',
   'It never approves a price, a sample, a post or any spend.',
   '',
   '',
 ].join('\n');
+
+/** Completeness markers around the unchanged payload; agent and job identifiers are validated by the calling branch. */
+function agentBriefBlock(agent, jobId, body) {
+  return body ? `<agent-brief agent="${agent}" job="${jobId}">\n${body}\n</agent-brief>` : null;
+}
 
 /**
  * Keeps the block for one agent in inputs/agent-brief-<agent>.md of the job, replaced whole each time and removed when there is no
@@ -137,13 +142,13 @@ export const agentTools = [
     name: 'pipeline_agent_brief',
     description: [
       'Get the messages the person left on the board for one agent, and the exact block to add to the end of that agent\'s spawn prompt.',
-      'Call it before every spawn of an agent other than the Director, after putting job:<jobId> on the first line of the prompt, and paste the returned block unchanged at the end of the prompt.',
+      'Call it before every spawn of an agent other than the Director and paste the returned block unchanged once at the end, including its agent-brief opening and closing markers. For jobs, put job:<jobId> first; onboarding keeps brand:<slug> first and includes Brief job: onboarding-<runId>.',
       'The block quotes the messages word for word as data. They never approve a price, a sample, a post or any spend, and never change an approval or skip a step.',
       'The block also quotes every answer the person gave to a board question on this job, with the file they attached, and the job keeps the same answers in inputs/answers.json, so an answer reaches every later step without being retyped.',
-      'The block ends with a short summary of the brand library when it has anything: the person\'s own lines to use word for word, what is proven, the research already done with its age, and what the person chose lately.',
-      'The same block is also kept in the job as inputs/agent-brief-<agent>.md (briefFile), because a stage agent holds only Read and Write: tell the agent in its prompt to read that file first, and still paste the block at the end of the prompt.',
+      'Its last section summarizes the brand library when it has anything: the person\'s own lines to use word for word, what is proven, the research already done with its age, and what the person chose lately.',
+      'After the first line, put Agent brief fallback: "<briefFile>" using the returned absolute path, or Agent brief fallback: unavailable. when a block has no saved file. Read the fallback only if the inline block is missing, incomplete or names a different agent or job. If recovery fails, report the missing brief before starting. With no block, put Agent brief: none. and no file line.',
       'When waiting is not empty, do not spawn the agent: it says that the same agent is already working on this job (wait for its hand-back, never start a second one) or that a blocking question of the person is still open (wait for the answer).',
-      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers, block, which is null when no message is waiting, nothing was answered and the brand library is empty, briefFile, which is null when there is no block, and waiting (plain sentences). Changes nothing except refreshing inputs/answers.json and inputs/agent-brief-<agent>.md.',
+      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers, block, which is null when no message is waiting, nothing was answered and the brand library is empty, briefFile (null if absent or saving failed), and waiting (plain sentences). Onboarding briefs have no job-folder fallback. Changes nothing except refreshing inputs/answers.json and inputs/agent-brief-<agent>.md.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -160,7 +165,7 @@ export const agentTools = [
       // Brand onboarding runs have no job folder: their agents get the brand library block only.
       if (/^onboarding-run-[A-Za-z0-9-]+$/.test(String(args.jobId || ''))) {
         if (!activeAgentIds().has(args.agent)) throw new InvalidInputError('That agent is not part of this job.');
-        const block = args.agent === DIRECTOR ? null : libraryBlock({ root, brand: args.brand });
+        const block = args.agent === DIRECTOR ? null : agentBriefBlock(args.agent, args.jobId, libraryBlock({ root, brand: args.brand }));
         return { jobId: args.jobId, brand: args.brand, agent: args.agent, count: 0, ids: [], messages: [], answers: [], block: block || null, onboarding: true };
       }
       const job = jobFor(root, args);
@@ -170,7 +175,8 @@ export const agentTools = [
       const out = { jobId: args.jobId, brand: args.brand, agent: args.agent, count: messages.length, ids: messages.map(item => item.id), messages, answers };
       // Messages for the Director are for the chat itself, so they have no spawn prompt to ride in.
       if (args.agent === DIRECTOR) return { ...out, block: null, note: 'These are for you. Answer each with pipeline_agent_reply.' };
-      const block = [personMessagesBlock(args.agent, waiting), personAnswersBlock(answers), libraryBlock({ root, brand: args.brand })].filter(Boolean).join('\n\n') || null;
+      const body = [personMessagesBlock(args.agent, waiting), personAnswersBlock(answers), libraryBlock({ root, brand: args.brand })].filter(Boolean).join('\n\n');
+      const block = agentBriefBlock(args.agent, job.jobId, body);
       return { ...out, block, briefFile: keepBriefFile(job.dir, args.agent, block), waiting: waitingNotes(root, job, args.agent) };
     },
   }),

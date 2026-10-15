@@ -25,9 +25,14 @@ Never mention the tool, the ids or the files in chat.
 
 ### The sequence
 
+For every helper below, call `pipeline_agent_brief` with the brand, that agent and job `onboarding-<runId>`.
+Keep `brand:<slug>` first and include `Brief job: onboarding-<runId>` in the prompt.
+With a returned block, include `Agent brief fallback: unavailable.` and append the whole block unchanged, including its opening and closing markers.
+With no block, include `Agent brief: none.` instead.
+
 1. Right after `pipeline_brand_research_start` (and straight before `web_brand_kit`), spawn in ONE message, in the background, the researchers of the parts as section 4 says and the Trend Scout, so every pillar starts at the same moment.
    Put `brand:<slug>` alone on the first line of the Trend Scout's prompt, then the brand's niche (the industry pick when there is one, else the brand's market and content pillars), the target market, the saved competitor names, `trendsPath` and `viralPath` from the start result, and the Trend Scout's share of the budget from the `viral` part (`scout`: 11 searches, 10 fetches and 20 turns).
-   Add the block `pipeline_agent_brief` returns for it, unchanged.
+   Use the briefing rule above.
    It looks for what is viral in the niche (niche topic search, YouTube search, TikTok Top Ads, Meta ads), saves the trends it finds and writes the most viewed videos to `viralPath`.
    Mark the step `viral` running with a line such as "Looking for what is viral in AI and automation".
 2. The researchers report one by one, each when its part is done, and the order does not matter.
@@ -36,7 +41,8 @@ Never mention the tool, the ids or the files in chat.
    A worker that stopped early is dispatched again for its own part only (section 4); the others carry on.
    When the `own` part reports done and the kit still has no colours or no fonts, run step 4 of the kit step (section 4a) on the frames of the brand's own videos.
 3. As soon as the Trend Scout has reported, without waiting for the other workers, send a researcher a short dispatch with the workstream `viral-teardown`: the `viral` part.
-   Put `brand:<slug>` on the first line, then the part id `viral`, the `runId`, the `viral` part's `partPath` and `contractPath`, `viralPath`, `rawDir` and its `teardown` budget (3 fetches and 6 turns), and the `pipeline_agent_brief` block unchanged.
+   Put `brand:<slug>` on the first line, then the part id `viral`, the `runId`, the `viral` part's `partPath` and `contractPath`, `viralPath`, `rawDir` and its `teardown` budget (3 fetches and 6 turns).
+   Use the briefing rule above.
    It takes apart the first 3 viral videos and writes them in the `topPosts` of the `viral` part file, with its status done.
    When the Trend Scout failed or wrote nothing, skip the dispatch and mark `viral` done with the detail "Nothing viral found yet"; the save notes it as a gap by itself.
 4. When every part is done, save with `pipeline_brand_research_save` as section 4 says.
@@ -52,7 +58,7 @@ Never mention the tool, the ids or the files in chat.
    Say it once in chat in one line, for example "Your 6 subtopics are on the brand page. Please check them, because every post will take its topic from them."
    The answer arrives as a `subtopics_confirm` request (section "Brand intelligence" of `skills/board-sync/SKILL.md`).
    Do not wait for it: carry on with the plan from the draft.
-7. The plan (step `plan`): spawn the strategist with `brand:<slug>` on the first line and the plan task (the brand, no job), the library block, and the file `workspaces/<slug>/library/intelligence/plan-draft.json` to write.
+7. The plan (step `plan`): spawn the strategist with `brand:<slug>` on the first line and the plan task (the brand, no job), the brief from the rule above, and the file `workspaces/<slug>/library/intelligence/plan-draft.json` to write.
    Then call `brand_intelligence_save` with action `plan`.
    When it returns `needs_changes`, send the problems to the strategist once as `problems` and call it again; after a second failure leave the plan for later and tell the person only "The plan is not quite ready yet".
 8. Finish: mark `files` done and call `brand_intelligence_save` (action `progress`, `status` ready).

@@ -99,7 +99,12 @@ On `SYNC NEEDED`, mirror the changed files. `--note` replaces the notes block.
   Read `targetMarket` from `brand/profile.json`.
   Blank (or a job with no brand) means the market is unknown: do not spawn market research until the Director has asked the person which market and has it. A saved `Global` means no one country.
 - Put `job:<jobId>` on the first line of every spawn prompt.
-  Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent, and paste the block it returns, word for word and whole, at the end of the prompt; with no block, add nothing. Never replace it with a list of ids you wrote. Its `briefFile` (`inputs/agent-brief-<agent>.md`) holds the same block for agents that hold only Read and Write: put "Read inputs/agent-brief-<agent>.md in the job folder first." on the line after `job:<jobId>`. When it returns `waiting`, do not spawn.
+  Before each spawn, call `pipeline_agent_brief` with the brand, the job ID and that agent.
+  When it returns `waiting`, do not spawn.
+  Paste its block unchanged once at the end of the prompt, including the `<agent-brief ...>` and `</agent-brief>` markers; never replace it with a list of ids.
+  After `job:<jobId>`, put `Agent brief fallback: "<briefFile>"` using the returned absolute path, or `Agent brief fallback: unavailable.` when a block has no saved file.
+  The agent reads the fallback only if the inline block is missing or incomplete.
+  With no block, put `Agent brief: none.` after the job line and give no file line.
 - Reused research is not reused trends. On a reuse route (no research row) still run the Trend Scout alone before the strategist when `researchDecision.trendScout.required` is true or any platform of the job has fewer than 3 fresh trends in the brand library; the rows 3 and 3b clause for it applies there too.
 - After the brief lands, read its `# Evidence gaps`: a gap a source could close gets one short targeted `researcher` run (15 turns, that one question, the path `research/gap-<short-name>.md`), and its file goes to the Creative Director with the brief.
 - Questions whose answer can change the ideas (from the brief's Supply questions: real screens or an example, which helpers to show, whether a promise is real) are asked with `pipeline_board_ask` and `blocking: true` right after the brief is verified, the recommended option first. The concepts row does not start, no Creative Director, Scriptwriter or Copywriter is spawned and nothing carries on with a default until the person has answered them all; `pipeline_review_present` for the concept pick refuses while any question is open. Questions that only matter for the script or the pictures wait until the idea is picked.
