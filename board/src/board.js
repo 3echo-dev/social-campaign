@@ -5802,7 +5802,10 @@ function sampleThumb(doc) {
   return `<figure class="inbox-thumb" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${body}</figure>`;
 }
 
-const REVIEW_NOT_READY = 'Getting this ready.';
+// The server and saved board snapshots still use the longer message.
+// Both versions mean the review has no action yet, regardless of displayed copy.
+const REVIEW_NOT_READY = new Set(['Claude is getting this ready to show you.', 'Getting this ready.']);
+const reviewNotReady = item => REVIEW_NOT_READY.has(trimmed(item?.summary));
 
 // Small pictures of what a review is about (storyboard pictures, clips, the joined or finished video, the post), each opening the review.
 function decisionPreviews(item, jobId) {
@@ -5831,7 +5834,7 @@ function decisionCard(item, ctx = {}) {
   const jobId = item.jobId || project?.jobId || '';
   const summary = inboxSummary(item);
   const summaryLine = text => (text ? `<p class="inbox-summary">${esc(text)}</p>` : '');
-  if (trimmed(item.summary) === REVIEW_NOT_READY) return summaryLine(summary);
+  if (reviewNotReady(item)) return summaryLine(summary);
   const inline = Boolean(item.inline) && !inboxDecisionArgs(item).error;
   const reviewButton = `<button type="button"${inline ? '' : ' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
   // The Post-production offer sits beside Review: two ways to finish the same joined video.
@@ -6153,7 +6156,7 @@ const RAIL_TEXT = Object.freeze({
 function railJump(item) {
   if (item?.kind === 'post') return item.closing ? null : postJump(item);
   const jump = item ? RAIL_JUMPS[item.kind] : null;
-  if (!jump || (item.kind === 'decision' && trimmed(item.summary) === REVIEW_NOT_READY)) return null;
+  if (!jump || (item.kind === 'decision' && reviewNotReady(item))) return null;
   return { target: jump[0], label: jump[1] };
 }
 

@@ -145,6 +145,7 @@ small,.muted{color:var(--faint)}
 .brand-chip .metricool-pick button.primary{color:var(--ink)}
 .metricool-error{color:var(--hold);flex-basis:100%}
 .brand-chip button{min-height:0;border:0;padding:0;color:var(--dim);font-size:11px}
+.brand-chip-body>button{min-height:24px;padding:2px 4px}
 .brand-chip button:hover{background:transparent;color:var(--paper)}
 /* The Brand library under the brand chips: one folded panel per brand; its counts show before it opens. */
 .brand-libraries{display:flex;flex-direction:column;gap:8px;width:100%}
@@ -512,6 +513,19 @@ button.kit-choose:disabled{border-color:var(--line2);background:none;color:var(-
 .kit-folder-field input{font-size:14px;font-weight:400;letter-spacing:normal}
 @media(max-width:720px){.kit-folder-fields{grid-template-columns:1fr}}
 @media(max-width:520px){.kit-card{padding:12px}.kit-logo-tile{min-height:92px}.kit-swatches{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}button.kit-choose{width:100%}}
+/* Brand setup keeps compact desktop controls and gives every phone action room to tap. */
+.onboarding .field-edit{min-height:24px}
+@media(pointer:coarse),(max-width:640px){
+  .onboarding :is(button,.kit-file-button,.toggle,.kit-paste>summary){min-height:44px}
+  .onboarding .kit-icon-button{min-width:44px}
+  .onboarding .kit-color-row .kit-icon-button{width:44px;height:44px;opacity:1}
+  .onboarding .kit-font-row{grid-template-columns:48px minmax(0,1fr) 44px}
+  .onboarding .kit-font-row .kit-icon-button{width:44px;height:44px}
+}
+@media(max-width:640px){
+  .onboarding .start-form :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select,textarea){min-height:44px;font-size:16px}
+  .onboarding .start-foot>button{width:100%}
+}
 /* @file job */
 /* Job page panels share one structure: a .panel with its section head, then content stacked
    on --gap. Every inner gap derives from --gap; every inner card uses --pad. */
@@ -1019,7 +1033,7 @@ button.sb-cell-body:active{transform:none}
 .inbox-panel .section-head{align-items:center;margin:0}
 .inbox-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:calc(var(--gap) / 2)}
 .inbox-item{display:flex;flex-direction:column;gap:10px;min-width:0;padding:12px;background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius)}
-.inbox-job{align-self:flex-start;justify-content:flex-start;min-height:0;padding:0;border:0;border-radius:0;background:none;color:var(--dim);font-size:12px;font-weight:700;line-height:1.35;text-align:left;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;overflow-wrap:anywhere}
+.inbox-job{align-self:flex-start;justify-content:flex-start;min-height:24px;padding:2px 0;border:0;border-radius:0;background:none;color:var(--dim);font-size:12px;font-weight:700;line-height:1.35;text-align:left;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;overflow-wrap:anywhere}
 .inbox-job:hover{background:none;color:var(--paper);text-decoration-color:currentColor}
 .inbox-job:active{transform:none}
 .inbox-place{color:var(--dim);font-size:12px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
@@ -1318,8 +1332,8 @@ a.kit-download{font-size:13px}
 .door-ic{flex:none;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--ic,#FFD65A);color:#1A1206;box-shadow:inset 0 1px 0 rgb(255 255 255/.55),0 4px 12px -4px rgb(0 0 0/.5)}
 .door-ic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .door-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.door-t{font-size:var(--t4);font-weight:800;text-transform:uppercase;letter-spacing:-.005em;line-height:1.25;color:#fff;text-shadow:0 1px 10px rgb(0 0 0/.3)}
-.door-t em{font-style:normal;color:var(--em,#FFE488)}
+.door-t{font-size:var(--t3);font-weight:500;line-height:1.4;color:#fff;text-shadow:0 1px 10px rgb(0 0 0/.3)}
+.door-t em{display:block;font-size:var(--t4);font-weight:800;font-style:normal;text-transform:uppercase;letter-spacing:-.005em;line-height:1.25;color:var(--em,#FFE488)}
 .door-s{font-size:var(--t1);font-weight:600;color:rgb(255 255 255/.82);text-shadow:0 1px 8px rgb(0 0 0/.3)}
 .door-btn{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 10px 6px 14px;border:0;border-radius:10px;background:#fff;color:#141414;font-size:var(--t2);font-weight:700;box-shadow:0 4px 14px -6px rgb(0 0 0/.6)}
 .door-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
@@ -1393,9 +1407,9 @@ svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .flow{display:flex;flex-direction:column}
 .stg-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:20px 4px 8px}
 .stg:first-child .stg-h{padding-top:6px}
-.stg-h h3{font-size:var(--t4)}
+.stg-h h3{flex:1;min-width:0;font-size:var(--t4)}
 .stg-h h3 span{color:var(--dim);font-weight:600;margin-left:2px}
-.stg-h .cnt{font-size:var(--t1);color:var(--faint)}
+.stg-h .cnt{flex:none;white-space:nowrap;font-size:var(--t1);color:var(--faint)}
 .steps{display:flex;flex-direction:column;gap:8px}
 .step{--c:133 139 150;--rim:.13;--glow:0;--fill:.12;position:relative;display:block;padding:0;border:1px solid transparent;border-radius:14px;
   background:radial-gradient(34% 70% at 50% 0%,rgb(255 255 255/calc(var(--fill)*.13)),rgb(255 255 255/0) 100%) padding-box,radial-gradient(38% 80% at 50% 100%,rgb(255 255 255/calc(var(--fill)*.09)),rgb(255 255 255/0) 100%) padding-box,radial-gradient(46% 150% at 0% 100%,rgb(var(--c)/calc(var(--fill)*.42)),rgb(var(--c)/0) 100%) padding-box,radial-gradient(46% 150% at 100% 0%,rgb(var(--c)/calc(var(--fill)*.34)),rgb(var(--c)/0) 100%) padding-box,radial-gradient(60% 90% at 100% 100%,rgb(var(--c)/calc(var(--fill)*.16)),rgb(var(--c)/0) 100%) padding-box,linear-gradient(180deg,#101114,#0B0C0E) padding-box,linear-gradient(227deg,rgb(var(--c)/var(--rim)) 1%,rgb(255 255 255/calc(var(--rim)*.85)) 50%,rgb(var(--c)/var(--rim)) 99%) border-box;
@@ -1643,7 +1657,7 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 /* "What you need to do" under the job header: phones only. The Inbox keeps its own copy for desktop. */
 .need-top{display:none}
 @media (max-width:960px){
-  .need-top{display:block;margin-bottom:var(--gap)}
+  .need-top{display:block}
   .need-top .in-need{border:1px solid var(--line);border-radius:var(--r3)}
   .studio.has-need-top .studio-side .in-need{display:none}
 }
@@ -1685,13 +1699,16 @@ details.gate[open]>summary .chev{transform:rotate(180deg)}
 .overview-main>*{min-width:0}
 .needs-strip{display:flex;flex-direction:column;gap:calc(var(--gap) * .75);padding:calc(var(--pad) * .85) var(--pad);background:var(--surface);border:1px solid rgba(245,200,75,.45);border-radius:var(--r3);box-shadow:0 0 0 1px rgba(245,200,75,.08),0 14px 30px -22px rgba(245,200,75,.55),inset 0 -1px 1px rgb(255 255 255/.05)}
 .needs-strip .section-head{align-items:center;margin:0}
-.needs-strip .inbox-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:calc(var(--gap) / 2);align-items:stretch}
+.needs-strip .inbox-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:calc(var(--gap) / 2);align-items:stretch}
 /* Cards in a row share one height: the words stay at the top and the picture and buttons line up along the bottom. */
 .needs-strip .inbox-item>div:first-of-type{margin-top:auto}
 /* Every card's buttons start at the left edge and the last row sits on the card's bottom edge. */
 .needs-strip .inbox-actions{justify-content:flex-start}
 .needs-strip .inbox-options{align-items:center}
-.needs-strip .inbox-options .inbox-type{align-self:center;margin:0;padding:0;min-height:auto}
+.needs-strip .inbox-options .inbox-type{align-self:center;margin:0;padding:5px 6px;min-height:30px}
+@media (pointer:coarse),(max-width:640px){
+  .brand-chip-body>button,.inbox-job,.needs-strip .inbox-options .inbox-type{min-height:44px}
+}
 /* One button look on every card: answers use the same gold as Review and Open the job (no arrow, since they answer in place). */
 .needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type){background:linear-gradient(135deg,#FFD65A,#FFA234) border-box;border-color:transparent;color:#1A1206;font-weight:800}
 .needs-strip .inbox-options button:not(.is-chosen):not(.inbox-type):hover:not(:disabled){filter:brightness(1.06)}
