@@ -2,14 +2,17 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { asObject, resolveWorkspaceRoot } from '../../server/pipeline/facts.mjs';
 import {
-  BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed, sessionChatOnly,
+  BOARD_TEXT, WORKSPACE_DOCUMENT, claimBoardOwner, isBoardUrl, noteBoardTurn, noteOtherWindowOnce, markProjectionPublished, needsRearm, projectionHashFromFileName, projectionSha, readBoardLink, recordBoardAlias, recordBoardArmed, sessionChatOnly, touchBoardWindow,
 } from '../../server/pipeline/board-freshness.mjs';
+import { sessionHasPluginTools } from '../../server/pipeline/session-tools.mjs';
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
 const TEXT_LIMIT = 64 * 1024;
 const WRITE_FAILED = /(\bconflict\b|\brefused\b|\bfailed\b|nothing (?:was )?written|writes nothing|not written)/i;
 const ARTIFACT_URL = /(?:https:\/\/)?claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/gi;
 const BOARD_SOURCE = join('.social-pipeline', 'board', 'social-campaign.html');
+// A prompt the host put in, not one the person typed: a comment sent from the board, or a background task that finished.
+const HOST_PROMPT = /^\s*(?:\[Artifact comment sent to Claude\]|<task-notification>)/;
 const READ_HEADER = /\bArtifact\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*\(version\b/i;
 
 async function readEvent() {
@@ -24,6 +27,14 @@ async function readEvent() {
   } catch {
     return null;
   }
+}
+
+// Does a host-sent prompt carry a message from this workspace's board? Either address of the board counts; with the long address not
+// known yet, any artifact address in a host-sent prompt does.
+function isBoardMessage(prompt, link) {
+  if (!HOST_PROMPT.test(prompt)) return false;
+  const urls = prompt.match(ARTIFACT_URL) || [];
+  return urls.some(url => isBoardUrl(link, url)) || (!link.aliasUrl && urls.length > 0);
 }
 
 function tell(context) {
@@ -129,18 +140,34 @@ async function main() {
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root) return;
   if (event.hook_event_name === 'UserPromptSubmit') {
-    if (!event.session_id || !readBoardLink(root)) return;
+    const bound = readBoardLink(root);
+    if (!event.session_id || !bound) return;
     // A job the person asked to run in chat without the board gets no board instructions.
     if (sessionChatOnly(root, event.session_id)) return;
-    const ownership = claimBoardOwner(root, event.session_id);
+    // A window that cannot call Social Campaign's tools cannot answer the board: it does not take the board and is told nothing about it.
+    if (!sessionHasPluginTools(event.transcript_path)) return;
+    const prompt = typeof event.prompt === 'string' ? event.prompt : '';
+    const fromHost = HOST_PROMPT.test(prompt);
+    const boardMessage = isBoardMessage(prompt, bound);
+    // The window the person writes in owns the board, unless the owner is answering a board message right now (it ends with its
+    // Stop hook). A prompt the host sent (a board comment) never moves the board: it only takes a board nobody holds.
+    const ownership = claimBoardOwner(root, event.session_id, { takeOver: !fromHost });
     if (!ownership.owner) {
-      if (noteOtherWindowOnce(root, event.session_id, ownership.by)) tell(BOARD_TEXT.otherWindow);
+      // Said only while the other window really is busy; an owner that went quiet is replaced, not announced.
+      if (ownership.busy && !fromHost) {
+        if (noteOtherWindowOnce(root, event.session_id, ownership.by)) tell(BOARD_TEXT.otherWindow);
+      } else if (boardMessage) {
+        tell(BOARD_TEXT.otherWindowMessage);
+      }
       return;
     }
+    noteBoardTurn(root, event.session_id, { board: boardMessage ? true : (fromHost ? undefined : false), transcript: event.transcript_path });
     if (needsRearm(root, event.session_id)) tell(BOARD_TEXT.rearm);
     return;
   }
   const link = readBoardLink(root);
+  // A board tool call is a sign of life from the owner in the middle of its turn.
+  if (link && event.session_id) touchBoardWindow(root, event.session_id);
   const ctx = {
     root,
     link,

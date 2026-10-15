@@ -33,20 +33,34 @@ function stopReason(text, behind, unsaved, copies, more = {}) {
 
 async function main() {
   const event = await readEvent();
-  if (!event || event.hook_event_name !== 'Stop' || event.stop_hook_active === true) return;
+  if (!event || event.hook_event_name !== 'Stop') return;
   const { listJobs, resolveWorkspaceRoot, sha256 } = await import('../../server/pipeline/facts.mjs');
   const fresh = await import('../../server/pipeline/board-freshness.mjs');
+  const { sessionHasPluginTools } = await import('../../server/pipeline/session-tools.mjs');
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root || !fresh.readBoardLink(root)) return;
+  // This turn is over: an owner that was answering a board message is no longer busy, so the person's next message elsewhere takes the board.
+  fresh.endBoardTurn(root, event.session_id);
+  if (event.stop_hook_active === true) return;
   const jobs = fresh.jobsForSession(root, event.session_id, listJobs(root));
-  const { behind, unsaved, copies, waiting, agents = [], replies = [], stuck = [], yourTurn: ownTurn = [], chatAsk = null } = await fresh.stopFindings(root, jobs, {
+  const found = await fresh.stopFindings(root, jobs, {
     sessionId: event.session_id, lastMessage: event.last_assistant_message, backgroundTasks: event.background_tasks,
   });
+  // Writing the board belongs to the window that owns it. While another window holds the board, this one gets no order to republish,
+  // sync, answer or ask on it (the owner's own Stop hook gets them); the files it made and the job it carries on stay its own business.
+  const standBack = fresh.boardHeldByOtherWindow(root, event.session_id);
+  const { unsaved, waiting } = found;
+  const [behind, copies, agents, replies, stuck] = [found.behind, found.copies, found.agents ?? [], found.replies ?? [], found.stuck ?? []].map(list => (standBack ? [] : list));
+  const chatAsk = standBack ? null : (found.chatAsk ?? null);
   // A question just put to the person is theirs to answer, so the job is not on Claude's turn.
-  const yourTurn = chatAsk ? [] : ownTurn;
-  // The board page on the artifact is older than this plugin version (an update just arrived): say so once per window, without asking the person.
-  const republish = fresh.boardSourceOutdated(fresh.readBoardLink(root), root) === true;
+  const yourTurn = chatAsk ? [] : (found.yourTurn ?? []);
+  // The board page on the artifact is older than this plugin version (an update just arrived): say so once per window and page version, without asking the person.
+  const outdated = !standBack && fresh.boardSourceOutdated(fresh.readBoardLink(root), root) === true;
+  const version = outdated ? fresh.republishVersion(root) : null;
+  const republish = outdated && !fresh.republishTold(root, event.session_id, version);
   if (!behind.length && !unsaved.length && !copies.length && !agents.length && !replies.length && !stuck.length && !yourTurn.length && !chatAsk && !republish) return;
+  // A window without Social Campaign's tools can act on none of it.
+  if (!sessionHasPluginTools(event.transcript_path)) return;
   const onPerson = entry => waiting.has(entry.ref);
   const [blockBehind, blockUnsaved, blockCopies] = [behind, unsaved, copies].map(list => list.filter(onPerson));
   // An agent that finished, a message waiting for the Director's reply, a stuck job nobody asked about and a job on Claude's own turn block whoever is waiting.
@@ -61,6 +75,7 @@ async function main() {
   // channel besides a block, so a systemMessage would show up in the person's chat as "Stop says".
   if (!block) return;
   if (!fresh.claimStopBlock(root, event.session_id, signature)) return;
+  if (republish) fresh.recordRepublishTold(root, event.session_id, version);
   process.stdout.write(JSON.stringify({ decision: 'block', reason: stopReason(fresh.BOARD_TEXT, blockBehind, blockUnsaved, blockCopies, { republish, agents, replies, stuck, yourTurn: yourTurn.length ? fresh.yourTurnReason(yourTurn) : '', chatAsk: chatAsk !== null }) }));
 }
 

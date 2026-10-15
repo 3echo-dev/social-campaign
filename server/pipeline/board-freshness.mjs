@@ -49,7 +49,8 @@ export const BOARD_TEXT = Object.freeze({
   behind: 'The board is behind the work; sync it before finishing.',
   unsaved: "Some made files aren't saved yet; check them with pipeline_generation_land.",
   copies: 'A review is waiting on the board but its images or video have no viewable copy there yet. For each job below, call pipeline_review_copies_prepare, upload what it returns with the Artifact tool, then write the board again.',
-  otherWindow: 'Another Claude window owns this board, so this one leaves its clicks alone. Tell the person once, in plain words, that another window is handling this board and to use that one for it (or close it to use this one).',
+  otherWindow: 'Another Claude window is answering a board message right now, so this one leaves the board alone for this turn. Tell the person once, in plain words, that the other window is busy with the board and that their next message here takes it over.',
+  otherWindowMessage: 'This board message belongs to the other Claude window that owns the board. Do not read, answer or apply it here, and say nothing to the person about it.',
   rearm: "Re-arm the board's wake-up by reading and republishing it before replying.",
   agents: 'An agent finished since the board was written; call pipeline_board_job_documents for the jobs below and write them.',
   replies: 'The person left a message for the Director on the board. For each job below, answer it with pipeline_agent_reply, then write the documents it returns.',
@@ -242,12 +243,35 @@ export function landedRequestCount(root) {
 export const ownerPath = root => boardPath(root, 'owner.json');
 const toldPath = root => boardPath(root, 'owner-told.json');
 
+/** An owner window that is answering a board message counts as busy this long after it last showed any sign of life. */
+export const BOARD_TURN_ACTIVE_MS = 2 * 60 * 1000;
+
 /**
- * The board has one owner window: the newest one. A window that starts (a new chat, a resume or /clear) takes the board
- * with {takeOver: true}; any other window keeps it only while no newer window has. Only the owner arms the board's wake-up;
- * an older window is told once and leaves the board alone. {owner: true} when this window owns it (or takes it because the
- * owner was released or has been silent for BOARD_OWNER_TTL_MS), else {owner: false, by}. Without a session id nothing can
- * be told apart, so the window is treated as the owner.
+ * Is this owner record a window that is answering a board message right now? Its turn began on a board message and has not
+ * ended (the Stop hook ends it), and the window showed life within BOARD_TURN_ACTIVE_MS: a hook of its own, or its chat
+ * transcript being written. A window that has gone quiet, or never marked a turn (an older version), is not busy.
+ */
+export function boardTurnBusy(record, now = Date.now()) {
+  if (!plainObject(record) || record.boardTurn !== true) return false;
+  const marks = [Date.parse(record.activeAt ?? '')];
+  if (typeof record.transcript === 'string' && record.transcript) {
+    try {
+      marks.push(statSync(record.transcript).mtimeMs);
+    } catch {
+      // no transcript to look at; the window's own marks decide
+    }
+  }
+  const seen = marks.filter(Number.isFinite);
+  return seen.length > 0 && now - Math.max(...seen) <= BOARD_TURN_ACTIVE_MS;
+}
+
+/**
+ * The board has one owner window: the one the person is typing in. A window takes the board with {takeOver: true} when the
+ * person starts or writes in it (a new chat, a resume, /clear, or any message of their own), unless the owner is busy
+ * answering a board message right now (then {owner: false, by, busy: true}). Without takeOver a window takes the board only
+ * while it is free or its owner has been silent for BOARD_OWNER_TTL_MS, and keeps what it holds. Only the owner arms the
+ * board's wake-up; another window is told once, and only while the owner is really busy. {owner: true} when this window owns
+ * it, else {owner: false, by, busy}. Without a session id nothing can be told apart, so the window is treated as the owner.
  */
 export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = false } = {}) {
   if (!sessionId) return { owner: true, by: null };
@@ -256,11 +280,16 @@ export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = 
     const file = ownerPath(root);
     const id = String(sessionId);
     if (takeOver) {
-      writeJsonAtomic(file, { sessionId: id, pid: process.pid, claimedAt: new Date(now).toISOString() });
+      const held = readJson(file);
+      if (plainObject(held) && typeof held.sessionId === 'string' && held.sessionId !== id && boardTurnBusy(held, now)) {
+        return { owner: false, by: held.sessionId, busy: true };
+      }
+      const at = new Date(now).toISOString();
+      writeJsonAtomic(file, { sessionId: id, pid: process.pid, claimedAt: at, activeAt: at, boardTurn: false });
       return { owner: true, by: id };
     }
     const taken = takeClaim(file, id, { ttlMs: BOARD_OWNER_TTL_MS, now });
-    if (!taken.claimed) return { owner: false, by: taken.owner?.sessionId ?? null };
+    if (!taken.claimed) return { owner: false, by: taken.owner?.sessionId ?? null, busy: boardTurnBusy(taken.owner, now) };
     // Still the owner: note that it is here, so a quiet owner is told apart from a gone one.
     const current = readJson(file);
     if (plainObject(current) && current.sessionId === id && now - Date.parse(current.claimedAt ?? '') > 60 * 1000) {
@@ -270,6 +299,64 @@ export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = 
   } catch {
     return { owner: true, by: null };
   }
+}
+
+/**
+ * Is the board held right now by a different window that is still within its claim? Read only, for the Stop hook: with no
+ * owner on record, or an owner that was released or has been silent for BOARD_OWNER_TTL_MS, nothing is held, so this window is
+ * not told to stand back. Without a session id nothing can be told apart, so the answer is no.
+ */
+export function boardHeldByOtherWindow(root, sessionId, now = Date.now()) {
+  if (!sessionId) return false;
+  try {
+    const held = readJson(ownerPath(root));
+    if (!plainObject(held) || typeof held.sessionId !== 'string' || held.sessionId === String(sessionId)) return false;
+    const at = Date.parse(held.claimedAt ?? '');
+    return Number.isFinite(at) && now - at <= BOARD_OWNER_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Change the owner record, but only while this window still holds it (a newer window may have taken the board a moment ago). */
+function updateOwnerRecord(root, sessionId, change) {
+  if (!sessionId) return false;
+  try {
+    const current = readJson(ownerPath(root));
+    if (!plainObject(current) || current.sessionId !== String(sessionId)) return false;
+    writeJsonAtomic(ownerPath(root), { ...current, ...change(current) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The owner's turn begins or goes on: {board: true} when the turn answers a board message (the window is then busy until its
+ * Stop hook ends the turn), {board: false} for the person's own message, no board value for anything else (the mark stays as
+ * it was). Also records the window's chat transcript so its activity can be seen. Does nothing for a window that is not the owner.
+ */
+export function noteBoardTurn(root, sessionId, { board, transcript = null, now = Date.now() } = {}) {
+  const at = new Date(now).toISOString();
+  return updateOwnerRecord(root, sessionId, () => ({
+    claimedAt: at,
+    activeAt: at,
+    ...(typeof board === 'boolean' ? { boardTurn: board } : {}),
+    ...(typeof transcript === 'string' && transcript ? { transcript } : {}),
+  }));
+}
+
+/** A sign of life from the owner in the middle of a turn (a board tool call); written at most every 15 seconds. */
+export function touchBoardWindow(root, sessionId, now = Date.now()) {
+  const current = readJson(ownerPath(root));
+  if (plainObject(current) && current.sessionId === String(sessionId) && now - Date.parse(current.activeAt ?? '') < 15 * 1000) return false;
+  return noteBoardTurn(root, sessionId, { now });
+}
+
+/** The owner's turn is over (the Stop hook): it is no longer busy, so a message the person writes in another window takes the board. */
+export function endBoardTurn(root, sessionId, now = Date.now()) {
+  const at = new Date(now).toISOString();
+  return updateOwnerRecord(root, sessionId, () => ({ claimedAt: at, activeAt: at, boardTurn: false }));
 }
 
 /** A window that ends gives the board back (only the owner can), so a window left open can pick it up again. */
@@ -293,15 +380,21 @@ export function noteOtherWindowOnce(root, sessionId, ownerId) {
   return true;
 }
 
-/** The lines a starting window is told. A session start (startup, resume, clear) makes this window the board's owner. */
+/**
+ * The lines a starting window is told. A session start (startup, resume, clear) makes this window the board's owner, unless the
+ * owner is answering a board message right now; then the window is only told where the board is and leaves it to the owner, until
+ * the person writes here.
+ */
 export function boardSessionLines(root, sessionId) {
   try {
-    claimBoardOwner(root, sessionId, { takeOver: true });
+    const claim = claimBoardOwner(root, sessionId, { takeOver: true });
     const link = readBoardLink(root);
     if (!link) return [];
+    const intro = `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`;
+    if (!claim.owner) return [intro];
     const waiting = landedRequestCount(root);
     const lines = [
-      `Social Campaign board (for Claude): this workspace's board is bound to ${link.url}.`,
+      intro,
       boardSourceOutdated(link, root)
         ? 'The board page is out of date. Before replying, refresh it: call pipeline_board_source with the bound url, read the bound board with the Artifact tool, publish the returned page and files to the same url, then bind the new source as board-setup describes. If pipeline_board_source returns updateWaiting true, or no pluginVersion, publish nothing: Social Campaign was updated and this chat could not switch to it by itself, so tell the person once, in one plain line, to open a new chat.'
         : `Before replying, re-arm its wake-up: read ${link.url} with the Artifact tool, then republish that same page to the same url. Then list the board's saved requests and handle them through board-sync.`,
@@ -747,11 +840,44 @@ export function claimStopBlock(root, sessionId, signature, at = new Date().toISO
   const sessions = sessionMap(plainObject(current) ? current.sessions : null);
   const key = String(sessionId || 'unknown');
   if (sessions[key]?.signature === signature) return false;
-  sessions[key] = { signature, at };
+  sessions[key] = { ...sessions[key], signature, at };
   try {
     writeJsonAtomic(file, { sessions: pruned(sessions) });
   } catch {
     return false;
   }
   return true;
+}
+
+/**
+ * Which board page version a republish order is about: the plugin's current board source (its hash and version label). A window
+ * is told to republish once per version, so the same order never repeats on every turn; a newer plugin update is a new version.
+ */
+export function republishVersion(root) {
+  try {
+    return `${ARTIFACT_SOURCE_VERSION}:${currentBoardSourceHash(root) ?? ''}`;
+  } catch {
+    return ARTIFACT_SOURCE_VERSION;
+  }
+}
+
+/** Has this window already been told to republish the board page of this version? Read only. */
+export function republishTold(root, sessionId, version) {
+  const current = readJson(boardPath(root, 'stop-hook.json'));
+  return sessionMap(plainObject(current) ? current.sessions : null)[String(sessionId || 'unknown')]?.republish === version;
+}
+
+/** Remember that this window was told to republish the board page of this version (kept beside the Stop signature). */
+export function recordRepublishTold(root, sessionId, version, at = new Date().toISOString()) {
+  const file = boardPath(root, 'stop-hook.json');
+  const current = readJson(file);
+  const sessions = sessionMap(plainObject(current) ? current.sessions : null);
+  const key = String(sessionId || 'unknown');
+  sessions[key] = { ...sessions[key], republish: version, at: sessions[key]?.at ?? at };
+  try {
+    writeJsonAtomic(file, { sessions: pruned(sessions) });
+    return true;
+  } catch {
+    return false;
+  }
 }
