@@ -1,6 +1,6 @@
 {
   "name": "social-campaign",
-  "version": "0.17.56",
+  "version": "0.17.57",
   "private": true,
   "description": "Social Campaign Claude Code plugin - bundled MCP server and local workspace.",
   "type": "module",
