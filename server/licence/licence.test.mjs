@@ -77,6 +77,28 @@ test('network failure and 5xx keep the cached pass until exp', async () => {
   assert.equal(licence.currentPass(), null);
 });
 
+test('a failed startup fetch is retried on the next tool call, at most every retryMs', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'licence-'));
+  fs.writeFileSync(path.join(home, 'plugin-key'), 'key-123\n');
+  let clock = 1_000_000;
+  let calls = 0;
+  let online = false;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (!online) throw new Error('timeout');
+    return reply(200, { pass: makePass() })();
+  };
+  const licence = createLicence({ publicKey, home, url: 'https://example.test/lic', fetchImpl, now: () => clock, retryMs: 30_000 });
+  assert.equal((await licence.refreshPass()).status, 'offline');
+  online = true;
+  clock += 10_000;
+  assert.equal(await licence.check(), ENDED_MESSAGE, 'no retry inside retryMs');
+  assert.equal(calls, 1);
+  clock += 30_000;
+  assert.equal(await licence.check(), null, 'retried and got a pass');
+  assert.equal(calls, 2);
+});
+
 test('no key file: status no-key and ended message, no request made', async () => {
   let called = false;
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'licence-'));

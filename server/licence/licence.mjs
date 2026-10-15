@@ -23,7 +23,8 @@ export const PLUGIN_NAME = 'social-campaign';
 export const MARKETPLACE_SEGMENT = 'agentc-3echo';
 export const DEFAULT_LICENCE_URL = 'https://agentc.3echo.ai/api/plugins/licence';
 export const REFRESH_MS = 4 * 60 * 60 * 1000;
-export const FETCH_TIMEOUT_MS = 8000;
+export const FETCH_TIMEOUT_MS = 20000;
+export const RETRY_MS = 30 * 1000;
 
 export const ENDED_MESSAGE =
   "Your 3echo workspace access for this plugin has ended, or this computer isn't connected yet. Ask your 3echo contact for a new connect message.";
@@ -126,7 +127,10 @@ export function createLicence(options = {}) {
    * 401/403 clears the cache (access ends now); network failure or 5xx keeps it.
    * @returns {Promise<{status: 'ok'|'no-key'|'revoked'|'offline'|'bad-pass'}>}
    */
+  let lastAttempt = 0;
+
   async function refreshPass() {
+    lastAttempt = now();
     try {
       const key = readKey();
       if (!key) return { status: 'no-key' };
@@ -181,6 +185,9 @@ export function createLicence(options = {}) {
     if (currentPass()) return null;
     // First run: the startup refresh may still be in flight (bounded by the network timeout).
     if (startup) await startup;
+    if (currentPass()) return null;
+    // No pass yet (the startup fetch failed, or access was just granted): ask again, at most every RETRY_MS.
+    if (now() - lastAttempt >= (options.retryMs ?? RETRY_MS)) await refreshPass();
     return currentPass() ? null : ENDED_MESSAGE;
   }
 
