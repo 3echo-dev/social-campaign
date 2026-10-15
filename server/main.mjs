@@ -23,6 +23,7 @@ import { StdioTransport } from './mcp/transport.mjs';
 import { buildRegistry } from './tools/index.mjs';
 import { log } from './lib/log.mjs';
 import { createGate } from './licence/licence.mjs';
+import { createSelfUpdate } from './licence/self-update.mjs';
 import { PLUGIN_VERSION, recordBoot } from './workspace/version.mjs';
 
 export { PLUGIN_VERSION, PLUGIN_VERSION_KEY, recordBoot } from './workspace/version.mjs';
@@ -46,6 +47,23 @@ export async function createServer() {
 }
 
 /**
+ * The agentC licence gate (null outside agentC installs). After each successful pass
+ * refresh it also checks the agentC catalog for a newer plugin version and installs it.
+ */
+function createAgentcGate() {
+  let selfUpdate = null;
+  const gate = createGate({ onRefreshed: () => selfUpdate?.check() });
+  if (gate) {
+    selfUpdate = createSelfUpdate({
+      currentVersion: PLUGIN_VERSION,
+      licenceUrl: gate.url,
+      readKey: gate.readKey,
+    });
+  }
+  return gate;
+}
+
+/**
  * Boot and serve on stdio.
  * @returns {Promise<void>}
  */
@@ -54,7 +72,7 @@ export async function main() {
   const transport = new StdioTransport({
     registry,
     context: { workspace },
-    gate: createGate(),
+    gate: createAgentcGate(),
     serverInfo: { name: 'social-campaign-core', version: PLUGIN_VERSION },
   });
   await transport.start();

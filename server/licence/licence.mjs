@@ -158,6 +158,7 @@ export function createLicence(options = {}) {
       if (!verifyPass(pass, plugin, publicKey, now())) return { status: 'bad-pass' };
       fs.mkdirSync(home, { recursive: true });
       fs.writeFileSync(cacheFile, pass);
+      if (options.onRefreshed) Promise.resolve().then(options.onRefreshed).catch(() => {});
       return { status: 'ok' };
     } catch {
       return { status: 'offline' };
@@ -191,17 +192,17 @@ export function createLicence(options = {}) {
     return currentPass() ? null : ENDED_MESSAGE;
   }
 
-  return { refreshPass, currentPass, start, check, keyFile, cacheFile };
+  return { refreshPass, currentPass, start, check, keyFile, cacheFile, readKey, url };
 }
 
 /**
  * Build the gate used by the server: null when not enforcing (no behaviour change),
  * otherwise an object whose check() returns the ended message when there is no valid pass.
- * @param {{env?: NodeJS.ProcessEnv, serverPath?: string}} [options]
+ * @param {{env?: NodeJS.ProcessEnv, serverPath?: string, onRefreshed?: () => unknown}} [options]
  */
 export function createGate(options = {}) {
   if (!shouldEnforce(options)) return null;
-  const licence = createLicence();
+  const licence = createLicence({ onRefreshed: options.onRefreshed });
   licence.start();
   return licence;
 }
