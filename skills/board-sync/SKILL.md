@@ -109,7 +109,9 @@ Never print, re-type, or otherwise hand-verify base64 or other bytes from a requ
 The file-transit procedures for a board request's logo, photos, references and product photo are in `references/request-files.md` (see Routing).
 
 Only one window handles a board click.
-The newest window owns the board: opening, resuming or clearing a chat makes that window the owner, and an older window is told once, in plain words, that another window now owns the board; it then leaves the board alone and does not re-arm, list, land or apply anything for it.
+The window the person is writing in owns the board: opening, resuming or clearing a chat, or sending a message of their own in a window, makes that window the owner.
+The one exception is a window that is answering a board message right now; it keeps the board until its turn ends or it has been silent for two minutes, and a window the person writes in meanwhile is told once, in plain words, that the other window is busy with the board and that their next message will take it over.
+A window that does not own the board leaves it alone: it does not re-arm, list, land, apply, republish or write anything to it, and it says nothing about a board message that belongs to the owner.
 The apply, decision and decline tools also claim each request for the window that calls them.
 When one of them returns `handledElsewhere` (or a listed request carries it), another window already took that request: skip it silently, do no follow-up work for it, and do not post a reply about it.
 A claim from a window that went away is taken over after a few minutes, so nothing stays stuck.
