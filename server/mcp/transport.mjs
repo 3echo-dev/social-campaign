@@ -46,6 +46,7 @@ const LIVE_WORKSPACE_TOOLS = new Set([
  * @property {{name: string, version: string}} serverInfo
  * @property {NodeJS.ReadableStream} [input]
  * @property {NodeJS.WritableStream} [output]
+ * @property {{check: () => string|null|Promise<string|null>}|null} [gate] licence gate; tools/call is refused with the returned text
  */
 
 /**
@@ -59,6 +60,7 @@ export class StdioTransport {
     this.serverInfo = options.serverInfo;
     this.input = options.input ?? process.stdin;
     this.output = options.output ?? process.stdout;
+    this.gate = options.gate ?? null;
     this.buffer = '';
     /** @type {(() => void)|null} */
     this.onClose = null;
@@ -239,6 +241,11 @@ export class StdioTransport {
   async #callTool(params, signal) {
     const name = typeof params?.name === 'string' ? params.name : '';
     const args = params?.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+    // Licence gate: tool listing and startup are never blocked, only tool calls.
+    const denied = this.gate ? await this.gate.check() : null;
+    if (denied) {
+      return { content: [{ type: 'text', text: denied }], isError: true };
+    }
     const startedAt = Date.now();
     let captured = null;
     let workspaceContext = null;
