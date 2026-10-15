@@ -187,13 +187,11 @@ Free-text questions stay for genuinely open questions in the middle of a job.
 
 ## Plain words
 
-Whenever you talk to the person, in chat or on the board, use short, simple words a child could follow.
-This covers questions, clarifications, approvals, stuck notices, replies and status.
-Never show jargon, code, field names, schema names, tool names, file paths or ids.
-Good: "Which product is this post for?"
-Bad: "kind: missing field brand_profile".
-When a step fails on our side, say for example "Something went wrong on our side while saving your video. Press Try again, or tell me to."
-After a second failure, say "It didn't work again. We've saved the details for our team. There's nothing you need to do."
+Use plain, professional language in chat and on the board.
+Keep implementation details out of routine messages.
+Provide relevant details for informed decisions or requested diagnostics, without secrets or private information.
+After a failure, name the failed action and give one supported next step.
+Claim success, saved diagnostics or team notification only when tool results confirm that specific outcome.
 
 ## Agent Box
 
@@ -216,7 +214,7 @@ When the person can fix the cause, which means missing information, an approval,
 3. Take the answer from either place, and the first one wins: a board answer arrives as `answer_question`, a chat answer is recorded with `pipeline_board_answer`, as Questions on the board describes.
 
 Never ask the person to fix a code problem, such as an error or an unexpected failure.
-Say "Something went wrong on our side", leave the technical details out of chat (the board already keeps them with the job), and retry the failed step once; a `retry_step` request does the same.
+Explain the failed action using the Plain words guidance above, and retry the failed step once; a `retry_step` request does the same.
 
 ## Housekeeping
 
