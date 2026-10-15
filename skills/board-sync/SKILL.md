@@ -163,9 +163,14 @@ Moved to `references/brand-intelligence.md` (relative to this skill folder); see
 
 ## Questions on the board
 
-Before Claude asks the person anything in the chat, it first puts the same question on the Director card, then asks in chat.
+Before Claude asks the person anything in the chat, it first posts the same question on the board, then asks in chat.
 Call `pipeline_board_ask` with one plain question, up to 6 short options, and `allowText` when a typed answer also makes sense.
-Write the returned `documents` in the one batch call, so the board's Needs you shows the question right away, then ask the same question in chat, as plain numbered options, and say it can be answered here or on the board.
+Pass `jobId` for a question about one job, `brand` for a brand-wide question, or neither for a workspace question such as choosing which job a chat answer belongs to.
+Write the returned `documents` in the one batch call before asking the same question in chat, as plain numbered options, and say it can be answered here or on the board.
+Home and new-job pages summarize open questions in Needs you, grouped with other waiting items for that job.
+Job questions also appear at the waiting stage and in the Director chat; when no stage is waiting, they appear below the stages.
+Brand questions appear in that brand's Director chat.
+These are views of one question and answer; never create separate questions for each location.
 Take whichever answer arrives first, the same as any other decision, and never ask the same thing twice.
 A board answer arrives as an `answer_question` request: land and apply it with `pipeline_board_request_land` and `pipeline_board_request_apply` like any other non-decision request, then call `pipeline_board_questions` with that `questionId` to read the saved answer.
 A chat answer is recorded with `pipeline_board_answer`, passing `choice` when the person picked one of the options word for word or `text` for anything else they said, then write the documents again so the board stops asking it.
@@ -177,7 +182,7 @@ Making the storyboard pictures, the sample first, is not spending to ask about: 
 A go-ahead for sending or spending outside the posting decision is asked in chat only, so ask it with `pipeline_board_ask` and `inChat` true, with the same words you will say in chat. The posting decision is the exception: the person's click on the board's Post Now, Schedule Post, Save Draft or Download Files is the go-ahead, so never ask for another confirmation in chat after it.
 A typed "yes" never stands in for that click: see Money and posting need a click below.
 Trying a failed picture or clip again is not new spending, since it stays inside the price already approved, so it is a normal board question with "Try again" and "Leave it out" buttons; its answer goes to `pipeline_generation_retry` as described in make-image and make-video.
-The board shows that question with no buttons, tells the person to answer in the chat, and reads "Answer Claude in the chat" under What you need to do.
+For an `inChat` question, the board shows a notice to answer in chat instead of answer buttons.
 Publish the board before asking in chat, take the answer from the chat only, and record it with `pipeline_board_answer` (`choice` or `text`), then write the documents again so the notice clears.
 The notice also clears by itself when the send happens; call `pipeline_board_withdraw` if the person says no and nothing is sent.
 Fixed approvals and intake fields keep their existing flow, since Needs you already shows them without a separate question.
@@ -209,7 +214,7 @@ Messages for other agents reach them through `pipeline_agent_brief` at their nex
 A job is stuck when it cannot move and nothing it waits on is already an open decision on the board.
 When the person can fix the cause, which means missing information, an approval, a clarification or an outside account:
 
-1. Call `pipeline_board_ask` for that job with one plain question, with options when they fit, and write the returned `documents`, so the question shows on the Director card.
+1. Call `pipeline_board_ask` for that job with one plain question, with options when they fit, and write the returned `documents`, so the question appears on the board as Questions on the board describes.
 2. Say the same one-line question in chat.
 3. Take the answer from either place, and the first one wins: a board answer arrives as `answer_question`, a chat answer is recorded with `pipeline_board_answer`, as Questions on the board describes.
 

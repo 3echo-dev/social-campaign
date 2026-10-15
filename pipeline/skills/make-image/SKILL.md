@@ -32,7 +32,14 @@ Write the documents (`pipeline_status`) so the board shows the sample, say what 
 End the turn: wait for yes before making the rest, in chat or on the board.
 A yes typed in chat is recorded with `pipeline_chat_decision` (gate `sample`, the person's words as `confirmedBy`) after the sample was presented with `pipeline_review_present`; without it the guard keeps holding the rest.
 After a request for changes, redo the sample first (a new version of the same panel).
-6. **The rest.** After the sample is approved, make a picture for every other panel that needs one, same job key pattern with `v1`, same preamble, continuity, references and negatives. Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item. A picture whose 3Echo job failed or was cancelled made nothing and spent nothing. Never make it again under the same key (3Echo hands back the same failed job). Tell the person at once, on the board with `pipeline_board_ask` (options "Try again" and "Leave it out") so it shows on the Director card, and in chat, in one plain line such as "Picture 4 did not come out because 3Echo had a problem. It cost nothing. Try it again?". On "Try again", call `pipeline_generation_retry` with that item and the answer as `confirmedBy`. On "Leave it out", carry on without it and say what changes.
+6. **The rest.**
+   After the sample is approved, make a picture for every other panel that needs one, same job key pattern with `v1`, same preamble, continuity, references and negatives.
+   Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item.
+   A picture whose 3Echo job failed or was cancelled made nothing and spent nothing.
+   Never make it again under the same key (3Echo hands back the same failed job).
+   Tell the person at once, on the board with `pipeline_board_ask` (options "Try again" and "Leave it out"), and in chat, in one plain line such as "Picture 4 did not come out because 3Echo had a problem. It cost nothing. Try it again?".
+   On "Try again", call `pipeline_generation_retry` with that item and the answer as `confirmedBy`.
+   On "Leave it out", carry on without it and say what changes.
 7. `python "${CLAUDE_PLUGIN_ROOT}/scripts/contact-sheet.py" "media/D{n}" --cols 4`.
 8. Present the storyboard (`pipeline_review_present`, gate `storyboard`). It lists every panel with its picture, and is refused while a panel that needs a picture has none or the voice-over question is unanswered. Approving it approves those pictures as the start pictures for the clips, so there is no second pictures review.
 

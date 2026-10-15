@@ -79,7 +79,7 @@ The `kind` in the pipeline's heading is the kind you pass as `job.kind` below, a
 When two or more pipelines fit, or none does, never ask before the job exists: a question with no job leaves the person on the home page with nothing to open.
 Create the job right away with the likeliest pipeline as `job.kind`, the person's words as the brief, and `job.pipelineUnsure` set to `true`.
 That flag holds the job at its first step: nothing is routed, planned or started, and the board says it is waiting for one answer.
-Then ask the pipeline question on that job, with `pipeline_board_ask` and its `jobId` (up to 6 short options, `allowText` true), so it shows in the job's "What you need to do" and on the Director's card, and say the same plain question in chat.
+Then ask the pipeline question on that job, with `pipeline_board_ask` and its `jobId` (up to 6 short options, `allowText` true), publish it on the board as board-sync's Questions on the board describes, and say the same plain question in chat.
 Word it plainly and in the person's terms, for example "Do you already have the finished video, or should we make a new Reel for you?", with the options "I have the video, just post it", "Make a new Reel for me" and "I have a video, but it needs edits".
 When the answer comes, from the board or in chat (record a chat one with `pipeline_board_answer`), change the pipeline with `pipeline_intake_update` and `patch.kind` before anything is planned, using the job's displayed revision from `pipeline_job_read`.
 Setting the kind, even to the one you first picked, ends the hold and the job routes as usual.

@@ -280,7 +280,8 @@ Moved to `branches/reference-evidence.md` (relative to this skill folder); see R
 ## Facts the copy depends on are asked early
 
 At the brief stage, before any script, caption or on-screen text is written, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
-Ask each one as its own `pipeline_board_ask` question on the Director card (one short plain question, with the likely options when there are some), and say the same line in chat, as Stuck jobs describes. A long chat message alone is not a question: the board never shows it and it stays unanswered.
+Ask each one as its own `pipeline_board_ask` question on the board (one short plain question, with the likely options when there are some), and say the same line in chat, as Stuck jobs describes.
+A long chat message alone is not a question: the board never shows it and it stays unanswered.
 Wait for the answers before the script. If a question was already answered on the board or in chat, use that answer and never raise it again.
 References the person added (with the board's "Add a reference" button, a pasted video link, or a file path in chat) live in the job's `inputs/references/manifest.json`; `pipeline_references_list` returns them with absolute paths. Each entry may carry a `role` (what the person said it is for): logo = put the brand logo in exactly as it is, never redraw it; product = keep the product exact; person = keep this person or character consistent; style = match the colours, lighting and mood; motion = copy the movement and pacing; sound = match the music or voice.
 Read it before planning, writing or making anything for a job, and use each entry by its `type`: a `picture` is a Studio reference image (attach it to the matching image or video request as a reference, with the person's `note`); a `video` is a motion and style reference to watch and describe, never to repost; `audio` is the music or voice reference (chosen music goes through `pipeline_music_add`, a voice sample guides the voice choice); `caption` text is copy input the copywriter keeps in the person's own words; an `addon` is extra material to use as its note says.
@@ -306,8 +307,8 @@ Do not read the output to diagnose it yourself; if the producer's answer is not 
 
 ## Stuck jobs
 
-Before asking the person anything in the chat, put the same question on the Director card first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.
-When a job is stuck for a reason the person can fix (missing information, an approval, a clarification, an outside account), ask with `pipeline_board_ask` so the question shows on the Director card, and say the same one-line question in chat.
+Before asking the person anything in the chat, post the same question on the board first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.
+When a job is stuck for a reason the person can fix (missing information, an approval, a clarification, an outside account), ask with `pipeline_board_ask` so the question appears on the board, and say the same one-line question in chat.
 Take the answer from either place, the first one wins, and record a chat answer with `pipeline_board_answer`; `skills/board-sync/SKILL.md` has the steps under "Stuck jobs".
 Never ask the person to fix a code problem: explain the failed action using the communication rules above, and retry the failed step once.
 

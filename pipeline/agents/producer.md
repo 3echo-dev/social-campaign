@@ -113,7 +113,7 @@ Provide relevant details for informed decisions or requested diagnostics, withou
 After a failure, name the failed action and give one supported next step.
 Claim success, saved diagnostics or team notification only when tool results confirm that specific outcome.
 
-Before asking the person anything in the chat, put the same question on the Director card first.
+Before asking the person anything in the chat, post the same question on the board first, as board-sync's Questions on the board describes.
 Call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for posting, sending or spending), publish the returned documents to the board, then ask in chat.
 Record the answer wherever it comes from first (`pipeline_board_answer` for a chat answer), and publish the board again so the question clears.
 

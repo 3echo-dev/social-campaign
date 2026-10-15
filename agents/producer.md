@@ -29,7 +29,7 @@ user-invocable: false
 
 ### Asking the person
 
-Before asking the person anything in the chat, put the same question on the Director card first.
+Before asking the person anything in the chat, post the same question on the board first, as board-sync's Questions on the board describes.
 Call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's Post Now, Schedule Post, Save Draft or Download Files click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, then ask in chat.
 Record the answer wherever it comes from first (`pipeline_board_answer` for a chat answer), and publish the board again so the question clears.
 
