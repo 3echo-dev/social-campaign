@@ -18,7 +18,8 @@ The final approval is refused until a current check covers every image and video
 Run it once all the images and video for the final approval are in place, and again whenever one of them changes.
 Follow these steps exactly and never read plugin code while doing them.
 
-The Director does not open the frames itself. Steps 1 to 4 run in a fresh editor helper, in the foreground, so the pictures never enter the Director's chat: spawn the editor with `job:<jobId>` on the first line, the brand, the job id and "run the label and brand-mark check, steps 1 to 4 of skills/brand-check/SKILL.md, then answer in at most 5 lines: no flags, or one line per flag with where it is and what it shows, and the saved check id". The Director keeps only that answer and carries on from step 5. If the editor says a file changed, spawn it again.
+The Director does not open the frames itself. Steps 1 to 4 run in a fresh editor helper, in the foreground, so the pictures never enter the Director's chat: spawn the editor with `job:<jobId>` on the first line, the brand, the job id and "run the label and brand-mark check, steps 1 to 4 of skills/brand-check/SKILL.md, then answer: no flags, or one line per flag with where it is and what it shows, and the saved check id; with more than 4 flags, write every flag to a notes file in the job folder and give the count, that path and the saved check id". The Director keeps only that answer and carries on from step 5, and never drops a flag.
+Before spawning, add the editor's agent brief as `agents/producer.md` describes: call `pipeline_agent_brief` for the editor, put the fallback line or `Agent brief: none.` after the job line, paste the returned block unchanged once at the end, and do not spawn when it returns `waiting`. If the editor says a file changed, spawn it again.
 
 1. (Editor) Call `pipeline_qc_frames` with `brand` and `jobId`.
    It already takes every image and video registered for the pending review, including a contact sheet, so leave `paths` out unless you will show an image or video at the final approval that is not registered for the review yet.
@@ -36,7 +37,7 @@ The Director does not open the frames itself. Steps 1 to 4 run in a fresh editor
    If it lists frames with no reading, open those frames and call it again with every reading.
    If it says a file changed, start again from step 1.
 5. When the result has no flags, say nothing about the check.
-6. For each flag, tell the person in one plain line what the frame shows and where, then ask what to do in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with the options "Keep it" and "Swap the shot".
+6. For each flag (read them from the notes file when there are more than 4), tell the person in one plain line what the frame shows and where, then ask what to do in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with the options "Keep it" and "Swap the shot".
    For example: "The pack in 0:04 reads 'TRTATMENT'. Keep it, or swap the shot?"
    Name the image instead of a time for a still.
 7. Take whichever answer arrives first: "Keep it", chosen on the board or in chat, or "Accept as is" clicked directly on the board, is the acceptance of that item.

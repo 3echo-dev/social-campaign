@@ -1,6 +1,6 @@
 ---
 name: board-sync
-description: Project local Social Campaign state into its private Claude artifact and validate pending board requests.
+description: 'Internal step of social-campaign: projects local Social Campaign state into its private Claude artifact and validates pending board requests.'
 user-invocable: false
 ---
 
@@ -41,7 +41,7 @@ Read a branch file only when its condition holds; every other path stays on this
 - Read `references/job-requests.md` (relative to this skill folder) when the request is `create_job`, `update_intake`, `attach_product_photo` or `continue_job`, or a comment says a job is the wrong kind; it covers diagnosing a kind-less `create_job`, the `job` field names, Finish the brief answers and the product photo lookup and is done when the job is created with its pipeline (or its pipeline question is open) and the projection is published.
 - Read `references/connector-requests.md` (relative to this skill folder) when the request is `skip_provider`, `connectors_continue` or `connect_provider`, or an ad account question is answered in chat; it covers the read-only probe for each provider and saving Metricool brands or ad accounts and is done when the probe is saved, the request is applied only on `ok: true` or declined, and the projection is published.
 - Read `references/brand-intelligence.md` (relative to this skill folder) when the request is `subtopics_confirm` or `plan_cell_start`, or a concept pick carries Strategy picks; it covers confirming the six subtopics, starting a post from the 6 by 5 plan and the Strategy picks note and is done when the request is applied or declined and the projection is published.
-- Read `references/decision-requests.md` (relative to this skill folder) when the request is `submit_decision`, an apply reports `needs_reconciliation`, or a decision is answered in chat; it covers `pipeline_decision_apply` (credits, notes, stale files), reconciliation, and landing a chat decision and is done when the decision is applied or re-presented and the documents are written again.
+- Read `references/decision-requests.md` (relative to this skill folder) when the request is `submit_decision`, an apply reports `needs_reconciliation`, or a decision is answered in chat; it covers `pipeline_decision_apply` (credits, notes, stale files), reconciliation, and recording a chat decision with `pipeline_chat_decision` and is done when the decision is applied or re-presented and the documents are written again.
 - Read `references/review-gates.md` (relative to this skill folder) when a storyboard, sample, pictures, clips, joined or finished video, report or final post is presented or answered, or review media must be uploaded; it covers panel verdicts, the sample, pictures, clips, cut and finish reviews, the report, the label check and review copies and is done when the decision is applied or the change is re-priced and re-presented, and the documents are written again.
 - Read `references/picks.md` (relative to this skill folder) when applying `choose_recipe`, a concept decision carrying `recipe`, or `choose_studio_workspace`; it covers recipe picks and the paying Studio workspace and is done when the pick is applied and the projection is published.
 - Read `references/posting.md` (relative to this skill folder) when applying `choose_metricool_brand`, `choose_publish_route`, `choose_post_type`, `choose_post_time`, `resolve_post` or `mark_posted`, or bringing sent posts up to date; it covers which Metricool brand posts, where the posts stand and marking a post as posted and is done when the request is applied and the board shows where the posts stand.
@@ -168,6 +168,7 @@ Call `pipeline_board_ask` with one plain question, up to 6 short options, and `a
 Pass `jobId` for a question about one job, `brand` for a brand-wide question, or neither for a workspace question such as choosing which job a chat answer belongs to.
 Write the returned `documents` in the one batch call before asking the same question in chat, as plain numbered options, and say it can be answered here or on the board.
 Home and new-job pages summarize open questions in Needs you, grouped with other waiting items for that job.
+A workspace question (no `jobId` or `brand`) shows in Needs you.
 Job questions also appear at the waiting stage and in the Director chat; when no stage is waiting, they appear below the stages.
 Brand questions appear in that brand's Director chat.
 These are views of one question and answer; never create separate questions for each location.
@@ -260,7 +261,7 @@ When a decision opens:
 1. Call `pipeline_review_present` with those files and write every entry of its returned `documents`, so the board shows the decision from the job document.
 2. Post one short chat summary of the same decision, naming the job's brand and title, with the same options, for example 'SK-II "Anna Sawai serum Reel": pick concept A or B, or ask for changes; concept A allows up to 48 credits.', and say it can be answered here or on the board.
    When a failing check keeps Approve off (a posting card with a check marked as needing attention, for example), name that check in the summary in plain words and say what is needed first; never say to press Approve then.
-   For the concept pick, when the producer's hand-back said the brief and the ideas disagree, or that a helper was run twice, add one plain line saying so (see social-campaign's Helpers and hand-backs). Never open the concept pick while a question of the Director's on the job is open: the server refuses, so answer or take back the question first.
+   For the concept pick, when the producer's hand-back said the brief and the ideas disagree, or that a helper was run twice, add one plain line saying so (see social-campaign's Helpers and hand-backs). Never open the concept pick while a blocking question of the Director's on the job is open: the server refuses, so answer or take back the question first.
 3. End the turn there; the board's doorbell comment, or the next session's sweep of saved requests, brings whichever answer comes first.
 
 An answer on the board arrives as a `submit_decision` request.
@@ -268,9 +269,9 @@ Apply it immediately with `pipeline_decision_apply` as described above, write th
 
 Before landing a decision typed in chat, work out which job it answers.
 List every job whose latest `pipeline_status` line has `waitingOn` set, since that is what "waiting on a decision" means.
-When more than one job is waiting and the person did not say which one, ask which job it's for in the board's Needs you and in chat together, as Questions on the board below describes, with each waiting job's brand and title as an option, for example 'SK-II "Anna Sawai serum Reel"' and 'Olay "Retinol24 launch teaser"', and wait for whichever answer arrives first before landing anything.
+When more than one job is waiting and the person did not say which one, ask which job it's for in the board's Needs you and in chat together, as Questions on the board above describes, with each waiting job's brand and title as an option, for example 'SK-II "Anna Sawai serum Reel"' and 'Olay "Retinol24 launch teaser"', and wait for whichever answer arrives first before landing anything.
 Never apply a chat decision to a guessed job.
-How a decision typed in chat is landed and applied is in `references/decision-requests.md` (see Routing).
+How a decision typed in chat is recorded, with `pipeline_chat_decision`, is in `references/decision-requests.md` (see Routing).
 
 Never ask the same decision twice.
 A board request that arrives for a decision already answered in chat fails validation; decline it with `pipeline_board_request_decline` and the reason `Already answered in chat.`, then write the documents again.
@@ -280,10 +281,10 @@ A board answer can land late when a long turn delays it, so a reminder in chat a
 
 ### Money and posting need a click
 
-The price, the sample image and the posting plan (where and when to post, and the final publish approval) are approved only by the person's tap on the card in the board.
-When the person types yes, ok or approve for one of these, do not land or apply it. Say in one plain line: 'Please tap Approve on the card in the board. Money and posting steps need your click.' Name the job's brand and title, and make sure the board shows the card (write the documents again).
+The price, the sample image and the posting plan (where and when to post, and the final publish approval) are approved only by the person's tap on the card in the board; only a chat-only job takes them from typed words.
+On a job that uses the board, when the person types yes, ok or approve for one of these, do not record it. Say in one plain line: 'Please tap Approve on the card in the board. Money and posting steps need your click.' Name the job's brand and title, and make sure the board shows the card (write the documents again).
 The same goes for choosing where to post (Post Now, Schedule Post, Save Draft, Download Files) or the posting time.
-The tools enforce it: a chat-landed approval for these is refused with that same sentence, and nothing is applied. Notes or requests for changes typed in chat still work, and so do concept picks, storyboard notes, brief answers and questions.
+The tools enforce it: a chat approval for these is refused with that same sentence, and nothing is applied. Notes or requests for changes typed in chat still work, and so do concept picks, storyboard notes, brief answers and questions.
 An applied price approval is the explicit yes to that quote; a request for changes means re-price and present the price again.
 
 The review-by-review procedures (Storyboard panels, Sample image, Pictures and clips, The report, Final approval and the label check, Review media on the board) are in `references/review-gates.md` (see Routing).

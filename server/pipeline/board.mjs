@@ -3287,14 +3287,19 @@ function assertNoHelperRunning(root,brand,jobId) {
   });
 }
 
-/** A review is not presented while the Director's own question on the job is still open: the person's answer may change what the review shows. */
-function assertNoQuestionOpen(root,jobId) {
+/**
+ * A review is not presented while the Director's own question on the job is still open: the person's answer may change what the review shows.
+ * The concept pick waits only for blocking questions (the ones whose answer changes the ideas); every other review waits for any open question.
+ */
+function assertNoQuestionOpen(root,jobId,gate=null) {
   let open;
   try { open=openQuestionsByJob(root,{readOnly:true}).get(jobId); } catch { return; }
+  if(gate==='concept') open=open?.filter(question=>question.blocking===true);
   if(!open?.length) return;
-  throw new UserFacingError(`You asked the person ${open.length===1 ? 'a question' : `${open.length} questions`} on this job that ${open.length===1 ? 'is' : 'are'} still waiting for an answer, so this review is not ready to show. Wait for the answer, then present this review again.`,{
+  const kind=gate==='concept' ? 'blocking question' : 'question';
+  throw new UserFacingError(`You asked the person ${open.length===1 ? `a ${kind}` : `${open.length} ${kind}s`} on this job that ${open.length===1 ? 'is' : 'are'} still waiting for an answer, so this review is not ready to show. Wait for the answer, then present this review again.`,{
     code:'question_open',
-    fix:'Do not present or write the brief while a question on this job is open. Wait for the answer (it arrives by itself), then continue.',
+    fix:gate==='concept' ? 'Do not present the concept pick or write the brief while a blocking question on this job is open. Wait for the answer (it arrives by itself), then continue.' : 'Do not present or write the brief while a question on this job is open. Wait for the answer (it arrives by itself), then continue.',
     details:{questions:open.map(question=>question.questionId)},
   });
 }
@@ -3389,7 +3394,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
       if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob) && !facts.madeBeforeReviews(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice (the combine card on the board normally does both), run finish-video.py, then carry on.'});
     }
     assertNoHelperRunning(root,brand,jobId);
-    assertNoQuestionOpen(root,jobId);
+    assertNoQuestionOpen(root,jobId,aimed);
     // Post-production comes before the final approval: never ask for both at once, and never ask while the edit is away.
     if(aimed==='content') {
       const job=facts.jobAt(root,brand,jobId);

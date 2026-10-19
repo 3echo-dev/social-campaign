@@ -156,7 +156,7 @@ if (current && !states.canMove(current, target, { allowRetired: compatibility })
   fail('cannot go from ' + current + ' to ' + target + '.\nFrom ' + states.label(current) +
     ' the job can go to: ' + (allowed.length ? allowed.join(', ') : 'nowhere, it is finished') + '.');
 }
-const asked = openQuestions.openFor(ws.root(argv), jobId);
+const asked = openQuestions.blockingFor(ws.root(argv), jobId);
 const askedRefusal = openQuestions.refusal(current, target, asked);
 if (askedRefusal) fail(askedRefusal);
 

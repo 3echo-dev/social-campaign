@@ -76,6 +76,6 @@ Never start a second job without that answer, and never cancel or edit the first
 When the person says the plan was right after all, let the job carry on.
 When the answer is a new description of what they want, treat it as the words of a new request.
 
-For a `continue_job` request, apply it once and pass its returned snapshot to `new-job` to resume the existing job.
+For a `continue_job` request, apply it once and pass its returned snapshot to `new-job` to resume the existing job when it is still in intake (state `INTAKE_PENDING` or `NEEDS_CLARIFICATION`), or to `resume-job` when it is established (routed or later).
 Never create a replacement job to answer missing intake fields.
 Local imports use a source folder selected on the runner's computer, never a Drive URL.

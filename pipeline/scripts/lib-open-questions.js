@@ -27,11 +27,12 @@ function blockingFor(root, jobId) {
   return openFor(root, jobId).filter(record => record.blocking === true);
 }
 
-// Moving on to the brief or the ideas while a question is open would start work the answer may change.
+// Moving on to the brief or the ideas while a blocking question is open would start work the answer may change. The caller passes
+// only the blocking questions (blockingFor); a question with no flag does not hold the move.
 const BRIEF_STEPS = new Set(['BRIEF_READY', 'CONCEPTS_DRAFTED']);
 function refusal(current, target, open) {
   if (!open.length || !BRIEF_STEPS.has(target) || states.gateOf(current)) return null;
-  return 'You asked the person ' + (open.length === 1 ? 'a question' : open.length + ' questions') + ' on this job that ' + (open.length === 1 ? 'is' : 'are') +
+  return 'You asked the person ' + (open.length === 1 ? 'a blocking question' : open.length + ' blocking questions') + ' on this job that ' + (open.length === 1 ? 'is' : 'are') +
     ' still waiting for an answer, so the brief is not started. Wait for the answer, then move the job on.';
 }
 

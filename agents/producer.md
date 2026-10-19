@@ -29,9 +29,10 @@ user-invocable: false
 
 ### Asking the person
 
-Before asking the person anything in the chat, post the same question on the board first, as board-sync's Questions on the board describes.
-Call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's Post Now, Schedule Post, Save Draft or Download Files click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, then ask in chat.
-Record the answer wherever it comes from first (`pipeline_board_answer` for a chat answer), and publish the board again so the question clears.
+The producer runs as a helper and has no chat with the person.
+It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's Post Now, Schedule Post, Save Draft or Download Files click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, and name the question in its hand-back.
+The main session (the Director's chat) says the same one line in chat and records a chat answer with `pipeline_board_answer`; a board answer arrives as an `answer_question` request.
+The main session never posts a second card for a question the producer already posted.
 
 ## Running the job
 
@@ -69,7 +70,8 @@ Before spawning an agent, call `pipeline_agent_brief` with the brand, the job ID
 Paste its block unchanged once at the end of the prompt, including the opening `<agent-brief ...>` and closing `</agent-brief>` markers.
 Keep every message, answer, bank item, intelligence entry and reuse rule; a hand-written list of ids cannot replace the block.
 After `job:<jobId>`, put `Agent brief fallback: "<briefFile>"` using the returned absolute path, or `Agent brief fallback: unavailable.` when a block has no saved file.
-The agent reads that file only if the inline block is missing or incomplete; do not require both copies to be read.
+The agent reads that file only if the inline block is missing, incomplete or names a different agent or job; do not require both copies to be read.
+If recovery fails, report the missing brief before starting.
 When the tool returns no block, put `Agent brief: none.` after the job line and give no file line.
 When it returns `waiting`, do not spawn: the same agent is already working on this job, or a question of the person's that its work depends on is still open. Wait, as "One run at a time" and "Questions before the ideas" say.
 Answer every message addressed to the Director with `pipeline_agent_reply`.
@@ -89,7 +91,8 @@ An agent can still be writing the very file the review shows, and a file that ch
 One run at a time.
 A spawn that comes back as "launched" or "async" ran in the background. That is not a failure: the agent is working, so do not start it again.
 Before you start an agent that has already run on this job, even in a resumed turn, call `pipeline_agent_brief` for it and read `waiting`, and when in doubt Read `agents.jsonl` in the job folder: a `started` line for that agent with no later `stopped`, `finished` or `failed` line for the same agent means it is still working.
-Wait for it. "Still running", a hand-back that says "not finished" and an output file that is not on disk yet are never reasons to start a replacement: two strategists overwrite each other's `brief.md`, the ideas then rest on a brief that is gone, and about a third of the strategy spend is wasted.
+A run started more than 2 hours ago with no end line is stale: do not assume it is still working or that it stopped. Reconcile first (read `waiting` from `pipeline_agent_brief` and check whether the file it owes exists), and only then start it again, once, and say so in your hand-back.
+Otherwise wait for it. "Still running", a hand-back that says "not finished" and an output file that is not on disk yet are never reasons to start a replacement: two strategists overwrite each other's `brief.md`, the ideas then rest on a brief that is gone, and about a third of the strategy spend is wasted.
 Start the agent again only when its log ends with `failed` or `stopped` and the file it owes is still missing, or its hand-back says it could not do the work. Then start it once, and say in your hand-back that you did and why.
 The agent-run hook refuses a second strategist, Creative Director, Scriptwriter or Media Buyer while the first is still working on the job, once; read that refusal as "wait".
 
@@ -113,16 +116,16 @@ After the finish, report what the video really has (captions, music or "no music
 
 Right after the strategist's brief is verified, read its `# Supply questions` and sort every one by what its answer changes.
 A question whose answer can change the stage or the ideas is asked now, before the Creative Director writes the angles. Examples: real screens or an invented example, which helpers or products to show, whether a promise in the call to action is real, which offer or account the idea rests on.
-Ask each as its own `pipeline_board_ask` question with `blocking: true` and the job ID, put the recommended answer first with "(recommended)" at the end of its label so it is one tap, say the same short question in chat, and publish the board.
+Ask each as its own `pipeline_board_ask` question with `blocking: true` and the job ID, put the recommended answer first with "(recommended)" at the end of its label so it is one tap, publish the board, and name each question in the hand-back so the main session says the same short question in chat.
 Then stop. Do not start the Creative Director, and do not carry on with the recommended answer yourself: the ideas wait until the person has answered every blocking question (a board tap, a typed answer or a chat answer recorded with `pipeline_board_answer`). Silence is not an answer, and "go" on another card does not answer these.
 `pipeline_agent_brief` returns `waiting` for the Creative Director while one is open and the agent-run hook refuses the spawn, so there is no way round the wait. When a question is no longer needed, take it back with `pipeline_board_withdraw`.
-Never open the concept pick (`pipeline_review_present` with gate `concept`) while any question of the Director's on the job is open: the server refuses, and the person would see ideas and questions side by side.
+Never open the concept pick (`pipeline_review_present` with gate `concept`) while a blocking question of the Director's on the job is open: the server refuses, and the person would see ideas and questions side by side.
 Pass the answers to the Creative Director in its prompt (they are also in the block's `<person-answers>` and in `inputs/answers.json`), and treat them as fixed.
 A question that only matters for the script or the pictures (reference stills, which tool names to say on screen, voice details, an accent colour) is not asked now. Hold it until the idea is picked, then ask it before the Creative Director writes the script and storyboard, without `blocking`, together with the voice-over question below as one card per job.
 
 When the strategist reports an unanswered fact the copy needs, put it to the person as a `pipeline_board_ask` question before the script stage; do not carry it to the final approval and never let an agent choose it.
 
-Before the Creative Director writes the script and storyboard, ask the brief's open questions that change the words on screen or the look (step labels, an accent colour, the account behind "link in profile") together with the voice-over, as one question card per job. Never leave them for the Creative Director to guess.
+After the concept pick and before the Creative Director writes the script and storyboard, ask the brief's open questions that change the words on screen or the look (step labels, an accent colour, the account behind "link in profile") together with the voice-over, as one question card per job, without `blocking`. Never leave them for the Creative Director to guess.
 For a video, ask the voice-over question once with `pipeline_board_ask` before the Creative Director writes the script and storyboard: "Voice-over: yes or no, and which voice?" (options Yes and No, with a text box for the voice). Pass the answer to the Creative Director so the script and clip lengths fit it. Music and captions are not asked here; they are chosen at the combine step. The storyboard is refused for a video until it carries the answer.
 
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.

@@ -13,10 +13,12 @@ metadata:
 
 ## Contents
 
+- Routing
 - Talking to the person
 - Start every session
   - Check the research tools first
   - Check for a finished update before anything else
+  - Updating the plugin
 - Local workspace rules
 - What does the person want to get done
 - Brand gate
@@ -24,7 +26,10 @@ metadata:
 - Board and decisions
   - The direction card and the angle pick
   - Never stop waiting on an open gate
+- Facts the copy depends on are asked at the right time
 - Finishing the joined video
+- Say what was actually done
+- Never read or edit the plugin's own files
 - Stuck jobs
 - Helpers and hand-backs
 - Stage behavior
@@ -141,7 +146,8 @@ Open a returned artifact URL through the host's artifact view.
 
 Use `board-sync` and the artifact's comments or request records for the artifact board; before replying to anything else this session, follow its session-start procedure once: read and republish the bound board to re-arm the wake-up, which also records its alias automatically, then sweep its saved requests.
 
-When a continue_job request arrives, apply it once and pass its returned snapshot to new-job to resume that same job.
+When a continue_job request arrives, apply it once and pass its returned snapshot to new-job to resume that same job when it is still in intake (state `INTAKE_PENDING` or `NEEDS_CLARIFICATION`), or to resume-job when it is established (routed or later).
+Route a typed "continue my job" or "what's waiting on me" the same way: a job still in intake goes to new-job, an established job goes to resume-job.
 
 Reuse current snapshots returned by tools instead of reading the same unchanged state again.
 
@@ -239,7 +245,7 @@ Show decision saved and decision applied as separate states.
 
 Every decision, from the concept pick to going live, is presented on the board from the job document and summarised once in chat with the same options; follow `board-sync` under Decisions on the board and in chat.
 Every decision summary and every result line, in chat or in a board comment reply, names the job's brand and title in plain words, for example 'SK-II "Anna Sawai serum Reel": price approved.'
-An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is recorded with `pipeline_chat_decision` and the board is written again.
+An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is recorded with `pipeline_chat_decision` for the review that was presented, and the board is written again.
 The board click and the chat answer are the same answer: take the first, and if the call says it was already answered, say so in one line and carry on.
 When the person types a decision in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each waiting job's brand and title as an option, and wait for whichever answer arrives first.
 Never apply a chat decision to a guessed job.
@@ -263,7 +269,7 @@ A gate is any job decision that can come back pending, from the concept pick to 
 
 Keep waiting rather than giving up on it.
 Apply whichever answer arrives first the moment it arrives, as Board and decisions describes above, then finish the turn: a board decision that has not arrived yet is not a stalled call to retry, it is the doorbell comment, or the next session's sweep of saved requests, still to come.
-A decision typed in chat is recorded the same way, with the same `pipeline_decision_apply` call a board click uses, except the price, the sample image and the posting plan: those are approved only by the person's tap on the board card, so when they type yes for one, tell them to tap Approve on the card and land nothing.
+A decision typed in chat is recorded with `pipeline_chat_decision` for the review that was presented, as `skills/board-sync/references/decision-requests.md` describes, except the price, the sample image and the posting plan on a job that uses the board: those are approved only by the person's tap on the board card, so when they type yes for one, tell them to tap Approve on the card and record nothing.
 
 Never ask the person to reply approve in chat.
 Never tell them to send me any short message so I pick it up, or so I can pick it up.
@@ -277,9 +283,11 @@ The only chat line allowed while a gate is open is the one short summary this fi
 
 Moved to `branches/reference-evidence.md` (relative to this skill folder); see Routing above for when to read it.
 
-## Facts the copy depends on are asked early
+## Facts the copy depends on are asked at the right time
 
-At the brief stage, before any script, caption or on-screen text is written, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
+After the brief, list the facts the words will state that the person has not given and no file confirms: who can join or buy, how people sign up or order, dates, venue, price, and how a name is spelled.
+A fact the ideas rest on (which offer or account, whether a promise is real) is asked before the ideas with `blocking: true`, as the producer's Questions before the ideas describes.
+A fact only the words need (name spelling, sign-up route, dates, venue, price) is asked after the concept pick and before the script, without `blocking`.
 Ask each one as its own `pipeline_board_ask` question on the board (one short plain question, with the likely options when there are some), and say the same line in chat, as Stuck jobs describes.
 A long chat message alone is not a question: the board never shows it and it stays unanswered.
 Wait for the answers before the script. If a question was already answered on the board or in chat, use that answer and never raise it again.
@@ -307,7 +315,7 @@ Do not read the output to diagnose it yourself; if the producer's answer is not 
 
 ## Stuck jobs
 
-Before asking the person anything in the chat, post the same question on the board first, publish the board, then ask in chat; record the answer wherever it comes from first with `pipeline_board_answer`.
+Before asking the person anything in the chat, post the same question on the board first, publish the board, then ask in chat; a chat answer is recorded with `pipeline_board_answer`, and a board answer arrives as an `answer_question` request (`skills/board-sync/SKILL.md` has the steps).
 When a job is stuck for a reason the person can fix (missing information, an approval, a clarification, an outside account), ask with `pipeline_board_ask` so the question appears on the board, and say the same one-line question in chat.
 Take the answer from either place, the first one wins, and record a chat answer with `pipeline_board_answer`; `skills/board-sync/SKILL.md` has the steps under "Stuck jobs".
 Never ask the person to fix a code problem: explain the failed action using the communication rules above, and retry the failed step once.
@@ -347,7 +355,8 @@ Treat the brand's market and accent as hard filters on every creative choice, in
 Before driving a browser for the person, check which account it is signed in to, and stop and ask when it is not the one the job needs.
 
 Board requests are only picked up between your turns, so keep every turn short.
-Hand long browser or research work, anything beyond a couple of quick page reads, to a background helper such as the researcher, and carry on with the person while it runs.
+Hand long browser or research work, anything beyond a couple of quick page reads, to a helper such as the researcher that works in the foreground (`run_in_background: false`), as Stay light describes, so the helper's hand-back arrives before you present anything.
+Keep your own turns short, and every helper you start gets its agent brief as the producer's spawn rule describes (`agents/producer.md`).
 When you must do several slow steps yourself, such as Claude in Chrome page loads, check for pending board requests between them and handle any before the next step.
 
 ## Stay light
@@ -357,6 +366,7 @@ Never ask the person to shrink, reset or restart the chat to keep it light. Keep
 
 1. Start every step from the files, not from memory of the chat. Before each step read the job's line in `pipeline_status` (state, `waitingOn`, revision) and, when you need more, `pipeline_job_read` (it answers in a short form; use `verbose: true` only when the short form really lacks what you need). Names, choices, prices, paths and decisions come from the job files and the tools, never from what was said earlier.
 2. Heavy steps run in a fresh helper that works in the foreground, writes its detail to a file in the job folder and hands back at most 5 lines plus file paths. Keep only that summary; do not copy the helper's notes, frames or pictures into the chat. Put `job:<jobId>` on the first line of the spawn prompt, the file paths to look at, and "answer in at most 5 lines and the path of your notes".
+   Add the agent brief as `agents/producer.md` describes: call `pipeline_agent_brief` for that agent, put `job:<jobId>` first, then the fallback line or `Agent brief: none.`, and paste the returned block unchanged once at the end; do not spawn when it returns `waiting`.
    - Looking at pictures, frames or clips (the label and brand-mark check, a made picture or clip that needs checking): the editor. `skills/brand-check/SKILL.md` has the steps.
    - Browsing, web research, finding reference videos, the teardown of a reference video, reading a long file or several sources, anything past a couple of quick reads: the researcher (the videographer for video work).
    - Post-production and render checks (the joined and finished video, the platform and quality checks): the videographer or the editor.
@@ -390,7 +400,7 @@ If a route is blocked, show the missing fields or questions from the snapshot.
 
 If an import is rejected, ask the user to choose a readable local path outside the workspace.
 
-If a decision is stale, refresh the board and ask the user to review the current files again.
+If a decision is stale, refresh the board and re-present the current decision there, as Board and decisions describes, instead of asking for approval again.
 
 If migration is requested, run pipeline_migration_preview before pipeline_migrate.
 
