@@ -3405,7 +3405,8 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(!saved) throw new Error('Save the price with pipeline_quote_save before presenting it.');
     const refusal=priceRefusal(job,saved.quote.items);
     if(refusal) throw new Error(refusal);
-    if(facts.referenceArtOnly(job) && !picturesOnly(notTranscription(saved.quote.items))) throw new Error(REFERENCE_ART_ONLY);
+    const mediaItems=notTranscription(saved.quote.items);
+    if(facts.referenceArtOnly(job) && mediaItems.length && !picturesOnly(mediaItems)) throw new Error(REFERENCE_ART_ONLY);
     const pending=facts.pricePending(job);
     if(!pending.media && !pending.transcription) throw new Error('This price is already approved, so there is nothing new to present.');
     gate=PRICE_GATE;

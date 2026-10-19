@@ -52,8 +52,8 @@ require_campaign_activation_human_approval: true
 
 Change these only with a reason. The Enforcement column says what happens if an agent
 ignores one: **Mechanical** means a script refuses, **Mechanical (function hook)** means
-`hooks/hooks.mjs` refuses the tool call itself when `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`
-and the written rule is the fallback when it is not, **Structural** means the agent cannot
+a function hook refuses the tool call itself when `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`
+and the written rule is the fallback when it is not (Social Campaign does not ship that hook, so there the written rule applies), **Structural** means the agent cannot
 do it at all, and Instruction means it is a rule the model follows.
 
 ```yaml
@@ -171,8 +171,9 @@ To do it by hand, put this in the project's `.claude/settings.json` and start a 
 Setting `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in the shell before `claude` does the same thing.
 `check-deps.js` says the flag is off at the start of every session that has not set it, so nobody assumes a guard is on when it is not.
 
-With the flag on, `hooks/hooks.json` loads `hooks/hooks.mjs` beside the five command hooks, which stay.
-Today that module registers seven events: `session.start`, `tool.call`, `skill.prompt`, `turn.start`, `turn.complete`, `prompt.submit` and `tool.describe`.
+With the flag on, a plugin that ships the function-hook module loads it beside the command hooks in `hooks/hooks.json`, which stay.
+Social Campaign does not ship that module, so the flag changes nothing there.
+That module registers seven events: `session.start`, `tool.call`, `skill.prompt`, `turn.start`, `turn.complete`, `prompt.submit` and `tool.describe`.
 The guards land one at a time.
 
 ### What the model is told, every turn

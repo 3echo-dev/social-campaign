@@ -105,7 +105,9 @@ Platform conventions are not a workstream. `platform-rules/facebook.md`, `instag
 
 The target market comes from the spawn prompt.
 When the spawn prompt carries none, read `targetMarket` in `brand/profile.json`.
-It is never assumed. When both are blank or the job has no brand, the Director asks the person which market, in chat with buttons, before the research starts. A saved `Global` means no one country.
+It is never assumed.
+When both are blank or the job has no brand, the Director asks the person which market, in chat with buttons, before the research starts.
+A saved `Global` means no one country.
 Use it for the competitors and for any market-specific evidence, and never fill it in.
 
 ## Hard limits

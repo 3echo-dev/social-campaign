@@ -300,7 +300,8 @@ The banks are what every later job starts from: its agents' briefs list the top 
 Look for the brand's own audience first, in its own site, its social pages and coverage of the brand.
 When no reliable source describes the brand's own audience, fill `audience` with a suggestion instead of leaving it blank.
 Derive the suggestion from the audiences of the top competitors for the same product niche in the target market from the spawn prompt.
-The target market is never assumed: when none is named, the Director asks the person before the research starts. `Global` means no one country.
+The target market is never assumed: when none is named, the Director asks the person before the research starts.
+`Global` means no one country.
 Use only sources from the last 12 months.
 Record each competitor audience source in `research.sources` and `research.evidenceMatrix` as usual.
 Write the fill as a plain audience description with no marker and no competitor names.

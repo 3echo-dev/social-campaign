@@ -4824,7 +4824,7 @@ export function postMedia(preview) {
 
 function publishPostRow(post, jobId = '', openKeys = new Set(), preview = '', ctx = {}) {
   const ref = `${jobId}:${post.id ?? ''}`;
-  const caption = publishText(post.text ?? post.caption, `publish-text:${ref}`, 'caption', openKeys);
+  const caption = publishText(post.text ?? post.caption, `publish-text:${ref}`, 'post text', openKeys);
   const first = publishText(post.firstComment, `publish-first:${ref}`, 'first comment', openKeys);
   const titleText = publishText(post.title, `publish-title:${ref}`, 'TikTok title', openKeys);
   const title = titleText ? `<div class="publish-wide"><dt>TikTok title</dt><dd>${titleText}</dd></div>` : '';
