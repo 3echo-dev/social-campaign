@@ -2899,6 +2899,125 @@ function reworkStage(state, reached, workflowId) {
   return (stagesRuntime.isReportWorkflow(workflowId) ? REPORT_REWORK_STAGE : REWORK_STAGE)[before] || null;
 }
 
+const isMediaRow = (row) => /\bmake-(image|video)\b/.test(String(row?.Skills ?? ''));
+
+// Which fixed stop list a job shows (lib-states.js STOP_LISTS): 'video', 'pictures' or 'report', or null when it keeps the stages
+// its plan makes. A route written since 0.18.2 says it in `stops` (change-deliverable.js restamps it when the person changes the kind).
+// A post planned on 0.18.0 or 0.18.1 has no such field, but its frozen Media row already names the plugin's clip sign-off, which no
+// earlier plan does. Its list is the kind it was planned for, never the deliverables as they are now, so a change of kind mid-job
+// does not swap the list under the person. Anything older has neither and keeps its rows.
+function stopsKindOf(route, planRows, job) {
+  if (!route || route.status !== 'ROUTED') return null;
+  if (route.stops === 'report' || (typeof route.stops === 'string' && Object.hasOwn(statesRuntime.STOP_LISTS, route.stops))) return route.stops;
+  if (route.stops !== undefined || route.workflowId !== 'organic-post') return null;
+  const media = planRows.find(isMediaRow);
+  if (!media || !/pipeline_clips_signoff/.test(String(media.Task ?? ''))) return null;
+  // Each change the person made is recorded with what the deliverable was (job.json deliverableChanges), the first one being the plan's own.
+  const changes = Array.isArray(job?.deliverableChanges) ? job.deliverableChanges : [];
+  const planned = (Array.isArray(job?.deliverables) ? job.deliverables : []).map((entry) => {
+    const first = changes.find((change) => change && change.deliverable === entry?.id && typeof change.from === 'string');
+    return first ? { ...entry, creativeDiscipline: first.from } : entry;
+  });
+  return deliverableRuntime.plansVideo({ deliverables: planned }) ? 'video' : 'pictures';
+}
+
+const MEDIA_STOP_STEPS = Object.freeze({
+  sample: { label: 'Making the test clip', line: 'One short clip, made first so you can check the look.' },
+  cut: { label: 'Making the rough cut', line: 'The rest of the clips, joined with the sound and captions.' },
+});
+
+// The stages of a post with a fixed stop list, regrouped into its stops. The stages and plan rows are worked out as always (so a row's
+// status and times are the ones the job's states and records give); this only decides which stop each row, decision and approval sits in
+// and when a stop is over. A stop is over when the person decided its gate, when the job has moved past it, or when a later stop is over,
+// so the list is the same length at every state. The count follows where the job is: a job asked for changes, held up, stuck or stopped
+// is read at the last state it was in on the flow (the stage log), so it keeps its count and the stop it was on stays the current one.
+// It drops only when the job really goes back. The media row of a video becomes two steps.
+function fixedStops(kind, derived, state, decisions, reached = []) {
+  const list = statesRuntime.STOP_LISTS[kind];
+  const ids = statesRuntime.ids();
+  const rank = (id) => ids.indexOf(id);
+  const lastOnFlow = (Array.isArray(reached) ? reached : []).map(planCell).filter((id) => rank(id) >= 0 && !OFF_FLOW_STATES.has(id)).pop();
+  const at = OFF_FLOW_STATES.has(state) ? rank(lastOnFlow || '') : rank(state);
+  const held = state === 'BLOCKED' || state === 'ESCALATED';
+  const stopped = state === 'CANCELLED';
+  const finished = state === 'COMPLETE';
+  const openGate = statesRuntime.gateOf(state);
+  const entries = new Map(derived.flatMap((stage) => stage.gates || []).map((entry) => [entry.gate, entry]));
+  const approvals = new Map(derived.flatMap((stage) => stage.approvals || []).map((entry) => [entry.gate, entry]));
+  const tasks = derived.flatMap((stage) => stage.tasks || []).sort((a, b) => a._plan.row - b._plan.row);
+  const media = tasks.find((task) => task._plan.media) || null;
+  const clipAt = list.findIndex((stop) => stop.gate === 'sample' && kind === 'video');
+  const cutAt = list.findIndex((stop) => stop.gate === 'cut');
+  const stopOf = (task) => {
+    const row = rank(planCell(task.stateAfter));
+    const found = list.findIndex((stop) => stop.until && row <= rank(stop.until));
+    return found < 0 ? list.length - 1 : found;
+  };
+  // The state says which stops are behind the job; a decision on a gate ends its stop too. A decision counts only once the job has
+  // got to where it can be made (the media decisions from the approved storyboard, the rough cut from the made video, any other
+  // from its approved state), so an older decision cannot count after the job went back. Then a stop that is over ends every stop
+  // before it, whatever closed it, so a decided stop behind the job's place (a test clip whose approval no longer matches the files)
+  // stays finished and an approved later stop ends a pictures or posting stop that a decision alone does not.
+  const counts = (gate) => {
+    if (!approvals.has(gate)) return false;
+    if (finished || at < 0) return true;
+    return at >= rank(statesRuntime.APPROVED_STATE[gate] || (gate === 'cut' ? 'MEDIA_READY' : 'STORYBOARD_APPROVED'));
+  };
+  const over = list.map((stop) => finished || (at >= 0 && at >= rank(stop.done)) || (stop.closes !== false && counts(stop.gate)));
+  for (let index = list.length - 2; index >= 0; index -= 1) if (over[index + 1]) over[index] = true;
+  const current = over.indexOf(false);
+  // The price rides on the storyboard tap. Its record shows with the storyboard once approved; a later price (a redo beyond the
+  // allowance, a new shot) waits in the stop the job is on.
+  const price = entries.get('price') || null;
+  const storyboardAt = list.findIndex((stop) => stop.gate === 'storyboard');
+  let priceAt = -1;
+  if (approvals.has('price')) priceAt = storyboardAt;
+  else if (price?.status === 'waiting' && storyboardAt >= 0 && over[storyboardAt] && current > storyboardAt) priceAt = current;
+
+  return list.map((stop, index) => {
+    const base = entries.get(stop.gate) || null;
+    // A decision counts only for a stop the job has reached: one left over from before the job went back is not shown.
+    const decided = counts(stop.gate) && (over[index] || index <= current) ? approvals.get(stop.gate) || null : null;
+    const gateStatus = decided || over[index] ? 'done' : openGate === stop.gate ? 'waiting' : 'pending';
+    const history = base?.history?.length ? base.history : gateHistory(decisions, stop.gate);
+    const gates = base || decided || stop.always
+      ? [{ gate: stop.gate, name: stop.gate === 'sample' && kind === 'video' ? 'Test clip' : GATE_NAMES[stop.gate] || stageLabel(stop.gate), status: gateStatus, ...(history.length ? { history } : {}), ...(base?.openedAt ? { openedAt: base.openedAt } : {}) }]
+      : [];
+    if (index === priceAt && price) gates.push({ ...price, status: approvals.has('price') ? 'done' : price.status });
+    const own = tasks.filter((task) => !(media && clipAt >= 0 && task === media) && stopOf(task) === index);
+    if (media && (index === clipAt || index === cutAt)) {
+      const first = index === clipAt;
+      const startedAt = first ? media.startedAt : approvals.get('sample')?.at;
+      const doneAt = first ? approvals.get('sample')?.at : approvals.get('cut')?.at;
+      own.unshift({
+        number: media.number, name: MEDIA_STOP_STEPS[stop.gate].label, label: MEDIA_STOP_STEPS[stop.gate].label, line: MEDIA_STOP_STEPS[stop.gate].line,
+        agent: media.agent, role: media.role, stateAfter: media.stateAfter, gate: null, artifact: first ? null : media.artifact,
+        status: over[index] ? 'done' : index === current && !held && !stopped ? 'running' : 'pending',
+        ...(startedAt ? { startedAt } : {}), ...(over[index] && doneAt ? { doneAt } : {}),
+      });
+    }
+    for (const task of own) {
+      delete task._plan;
+      if (planCell(task.gate) === stop.gate) task.gateStatus = gateStatus;
+      // A stop that is over has all its steps done, a stop not reached has none started, and the stop the job is on keeps the status its plan row has.
+      if (over[index]) task.status = 'done';
+      else if (planCell(task.agent) === 'human' && planCell(task.gate) === stop.gate) task.status = gateStatus === 'done' ? 'done' : gateStatus === 'waiting' ? 'waiting' : 'pending';
+      else if (index !== current) { task.status = 'pending'; delete task.startedAt; delete task.doneAt; }
+    }
+    const waitingOnPrice = index === priceAt && price?.status === 'waiting' && !approvals.has('price');
+    return {
+      id: stop.id,
+      label: stop.label,
+      fixed: true,
+      status: over[index] ? 'complete' : stopped ? 'cancelled' : index !== current ? 'pending' : held ? 'blocked' : openGate === stop.gate || waitingOnPrice ? 'waiting' : 'running',
+      substep: index === current && state === 'CHANGES_REQUESTED' ? 'Making your changes' : null,
+      tasks: own,
+      gates,
+      approvals: [decided, index === priceAt ? approvals.get('price') : null].filter(Boolean),
+    };
+  });
+}
+
 function snapshotStages(state, planRows, route, context = {}) {
   const workflowId = typeof route?.workflowId === 'string' ? route.workflowId : null;
   const stateIds = planRows.map((row) => row['State after']).filter(Boolean);
@@ -2942,11 +3061,15 @@ function snapshotStages(state, planRows, route, context = {}) {
       tasks: [],
     }];
   }
+  const kind = stopsKindOf(route, planRows, context.job);
+  if (kind && kind !== 'report') for (const stage of routeStages) for (const task of stage.tasks) task._plan = { row: task._row, media: isMediaRow(planRows[task._row]) };
   const derived = deriveStages(routeStages, state, planRows, { ...context, workflowId });
   applyTaskStatuses(derived, planRows, state, context.reached, context.logged);
   const reused = researchReusedNote(route);
   const researching = derived.find((stage) => stage.id === 'researching');
   if (reused && researching && !(researching.tasks || []).length && !researching.note) researching.note = reused;
+  if (kind === 'report') for (const stage of derived) stage.fixed = true;
+  else if (kind) return fixedStops(kind, derived, state, context.decisions, context.reached);
   return derived;
 }
 
@@ -3126,7 +3249,7 @@ export function readJobSnapshot(options = {}) {
       ownerEmail: job.ownerEmail || null,
       ownershipStatus: job.ownershipStatus || (job.ownerUserId ? 'bound' : 'unbound'),
       ...(job.chatOnly === true ? { chatOnly: true } : {}),
-      stages: snapshotStages(status.state, rows, route, { dir, decisions, reached: stagesRuntime.loggedStates(status.text), logged: loggedTimes(status.text) }),
+      stages: snapshotStages(status.state, rows, route, { dir, job, decisions, reached: stagesRuntime.loggedStates(status.text), logged: loggedTimes(status.text) }),
       artifacts,
       decisions,
       metrics,

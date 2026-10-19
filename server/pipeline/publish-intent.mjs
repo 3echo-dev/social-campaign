@@ -825,13 +825,13 @@ export function checkPostTime({ root, brand, jobId, deliverable, dateTime, now =
   if (!zone) throw new Error('No time zone is set for this job yet, so a posting time cannot be chosen. Set the job\'s time zone first.');
   const instant = typeof dateTime === 'string' && CARD_TIME.test(dateTime) ? zonedInstant(dateTime, zone) : null;
   // A date that rolls over (31 February) or a wall-clock time the zone skips does not come back the same, so it is not a real time.
-  if (instant === null) throw new Error('Choose a date and a time.');
+  if (instant === null) throw new Error('Choose a date and time.');
   if (localDateTime(instant, zone).slice(0, 16) !== dateTime) {
     // A real calendar time that comes back different is one the clocks skip (spring forward); one that is not on the calendar is not a date.
     const [, year, month, day, hour, minute] = CARD_TIME_PARTS.exec(dateTime);
     const real = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
     const onCalendar = real.toISOString().slice(0, 16) === dateTime;
-    throw new Error(onCalendar ? `That time doesn't exist in ${zoneWords(zone, instant)} because the clocks change. Pick another time.` : 'Choose a date and a time.');
+    throw new Error(onCalendar ? `That time doesn't exist in ${zoneWords(zone, instant)} because the clocks change. Pick another time.` : 'Choose a date and time.');
   }
   const when = whenText({ dateTime: `${dateTime}:00`, timezone: zone });
   if (instant < now) throw new Error(`That time has already passed: ${when}. Pick a time at least ${MIN_LEAD_MINUTES} minutes ahead.`);

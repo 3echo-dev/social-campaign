@@ -81,6 +81,21 @@ spec.deliverableChanges.push({
 });
 fs.writeFileSync(jobPath, JSON.stringify(spec, null, 2) + '\n');
 
+// The stops a person sees follow the kind (lib-states.js STOP_LISTS, route-job.js rule 15), and nothing routes the job again here, so
+// the list is restamped now: a video turned into pictures drops its test clip and rough cut, and the reverse adds them. A post planned
+// on 0.18.0 or 0.18.1 has no `stops` in its route, but its plan's media row names the plugin's clip sign-off, which marks it the same way.
+try {
+  const routePath = path.join(dir || '', 'route.json');
+  const route = JSON.parse(fs.readFileSync(routePath, 'utf8'));
+  const stops = del.plansVideo(spec) ? 'video' : 'pictures';
+  const fixed = route.stops === 'video' || route.stops === 'pictures'
+    || (route.stops === undefined && route.workflowId === 'organic-post' && /pipeline_clips_signoff/.test(fs.readFileSync(path.join(dir, 'plan.md'), 'utf8')));
+  if (fixed && route.stops !== stops) {
+    route.stops = stops;
+    fs.writeFileSync(routePath, JSON.stringify(route, null, 2) + '\n');
+  }
+} catch { /* no route or plan to restamp: the job keeps the stages its plan makes */ }
+
 console.log(by + ' changed this deliverable from ' + del.words(fromKind) + ' to ' + del.words(toKind) + '.');
 console.log('In their words: ' + answer);
 console.log('');

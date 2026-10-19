@@ -59,7 +59,7 @@ The hook line and the call to action of the picked angle are used as they are, a
 
 ## Copy choices at the concept step
 
-Before any copy is written, the person picks, for every post (D1, D2 and so on), the content pillar, the angle, the hook family, the call to action and the hashtag set.
+Before any copy is written, the person picks, for every post (D1, D2 and so on), the topic, the angle, the hook family, the call to action and the hashtag set.
 A hook line and a call to action already fixed by the angle pick are not asked again; only what is still open is.
 Do this at the concept step, alongside the concepts.
 A post that goes straight to copy with no concept step gets the same choices first, as their own question.
@@ -71,8 +71,8 @@ A post that goes straight to copy with no concept step gets the same choices fir
    Only when a field has no evidence at all, look it up within the hard limits: at most 3 searches for that question, at most 3 competitors, in the brand's target market (when the profile names none, ask the person first; `Global` means no one country).
    Every option cites where it comes from: a research file in the job (for example `research/competitors.md#hooks`), a brand file, or a public link to the post or ad.
 3. Shape each field:
-   - Pillar: only the brand's saved content pillars, spelled as on the profile.
-     A brand with one pillar gets one option.
+   - Topic: only the brand's saved content topics, spelled as on the profile.
+     A brand with one topic gets one option.
    - Angle: one line each, and genuinely different directions.
    - Hook family: a different family per option from `pipeline/playbooks/hooks.md`, with its mechanism and an example first line that reads that way: a question mechanism asks a question with a question mark, and a number-led mechanism carries a real number.
    - Call to action: a style that works on the post's platform, with the line itself.

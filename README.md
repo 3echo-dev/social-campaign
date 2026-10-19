@@ -132,7 +132,7 @@ Three are for you to type.
 
 **A brand card that fills itself in.**
 Give a name, a site and your channel links.
-Research fills audience, market and positioning, brand voice, content pillars and competitors where you left them blank.
+Research fills audience, market and positioning, brand voice, content topics and competitors where you left them blank.
 A field you typed, or cleared, stays as you left it.
 Colours and fonts are read from the website and shown for you to edit, with fonts shown by their real names.
 If the website gives no colours, they are taken from your social profile picture when FFmpeg is installed, and the card says where they came from.
@@ -150,7 +150,7 @@ Competitor ads come from the Meta Ads connector's ad library search when it is c
 
 **An idea you pick.**
 Ranked concepts with a hook, the proof pattern and the credit price of making them.
-Copy choices such as pillar, angle, hook, call to action and hashtags can be picked with the concept.
+Copy choices such as topic, angle, hook, call to action and hashtags can be picked with the concept.
 
 **A script and a storyboard you approve panel by panel.**
 Each panel keeps its id.
@@ -177,11 +177,11 @@ Research, an analysis of a post or campaign, and a breakdown of a video each end
 It downloads as Markdown or HTML.
 A brand is optional for all three.
 
-**Usage by stage.**
-The board shows tokens and time for each stage and for the whole job.
-Time you spent deciding is its own row.
-Media shows in 3echo credits.
-A figure that was not measured reads "Not reported".
+**Credits for each job.**
+The job page shows what the job used under About this job.
+Media shows as Studio credits, and the voice-over as voice credits when any were set or spent.
+A report job makes no media, so it shows no credits.
+Tokens and time are kept in the job record and are not shown on the board.
 
 <!-- pipelines:start -->
 
@@ -192,16 +192,16 @@ This table is generated from the plugin's own registries, so it always matches w
 
 | Pipeline | For | You give | Approvals | Who works on it | You get | Cost | Posts |
 |---|---|---|---|---|---|---|---|
-| Organic post | One finished social post for Facebook, Instagram or TikTok: the picture, the video, or a carousel of several pictures to swipe through, plus the caption and the posting details, ready for your approval. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Editor | A delivery package for each post: the picture or video (or every slide of a carousel, in order), the caption, hashtags and the posting details, ready to schedule or post. | Credits are spent only when pictures or video are made, and you approve the price first. A carousel costs one picture for each slide. | Yes |
-| Post series | A set of related posts planned together, so they read as one campaign across platforms and days. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Editor | A delivery package for each post in the series: the pictures or video, the captions, hashtags and the posting details. | Credits are spent only when pictures or video are made, and you approve the price first. | Yes |
-| Creator-style video | A short video that looks like a customer or creator talking to the camera: ideas to pick from, a script, a storyboard and the finished video. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Scriptwriter, Videographer, Researcher, Strategist, Creative Director, Copywriter, Editor | The finished video with its caption and the posting details, in a delivery package. | Credits are spent to make the video. You approve the price, then check a sample, before the rest is made. | Yes |
-| Paid ad campaign | Ad creative and a campaign plan for paid social: audience, budget, placements and the setup steps. Nothing is switched on for you. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Check the sample, Approve the final post, Approve the campaign plan, Approve going live | Media buyer, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Copywriter, Editor | The ad creative, the campaign plan and a checklist of setup steps for your ad manager. | Credits are spent only when pictures or video are made, and you approve the price first. | No |
-| Repurpose a video | Turn a video you already have into new posts for other platforms, with new cuts and captions. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many | Approve the storyboard, Approve the price, Check the sample, Approve the final post, Confirm where and when to post | Copywriter, Videographer, Researcher, Strategist, Editor | New cuts of your video with captions and the posting details, in a delivery package. | Credits are spent only when something new has to be made, and you approve the price first. | Yes |
-| Post something I already have | Post a finished picture, a set of pictures or a video you already have, exactly as it is, with your own caption or one Claude writes. Nothing is researched or made, and no credits are spent. | The brand it is for; Which platforms it is for; The pictures or video to post (one video, or up to 35 pictures), given to Claude in chat | Approve the final post, Confirm where and when to post | Publisher, Copywriter | Your pictures or video with the caption and the posting details, scheduled or saved as a draft in Metricool, or with a posting kit so you can post it yourself. | No credits. Nothing is made, so nothing is priced. | Yes |
-| Research | A written report about a product, a brand or its competitors, with a source for every claim. | Nothing required | Review the report | Researcher | A report you can read on the board and download. | No credits | No |
-| Post or campaign analysis | A written report on why a post or campaign works or does not, from the links or files you give. | At least one link or file to look at | Review the report | Researcher, Videographer | A report you can read on the board and download. | No credits | No |
-| Video breakdown | One video taken apart scene by scene: the shots, the spoken words, the on-screen text and how it is built from hook to call to action. | A video to break down, as a link or a file | Review the report | Videographer | A report with a still for each scene, which you can read on the board and download. | No credits | No |
-| Results review | A written report on how the ads or posts of an earlier job did, read from your ad accounts, a results export or Metricool, with what the winners and the losers have in common. | The brand it is for; The earlier job whose results to read | Review the report | Researcher | A report you can read on the board and download. | No credits | No |
+| Organic post | One finished social post for Facebook, Instagram or TikTok: the picture, the video, or a carousel of several pictures to swipe through, plus the caption and the posting details, ready for your approval. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Approve the sample, Approve the final post, Approve the posting plan | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Editor | A delivery package for each post: the picture or video (or every slide of a carousel, in order), the caption, hashtags and the posting details, ready to schedule or post. | Credits are spent only when pictures or video are made, and you approve the price first. A carousel costs one picture for each slide. | Yes |
+| Post series | A set of related posts planned together, so they read as one campaign across platforms and days. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Approve the sample, Approve the final post, Approve the posting plan | Copywriter, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Editor | A delivery package for each post in the series: the pictures or video, the captions, hashtags and the posting details. | Credits are spent only when pictures or video are made, and you approve the price first. | Yes |
+| Creator-style video | A short video that looks like a customer or creator talking to the camera: ideas to pick from, a script, a storyboard and the finished video. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Approve the sample, Approve the final post, Approve the posting plan | Scriptwriter, Videographer, Researcher, Strategist, Creative Director, Copywriter, Editor | The finished video with its caption and the posting details, in a delivery package. | Credits are spent to make the video. You approve the price, then check a sample, before the rest is made. | Yes |
+| Paid ad campaign | Ad creative and a campaign plan for paid social: audience, budget, placements and the setup steps. Nothing is switched on for you. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many; What it is about: a product, a service, an offer or a message; The direction for the post, agreed with you before research; A photo of the product, when pictures or video are made | Pick a concept, Approve the storyboard, Approve the price, Approve the sample, Approve the final post, Approve the campaign plan, Approve going live | Media buyer, Videographer, Researcher, Strategist, Scriptwriter, Creative Director, Copywriter, Editor | The ad creative, the campaign plan and a checklist of setup steps for your ad manager. | Credits are spent only when pictures or video are made, and you approve the price first. | No |
+| Repurpose a video | Turn a video you already have into new posts for other platforms, with new cuts and captions. | The brand it is for; What it is meant to achieve; Whether it runs as organic posts, paid ads or both; Which platforms it is for; Which posts you need: the platform, the post type and how many | Approve the storyboard, Approve the price, Approve the sample, Approve the final post, Approve the posting plan | Copywriter, Videographer, Researcher, Strategist, Editor | New cuts of your video with captions and the posting details, in a delivery package. | Credits are spent only when something new has to be made, and you approve the price first. | Yes |
+| Post something I already have | Post a finished picture, a set of pictures or a video you already have, exactly as it is, with your own caption or one Claude writes. Nothing is researched or made, and no credits are spent. | The brand it is for; Which platforms it is for; The pictures or video to post (one video, or up to 35 pictures), given to Claude in chat | Approve the final post, Approve the posting plan | Publisher, Copywriter | Your pictures or video with the caption and the posting details, scheduled or saved as a draft in Metricool, or with a posting kit so you can post it yourself. | No credits. Nothing is made, so nothing is priced. | Yes |
+| Research | A written report about a product, a brand or its competitors, with a source for every claim. | Nothing required | Approve the report | Researcher | A report you can read on the board and download. | No credits | No |
+| Post or campaign analysis | A written report on why a post or campaign works or does not, from the links or files you give. | At least one link or file to look at | Approve the report | Researcher, Videographer | A report you can read on the board and download. | No credits | No |
+| Video breakdown | One video taken apart scene by scene: the shots, the spoken words, the on-screen text and how it is built from hook to call to action. | A video to break down, as a link or a file | Approve the report | Videographer | A report with a still for each scene, which you can read on the board and download. | No credits | No |
+| Results review | A written report on how the ads or posts of an earlier job did, read from your ad accounts, a results export or Metricool, with what the winners and the losers have in common. | The brand it is for; The earlier job whose results to read | Approve the report | Researcher | A report you can read on the board and download. | No credits | No |
 
 Some approvals appear only when they apply, for example the price check only when pictures or video are made.
 
@@ -355,10 +355,10 @@ It then asks what you need: a post or campaign, research, an analysis of a post 
 ### Onboard a brand
 
 A post or campaign needs a brand that is ready.
-On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, the target market (or Global), and anything you already know about the audience, positioning, voice, content pillars and competitors.
-Each link can be marked Not available.
+On the board, fill in the brand form once: the name, the website, Facebook, Instagram and TikTok links, the target market (or Global), and anything you already know about the audience, positioning, voice, content topics and competitors.
+Tick "No website", "No Instagram", "No TikTok" or "No Facebook" for any you do not have.
 Upload a logo if you have one, and add colours and fonts if you already know them.
-Click Start onboarding.
+Click Start research.
 
 Research then fills the blanks.
 Claude tells you which fields it filled and which are only suggestions to check.
@@ -366,7 +366,7 @@ Look over the card and click Save and continue.
 
 ### First job
 
-Type what you want to get done in the box on the home page or in Needs you, or click **+ New job**.
+Type what you want to get done in the brief box on the home page.
 Choose a brand if it is for one, and add links if you have them.
 Give Claude any files in chat after you send it.
 Claude reads your words and picks the pipeline that fits, and the job page says which one and why.
@@ -385,19 +385,19 @@ Each stage shows in plain words, and the current decision shows on the job.
 - **Pick a concept**, and any copy choices that come with it.
 - **Approve the storyboard**, panel by panel.
 - **Approve the price.** The total and each item are shown.
-- **Approve the sample image**, before the rest is made.
+- **Approve the sample**, the first picture or the test clip, before the rest is made.
 - **Approve the final post.** Any label or logo item found is shown with Accept as is.
-- **Confirm where and when to post.** See below.
+- **Approve the posting plan.** See below.
 - **Approve the report**, for the three report kinds.
 
 Ask for changes on any of them and the job goes back to that stage with your note.
 
 ### The Agent Box
 
-On a job page, **Agents on this job** lists the Director first, then each agent working on it.
+On a job page, **Team** lists the Director first, then who is on this job, then who is not called yet.
 Each one shows its state (Needs you, Working, Waiting, Up next or Done), what it is doing, and its files.
 The Director card holds everything waiting on you: decisions, questions and anything stuck.
-Use **Message this agent** to write to one of them.
+Click a person to write to them about their work.
 The Director answers in a line, and the message shows as Sent, Delivered or Answered.
 A message never approves, spends or posts: use the board buttons for that.
 If a job gets stuck, the Director asks you in chat and on the board, and the first answer counts.
@@ -406,12 +406,14 @@ The **Needs you** list on the home page shows what is waiting on you across ever
 
 ### Where and when it goes out
 
-At **Confirm where and when to post** you pick one:
+At **Approve the posting plan** you pick one:
 
-- **Schedule with Metricool**, the default. Each post goes out at its planned time.
-- **Save as a draft in Metricool.** You publish it from Metricool.
-- **Post now.** Each post goes out within a few minutes of your approval, and the approval is good for 24 hours.
+- **Post now**, the default when Metricool is connected. Each post goes out within a few minutes of your approval, and the approval is good for 24 hours.
+- **Schedule a post.** Each post goes out at its planned time through Metricool.
+- **Save as a draft.** It waits in Metricool until you publish it.
 - **I'll post it myself.** A posting kit: a 3echo download link for each file, Copy caption, Copy first comment, a checklist and Mark as posted.
+
+The button beside Ask for changes follows your pick: Approve and post now, Approve and schedule, Approve and save as a draft, or Approve and download.
 
 Checks run before you can Approve: the channel is linked, the media fits the post type, the caption and title rules, a time in the future and the file size.
 Approve covers exactly the plan you see.
@@ -446,7 +448,7 @@ An unfinished brief stays a draft under its own job, so continue it rather than 
 ### The board
 
 The board is the decision surface.
-It shows what needs you, the brands, every job with its stages and outputs, the decision waiting on you, and the usage footer.
+It shows what needs you, the brief box, the brands, every job with its stages and outputs, and the decision waiting on you.
 
 It is a private page on your claude.ai account.
 Your decisions come back to Claude as saved requests, and Claude applies them.

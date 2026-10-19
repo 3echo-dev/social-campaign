@@ -55,7 +55,7 @@ const STATES = [
   { id: 'CONTENT_APPROVED', label: 'Approved, packaging it up',          next: ['AWAITING_PUBLISH_APPROVAL', 'HANDOFF_READY', 'PROPOSAL_DRAFTED', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
 
   // Publish gate
-  { id: 'AWAITING_PUBLISH_APPROVAL', label: 'Confirm where and when to post', gate: 'publish', rollback: 'AWAITING_CONTENT_APPROVAL',
+  { id: 'AWAITING_PUBLISH_APPROVAL', label: 'Approve the posting plan', gate: 'publish', rollback: 'AWAITING_CONTENT_APPROVAL',
     next: ['PUBLISH_APPROVED', 'AWAITING_CONTENT_APPROVAL', 'CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
   // AWAITING_PUBLISH_APPROVAL again is the way back when an approved plan is reopened while nothing has been sent
   // (server/pipeline/board.mjs reopenPublishPlan checks that; the table only makes the one step legal).
@@ -166,8 +166,36 @@ const AWAITING_STATE = Object.fromEntries(
 
 const GATE_IDS = STATES.filter(s => s.gate && !s.retired && !s.historicalOnly).map(s => s.gate);
 
+// The fixed stops a person sees on a post routed since 0.18 (plan 0.19, A3), by the kind of post the route names in `stops`.
+// Every stop ends at one decision of theirs (its gate), so the list never grows, shrinks or renumbers while the job runs.
+//   until   the last state whose plan rows belong to the stop (a stop with none shares the media row of the stop after it)
+//   done    the state that means the stop is over, whatever the records say
+//   closes  false when the gate alone does not end the stop (the posting plan ends when the post is delivered)
+//   always  the gate's row is drawn before it is decided (a video always has a test clip and a rough cut)
+// The media gates (sample and cut) are decisions the pipeline records in approvals, not states, so they have no `until`.
+// Two stops keep the id of the stage they replace, because the board looks those up: the first (the person's request and the Director's
+// questions are attached to it) and the one that makes the media (a media review the plan does not name is drawn in it, and the
+// job's media credits are shown while it exists).
+const STOP_LISTS = {
+  video: [
+    { id: 'getting-your-brief', label: 'Idea', gate: 'concept', until: 'AWAITING_CONCEPT_APPROVAL', done: 'CONCEPT_APPROVED' },
+    { id: 'storyboard', label: 'Storyboard and price', gate: 'storyboard', until: 'AWAITING_STORYBOARD_APPROVAL', done: 'STORYBOARD_APPROVED' },
+    { id: 'making-the-images-and-video', label: 'Test clip', gate: 'sample', done: 'DRAFTS_READY', always: true },
+    { id: 'rough-cut', label: 'Rough cut', gate: 'cut', until: 'MEDIA_READY', done: 'DRAFTS_READY', always: true },
+    { id: 'post-text', label: 'Post text', gate: 'content', until: 'CONTENT_APPROVED', done: 'CONTENT_APPROVED' },
+    { id: 'posting-plan', label: 'Posting plan', gate: 'publish', until: 'COMPLETE', done: 'HANDOFF_READY', closes: false },
+  ],
+  pictures: [
+    { id: 'getting-your-brief', label: 'Idea', gate: 'concept', until: 'AWAITING_CONCEPT_APPROVAL', done: 'CONCEPT_APPROVED' },
+    { id: 'storyboard', label: 'Storyboard and price', gate: 'storyboard', until: 'AWAITING_STORYBOARD_APPROVAL', done: 'STORYBOARD_APPROVED' },
+    { id: 'making-the-images-and-video', label: 'Pictures', gate: 'sample', until: 'MEDIA_READY', done: 'DRAFTS_READY', closes: false },
+    { id: 'post-text', label: 'Post text', gate: 'content', until: 'CONTENT_APPROVED', done: 'CONTENT_APPROVED' },
+    { id: 'posting-plan', label: 'Posting plan', gate: 'publish', until: 'COMPLETE', done: 'HANDOFF_READY', closes: false },
+  ],
+};
+
 module.exports = {
   STATES, get, exists, label, isGate, gateOf, rollbackOf, rollbackFor, ids, canMove,
   isRetired, isHistoricalOnly, isTerminal, DELIVERY_BOUNDARY_STATES, isDeliveryBoundary,
-  isPostDelivery, APPROVED_STATE, AWAITING_STATE, GATE_IDS,
+  isPostDelivery, APPROVED_STATE, AWAITING_STATE, GATE_IDS, STOP_LISTS,
 };

@@ -32,7 +32,7 @@ metadata:
 
 Read a branch file only when its condition holds; every other path stays on this page.
 
-- Read `references/metricool-brand.md` (relative to this skill folder) when Metricool is connected or the person picks or changes the brand's Metricool brand (section 2b); it covers reading and saving the Metricool brands and the pick and is done when the brands are saved and the pick is saved with the brand, or left for the Inbox.
+- Read `references/metricool-brand.md` (relative to this skill folder) when Metricool is connected or the person picks or changes the brand's Metricool brand (section 2b); it covers reading and saving the Metricool brands and the pick and is done when the brands are saved and the pick is saved with the brand, or left for Needs you.
 - Read `references/research-pass.md` (relative to this skill folder) when the profile is complete and the brand research pass must start, restart or be saved (section 4); it covers `pipeline_brand_research_start`, the parallel workers, `pipeline_brand_research_save` and what to tell the person and is done when the research is saved, or closed as failed after one restart, and the board is published.
 - Read `references/kit-step.md` (relative to this skill folder) when research starts, or a save adds or changes the website or a social link (section 4a); it covers `web_brand_kit`, the logo candidate review, colours from videos and font guesses and is done when every logo candidate has a verdict and the suggestions are on the board.
 - Read `references/industry-and-library.md` (relative to this skill folder) when research has saved and the industry must be asked, the library reported, or Instagram looked at behind a login (section 4b); it covers the industry question, `brand_bank_save`, the library lines and the one Chrome look at Instagram and is done when the industry is asked or saved and the library lines are said once.
@@ -67,7 +67,7 @@ Handle each request as board-sync describes, apply it with `pipeline_board_reque
    Applying it creates the brand and its empty workspace folder and nothing else.
    Do not start research, do not call `web_brand_kit`, and do not ask about links, folders or the profile with `pipeline_board_ask`.
    Say it in one plain line, for example "Created Acme Goods. Add its website, social accounts and anything else you know on its page, then press Start research.", and offer the archive there as section 4c says.
-2. Brand details. The brand's own page holds the website and social links, the target market, the five declared context fields (audience, positioning, brand voice, content pillars, competitors), the Metricool pick, the logo, colours and fonts, the folders and the photos.
+2. Brand details. The brand's own page holds the website and social links, the target market, the five declared context fields (audience, positioning, brand voice, content topics, competitors), the Metricool pick, the logo, colours and fonts, the folders and the photos.
    The person saves them as often as they like: each save is `save_brand_details` with `{ requestId, brand, profile, kit? }`.
    `profile` is everything typed on the page (a link or Not available per channel, an empty value clears a saved one) and `kit` is the logo, colours and fonts; photos and the Metricool pick wait for the next step.
    Applying a save stores what was typed and starts nothing: no research and no profile revision.
@@ -101,7 +101,7 @@ Quietly rewrite any research-filled field it flags into a short plain statement 
 For a field the person typed, never change it; ask them in one plain line to shorten it on the brand card instead.
 
 If the artifact board is ready, direct the user to its Brand onboarding card and wait for its requests, one per step (see "The three steps"): `create_brand` with only the name, `save_brand_details` as the person fills the brand's page in, and `start_research` when they press Start research.
-The brand's page collects the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors).
+The brand's page collects the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content topics, and competitors).
 Any of those five fields left blank is filled in by research.
 A blank target market is unknown, not Singapore: the Director asks for it before research starts (see step 3), and research never fills it.
 A channel the person leaves empty is saved as Not available when research starts.
@@ -117,7 +117,7 @@ Use `brand` only when updating an existing draft or ready brand.
 ## 2. Collect declared brand context
 
 Use the brand page's fields when the artifact is ready.
-The board collects the brand name (step 1), then on the brand's page the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content pillars, and competitors), saved as the person goes (step 2) and sent with Start research (step 3).
+The board collects the brand name (step 1), then on the brand's page the four channel URLs, the target market, and the five declared context fields (audience, positioning, brand voice, content topics, and competitors), saved as the person goes (step 2) and sent with Start research (step 3).
 For explicit chat intake, ask for the website URL.
 
 For explicit chat intake, ask for the Facebook URL or the exact value Not available.
@@ -126,13 +126,13 @@ For explicit chat intake, ask for the Instagram URL or the exact value Not avail
 
 For explicit chat intake, ask for the TikTok URL or the exact value Not available.
 
-For explicit chat intake, ask for the target market, then audience, positioning, brand voice, content pillars, and competitors, and accept a blank answer for any of them.
+For explicit chat intake, ask for the target market, then audience, positioning, brand voice, content topics, and competitors, and accept a blank answer for any of them.
 A blank target market is asked for in chat with buttons before research starts (see step 3), never assumed.
 
 In chat intake, keep only the first 3 competitors the person lists, and tell them that only 3 are kept.
 
 Do not start a second round for fields that were already supplied by the board request.
-A person may volunteer or correct audience, market, voice, content pillars, or competitor context in chat.
+A person may volunteer or correct audience, market, voice, content topics, or competitor context in chat.
 Record what they volunteer without asking for it again on the board.
 
 Preserve uncertainty as an empty or unavailable field.

@@ -83,7 +83,7 @@ const mediaKind = path => {
   return IMAGE_TYPES[ext] ? 'image' : VIDEO_TYPES[ext] ? 'video' : AUDIO_TYPES[ext] ? 'audio' : null;
 };
 
-const RECIPE_FIELD_LABELS = Object.freeze({ pillar: 'Content pillar', angle: 'Angle', hookFamily: 'Hook', cta: 'Call to action', hashtags: 'Hashtags' });
+const RECIPE_FIELD_LABELS = Object.freeze({ pillar: 'Topic', angle: 'Angle', hookFamily: 'Hook', cta: 'Call to action', hashtags: 'Hashtags' });
 const RESEARCH_FILE_LABELS = Object.freeze({
   audience: 'Audience research',
   competitors: 'Competitor research',
@@ -356,7 +356,7 @@ export function postInboxItems({ status = null, kit = null, jobId = null, closed
       need: left === 1 ? 'Post it yourself, then mark it as posted' : `Post ${left} posts yourself, then mark each as posted`, target: 'kit',
     });
   } else if (posts.length && !left && kit?.settled && !closed) {
-    items.push({ kind: 'post', jobId, text: `Post it yourself: ${posts.length} of ${posts.length} posted`, summary: 'Claude is closing this job.', need: 'Claude is closing this job', target: 'kit', closing: true });
+    items.push({ kind: 'post', jobId, text: `Post it yourself: ${posts.length} of ${posts.length} posted`, summary: 'The Director is closing this job.', need: 'The Director is closing this job', target: 'kit', closing: true });
   }
   return items;
 }
@@ -378,7 +378,7 @@ export function postingLine({ status = null, kit = null, state = null, marked = 
   }
   if (state !== 'PUBLISH_APPROVED' && state !== 'HANDOFF_READY') return null;
   const left = (Array.isArray(kit?.posts) ? kit.posts : []).filter(post => !post?.marked).length;
-  if (kit?.settled || (status?.allSent && !kit)) return 'Claude is closing this job.';
+  if (kit?.settled || (status?.allSent && !kit)) return 'The Director is closing this job.';
   if (left && state === 'PUBLISH_APPROVED') return 'Your posting kit is ready. Post each one, then mark it as posted.';
   if ((Array.isArray(status?.posts) ? status.posts : []).some(post => post?.status === 'needs_check')) return 'Tell Claude whether a post is in Metricool.';
   return null;

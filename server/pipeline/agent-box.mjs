@@ -498,6 +498,11 @@ function personWaits({ inbox, state }) {
   return BLOCKED_STATES.has(state) || state === 'HANDOFF_READY';
 }
 
+/** Does something actually wait on the person? An open inbox item or a held-up job. A delivered job whose only item is the Director closing it does not, so the Director row never says "Waiting on you" under a header that says nothing needs you. */
+function personNeeded({ inbox, state }) {
+  return (inbox.items || []).some(item => !item?.closing) || BLOCKED_STATES.has(state);
+}
+
 // ---------------------------------------------------------------------------
 // Stuck jobs
 // ---------------------------------------------------------------------------
@@ -785,7 +790,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
   // Runs, messages and the gate the person is deciding.
   const stuck = stuckFor({ dir: folder, snapshot, inboxItems, requests, retriedAt: retriedAt ?? null, blockedLine, now: clock, lines: allLines });
   const pendingPaths = new Set((Array.isArray(details?.pendingReviews) ? details.pendingReviews : []).flatMap(review => (Array.isArray(review?.artifacts) ? review.artifacts : [])).map(item => item?.path).filter(path => typeof path === 'string'));
-  const waits = personWaits({ inbox: { items: inboxItems }, state });
+  const waits = personNeeded({ inbox: { items: inboxItems }, state });
   const oldestNeed = inboxItems.map(item => timeOf(item?.at)).filter(time => time !== null).sort((a, b) => a - b)[0];
   const iso = ms => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 

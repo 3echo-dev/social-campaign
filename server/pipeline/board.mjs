@@ -76,7 +76,7 @@ const BADGE_OVERRIDES = Object.freeze({
   UNSUPPORTED: 'Not supported yet', BLOCKED: 'Held up',
   // Labels of a whole sentence are shortened so the badge stays one line.
   INTAKE_PENDING: 'Waiting for details', RESEARCH_RUNNING: 'Researching', CONCEPT_APPROVED: 'Concept picked', STORYBOARD_APPROVED: 'Storyboard approved',
-  AWAITING_PUBLISH_APPROVAL: 'Confirm posting', AWAITING_REPORT_REVIEW: 'Review the report', PROPOSAL_APPROVED: 'Plan approved', ACTIVATION_APPROVED: 'Approved to go live',
+  AWAITING_PUBLISH_APPROVAL: 'Approve the posting plan', AWAITING_REPORT_REVIEW: 'Approve the report', PROPOSAL_APPROVED: 'Plan approved', ACTIVATION_APPROVED: 'Approved to go live',
 });
 export function badgeLabel(state) {
   if (BADGE_OVERRIDES[state]) return BADGE_OVERRIDES[state];
@@ -951,8 +951,11 @@ const PRICE_LIST_STAGES = new Set(['pricing-the-media', 'your-approval-of-the-pr
 
 // The price list (pricing/quote.json) outlives the review that showed it: once the price is approved the pending review is gone, so the
 // pricing step and the price decision carry the same itemised quote the review drew, and the pricing step the time it took.
+// A job with fixed stops has no pricing stage: its "Approve the price" row sits inside a stop (the Storyboard and price stop once approved,
+// the stop the job is on when a later price waits) and carries the list.
+const hasPriceRow = stage => stage?.fixed === true && Array.isArray(stage.gates) && stage.gates.some(entry => entry?.gate === PRICE_GATE);
 export function withPriceList(stages, jobPath) {
-  if (!jobPath || !stages.some(stage => PRICE_LIST_STAGES.has(stage?.id))) return stages;
+  if (!jobPath || !stages.some(stage => PRICE_LIST_STAGES.has(stage?.id) || hasPriceRow(stage))) return stages;
   const job = { dir: jobPath };
   const saved = facts.readQuote(job);
   if (!saved) return stages;
@@ -966,7 +969,7 @@ export function withPriceList(stages, jobPath) {
       const timed = !stage.tasks?.length && times.length && stage.status === 'complete';
       return { ...stage, quote, ...(timed ? { startedAt: times[0], doneAt: times[times.length - 1] } : {}) };
     }
-    if (stage?.id === 'your-approval-of-the-price' && Array.isArray(stage.gates)) return { ...stage, gates: stage.gates.map(entry => (entry?.gate === PRICE_GATE ? { ...entry, quote } : entry)) };
+    if ((stage?.id === 'your-approval-of-the-price' || hasPriceRow(stage)) && Array.isArray(stage.gates)) return { ...stage, gates: stage.gates.map(entry => (entry?.gate === PRICE_GATE ? { ...entry, quote } : entry)) };
     return stage;
   });
 }
@@ -1030,7 +1033,7 @@ const INBOX_LIMIT = 20;
 const INLINE_GATES = new Set([PRICE_GATE, SAMPLE_GATE]);
 const SHORT_BRIEF_FIELDS = new Set(['kind', 'objective', 'distribution', 'platforms', 'audience', 'landingPageUrl']);
 const BRIEF_INLINE_LIMIT = 3;
-const REVIEW_NOT_READY = 'Claude is getting this ready to show you.';
+const REVIEW_NOT_READY = 'The Director is getting this ready to show you.';
 
 const inboxTime = value => {
   const time = Date.parse(value || '');
@@ -2291,9 +2294,9 @@ function checkRetryStep(root, args) {
   const job = validateJobRequest(root, args, RETRY_STEP_FIELDS, 'a retry');
   const stuck = stuckJobs(root, [job]).get(`${job.brand}/${job.jobId}`);
   if (!stuck || stuck.kind !== 'internal') throw new Error('Nothing on our side needs trying again.');
-  if (!stuck.canRetry) throw new Error(stuck.retry === 'trying' ? 'Claude is already trying this again.' : "It didn't work again. The details are saved for our team. There's nothing you need to do.");
+  if (!stuck.canRetry) throw new Error(stuck.retry === 'trying' ? 'The Director is already trying this again.' : "It didn't work again. The details are saved for our team. There's nothing you need to do.");
   const waiting = readRequestRecords(root).find(record => record.operation === 'retry_step' && record.status === 'requested' && record.args?.jobId === job.jobId && record.args?.brand === job.brand && record.requestId !== args.requestId);
-  if (waiting) throw new Error('Claude is already trying this again.');
+  if (waiting) throw new Error('The Director is already trying this again.');
   return { job, stuck };
 }
 
@@ -2933,7 +2936,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
   }
   if(operation==='mark_posted') {
     const result = markPostedOnBoard({root,brand:args.brand,jobId:args.jobId,postId:args.postId,...(typeof args.link==='string' && args.link.trim() ? {link:args.link.trim()} : {}),requestId:args.requestId});
-    return {...result,message:result.allMarked ? (result.closed ? 'Every post is marked as posted, so this job is finished.' : 'Every post is marked as posted. Claude will finish closing the job.') : 'Marked as posted.'};
+    return {...result,message:result.allMarked ? (result.closed ? 'Every post is marked as posted, so this job is finished.' : 'Every post is marked as posted. The Director will finish closing the job.') : 'Marked as posted.'};
   }
   if(operation==='agent_message') {
     const { job, roster } = checkAgentMessage(root,args);
@@ -3084,7 +3087,7 @@ function validateConceptRecipe(root, brand, jobId, recipe) {
     throw new Error('The copy choices sent with this approval are not valid.');
   }
   const missing = missingRecipePosts(root, brand, jobId, recipe);
-  if (missing.length) throw new Error(`Choose the content pillar, angle, hook, call to action and hashtags for ${missing.join(', ')} before approving.`);
+  if (missing.length) throw new Error(`Choose the topic, angle, hook, call to action and hashtags for ${missing.join(', ')} before approving.`);
   for (const [deliverable, picks] of Object.entries(recipe || {})) checkRecipePicks({ root, brand, jobId, deliverable, picks });
 }
 

@@ -4,7 +4,7 @@ Read by `skills/board-sync/SKILL.md`. Each section is applied exactly as written
 
 ### Recipe picks on the board and in chat
 
-A post's recipe (its content pillar, angle, hook, call to action and hashtags) is answered once, on the board or in chat, the same as any other decision.
+A post's recipe (its topic, angle, hook, call to action and hashtags) is answered once, on the board or in chat, the same as any other decision.
 When the concept decision opens and a post has recipe options but no chosen recipe yet, say in the same chat summary that its copy choices can be picked here too, and list each field's options in one line.
 A concept `submit_decision` that also carries `recipe`, one `{pillar, angle, hookFamily, cta, hashtags}` object per post still needing a pick, is applied by `pipeline_decision_apply` in that same call; nothing extra runs afterward.
 A post with no concept step open, or one whose recipe options arrived after its concept was already approved, is answered through its own `choose_recipe` request: apply it immediately with `pipeline_board_request_apply`, the same as any other non-decision request.

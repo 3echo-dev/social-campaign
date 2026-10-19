@@ -14,6 +14,7 @@ const execution = require('./lib-execution-availability.js');
 const brandProfile = require('./lib-brand-profile.js');
 const kinds = require('./lib-kinds.js');
 const deliverable = require('./lib-deliverable.js');
+const stageLib = require('./lib-stages.js');
 
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -513,6 +514,15 @@ if (wf && wf.status === 'active') {
   if (gates.includes('publish')) say('Rule 14: the publish gate stays its own approval, whether or not a schedule is present');
   R.gates = gates;
   say('Rule 14: gates ' + (gates.join(', ') || 'none'));
+  // Rule 15: the stops a person sees. A generated video post, a picture post and a report each show one fixed list from the
+  // first screen to the last (lib-states.js STOP_LISTS), counted once. Any other job keeps the stages its plan makes, and a
+  // route written before this rule has no `stops`, so a job started earlier keeps its rows.
+  if (R.status === 'ROUTED') {
+    const stops = stageLib.isReportWorkflow(wf.workflowId) ? 'report'
+      : wf.workflowId === 'organic-post' && !supplied && needsMedia ? (deliverable.plansVideo(job) ? 'video' : 'pictures')
+        : null;
+    if (stops) { R.stops = stops; say('Rule 15: the stops are the fixed ' + stops + ' list'); }
+  }
 }
 
 // Self-check and write

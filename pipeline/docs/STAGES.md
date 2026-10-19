@@ -6,6 +6,7 @@ The producer calls `set_progress({ key, title, stage, substep, status })` with a
 
 A job shows only the stages its routed plan contains.
 A text-only job has no media stages, a job with no research discipline has no research stage.
+A generated video post, a picture post and a report show one fixed list of stops instead (see Fixed stops below).
 
 ## Job stages
 
@@ -21,6 +22,68 @@ A text-only job has no media stages, a job with no research discipline has no re
 | `writing-the-posts` | Writing the posts | Captions, Ad copy, Checks | Posts, Ad copy, QC checklist, Validate; `DRAFTS_READY`, `VALIDATED` |
 | `your-final-approval` | Your final approval | | The content gate, and the publish, proposal and activation gates on the routes that require them |
 | `ready-to-post` | Ready to post | | Hand-off; `HANDOFF_READY` and everything after it |
+
+## Fixed stops (jobs routed on 0.18)
+
+A generated video post, a picture post and a report show the same list of stops from the first screen to the last.
+The list never grows, shrinks or renumbers while the job runs.
+The route says which list in `stops` (`video`, `pictures` or `report`), set by routing rule 15 in `route-job.js`.
+The lists live in `STOP_LISTS` in `lib-states.js`, and `server/pipeline/runtime.mjs` regroups the plan's stages into them.
+Every stop ends at one decision of the person's.
+A stop is over when its decision is recorded, when the job has moved past it, or when a later stop is over.
+A decision counts only once the job has got to where it can be made, so an older decision does not count after the job goes back.
+The count follows where the job is, so it drops only when the job really goes back, such as a clip being made again.
+A job asked for changes, held up, stuck or stopped is read at the last state it was in on the normal flow (the stage log), and keeps its count.
+The stop it was on stays the current one, and "Making your changes" shows on it.
+Two stops do not end on their decision alone.
+The posting plan stop ends when the post is delivered, so an approved plan is not yet a finished stop.
+The picture stop ends when the pictures are made and checked, not on the sample alone.
+
+A job routed before 0.18 keeps its ten-stage rows.
+So does any other kind of job, such as a text-only post, a post made from supplied files or a paid campaign.
+A post planned on 0.18.0 or 0.18.1 has no `stops` in its route, but its media row names the plugin's clip sign-off, and that is how it is recognised.
+Its list is the kind the post was planned for (read from the first entry of `deliverableChanges` in `job.json` when the kind was changed), so it does not swap when the deliverables change.
+When the person changes a deliverable between video and pictures, `change-deliverable.js` restamps `stops` in the route, so the list changes once, with the change.
+A 0.18.0 or 0.18.1 post is restamped the same way.
+
+### Video post
+
+| Stop id | What the person reads | The decision that ends it | Plan rows and states it covers |
+|---|---|---|---|
+| `getting-your-brief` | Idea | The concept | Everything up to `AWAITING_CONCEPT_APPROVAL` |
+| `storyboard` | Storyboard and price | The storyboard, which approves the price with it | Rows up to `AWAITING_STORYBOARD_APPROVAL` |
+| `making-the-images-and-video` | Test clip | The test clip | The media row, shown as the step "Making the test clip" |
+| `rough-cut` | Rough cut | The rough cut | The same media row, shown as "Making the rough cut", up to `MEDIA_READY` |
+| `post-text` | Post text | The final post | Rows up to `CONTENT_APPROVED` |
+| `posting-plan` | Posting plan | The posting plan | Rows up to `COMPLETE`; over when the post is delivered (`HANDOFF_READY`) |
+
+The test clip and the rough cut always show for a video, even before their gate opens.
+
+### Picture post
+
+| Stop id | What the person reads | The decision that ends it | Plan rows and states it covers |
+|---|---|---|---|
+| `getting-your-brief` | Idea | The concept | Everything up to `AWAITING_CONCEPT_APPROVAL` |
+| `storyboard` | Storyboard and price | The storyboard, which approves the price with it | Rows up to `AWAITING_STORYBOARD_APPROVAL` |
+| `making-the-images-and-video` | Pictures | The sample picture | The media row, up to `MEDIA_READY`; over at `DRAFTS_READY` |
+| `post-text` | Post text | The final post | Rows up to `CONTENT_APPROVED` |
+| `posting-plan` | Posting plan | The posting plan | Rows up to `COMPLETE`; over when the post is delivered (`HANDOFF_READY`) |
+
+### Report
+
+A report keeps the stages its plan makes (`getting-your-brief`, `gathering`, `writing-the-report`, `your-review-of-the-report`, `report-ready`).
+They are marked fixed so the board counts them once.
+
+### Rules the board relies on
+
+- The first stop is always `getting-your-brief`: the person's request and the Director's questions are attached to it.
+- The stop that makes the media is always `making-the-images-and-video`: the job's media credits show while it exists, and a media review the plan does not name is drawn in it.
+- There is no pricing stage.
+  The price is approved with the storyboard and shows as a price row inside the Storyboard and price stop, with its itemised list.
+  A later price (a redo beyond the allowance, a new shot) waits as a row in the stop the job is on.
+- A reference-only price is not a media price, so it never shows as that row.
+- A job asked for changes, held up or cancelled keeps all its stops.
+  Where it was is read from the stage log (the last state before it left the normal flow) and the decisions recorded, not from the state alone.
 
 ## Brand page stages
 

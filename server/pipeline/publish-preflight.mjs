@@ -25,13 +25,13 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const del = require(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-deliverable.js'));
 
-// The order the posting card lists them in: Post Now first, and it is the default route when Metricool can be used.
+// The order the posting card lists them in: Post now first, and it is the default route when Metricool can be used.
 export const PUBLISH_ROUTES = Object.freeze(['metricool_now', 'metricool_schedule', 'metricool_draft', 'self']);
 export const ROUTE_LABELS = Object.freeze({
-  metricool_now: 'Post Now',
-  metricool_schedule: 'Schedule a Post',
-  metricool_draft: 'Save as Draft',
-  self: "I'll Post It Myself",
+  metricool_now: 'Post now',
+  metricool_schedule: 'Schedule a post',
+  metricool_draft: 'Save as a draft',
+  self: "I'll post it myself",
 });
 /** What a job planned before Metricool publishing is told: it ends with the hand-off package, and that is all. */
 export const HANDOFF_ONLY_TEXT = 'This job was planned before posting through Metricool, so it ends with the hand-off package that you download and post yourself.';

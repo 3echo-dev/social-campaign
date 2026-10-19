@@ -56,7 +56,7 @@ const TXT_WORKING_ON_IT = 'Working on it';
 const TXT_WHAT_IT_MADE = 'What it made';
 const TXT_OPEN_THIS_BOARD_INSIDE = 'Open this board inside Claude.';
 const TXT_REQUEST_ID_WAS_REUSED = 'Request ID reused with different data.';
-const TXT_NO_JOBS_YET_DESCRIBE = 'No jobs yet. Describe one below.';
+const TXT_NO_JOBS_YET_DESCRIBE = 'No jobs yet. Describe one above.';
 const TXT_NO_JOBS_YET_FINISH = 'No jobs yet. Finish brand onboarding first.';
 export const NOTE_WAITING_SAVE = 'Waiting for Claude to save this.';
 export const NOTE_SAVED_SOON = 'Saved. The board will update shortly.';
@@ -73,7 +73,6 @@ export const NOTE_CHOOSE_COPY = 'Choose copy for every post first.';
 export const NOTE_TEXT_MISSING = TXT_TYPE_TEXT_OR_CHOOSE;
 export const NOTE_NEEDS_HELP = 'Claude needs your help to carry on';
 export const NOTE_WENT_WRONG = 'Something went wrong';
-export const NOTE_SHARED_COST = 'Shared by all jobs.';
 export const NOTE_FIX_FIELDS = 'Fix the highlighted fields first.';
 export const NOTE_FIX_ANSWERS = 'Fix the highlighted answers first.';
 export const NOTE_DECISION_WAITING = 'A decision is waiting for you.';
@@ -113,57 +112,21 @@ export function hueOf(value) {
   for (const ch of String(value || '')) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
   return hue;
 }
-// The words and colours of each pipeline group's door on the home page. The groups themselves (and which job kind is in which)
-// come from the catalogue; a group this table does not know still gets a door, in the next free palette.
-const DOOR_PALETTES = Object.freeze(['orange', 'teal', 'violet', 'pink', 'green']);
-const DOOR_WORDS = Object.freeze({
-  post: { title: 'Posts and campaigns', promise: 'A brief in, posts out.', palette: 'orange', icon: 'post' },
-  publish_post: { title: 'Post from your files', promise: 'Your files in, posts out.', palette: 'teal', icon: 'upload' },
-  research: { title: 'Research', promise: 'A question in, a report out.', palette: 'violet', icon: 'search' },
-  creative_analysis: { title: 'Analysis', promise: 'Your results in, next steps out.', palette: 'pink', icon: 'chart' },
-  video_breakdown: { title: 'Video breakdown', promise: 'A video in, its shots explained.', palette: 'green', icon: 'film' },
-});
-const DOOR_ICONS = Object.freeze({
-  post: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
-  upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
-  chart: '<path d="M5 20V11"/><path d="M12 20V4"/><path d="M19 20v-6"/>',
-  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
-});
+// The title of each pipeline group's own page, the one a job's back link goes to. The groups themselves (and which job kind is
+// in which) come from the catalogue; a group this table does not know is titled from its id.
+const GROUP_TITLES = Object.freeze({ post: 'Posts and campaigns', publish_post: 'Post from your files', research: 'Research', creative_analysis: 'Analysis', video_breakdown: 'Video breakdown' });
 export function pipelineGroups() {
   const groups = [];
   for (const words of Object.values(PIPELINE_KINDS)) if (words.group && !groups.includes(words.group)) groups.push(words.group);
   return groups;
 }
 export const groupOfKind = kind => PIPELINE_KINDS[kind]?.group || 'post';
-export function doorCounts(jobs, working, waiting = 0) {
-  if (!jobs) return 'No jobs yet';
-  return [`${jobs} ${jobs === 1 ? 'job' : 'jobs'}`, working ? `${working} working` : '', waiting ? `${waiting} waiting on you` : ''].filter(Boolean).join(', ');
-}
-// Finished, cancelled and blocked jobs are in neither count on a door.
-const DOOR_SETTLED_STATES = new Set(['COMPLETE', 'CANCELLED', 'BLOCKED', 'ESCALATED']);
-const doorOpen = project => !DOOR_SETTLED_STATES.has(String(project?.state || '').toUpperCase());
 // Waiting on the person: a decision is open, or the job has something in the Inbox (a question, a brief, a stuck note).
 const jobWaiting = (project, inboxJobs) => Boolean(project?.waitingOn) || inboxJobs.has(project?.jobId);
-const jobWorking = project => project?.usage?.running === true || /\bworking\b/i.test(String(project?.agentLine || ''));
-// One door per pipeline group: its words, its palette, the jobs in it, how many Claude is working on and how many wait on the person.
-export function pipelineDoors(projects = [], inboxItems = []) {
+// One entry per pipeline group: its title and the jobs in it.
+export function pipelineGroupPages(projects = []) {
   const list = Array.isArray(projects) ? projects : [];
-  const inboxJobs = new Set((Array.isArray(inboxItems) ? inboxItems : []).filter(item => item && item.jobId && item.kind !== 'onboarding').map(item => item.jobId));
-  return pipelineGroups().map((group, index) => {
-    const jobs = list.filter(project => groupOfKind(project?.kind) === group);
-    const open = jobs.filter(doorOpen);
-    const waiting = open.filter(project => jobWaiting(project, inboxJobs)).length;
-    const working = open.filter(project => !jobWaiting(project, inboxJobs) && jobWorking(project)).length;
-    const words = DOOR_WORDS[group] || { title: humanize(group), promise: 'Jobs of this kind.', palette: DOOR_PALETTES[index % DOOR_PALETTES.length], icon: 'post' };
-    return { group, ...words, jobs, working, waiting, counts: doorCounts(jobs.length, working, waiting) };
-  });
-}
-export function doorHtml(door, { hero = false } = {}) {
-  const arrow = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
-  const inner = `<span class="door-ic" aria-hidden="true"><svg viewBox="0 0 24 24">${DOOR_ICONS[door.icon] || DOOR_ICONS.post}</svg></span><span class="door-b"><span class="door-t"><em>${esc(door.title)}.</em> ${esc(door.promise)}</span><span class="door-s">${esc(door.counts)}</span></span>`;
-  if (hero) return `<div class="door door-static p-${esc(door.palette)}">${inner}<button type="button" class="door-btn" data-action="compose">Start a job ${arrow}</button></div>`;
-  return `<button type="button" class="door p-${esc(door.palette)}" data-nav="#/pipeline/${encodeURIComponent(door.group)}">${inner}<span class="door-btn">Open ${arrow}</span></button>`;
+  return pipelineGroups().map(group => ({ group, title: GROUP_TITLES[group] || humanize(group), jobs: list.filter(project => groupOfKind(project?.kind) === group) }));
 }
 // The job page's progress bar: one segment per step, coloured by the step's own status, and "x of y steps done".
 export function jobProgress(project) {
@@ -198,7 +161,6 @@ export function parseLinks(text) {
 }
 const intakeLabel = value => ({kind:'Type of content',objective:'Campaign goal',distribution:'Organic or paid distribution',platforms:'Social platforms',deliverables:TXT_FORMATS_AND_QUANTITIES,'deliverables (at least one)':TXT_FORMATS_AND_QUANTITIES,audience:'Target audience',evidence:'Available references and supporting material'})[value] || value;
 const time = value => value ? new Date(value).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' }) : 'Not synced yet';
-const number = value => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : 'Not reported';
 // Wall-clock hh:mm:ss, zero-padded. Anything that is not a finite number of
 // zero or more milliseconds is unmeasured, never shown as 00:00:00.
 export function clock(ms) {
@@ -245,9 +207,8 @@ export function relativeTime(iso, now = Date.now()) {
 // written, is the actual freshness signal for this board.
 export function boardSyncDetail(updatedAt, now = Date.now()) {
   const relative = relativeTime(updatedAt, now);
-  return relative ? `Updated ${relative}` : 'Waiting for Claude to sync';
+  return relative ? `Updated ${relative}` : 'Waiting for your studio';
 }
-const metric = (label, value, note) => `<div class="stat"><span class="eyebrow">${esc(label)}</span><b>${esc(value)}</b><small>${esc(note)}</small></div>`;
 // The board's cost figure is media generation spend, never a Claude token
 // cost estimate. "Not reported" when nothing was recorded; the approved
 // ceiling is shown only when it is itself a known number.
@@ -265,24 +226,6 @@ export function mediaGenerationText(generation) {
   const voice = creditsInUse(generation?.elevenLabsCredits) ? creditFraction(generation.elevenLabsCredits) : null;
   if (!studio && !voice) return 'Not reported';
   return [studio ? `${studio} Studio credits` : '', voice ? `${voice} voice credits` : ''].filter(Boolean).join(' and ');
-}
-// The job page's stats row: Claude token usage, wall-clock time, and media
-// generation spend. Built from project.usage so it renders the same whether
-// called from the job page or exercised directly in a test.
-export function jobStats(project, now = Date.now()) {
-  const usage = project?.usage || {};
-  const timeNote = usage.running ? 'Start to now' : 'Start to end';
-  const elapsedMs = liveMs(usage.elapsedMs, usage.openSince, now);
-  const studio = creditFraction(usage.generation?.threeEchoCredits);
-  const voice = creditsInUse(usage.generation?.elevenLabsCredits) ? creditFraction(usage.generation.elevenLabsCredits) : null;
-  const note = voice ? `Studio credits. Voice: ${voice} credits.` : 'Studio credits';
-  const shared = `${metric('Tokens', number(usage.tokens), 'By Claude')}${metric('Time', clock(elapsedMs), timeNote)}`;
-  if (isReportJob(project)) return `<div class="stats two">${shared}</div>`;
-  // A job whose own stages never make media has no media generation to report, unless credits were spent anyway. Until the stages are loaded there is nothing to go on, so the card stays.
-  const listed = Array.isArray(project?.stages) ? project.stages.filter(stage => stage && typeof stage === 'object') : [];
-  const spent = creditsInUse(usage.generation?.threeEchoCredits) || creditsInUse(usage.generation?.elevenLabsCredits);
-  if (listed.length && !spent && !listed.some(stage => stage.id === 'making-the-images-and-video')) return `<div class="stats two">${shared}</div>`;
-  return `<div class="stats">${shared}${metric('Media generation', studio ? `${studio} credits` : 'Not reported', note)}</div>`;
 }
 export function safePreviewUrl(value) {
   if (typeof value !== 'string') return null;
@@ -336,6 +279,8 @@ export const CHANNEL_NAMES = ['website', 'facebook', 'instagram', 'tiktok'];
 export const CHANNEL_LABELS = Object.freeze({ website: 'Website', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok' });
 export const CHANNEL_PLACEHOLDERS = Object.freeze({ website: 'acmegoods.com', facebook: 'facebook.com/acmegoods', instagram: '@acmegoods', tiktok: '@acmegoods' });
 const CHANNEL_ARTICLES = Object.freeze({ website: 'a', facebook: 'a', instagram: 'an', tiktok: 'a' });
+// The tickbox that says a channel does not exist: "No TikTok", "No website".
+export const CHANNEL_NONE_LABELS = Object.freeze({ website: 'No website', facebook: 'No Facebook', instagram: 'No Instagram', tiktok: 'No TikTok' });
 
 // The brand's declared context: shown as normal fields on the onboarding
 // card, always visible, directly below the four channels. Each one is
@@ -353,13 +298,41 @@ export const CONTEXT_FIELDS = Object.freeze([
   { name: 'audience', label: 'Audience', short: 'audience', placeholder: 'Who are you speaking to?', maxlength: CONTEXT_LIMITS.text.audience },
   { name: 'market', label: 'Positioning', short: 'positioning', placeholder: 'What you offer', maxlength: CONTEXT_LIMITS.text.market },
   { name: 'voice', label: 'Brand voice', short: 'brand voice', placeholder: 'How should your brand sound?', maxlength: CONTEXT_LIMITS.text.voice },
-  { name: 'contentPillars', label: 'Content pillars (one per line)', short: 'content pillars', placeholder: 'One topic per line' },
+  { name: 'contentPillars', label: 'Content topics (one per line)', short: 'content topics', placeholder: 'One topic per line' },
   { name: 'competitors', label: 'Top 3 competitors (one per line)', short: 'top 3 competitors', placeholder: 'Names or URLs' },
 ]);
 export const CONTEXT_FIELD_NAMES = CONTEXT_FIELDS.map(field => field.name);
-export const TARGET_MARKET_FIELD = Object.freeze({ name: 'targetMarket', label: 'Target market', short: 'target market', placeholder: 'Singapore', maxlength: 60 });
+export const TARGET_MARKET_FIELD = Object.freeze({ name: 'targetMarket', label: 'Target market', short: 'target market', placeholder: 'A country, or Global', maxlength: 60 });
 const TARGET_MARKET_TOO_LONG = 'Keep it under 60 characters.';
 const normalizeTargetMarket = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+// The currency a brand's target market spends in, for the budget box: one currency when the market names a country (or the euro area), nothing when
+// it is blank, "Global" or several countries that spend in different currencies. A blank market stays unknown; the box asks for a code instead.
+const MARKET_CURRENCIES = Object.freeze([
+  ['SGD', ['singapore']], ['MYR', ['malaysia']], ['IDR', ['indonesia']], ['PHP', ['philippines']], ['THB', ['thailand']], ['VND', ['vietnam']],
+  ['USD', ['united states', 'usa', 'u.s.', 'us']], ['GBP', ['united kingdom', 'uk', 'britain', 'england', 'scotland', 'wales']], ['AUD', ['australia']],
+  ['NZD', ['new zealand']], ['CAD', ['canada']], ['JPY', ['japan']], ['KRW', ['south korea', 'korea']], ['CNY', ['china', 'mainland china']],
+  ['HKD', ['hong kong']], ['TWD', ['taiwan']], ['INR', ['india']], ['AED', ['united arab emirates', 'uae', 'dubai']], ['SAR', ['saudi arabia']],
+  ['EUR', ['germany', 'france', 'italy', 'spain', 'netherlands', 'ireland', 'portugal', 'belgium', 'austria', 'finland', 'greece', 'eurozone', 'europe']],
+  ['CHF', ['switzerland']], ['BRL', ['brazil']], ['MXN', ['mexico']], ['ZAR', ['south africa']], ['TRY', ['turkey']],
+]);
+export function marketCurrency(market) {
+  const text = ` ${normalizeTargetMarket(market).toLowerCase()} `;
+  if (!text.trim()) return '';
+  const found = new Set();
+  for (const [code, names] of MARKET_CURRENCIES) if (names.some(name => new RegExp(`[^a-z]${name.replace(/\./g, '\\.')}[^a-z]`).test(text))) found.add(code);
+  return found.size === 1 ? [...found][0] : '';
+}
+// Each brand's target market, remembered at every draw so the job's budget box can follow it without the form knowing about brands.
+const brandMarkets = new Map();
+export function rememberBrandMarkets(brands = []) {
+  brandMarkets.clear();
+  for (const brand of Array.isArray(brands) ? brands : []) {
+    const market = brand?.profile?.targetMarket ?? brand?.details?.targetMarket;
+    if (brand?.slug && typeof market === 'string') brandMarkets.set(brand.slug, market);
+  }
+}
+const projectCurrency = project => marketCurrency(brandMarkets.get(project?.brand));
 
 // Normalize what a person actually types: a bare domain becomes an https URL,
 // and a bare @handle becomes the channel's official profile URL. A full URL
@@ -476,7 +449,8 @@ export function reconcileOnboardDraft(draft, brand) {
   const values = { ...(draft.values || {}) };
   const edited = draft.edited || {};
   const unlocked = {};
-  const ownedContext = name => Boolean(edited[name]) && (Boolean(String(values[name] ?? '').trim()) || Boolean(draft.unlocked?.[name]));
+  // A field the person edited is theirs; one they emptied that had a saved value stays emptied (a deliberate clear), not refilled from research.
+  const ownedContext = name => Boolean(edited[name]) && (Boolean(String(values[name] ?? '').trim()) || Boolean(draft.unlocked?.[name]) || Boolean(String(draft.prefilled?.[name] ?? '').trim()));
   for (const name of CONTEXT_FIELD_NAMES) {
     if (ownedContext(name) || draft.unlocked?.[name]) unlocked[name] = true;
     if (!ownedContext(name)) values[name] = saved[name];
@@ -484,6 +458,10 @@ export function reconcileOnboardDraft(draft, brand) {
   for (const name of DRAFT_TEXT_FIELDS) {
     if (!edited[name]) values[name] = saved[name];
   }
+  // The name box keeps what the person typed, but a box still holding the name it was seeded from follows the brand when it is renamed
+  // elsewhere (in chat): otherwise the next Save would send the old name back. `seededName` is the saved name the box last matched.
+  if (edited.name && values.name === draft.seededName) values.name = saved.name;
+  if (values.name === saved.name) draft.seededName = saved.name;
   for (const name of CHANNEL_NAMES) {
     if (edited[name] || edited[name + '_unavailable']) continue;
     values[name] = saved[name];
@@ -513,8 +491,8 @@ export function adoptBrand(draft, brands = []) {
 export function channelFieldError(name, rawValue, unavailable) {
   if (unavailable) return null;
   const normalized = normalizeChannelInput(name, rawValue);
-  if (!normalized) return `Add ${CHANNEL_ARTICLES[name]} ${CHANNEL_LABELS[name]} URL, or check "We don't have one".`;
-  if (!/^https?:\/\//i.test(normalized)) return `Enter a full ${CHANNEL_LABELS[name]} URL, or check "We don't have one".`;
+  if (!normalized) return `Add ${CHANNEL_ARTICLES[name]} ${CHANNEL_LABELS[name]} URL, or check "${CHANNEL_NONE_LABELS[name]}".`;
+  if (!/^https?:\/\//i.test(normalized)) return `Enter a full ${CHANNEL_LABELS[name]} URL, or check "${CHANNEL_NONE_LABELS[name]}".`;
   return null;
 }
 
@@ -540,9 +518,9 @@ export function validateProfile(values = {}, prefilled = {}, unlocked = {}, { pa
     if (limit && length > limit) errors[field.name] = `Shorten the ${field.short} to ${limit} characters or fewer (now ${length}).`;
   }
   const pillars = competitorLines(values.contentPillars);
-  if (pillars.length > CONTEXT_LIMITS.pillarsMax) errors.contentPillars = `List up to ${CONTEXT_LIMITS.pillarsMax} content pillars, one per line.`;
-  else if (pillars.some(item => item.length > CONTEXT_LIMITS.pillarItemMax)) errors.contentPillars = `Keep each content pillar to ${CONTEXT_LIMITS.pillarItemMax} characters or fewer.`;
-  if (!pillars.length && unlocked.contentPillars && String(prefilled.contentPillars ?? '').trim()) errors.contentPillars = 'Add at least one content pillar.';
+  if (pillars.length > CONTEXT_LIMITS.pillarsMax) errors.contentPillars = `List up to ${CONTEXT_LIMITS.pillarsMax} topics, one per line.`;
+  else if (pillars.some(item => item.length > CONTEXT_LIMITS.pillarItemMax)) errors.contentPillars = `Keep each topic to ${CONTEXT_LIMITS.pillarItemMax} characters or fewer.`;
+  if (!pillars.length && unlocked.contentPillars && String(prefilled.contentPillars ?? '').trim()) errors.contentPillars = 'Add at least one topic.';
   const competitors = competitorLines(values.competitors);
   if (competitors.length > CONTEXT_LIMITS.competitorsMax) errors.competitors = 'List up to 3 competitors.';
   else if (competitors.some(item => item.length > CONTEXT_LIMITS.competitorItemMax)) errors.competitors = `Keep each competitor to ${CONTEXT_LIMITS.competitorItemMax} characters or fewer.`;
@@ -590,7 +568,7 @@ function channelField(name, values = {}, fieldErrors = null) {
   const unavailable = values[name + '_unavailable'] || /^not available$/i.test(value);
   const fieldError = unavailable ? null : fieldErrors?.[name];
   const errorId = `channel-${name}-error`;
-  return `<div class="channel-field"><label for="channel-${name}">${esc(CHANNEL_LABELS[name])}</label><input id="channel-${name}" name="${name}" type="text" maxlength="2000" inputmode="url" placeholder="${esc(CHANNEL_PLACEHOLDERS[name])}" value="${esc(unavailable ? '' : value)}" ${unavailable ? 'disabled' : ''} aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}<label class="toggle"><input type="checkbox" name="${name}_unavailable" ${unavailable ? 'checked' : ''}> <span>We don't have one</span></label></div>`;
+  return `<div class="channel-field"><label for="channel-${name}">${esc(CHANNEL_LABELS[name])}</label><input id="channel-${name}" name="${name}" type="text" maxlength="2000" inputmode="url" placeholder="${esc(CHANNEL_PLACEHOLDERS[name])}" value="${esc(unavailable ? '' : value)}" ${unavailable ? 'disabled' : ''} aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}<label class="toggle"><input type="checkbox" name="${name}_unavailable" ${unavailable ? 'checked' : ''}> <span>${esc(CHANNEL_NONE_LABELS[name])}</span></label></div>`;
 }
 
 export function researchSuggested(brand, name, values = {}, prefilled = {}) {
@@ -607,27 +585,19 @@ export function targetMarketField(values = {}, fieldErrors = null) {
   return `<div class="context-field context-field-wide"><div class="context-field-head"><label for="context-${field.name}">${esc(field.label)}</label></div><input id="context-${field.name}" name="${field.name}" type="text" maxlength="${field.maxlength}" placeholder="${esc(field.placeholder)}" value="${esc(values[field.name] ?? '')}" autocomplete="off" aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}</div>`;
 }
 
-// One declared context field: a normal textarea, prefilled and locked
-// (readonly) when the saved profile already has a value for it, with a
-// pencil "Edit" button beside its label to unlock it. A field with no
-// saved value renders as a normal, already-editable textarea with no
-// button. `prefilled` is the draft's original snapshot (what "has a saved
-// value" is judged against, not the live in-progress value), and
-// `unlocked` tracks which fields the person has already clicked Edit on.
+// One declared context field: a textarea about four lines tall that grows with what is typed, always editable (no pencil, nothing locked).
+// A value that research filled in keeps the "Suggested, please check" pill until the person changes it. The counter is in the page but
+// hidden until the text is within 20 percent of the limit; typing shows and hides it (see the input handler). `prefilled` and `unlocked`
+// stay in the signature for old callers and no longer change what is drawn.
+export const contextCountShown = (length, limit) => Boolean(limit) && length >= limit * 0.8;
 export function contextField(field, values = {}, prefilled = {}, unlocked = {}, fieldErrors = null, suggested = false) {
   const value = values[field.name] ?? '';
-  const hasSaved = Boolean(String(prefilled[field.name] || '').trim());
-  const isUnlocked = Boolean(unlocked[field.name]);
-  const readOnly = hasSaved && !isUnlocked;
-  const editButton = readOnly
-    ? `<button type="button" class="field-edit" data-unlock="${field.name}" aria-label="Edit ${esc(field.short)}"><svg aria-hidden="true" viewBox="0 0 16 16" width="13" height="13"><path d="M11.3 1.3a1 1 0 0 1 1.4 0l2 2a1 1 0 0 1 0 1.4l-8 8-3.6.9.9-3.6 8-8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Edit</span></button>`
-    : '';
   const fieldError = fieldErrors?.[field.name];
   const errorId = `context-${field.name}-error`;
   const limit = CONTEXT_LIMITS.text[field.name];
   const length = contextTextLength(value);
-  const count = limit ? `<p class="field-count${length > limit ? ' over' : ''}" id="context-${field.name}-count">${length} / ${limit}</p>` : '';
-  return `<div class="context-field"><div class="context-field-head"><label for="context-${field.name}">${esc(field.label)}</label>${suggested ? '<span class="pill">Suggested, please check</span>' : ''}${editButton}</div><textarea id="context-${field.name}" name="${field.name}" class="context-textarea" ${field.maxlength ? `maxlength="${field.maxlength}"` : ''} placeholder="${esc(field.placeholder)}" ${readOnly ? 'readonly' : ''} aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${esc(value)}</textarea>${count}${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}</div>`;
+  const count = limit ? `<p class="field-count${length > limit ? ' over' : ''}" id="context-${field.name}-count"${contextCountShown(length, limit) ? '' : ' hidden'}>${length} / ${limit}</p>` : '';
+  return `<div class="context-field"><div class="context-field-head"><label for="context-${field.name}">${esc(field.label)}</label>${suggested ? '<span class="pill">Suggested, please check</span>' : ''}</div><textarea id="context-${field.name}" name="${field.name}" class="context-textarea" rows="4" ${field.maxlength ? `maxlength="${field.maxlength}"` : ''} placeholder="${esc(field.placeholder)}" aria-invalid="${fieldError ? 'true' : 'false'}" ${fieldError ? `aria-describedby="${errorId}"` : ''}>${esc(value)}</textarea>${count}${fieldError ? `<p class="field-error" id="${errorId}" role="alert">${esc(fieldError)}</p>` : ''}</div>`;
 }
 
 // @module kit
@@ -1615,31 +1585,38 @@ export function brandReady(brand) {
   return brand?.onboardingStatus === 'complete';
 }
 
-// The brand's name on its own page: the name with a pencil that turns it into an input (Enter saves, Esc cancels, and Save / Cancel buttons for a
-// touch screen). Renaming changes the display name only; the brand's folder keeps its original name. `state.rename` is { open, value, busy, error }.
-const RENAME_PENCIL = '<svg aria-hidden="true" viewBox="0 0 16 16" width="13" height="13"><path d="M11.3 1.3a1 1 0 0 1 1.4 0l2 2a1 1 0 0 1 0 1.4l-8 8-3.6.9.9-3.6 8-8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-export const BRAND_RENAME_HINT = "Enter saves, Esc cancels.";
-export function brandNameBlock(brand, state = {}) {
+// The brand's name is the first field on its page and an input like every other: no label with a Rename button. For a brand that exists, a
+// changed name is sent with the next Save (it changes the display name only; the brand's folder keeps its original name). `state.rename` is
+// { busy, error } for that request and `state.renamedNote` the line shown once it was applied.
+export function brandNameBlock(brand, state = {}, { value = '', readOnly = false } = {}) {
   const rename = state.rename && typeof state.rename === 'object' ? state.rename : {};
-  const name = brand?.name || '';
-  if (!rename.open) {
-    const done = state.renamedNote ? `<p class="muted brand-name-note" role="status">${esc(state.renamedNote)}</p>` : '';
-    return `<div class="field-wide brand-name"><span class="brand-name-label" id="brand-name-label">Brand name</span><div class="brand-name-row"><strong class="brand-name-value" aria-labelledby="brand-name-label">${esc(name)}</strong><button type="button" class="field-edit" data-brand-rename="open" aria-label="${esc(`Rename ${name}`)}">${RENAME_PENCIL}<span>Rename</span></button></div>${done}</div>`;
-  }
-  const busy = Boolean(rename.busy);
-  return `<div class="field-wide brand-name is-editing"><label class="brand-name-label" for="brand-rename-input">Brand name</label><div class="brand-name-row"><input id="brand-rename-input" class="brand-name-input" type="text" data-brand-rename-input maxlength="${BRAND_NAME_LIMIT}" value="${esc(rename.value ?? name)}" autocomplete="organization" aria-invalid="${rename.error ? 'true' : 'false'}" aria-describedby="brand-rename-hint" ${busy ? 'disabled' : ''}><span class="brand-name-actions"><button type="button" class="quiet" data-brand-rename="save" ${busy ? 'disabled' : ''}>${busy ? 'Renaming...' : 'Save'}</button><button type="button" class="quiet" data-brand-rename="cancel" ${busy ? 'disabled' : ''}>Cancel</button></span></div><p class="muted brand-name-note" id="brand-rename-hint">${esc(BRAND_RENAME_HINT)}</p>${rename.error ? `<p class="field-error" role="alert">${esc(rename.error)}</p>` : ''}</div>`;
+  const error = state.fieldErrors?.name || rename.error || '';
+  const note = !error && (rename.busy || state.renamedNote) ? `<p class="muted brand-name-note" role="status">${esc(rename.busy ? 'Saving the new name...' : state.renamedNote)}</p>` : '';
+  return `<label class="field-wide brand-name">Brand name<input name="name"${brand ? ' data-brand-name' : ''} value="${esc(value)}" maxlength="${BRAND_NAME_LIMIT}" placeholder="e.g. Acme Goods" autocomplete="organization" required ${readOnly ? 'readonly' : ''} aria-invalid="${error ? 'true' : 'false'}" ${error ? 'aria-describedby="field-name-error"' : ''}>${error ? `<p class="field-error" id="field-name-error" role="alert">${esc(error)}</p>` : ''}${note}</label>`;
+}
+
+// The thin segmented bar at the top of the brand page: the current step is named above it ("Details", "2 of 3"), a finished step is green, the
+// step waiting on the person gold, the one running blue and one that stopped red. Three steps: the name, the details, the research.
+export const ONBOARD_STEPS = Object.freeze(['Name', 'Details', 'Research']);
+export function onboardProgress(step, phase) {
+  const at = step === 'create' ? 1 : step === 'details' ? 2 : 3;
+  const running = step === 'profile' && phase === 'running';
+  const failed = step === 'profile' && phase === 'failed';
+  const done = step === 'profile' && !running && !failed;
+  const label = running ? 'Researching' : failed ? 'Research stopped' : done ? 'Research done' : ONBOARD_STEPS[at - 1];
+  const kind = index => (done || index < at - 1 ? 'd' : index !== at - 1 ? '' : running ? 'r' : failed ? 'f' : 'w');
+  return `<div class="prog" role="group" aria-label="Setup progress"><div class="prog-top"><b>${esc(label)}</b><span>${at} of ${ONBOARD_STEPS.length}</span></div><div class="prog-bar" aria-hidden="true">${ONBOARD_STEPS.map((name, index) => `<i${kind(index) ? ` class="${kind(index)}"` : ''} title="${esc(name)}"></i>`).join('')}</div></div>`;
 }
 
 // The brand page, in three steps. Before the brand exists the card asks only for its name ("Create brand"). Once it exists the same card is
-// the brand's own page: the name (with a pencil to rename it), the links, the details, the logo, colours and fonts, the folders and the photos,
-// with "Save details" (any number of times, nothing starts) and "Start research" (on once there is a website or one social account). A brand
-// that already did research keeps the old "Save and continue" page. `state` is the inline draft this form renders for; passing it explicitly,
+// the brand's own page: the name (an input, first), the links, the details, the logo, colours and fonts, the folders and the photos, with
+// "Save details" (any number of times, nothing starts) and "Start research" (on once there is a website or one social account). A brand
+// that already did research has one finish action, "Save and continue". `state` is the inline draft this form renders for; passing it explicitly,
 // instead of reading a module-level variable, keeps this function usable from outside the browser runtime closure. `state.action` says which
 // button the request in flight came from: 'create', 'details', 'start' or 'finish'.
 export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool = {}) {
   const existing = Boolean(brand);
   const prefilled = state.prefilled || contextPrefill(existing ? profileFormValues(brand) : {});
-  const unlocked = state.unlocked || {};
   const values = { ...(existing ? profileFormValues(brand) : {}), ...(state.values || {}) };
   if (existing && !values.name) values.name = brand.name;
   const fieldErrors = state.fieldErrors || null;
@@ -1652,7 +1629,7 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
     : pending
       ? notifyClaudeNotice(state, signal)
       : phase === 'running'
-        ? '<div class="notice" role="status"><span>Claude is researching this brand.</span></div>'
+        ? '<div class="notice" role="status"><span>The Director is researching this brand.</span></div>'
         : phase === 'failed'
           ? '<div class="notice" role="status"><span>Research did not finish. Fill in what you know and save.</span></div>'
           : step === 'create'
@@ -1660,15 +1637,12 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
             : step === 'details'
               ? '<p class="muted">Add what you know, then save or start research.</p>'
               : '';
-  const heading = step === 'create' ? 'New brand' : step === 'details' ? 'Brand details' : 'Brand profile';
-  const tag = step === 'create' ? 'Step 1 of 3' : step === 'details' ? 'Step 2 of 3' : phase === 'running' ? 'Step 3 of 3' : 'Continue';
+  const heading = existing ? `Set up ${esc(brand.name)}` : 'Set up a new brand';
   // The brand was just created and the board has not read it back yet: the form waits instead of offering to create it again.
   const reading = !existing && Boolean(state.brand);
   const inFlight = Boolean(state.busy || pending || reading);
-  const nameBlock = existing
-    ? `<input type="hidden" name="name" value="${esc(brand.name)}">${brandNameBlock(brand, state)}`
-    : `<label class="field-wide">Brand name<input name="name" value="${esc(values.name || '')}" maxlength="${BRAND_NAME_LIMIT}" placeholder="e.g. Acme Goods" autocomplete="organization" required ${inFlight ? 'readonly' : ''} aria-invalid="${fieldErrors?.name ? 'true' : 'false'}" ${fieldErrors?.name ? 'aria-describedby="field-name-error"' : ''}>${fieldErrors?.name ? `<p class="field-error" id="field-name-error" role="alert">${esc(fieldErrors.name)}</p>` : ''}</label>`;
-  const head = `<div class="start-head"><div><h2>${heading}</h2></div><span class="stage-tag">${tag}</span></div>`;
+  const nameBlock = brandNameBlock(existing ? brand : null, state, { value: values.name || '', readOnly: inFlight || (existing && phase === 'running') });
+  const head = `<div class="start-head"><h2>${heading}</h2>${onboardProgress(step, phase)}</div>`;
   const problem = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const hidden = `<input type="hidden" name="brand" value="${esc(brand?.slug || '')}">`;
   const open = `<section class="start-card onboarding${step === 'create' ? ' is-create' : ''}">${head}${note}<form id="inline-form" class="start-form" data-onboard-step="${step}" novalidate>${hidden}<div class="form-grid">${nameBlock}</div>`;
@@ -1678,10 +1652,8 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   }
   const details = step === 'details';
   const kit = kitSection(brand, state.kit || {}, state.kitErrors || null, false);
-  // What was typed on the details page is the person's own and stays editable (nothing is locked behind a pencil); a brand that already has a
-  // saved profile keeps the locked fields it always had.
-  const editable = details && !brand.profile;
-  const fields = `<div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, editable ? {} : prefilled, unlocked, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${problem}`;
+  // Every field is editable; a value research filled in carries the "Suggested, please check" pill until it is changed.
+  const fields = `<div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, {}, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${problem}`;
   if (details) {
     const doing = state.action;
     const saveLabel = state.busy && doing === 'details' ? 'Saving...' : state.submitted && doing === 'details' ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation && doing === 'details' ? TXT_NEEDS_CLAUDE_ATTENTION : 'Save details';
@@ -1713,6 +1685,7 @@ const COMPOSER_TITLE_LIMIT = 80;
 const COMPOSER_TEXT_LIMIT = 6000;
 const COMPOSER_QUESTION = 'What do you want to get done?';
 const COMPOSER_PLACEHOLDER = 'For example: an Instagram Reel for our new serum';
+const COMPOSER_HINT = 'You can ask for posts, research, an analysis or a video breakdown.';
 const COMPOSER_BRAND_HINT = 'Posts need one.';
 const COMPOSER_FILES_LINE = 'Add files under References.';
 
@@ -1763,7 +1736,7 @@ export function composerForm(state = {}, { brands = [], variant = 'card' } = {})
   const ready = brands.filter(brandReady);
   // With exactly one ready brand it is chosen for the person, until they say otherwise (an empty choice is theirs).
   const brandValue = ready.some(brand => brand.slug === values.brand) ? values.brand : values.brand === undefined && ready.length === 1 ? ready[0].slug : '';
-  const text = newJobField(`${id}-text`, COMPOSER_QUESTION, `<textarea id="${id}-text" name="text" rows="${inbox ? 4 : 5}" maxlength="${COMPOSER_TEXT_LIMIT}" placeholder="${esc(COMPOSER_PLACEHOLDER)}" ${newJobAria(`${id}-text`, { error: errors.text })}>${esc(values.text || '')}</textarea>`, { error: errors.text, wide: true, hidden: true });
+  const text = newJobField(`${id}-text`, COMPOSER_QUESTION, `<textarea id="${id}-text" name="text" rows="${inbox ? 4 : 5}" maxlength="${COMPOSER_TEXT_LIMIT}" placeholder="${esc(COMPOSER_PLACEHOLDER)}" ${newJobAria(`${id}-text`, { error: errors.text, hint: COMPOSER_HINT })}>${esc(values.text || '')}</textarea>`, { error: errors.text, hint: COMPOSER_HINT, wide: true, hidden: true });
   const brand = ready.length
     ? newJobField(`${id}-brand`, 'Brand', `<select id="${id}-brand" name="brand" ${newJobAria(`${id}-brand`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })}><option value="" ${brandValue ? '' : 'selected'}>No brand chosen</option>${ready.map(item => `<option value="${esc(item.slug)}" ${brandValue === item.slug ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select>`, { error: errors.brand, hint: COMPOSER_BRAND_HINT })
     : '<div class="new-field"><span class="new-field-label">Brand</span><p class="field-note">Needs a brand. <button type="button" class="sb-ask" data-action="brand">Onboard a brand</button></p></div>';
@@ -1851,7 +1824,7 @@ export function brandDriftNotice(project) {
 export function brandPillarsPill(brand) {
   const count = Array.isArray(brand?.profile?.contentPillars) ? brand.profile.contentPillars.filter(item => String(item || '').trim()).length : 0;
   if (!count) return '';
-  return brand.pillarsConfirmed ? '<span class="pill ready">Pillars confirmed</span>' : '<span class="pill needed">Pillars not confirmed</span>';
+  return brand.pillarsConfirmed ? '<span class="pill ready">Topics confirmed</span>' : '<span class="pill needed">Topics not confirmed</span>';
 }
 
 export function brandVoiceLine(brand) {
@@ -1881,7 +1854,7 @@ export function brandChip(brand, metricool = {}) {
   const ready = brandReady(brand);
   const researching = brandResearchPhase(brand) === 'running';
   const state = ready ? 'ready' : 'onboarding';
-  const note = researching ? '<p class="muted brand-chip-voice">Claude is researching this brand.</p>' : brandVoiceLine(brand);
+  const note = researching ? '<p class="muted brand-chip-voice">The Director is researching this brand.</p>' : brandVoiceLine(brand);
   const action = researching
     ? '<button class="quiet" type="button" disabled>Researching...</button>'
     : `<button class="quiet" data-onboard="${esc(brand.slug)}">${ready ? 'Update' : 'Continue'}</button>`;
@@ -2093,32 +2066,6 @@ export function brandLibrarySection(brand, { open = false, removing = new Set(),
   return `<details class="panel doc-panel brand-library" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="library-head"><span class="doc-summary-title">Brand library</span><span class="library-counts">${esc(`${brand.name || brand.slug} · ${libraryCountsLine(library)}`)}</span></span></summary><div class="doc-body">${body}${empty}</div></details>`;
 }
 
-// Where this brand's posts go: the Metricool brand it posts through, with one chip per
-// platform saying whether Metricool's account matches the channel the brand card lists, and a
-// Change control (at the end of the chips row, or of the warning when the saved brand is gone)
-// when there is another Metricool brand to move to, or when the saved one is gone. A brand with no choice shows nothing (the Inbox asks for up to six brands)
-// unless Metricool has more than six: then a picker shows here, since an Inbox question only
-// holds six buttons. Only a ready brand gets a picker. `metricool` carries the saved list and the
-// picker's own state, nothing else.
-const COVERAGE_PLATFORMS = Object.freeze([['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']]);
-// Each chip is short enough to stay on one line at phone width; the full sentence is its title.
-const COVERAGE_WORDS = Object.freeze({
-  linked: ['ready', name => `${name} linked`, name => `${name} matches Metricool.`],
-  not_linked: ['needed', name => `${name} not linked`, name => `${name} is not linked in Metricool.`],
-  different_handle: ['needed', name => `${name} different handle`, name => `${name} is a different account in Metricool.`],
-  unverified: ['needed', name => `${name}: check`, name => `Check ${name} in Metricool.`],
-  link_changed: ['needed', name => `${name} changed`, name => `${name} changed. Pick the Metricool brand again.`],
-  only_in_metricool: ['needed', name => `${name}: only in Metricool`, name => `${name} is only in Metricool.`],
-});
-
-export function metricoolCoverageChips(coverage, trailing = '') {
-  const chips = COVERAGE_PLATFORMS.map(([key, name]) => {
-    const word = COVERAGE_WORDS[coverage?.[key]];
-    return word ? `<span class="pill ${word[0]}" title="${esc(word[2](name))}" aria-label="${esc(word[2](name))}">${esc(word[1](name))}</span>` : '';
-  }).join('');
-  return chips || trailing ? `<span class="metricool-chips">${chips}${trailing}</span>` : '';
-}
-
 // The Metricool brand picker, the same form on the brand card and on the posting plan card: a select that lists every saved
 // Metricool brand as "Name (Instagram @handle)", and a button that sends choose_metricool_brand for that plugin brand.
 // The pick that says this brand's posts are not sent through Metricool (the server's own word for it).
@@ -2132,6 +2079,11 @@ function metricoolPickerForm({ slug, brands = [], current = '', selected = '', b
   return `<div class="brand-chip-publish brand-chip-publish-edit"><label class="muted" for="metricool-select-${id}">${esc(label)}</label><span class="metricool-pick"><select id="metricool-select-${id}" name="metricool_brand_select" data-metricool-brand="${id}" ${busy ? 'disabled' : ''}>${options}</select><button type="button" class="primary" data-metricool-save="${id}" ${busy || !chosen || chosen === current ? 'disabled' : ''}>${busy ? 'Saving...' : 'Use this brand'}</button>${cancelButton}</span>${error ? `<p class="muted metricool-error" role="alert">${esc(error)}</p>` : ''}</div>`;
 }
 
+// Where this brand's posts go, as one line: "Posts through <Metricool brand> in Metricool", with a Change control at its end
+// (or at the end of the warning when the saved brand is gone) when there is another Metricool brand to move to, or when
+// the saved one is gone. A brand with no choice shows nothing (the Inbox asks for up to six brands) unless Metricool has
+// more than six: then a picker shows here, since an Inbox question only holds six buttons. Only a ready brand gets a picker.
+// `metricool` carries the saved list and the picker's own state, nothing else.
 export function brandMetricoolLine(brand, { brands = [], open = false, busy = false, selected = '', error = '' } = {}) {
   const publishing = brand?.publishing;
   const slug = esc(brand?.slug || '');
@@ -2146,14 +2098,14 @@ export function brandMetricoolLine(brand, { brands = [], open = false, busy = fa
     const current = optedOut ? NO_METRICOOL : publishing && !gone ? publishing.blogId : '';
     return metricoolPickerForm({ slug: brand?.slug || '', brands, current, selected, busy, error, askHere, cancel: Boolean(publishing) });
   }
-  // Change sits at the end of the chips row, or at the end of the warning when the saved brand is gone.
+  // Change sits at the end of the one line, or at the end of the warning when the saved brand is gone.
   const canChange = ready && (brands.length > 1 || ((gone || optedOut) && brands.length > 0) || (brands.length === 1 && !optedOut));
   const change = canChange ? `<button type="button" class="quiet" data-metricool-change="${slug}">Change</button>` : '';
   if (optedOut) return `<div class="brand-chip-publish"><p class="muted">Not posting through Metricool${change ? ` ${change}` : ''}</p></div>`;
   if (gone) {
     return `<div class="brand-chip-publish"><p class="muted metricool-warning">Metricool no longer lists <strong>${esc(publishing.label)}</strong>. Posts have nowhere to go.${change ? ` ${change}` : ''}</p></div>`;
   }
-  return `<div class="brand-chip-publish"><p class="muted">Metricool brand: <strong>${esc(publishing.label)}</strong></p>${metricoolCoverageChips(publishing.coverage, change)}</div>`;
+  return `<div class="brand-chip-publish"><p class="muted">Posts through <strong>${esc(publishing.label)}</strong> in Metricool${change ? `<span class="metricool-sep" aria-hidden="true">·</span>${change}` : ''}</p></div>`;
 }
 
 export function brandStudioWorkspaceLine(brand) {
@@ -2225,56 +2177,13 @@ export function notifyClaudeNotice(state = {}, signal = {}, now = Date.now()) {
   return `<div class="notice pending" role="status"><span>${text}</span>${actions}</div>`;
 }
 
-function usageFooterRow(label, tokens, elapsedMs, { note = '', cls = '' } = {}) {
-  return `<tr${cls ? ` class="${cls}"` : ''}><td>${esc(label)}${note ? `<small>${esc(note)}</small>` : ''}</td><td class="num">${esc(number(tokens))}</td><td class="num">${esc(clock(elapsedMs))}</td></tr>`;
-}
-
-// "Usage by stage": job view lists this job's own stage rows (in the order
-// given, waiting rows muted) then a bold Total, then the brand's shared
-// research row; the overview lists one row per job (its title, tokens, and
-// live time), then one Brand research row per brand. Missing measurements
-// always render as "Not reported", never 0. An open row (job, stage, or a
-// running brand research run) carries openSince and its shown time is
-// topped up live via liveMs; now is a parameter so a test can render it
-// deterministically. Returns '' when there is nothing to show.
-// `bare` is the job page's Usage fold: the stage rows and brand research only, as the totals sit just above it.
-export function usageFooter({ project, brands = [], projects = [], now = Date.now(), bare = false } = {}) {
-  const rows = [];
-  let credits = '';
-  if (project) {
-    const usage = project.usage || {};
-    for (const stage of usage.stages || []) {
-      rows.push(usageFooterRow(stage.label || humanize(stage.id), stage.tokens, liveMs(stage.elapsedMs, stage.openSince, now), { cls: stage.kind === 'waiting' ? 'usage-waiting' : '' }));
-    }
-    if (!bare) rows.push(usageFooterRow('Total', usage.tokens, liveMs(usage.elapsedMs, usage.openSince, now), { cls: 'usage-total' }));
-    const brand = (brands || []).find(item => item.slug === project.brand);
-    const brandStage = brand?.usage?.stages?.[0];
-    if (brandStage) {
-      rows.push(usageFooterRow('Brand research', brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now), { note: NOTE_SHARED_COST }));
-    }
-    const setupStage = brand?.usage?.stages?.find(stage => stage.id === 'brand-setup');
-    if (setupStage) rows.push(usageFooterRow('Brand setup', setupStage.tokens, null, { note: NOTE_SHARED_COST }));
-    const generation = usage.generation || {};
-    const studio = creditFraction(generation.threeEchoCredits);
-    const voice = creditFraction(generation.elevenLabsCredits);
-    credits = !bare && (studio || voice) && !isReportJob(project) ? `<dl class="price-facts usage-credits"><div><dt>3Echo Studio credits used</dt><dd>${esc(studio || '0')}</dd></div><div><dt>ElevenLabs voice credits used</dt><dd>${esc(voice || '0')}</dd></div></dl>` : '';
-  } else {
-    for (const job of projects || []) {
-      const usage = job.usage || {};
-      rows.push(usageFooterRow(job.title || 'Untitled job', usage.tokens, liveMs(usage.elapsedMs, usage.openSince, now)));
-    }
-    for (const brand of brands || []) {
-      const brandStage = brand?.usage?.stages?.[0];
-      if (!brandStage) continue;
-      rows.push(usageFooterRow(`Brand research (${brand.name})`, brandStage.tokens, liveMs(brandStage.elapsedMs, brandStage.openSince, now)));
-      const setupStage = brand.usage.stages.find(stage => stage.id === 'brand-setup');
-      if (setupStage) rows.push(usageFooterRow(`Brand setup (${brand.name})`, setupStage.tokens, null));
-    }
-  }
-  if (!rows.length) return '';
-  const table = `<table><thead><tr><th>Stage</th><th class="num">Tokens</th><th class="num">Time</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
-  if (bare) return `<div class="usage-footer usage-stages">${table}</div>`;
-  return `<section class="panel usage-footer"><div class="section-head"><h2>Usage by stage</h2></div>${table}${credits}</section>`;
+// What a job has used of the studio's credits, as rows for About this job. Tokens and hours are not shown to the person. A report
+// job makes no media, so it has none; the voice row shows only when voice credits were set or spent.
+export function jobCreditRows(project) {
+  if (isReportJob(project)) return [];
+  const generation = project?.usage?.generation || {};
+  const voice = creditsInUse(generation.elevenLabsCredits) ? creditFraction(generation.elevenLabsCredits) : null;
+  return [['Studio credits used', creditFraction(generation.threeEchoCredits)], ['Voice credits used', voice]].filter(([, value]) => value);
 }
 
 // @module report
@@ -2848,7 +2757,7 @@ function delivRowHtml(field, row, errors, prefix) {
   return `<div class="deliv-row" data-deliv-row><span class="deliv-platform">${esc(row.label)}</span>${placementCellHtml(row, errors, prefix)}${format}${count}${fieldError(errors, `${row.key}_placement`, prefix)}${fieldError(errors, `${row.key}_format`, prefix)}${fieldError(errors, `${row.key}_count`, prefix)}${note}</div>`;
 }
 
-function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'intake', needed = true, labelled = true } = {}) {
+function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'intake', needed = true, labelled = true, currency = '' } = {}) {
   const id = `${prefix}-${field.key}`;
   const head = (tag, forId = id) => `<div class="intake-label${labelled ? '' : ' visually-hidden'}">${tag === 'legend' ? `<span class="intake-label-text" id="${id}-label">${esc(field.label)}</span>` : `<label for="${forId}">${esc(field.label)}</label>`}${needed ? neededTag(field, values) : ''}</div>`;
   if (field.input === 'select') {
@@ -2877,7 +2786,7 @@ function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'in
     return `<div class="intake-field intake-wide">${head()}<textarea id="${id}" class="links-input" name="${esc(field.key)}" maxlength="${INTAKE_TEXT_LIMIT}" placeholder="One link per line" spellcheck="false" aria-invalid="${errors?.[field.key] ? 'true' : 'false'}"${described ? ` aria-describedby="${described}"` : ''}>${esc(values[field.key] || '')}</textarea>${hint}${fieldError(errors, field.key, prefix)}</div>`;
   }
   if (field.input === 'budget') {
-    return `<div class="intake-field" role="group" aria-labelledby="${id}-label">${head('legend')}<div class="budget-row"><input name="budget_currency" maxlength="3" placeholder="SGD" autocomplete="off" aria-label="Currency" value="${esc(values.budget_currency || '')}" ${invalid(errors, 'budget_currency', prefix)}><input type="number" name="budget_amount" min="0" step="any" placeholder="Most you will spend" aria-label="Maximum total amount" value="${esc(values.budget_amount ?? '')}" ${invalid(errors, 'budget_amount', prefix)}></div>${fieldError(errors, 'budget_currency', prefix)}${fieldError(errors, 'budget_amount', prefix)}</div>`;
+    return `<div class="intake-field" role="group" aria-labelledby="${id}-label">${head('legend')}<div class="budget-row"><input name="budget_currency" maxlength="3" placeholder="${esc(currency || 'Currency')}" autocomplete="off" aria-label="Currency" value="${esc(values.budget_currency || '')}" ${invalid(errors, 'budget_currency', prefix)}><input type="number" name="budget_amount" min="0" step="any" placeholder="Most you will spend" aria-label="Maximum total amount" value="${esc(values.budget_amount ?? '')}" ${invalid(errors, 'budget_amount', prefix)}></div>${fieldError(errors, 'budget_currency', prefix)}${fieldError(errors, 'budget_amount', prefix)}</div>`;
   }
   if (field.input === 'url') {
     return `<div class="intake-field">${head()}<input id="${id}" type="url" name="${esc(field.key)}" maxlength="2000" inputmode="url" placeholder="${esc(field.placeholder || 'https://')}" value="${esc(values[field.key] || '')}" ${invalid(errors, field.key, prefix)}>${fieldError(errors, field.key, prefix)}</div>`;
@@ -2911,7 +2820,7 @@ export function intakeForm(project, state = {}, signal = {}) {
   const error = state.error || errors?.form ? `<p class="notice error inline-error" role="alert">${esc(errors?.form || state.error)}</p>` : '';
   const platforms = intakePlatforms(intake, values);
   const brief = intake.brief && !fields.some(field => field.key === 'request') ? `<div class="intake-brief"><span class="intake-label-text">Your brief</span><p>${esc(intake.brief)}</p></div>` : '';
-  return `<section class="panel intake" aria-labelledby="intake-title"><div class="section-head"><h2 id="intake-title">Finish the brief</h2></div>${notice}<form id="intake-form" class="intake-form" novalidate>${brief}<div class="intake-grid">${fields.map(field => intakeFieldHtml(field, values, errors, platforms, state.photo)).join('')}</div>${otherList}${error}<div class="intake-foot"><button class="primary" type="submit" ${state.busy || pending ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
+  return `<section class="panel intake" aria-labelledby="intake-title"><div class="section-head"><h2 id="intake-title">Finish the brief</h2></div>${notice}<form id="intake-form" class="intake-form" novalidate>${brief}<div class="intake-grid">${fields.map(field => intakeFieldHtml(field, values, errors, platforms, state.photo, { currency: projectCurrency(project) })).join('')}</div>${otherList}${error}<div class="intake-foot"><button class="primary" type="submit" ${state.busy || pending ? 'disabled' : ''}>${buttonLabel}</button></div></form></section>`;
 }
 
 // ---- Reviews --------------------------------------------------------------
@@ -2960,18 +2869,18 @@ const GATE_TITLES = Object.freeze({
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
   sample: 'Approve the sample',
-  pictures: 'Check the pictures',
-  clips: 'Check the video clips',
-  cut: 'Check the rough cut',
-  finish: 'Check the finished video',
+  pictures: 'Approve the pictures',
+  clips: 'Approve the video clips',
+  cut: 'Approve the rough cut',
+  finish: 'Approve the finished video',
   content: 'Approve the final post',
-  publish: 'Confirm where and when',
+  publish: 'Approve the posting plan',
   campaign_proposal: 'Approve the campaign plan',
   campaign_activation: 'Approve going live',
   findings: 'Approve the report',
 });
 const REVIEW_WAITING = Object.freeze({
-  preparing: 'Claude is preparing the files.',
+  preparing: 'The Director is preparing the files.',
   loading: 'Loading this review...',
   syncing: "Waiting for Claude.",
   changed: 'Changed since you saw it. Ask Claude to show it again.',
@@ -2998,8 +2907,9 @@ export function jobView(project, doc) {
 }
 
 export function stageProgress(project) {
-  if (project?.stageSummary) return { done: project.stageSummary.done || 0, total: project.stageSummary.total || 0 };
-  const stages = project?.stages || [];
+  // The list the page draws is the one it counts, so the head and the steps never count two different lists; a card whose list is not loaded yet uses its summary.
+  const stages = Array.isArray(project?.stages) ? project.stages : [];
+  if (!stages.length && project?.stageSummary) return { done: project.stageSummary.done || 0, total: project.stageSummary.total || 0 };
   return { done: stages.filter(stage => typeof stage !== 'string' && stage.status === 'complete').length, total: stages.length };
 }
 
@@ -3042,9 +2952,9 @@ export function conceptCredits(concepts, concept) {
 }
 
 const PRICE_PROVIDERS = Object.freeze(['threeEcho', 'elevenLabs']);
-const PRICE_TOTAL_LABELS = Object.freeze({ threeEcho: '3Echo Studio credits', elevenLabs: 'ElevenLabs voice credits' });
+const PRICE_TOTAL_LABELS = Object.freeze({ threeEcho: 'Studio credits', elevenLabs: 'Voice credits' });
 const PRICE_WORDS = Object.freeze({ threeEcho: ['Studio credit', 'Studio credits'], elevenLabs: ['voice credit', 'voice credits'] });
-const PRICE_PROVIDER_NAMES = Object.freeze({ threeEcho: '3Echo Studio', elevenLabs: 'ElevenLabs' });
+const PRICE_PROVIDER_NAMES = Object.freeze({ threeEcho: 'Studio', elevenLabs: 'Voice' });
 const QUOTE_KIND_LABELS = Object.freeze({ image: 'Image', video: 'Video clip', voice: 'Voice-over', music: 'Music' });
 
 export function priceWords(totals) {
@@ -4009,7 +3919,7 @@ const CTA_STYLE_FALLBACK = Object.freeze([['link_caption', 'Link in the post tex
 function recipeOwnForm(deliverableId, field, own, catalog, disabled) {
   const prefix = `recipe_${deliverableId}_${field}_own`;
   const dis = disabled ? 'disabled' : '';
-  if (field === 'pillar') return `<div class="recipe-own"><label for="${prefix}">Your content pillar</label><input id="${prefix}" name="${prefix}" type="text" maxlength="60" value="${esc(own.pillar || '')}" ${dis}></div>`;
+  if (field === 'pillar') return `<div class="recipe-own"><label for="${prefix}">Your own topic</label><input id="${prefix}" name="${prefix}" type="text" maxlength="60" value="${esc(own.pillar || '')}" ${dis}></div>`;
   if (field === 'angle') return `<div class="recipe-own"><label for="${prefix}">Your angle</label><input id="${prefix}" name="${prefix}" type="text" maxlength="200" value="${esc(own.angle || '')}" ${dis}></div>`;
   if (field === 'hookFamily') {
     const families = catalog?.hookFamilies?.length ? catalog.hookFamilies : [];
@@ -4219,13 +4129,13 @@ export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const head = `<div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${boards.length > 1 ? refTag(boardRefOf(board)) : ''}${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span><span class="sb-slot-step">${at + 1} of ${all.length}</span></div>`;
   // A panel counts as approved until the person asks for a change on it.
   const verdict = saved.verdict === 'changes'
-    ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Change asked: ${saved.note}` : 'Change asked')}</span>${notSentPill(state)}</p>`
+    ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Asked for changes: ${saved.note}` : 'Asked for changes')}</span>${notSentPill(state)}</p>`
     : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
   const error = editing && state.panelError ? `<p class="field-error" role="alert">${esc(state.panelError)}</p>` : '';
   const actions = editing
-    ? `<div class="sb-change"><label for="sb-note">What should change in ${board?.format === 'carousel' ? 'this slide' : 'this panel'}?</label><textarea id="sb-note" name="sb_note" maxlength="1000" placeholder="For example: show the bottle in her hand." ${dis}>${esc(state.panelDraft ?? saved.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-sb-action="cancel-change" ${dis}>Cancel</button><button type="button" class="primary" data-sb-action="save-change" ${dis}>Save change</button></div></div>`
+    ? `<div class="sb-change"><label for="sb-note">What should change in ${board?.format === 'carousel' ? 'this slide' : 'this panel'}?</label><textarea id="sb-note" name="sb_note" maxlength="1000" placeholder="For example: show the bottle in her hand." ${dis}>${esc(state.panelDraft ?? saved.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-sb-action="cancel-change" ${dis}>Cancel</button><button type="button" class="primary" data-sb-action="save-change" ${dis}>Ask for changes</button></div></div>`
     // With one panel there is nothing to go through: the storyboard's own Approve and Ask for changes are all there is.
-    : all.length === 1 ? '' : `<div class="sb-slot-actions"><button type="button" data-sb-action="change" ${dis}>Change ${board?.format === 'carousel' ? 'this slide' : 'this panel'}</button></div>`;
+    : all.length === 1 ? '' : `<div class="sb-slot-actions"><button type="button" data-sb-action="change" ${dis}>Ask for changes</button></div>`;
   const frame = panelFrameHtml(panel, index, { large: true });
   const image = frame.startsWith('<img') ? frame : '';
   const frameBox = image
@@ -4320,11 +4230,11 @@ export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
     const version = Number(panel.version) > 1 ? `<span class="count">Version ${esc(Number(panel.version))}</span>` : '';
     const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(panel.deliverable))}${refTag(trimmed(panel.panel))}${version}</div>`;
     const verdict = mine.verdict === 'changes'
-      ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Change asked: ${mine.note}` : 'Change asked')}</span>${notSentPill(state)}</p>`
+      ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Asked for changes: ${mine.note}` : 'Asked for changes')}</span>${notSentPill(state)}</p>`
       : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
     const error = editing && state.mediaError ? `<p class="field-error" role="alert">${esc(state.mediaError)}</p>` : '';
     const actions = editing
-      ? `<div class="sb-change"><label for="mr-note">What should change in ${esc(title)}?</label><textarea id="mr-note" name="mr_note" maxlength="1000" placeholder="For example: make the light warmer." ${dis}>${esc(state.mediaDraft ?? mine.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-mr-action="cancel" ${dis}>Cancel</button><button type="button" data-mr-action="save" data-mr-key="${esc(key)}" ${dis}>Save change</button></div></div>`
+      ? `<div class="sb-change"><label for="mr-note">What should change in ${esc(title)}?</label><textarea id="mr-note" name="mr_note" maxlength="1000" placeholder="For example: make the light warmer." ${dis}>${esc(state.mediaDraft ?? mine.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-mr-action="cancel" ${dis}>Cancel</button><button type="button" data-mr-action="save" data-mr-key="${esc(key)}" ${dis}>Ask for changes</button></div></div>`
       : `<div class="sb-slot-actions">${mine.verdict === 'changes' ? `<button type="button" class="quiet" data-mr-action="undo" data-mr-key="${esc(key)}" ${dis}>Keep as is</button>` : ''}<button type="button" data-mr-action="change" data-mr-key="${esc(key)}" ${dis}>Ask for changes</button></div>`;
     return `<article class="sb-slot media-card" style="--sb-ratio:${frameRatio(panel.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${panel.text ? panelFields(panel.text, panel.board) : ''}${verdict}${actions}</div></article>`;
   }).join('');
@@ -4429,8 +4339,8 @@ function redoLine(redo) {
 
 // The sound plan already recorded for the video (the same `chosen` picks the cut card used to edit), shown read-only.
 const SOUND_SOURCE_WORDS = Object.freeze({
-  music: { library: 'From your library', upload: 'Your own track', make: 'Made with ElevenLabs', none: 'None' },
-  voice: { library: 'From your library', upload: 'Your own recording', make: 'Made with ElevenLabs', none: 'None' },
+  music: { library: 'From your library', upload: 'Your own track', make: 'Made for this video', none: 'None' },
+  voice: { library: 'From your library', upload: 'Your own recording', make: 'Made for this video', none: 'None' },
   captions: { voice: 'From the voice-over words', script: 'From the script words', none: 'None' },
 });
 function soundSection(doc) {
@@ -4496,25 +4406,25 @@ export function studioWorkspaceSection(doc, state = {}, { disabled = false, uplo
 // posting plan the approval covers: the route and the routes on offer, where posts go, and one row per post.
 // Ids never reach the page as words, only the text the projection carries.
 export const PUBLISH_APPROVE_LABELS = Object.freeze({
-  metricool_now: () => 'Post Now',
-  metricool_schedule: () => 'Schedule Post',
-  metricool_draft: () => 'Save Draft',
-  self: () => 'Download Files',
+  metricool_now: () => 'Approve and post now',
+  metricool_schedule: () => 'Approve and schedule',
+  metricool_draft: () => 'Approve and save as a draft',
+  self: () => 'Approve and download',
 });
 // The self route's button while the posting kit is not ready yet.
 export const PUBLISH_PREPARING_LABEL = 'Preparing download…';
 // The board click is the person's approval for every route: nothing else is asked in chat.
 export const PUBLISH_SAFETY_LINES = Object.freeze({
-  metricool_now: 'Post Now sends each post to Metricool right away. It goes out within minutes.',
-  metricool_schedule: 'Nothing goes out until you click Schedule Post. You can cancel in Metricool until then.',
+  metricool_now: 'Post now sends each post to Metricool right away. It goes out within minutes.',
+  metricool_schedule: 'Nothing goes out until you approve. You can cancel in Metricool until then.',
   metricool_draft: 'Drafts stay in Metricool until you publish them.',
   self: 'Nothing is posted for you. The posting kit has each file, the post text and each step.',
 });
 export const PUBLISH_ROUTE_WORDS = Object.freeze({
-  metricool_now: 'Post Now',
-  metricool_schedule: 'Schedule a Post',
-  metricool_draft: 'Save as Draft',
-  self: "I'll Post It Myself",
+  metricool_now: 'Post now',
+  metricool_schedule: 'Schedule a post',
+  metricool_draft: 'Save as a draft',
+  self: "I'll post it myself",
 });
 export const PUBLISH_OUTDATED_LINE = "The plan is being rebuilt.";
 export const PUBLISH_CHANGED_LINE = "The plan is being rebuilt.";
@@ -4645,7 +4555,7 @@ function publishRoutes(publish, routeState, { locked = false, held: otherHeld = 
   const cards = routes.map(item => {
     const off = item.available === false;
     const attrs = [selected === item.id ? 'checked' : '', off ? 'disabled' : '', held && !off ? 'aria-disabled="true"' : '', off && reasons.length ? 'aria-describedby="publish-route-reason"' : ''].filter(Boolean).join(' ');
-    return `<label class="route-card${off ? ' route-off' : ''}"><input type="radio" class="visually-hidden" name="publish_route" value="${esc(item.id)}" ${attrs}><span class="route-body"><span class="route-radio" aria-hidden="true"></span><span class="route-text"><strong>${esc(item.label)}</strong></span></span></label>`;
+    return `<label class="route-card${off ? ' route-off' : ''}"><input type="radio" class="visually-hidden" name="publish_route" value="${esc(item.id)}" ${attrs}><span class="route-body"><span class="route-radio" aria-hidden="true"></span><span class="route-text"><strong>${esc(PUBLISH_ROUTE_WORDS[item.id] || item.label)}</strong></span></span></label>`;
   }).join('');
   const why = reasons.length ? `<p class="route-reason" id="publish-route-reason">${reasons.map(esc).join(' ')}</p>` : '';
   // The saving state is the card's, said once at its top. What is left here is how the last try ended: an error under the
@@ -4883,7 +4793,7 @@ export function publishApproval(publish, routeState = {}, postStates = {}) {
     const failing = posts.filter(post => publishFailing(post).length || (Array.isArray(post?.typeChoices) && post.typeChoices.length)).length;
     return { disabled: true, label: route === 'self' ? preparing : label, line: failing ? `${failing === 1 ? '1 post needs' : `${failing} posts need`} attention before this can be approved.` : 'Not ready to approve yet.', safety };
   }
-  // Schedule Post stays held until every post has a valid time (its own, or the one for all).
+  // Approve and schedule stays held until every post has a valid time (its own, or the one for all).
   if (route === 'metricool_schedule') {
     const unset = posts.filter(post => { const input = whenInputOf(post); return Boolean(input) && !(typeof input.dateTime === 'string' && input.dateTime); }).length;
     if (unset) return { disabled: true, label, line: POST_TIME_NEEDED_LINE, safety };
@@ -5067,14 +4977,14 @@ function kitFiles(post) {
 }
 
 // The self route's button once the plan is approved: "Preparing download…" (held) until every file of the kit has its download
-// link, then "Download Files", which opens each file's link (the same links the rows below carry). '' for a kit with no files.
+// link, then "Download files", which opens each file's link (the same links the rows below carry). '' for a kit with no files.
 export function kitDownloadButton(kit) {
   if (kit?.route !== 'self') return '';
   const files = (Array.isArray(kit.posts) ? kit.posts : []).flatMap(post => (Array.isArray(post?.media) ? post.media.filter(item => item && typeof item === 'object') : []));
   if (!files.length) return '';
   const ready = files.every(item => safeHttpsLink(item.appUrl));
   return ready
-    ? '<p class="kit-fetch-all"><button type="button" class="primary" data-kit-download-all>Download Files</button></p>'
+    ? '<p class="kit-fetch-all"><button type="button" class="primary" data-kit-download-all>Download files</button></p>'
     : `<p class="kit-fetch-all"><button type="button" class="primary" disabled aria-busy="true">${esc(PUBLISH_PREPARING_LABEL)}</button></p>`;
 }
 
@@ -5296,7 +5206,7 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
     if (!all.length && !priced) return { label: 'Approve storyboard', line: '' };
     const word = all.every(item => item.board?.format === 'carousel') ? 'slide' : 'panel';
     const changes = Object.values(panelStates(doc?.review?.storyboards, state.panels)).filter(item => item.verdict === 'changes').length;
-    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} ${word}${changes === 1 ? '' : 's'} to change, ${all.length - changes} approved.` };
+    if (changes) return { label: 'Ask for changes', action: 'send-panels', line: `${changes} ${word}${changes === 1 ? '' : 's'} to change, ${all.length - changes} approved.` };
     const approved = !all.length ? '' : all.length === 1 ? `The ${word} is approved.` : `All ${all.length} ${word}s approved.`;
     if (!priced) return { label: 'Approve storyboard', line: approved };
     // The same totals and workspace rules as the price card: approving the storyboard approves the price shown under it.
@@ -5310,7 +5220,7 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
     const all = mediaPanelsOf(doc);
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
-    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved.${gate === 'cut' || gate === 'finish' ? '' : ' A redo is priced again.'}` };
+    if (changes) return { label: 'Ask for changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved.${gate === 'cut' || gate === 'finish' ? '' : ' A redo is priced again.'}` };
     const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' || gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them and add the sound.';
     return { label: gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
@@ -5504,7 +5414,7 @@ export function sentDecisionState(project, state) {
 /** What a settled card says: the decision on it was already made (applied, or declined as a repeat), so the buttons stay off. */
 export function settledLine(state) {
   const said = typeof state?.message === 'string' ? state.message.trim() : '';
-  return said ? `Already handled. ${said}` : 'Already handled. Claude is catching up.';
+  return said ? `Already handled. ${said}` : 'Already handled. The Director is catching up.';
 }
 
 /**
@@ -5544,7 +5454,7 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
   const primaryButtons = `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? TXT_WAITING_FOR_CLAUDE : state.settled ? 'Already handled' : approveLabel)}</button>`;
   const actions = state.commentOpen
-    ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: shorten the hook.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? TXT_WAITING_FOR_CLAUDE : 'Send changes'}</button></div></div></div>`
+    ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: shorten the hook.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? TXT_WAITING_FOR_CLAUDE : 'Ask for changes'}</button></div></div></div>`
     : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button>${primaryButtons}</div></div>`;
   const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : ready && pricedStoryboard(doc) ? 'Approve the storyboard and price' : GATE_TITLES[gate] || humanize(gate);
   return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
@@ -5767,7 +5677,7 @@ function sampleThumb(doc) {
 
 // The server and saved board snapshots still use the longer message.
 // Both versions mean the review has no action yet, regardless of displayed copy.
-const REVIEW_NOT_READY = new Set(['Claude is getting this ready to show you.', 'Getting this ready.']);
+const REVIEW_NOT_READY = new Set(['Claude is getting this ready to show you.', 'The Director is getting this ready to show you.', 'Getting this ready.']);
 const reviewNotReady = item => REVIEW_NOT_READY.has(trimmed(item?.summary));
 
 // Small pictures of what a review is about (storyboard pictures, clips, the joined or finished video, the post), each opening the review.
@@ -5885,7 +5795,7 @@ function briefCard(item, ctx = {}, index = 0) {
   const message = errors?.form || (state.error && state.error !== FIX_HIGHLIGHTED ? state.error : '');
   const error = here && message ? `<p class="notice error inline-error" role="alert">${esc(message)}</p>` : '';
   const platforms = intakePlatforms(intake, values);
-  const fields = shown.map(field => intakeFieldHtml(field, values, errors, platforms, null, { prefix: `inbox-${index}`, needed: false, labelled: !single })).join('');
+  const fields = shown.map(field => intakeFieldHtml(field, values, errors, platforms, null, { prefix: `inbox-${index}`, needed: false, labelled: !single, currency: projectCurrency(project) })).join('');
   const own = single ? ` data-inbox-field="${esc(item.field)}"` : '';
   return `<form class="inbox-fields" data-inbox-intake="${esc(jobId)}" data-inbox-fields="${esc(keys.join(' '))}"${own} novalidate>${fields}${error}<div class="inbox-actions"><button type="submit" class="primary" ${state.busy || pending ? 'disabled' : ''}>${label}</button></div></form>${here ? inboxStatus(state, signal) : ''}`;
 }
@@ -5913,8 +5823,9 @@ export function inboxItemText(item) {
   return trimmed(item?.text) || (item?.kind === 'decision' ? GATE_TITLES[item.gate] : '') || INBOX_TEXT_FALLBACK[item?.kind] || '';
 }
 
+// The button opens the brand's page, so on that page itself (`onPage`) the card is only the note: it never points at where the person already is.
 function onboardingCard(item) {
-  if (!item.needsYou || !item.brand) return '';
+  if (!item.needsYou || !item.brand || item.onPage) return '';
   return `<div class="inbox-actions"><button type="button" class="primary" data-onboard="${esc(item.brand)}">Open brand profile</button></div>`;
 }
 
@@ -5955,7 +5866,7 @@ const HANDOFF_BUTTONS = Object.freeze({
 });
 export const isHandoffItem = item => item?.kind === 'handoff_offer' || item?.kind === 'handoff_return';
 export const handoffArgs = ({ project, requestId }) => ({ requestId, brand: project.brand, jobId: project.jobId });
-// The one small line on a job saying which platforms research could read, or ''. The server words it.
+// The one small line on a job saying which platforms research could read, or ''. The server words it. The board no longer draws it.
 export const researchLine = project => (typeof project?.research?.line === 'string' ? project.research.line.trim() : '');
 export const handoffStatusLine = project => (project?.handoff?.status === 'sent' ? trimmed(project.handoff.line) : '');
 export function handoffButtons(item, state = {}, { sendOnly = false, bare = false } = {}) {
@@ -6112,7 +6023,7 @@ const RAIL_TEXT = Object.freeze({
   posting: 'Posting',
   lastStep: 'This is the last step.',
   allDone: 'All steps are done.',
-  idle: 'Nothing now. Claude is working.',
+  idle: 'Nothing now. The team is working.',
   done: 'Nothing, this job is finished.',
   held: 'Claude needs your help. See chat.',
 });
@@ -6144,16 +6055,6 @@ export function stepRailParts(project, doc = null) {
     : RAIL_NEEDS_HELP.has(project?.state) ? trimmed(project?.blockedReason) || trimmed(project?.nextAction) || RAIL_TEXT.held
       : finished ? RAIL_TEXT.done : RAIL_TEXT.idle;
   return { here, next, need, jump: railJump(item) };
-}
-
-export function stepRail(project, doc = null) {
-  const parts = stepRailParts(project, doc);
-  if (!parts) return '';
-  const jobId = project?.jobId || '';
-  const button = parts.jump && jobId ? `<button type="button" class="primary" data-inbox-jump="${esc(jobId)}" data-inbox-target="${esc(parts.jump.target)}">${esc(parts.jump.label)}</button>` : '';
-  const cell = (label, body, extra = '') => `<div class="step-rail-cell${extra}"><span class="eyebrow">${label}</span>${body}</div>`;
-  const next = parts.next ? cell('What\'s next', `<strong>${esc(parts.next)}</strong>`) : '';
-  return `<section class="panel step-rail${parts.next ? '' : ' step-rail-pair'}" aria-label="Where this job is">${cell('Where you are', `<strong>${esc(parts.here)}</strong>`)}${next}${cell('What you need to do', `<p>${esc(parts.need)}</p>${button}`, ' step-rail-need')}</section>`;
 }
 
 export function overviewColumn({ strip = '', jobs = '', onboarding = '', onboardFirst = false } = {}) {
@@ -6313,7 +6214,7 @@ export function agentStateOf(value) {
   return AGENT_STATES[key] ? key : 'waiting';
 }
 const isDirectorAgent = agent => agent?.id === 'producer';
-export const AGENT_HANDED_NOTE = 'Waiting on your decision';
+export const AGENT_HANDED_NOTE = 'Handed to the Director for your decision';
 /** One voice: the review card of a pending gate is in the Director's chat only. Any other agent's chat never carries it. */
 export const chatDecisionCard = (agent, decision, gate) => Boolean(decision && gate) && isDirectorAgent(agent);
 /** The plain line in the chat of the agent whose finished work waits on a decision: it is handed over, nothing is asked of the person there. */
@@ -6409,22 +6310,17 @@ function agentFilesBody(box, { chipContext, jobId, openKeys, omitted }) {
 // ---------------------------------------------------------------------------
 
 // @module art
-// A picture for each kind of step: Microsoft Fluent 3D emoji (MIT licence, see THIRD_PARTY_NOTICES.md), shrunk to 92 px WebP (twice the 46 px they show at)
+// A picture for each kind of decision card: Microsoft Fluent 3D emoji (MIT licence, see THIRD_PARTY_NOTICES.md), shrunk to 92 px WebP (twice the 46 px they show at)
 // and embedded so the page needs no network.
 const STEP_IMG = Object.freeze({
-  folder: 'data:image/webp;base64,UklGRsQFAABXRUJQVlA4WAoAAAAQAAAAWwAAWwAAQUxQSGYCAAABoENtu2nb+f5/znVt27YZp7ojpW3b7lDZ6NwltW3btq29z5przi/OXJl/nCIiJgD/qy2Vr7L6qqpccYpWVcpSDNnnkiuvyHjl5Zedffh8wJXksP7phvm/uXgIqnIcFrzB0GSOTSTvn46qGK0uY5ctpprPLYIvRDHh2dS0QdZ8YwV8KbPeZ0us+c4a+FI+aI2B722MSoxiww+2RC8xioEfboBXoxj42Y6AuvxSFBvWp48UtOilJEbyjYsO332H7bbPue0mo6BSEhnZ5gPbQaUoxroO2dndBa6sNlM3fTBV1Ciy5n5wZoV0lmU8B07sOgsAxBl1QZ/+ffsoVAxK/OKVV1974epNoGLPL3cPhLMoxRhjT+hsBW/Qz/fwliEiVsX4zRI4q1LDLeyK6buldtW8ayjErlPFwagUuxvgrQp8dLSoXZehglEpdXYUsyJfGw9nVcNr4cSqmPaBh1X8cjLUqibdCIFZPBTOqpS6C6BWBd7ZH7/alpqniFoVY70pnFU1HxwFtaqH58CLUTF1tkYFoxo+PwFqVeA18GJVCnuhglGJ702EWtXweiisijxEvFWJnVlQqxrepgKrAo+BsyrFzlKoVSHdMRhiVc0T4ZFh+tsWxPjVRjkE459iKC/w9gGqGaTvdawtOA29kNHjaAMSP91YfBaZ83ZqSmt4t1fJIRXOYCgtpsNQIav6Ec+wLivxnRHQPHBY9RFDU1LN4+GQ22PdU2SoQ1Nm+I6PDRbJBofRZ77Igl9dBocWHTDrwCsfePW9Et968pL5ULSqFeBHTZlR4vTxgEfbzgtKVYffoYgWKvj7FFZQOCA4AwAAUBMAnQEqXABcAD6RQJlJJaOoISq0DAEAEglkAMSaQF4eqBZDmH/OeqLbseYD9gPV8/Gb3Z7yl5AHWlOhGnNQRW1lMA/TM9VhypzpWG2WTe9sFjTcs/BkGDu3nQFjk/uWnaxIomjH5oGxf2TNsAquHzjykpPZfDK7tdhVKpUdPwZvYln7y3CztWeXqde5ALlQmlW/FkZ/ML3XzILOFFOSG7Mf5AD+/szl/++Th4Z8tS3HjPt0CIqjdJIneddZlJWtod3wMnVY9QZt2ZrFRlQddhFlwmFXFMlvav/7//wTt/Ntw+lLLI+g/1PsNPv7UhnKt8ZvONF19JIZ/RSdSnuP0ru3iBXK2LXPfhlDKbYFrx5y8ULtfJ+tXUAUtrkeF+vhFCul06oLzzalBRFvXXXDzMEhxRHSvKxTyrQQKfa5zrYW4XwJtNlRsfH8eAh0mbcsEdoyXtQgp9Z1PzE7dhRJS/zFa6f/oDdEyUlahndeNxgBgxswjLuCVd7n2CSnTdge6o0EA2yng/HL+13XyyJBIgotpk+qPahKmalox2FE3QXnrJTYHy7qJb2yONaus+WBzOqCuE9BUlJGwAuMHTOh8iSewHXm6OvAK63Cmq0IifP/rxiBh186lEoPSdredLQtQE/+9rIOn7xr7gv9iLhWYVQJ/+MZ+PH22T77FMTAP4mNrRhypE33y8pQXyyN5eCnpnUlj2/rZ+Ipl4U0QQkmpyMqqh61Azrxr5JUMbb2Iyrqn6RdUQ6rgbl/7/M3KyILiK18B3hyruncKfVMvB47ExIpy0sOu7dqLdtsWdZ0nI/nA3KNEtn4jymJTaJuzgqKVA9InDiqAzsbPs3q3Cve/rzKhlZaGc9SVXXeOoQZNmdlXB2H3LuLqjt1dpZbH0kjxCTMdgon9wUrau33fgJv4f3M/ek/8f9ZfMuZzl2vlBi/Tc+OVjHx/bnfJul6MxJrhw3hLsFzO97sO3zl9yJrPGII9PNg+Ru14vdPcIEVE/1x4QIloK+rRow+G9geouYbCkkoJijtSYcwjY69Lc/cVNb+f+ZJ+Homeu99Uxn3RLos8PdvWtRaRvL6a/Jiyo7Myp/D7cRqoAA=',
-  magnifier: 'data:image/webp;base64,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',
   memo: 'data:image/webp;base64,UklGRloEAABXRUJQVlA4WAoAAAAQAAAAWwAAWwAAQUxQSP0AAAABgKNtkyLlr6rZbMPNkdidA6yeALfMj7U32TsgEUTuTvdOF043jWtETAA+eklEhF4oIQAgeZESZFpKpZYMkphIPCforB6o7lc7kIhnegYC7wNr6qx1uj4A7xIO2f5C3mMhX1nSy9S59FKXKvlC3mNxIIvAxDK+emWsT2M11XtTtcb6NFer48IUQnhW/Tt90Kn/GZYAjOatuvH2DE19qxnsTzCkViO2OgQJsZDGlS4E0rj033+/1S26uNximEE1MRkdDMFo2NALF+2FbjSA/RFj2mgarZppMPkDMUZqpy4Od1obARNCEiPX3t8XZX97DkwISwkiTgjBSaIlfIwCAFZQOCA2AwAAMBQAnQEqXABcAD59NJVHpKMiIbY1z0CQD4lkAMmxTvteLh1Xf1J9235J3mHmK/WL9ive48+jfit5u8plPqe7R+Nbgrb5qlDzXXwPinyfsjyRgZev3rywyob7b01LXLB4OOcc/cpwOTA4WMPJwazQefgtEG2qyQ4Tcn9VeCi4oraaWPPFPgtIsKrI3CAOTYQAOQBk2mPpajhWjtQxePn9w6kmPo71KwzH4MAA/v6fVR/eavkftGcr5lLTV6P+niVDK0ffMz1j9/r2Q0f39NXv2gi7/xEQ254KrA34j2PIvEvNb01NnkJexd29gkwiMEh+XAH4XvvDhiLBFsPJl+YFYRsfqK1eT4cYBajhg/rRxQfUPNARqHoEZ2sBRfHdNa2RqM50IOnXuqfcfFt81zNcPwPpCVlsyl8XxJe0rE4ju8k+Ur8LrWFPa058iUsrKjG9FaY1jrmImL/yxJ3wiYWJBMrVPTvIH9qqaUKQVFf20QGmq/LT9bf1Cjz6QbjpdCQVoGre8h4HDNmA5HSBZZdtXP8zH//XQf/PQ//66JWuXZ+9N3BrpPKZPG1QN0AMQwOnAxL/edcHIP0IBzVYAjbkTSUAO6iTobulFcc+2SHxG+aZ5wtc1Dvwt87ewbdnac1tF08Dp4lPbocKeG+u2W2Zl+uB/8nx/PKWmPNbGjwE89QliPbuul42Pnuc8Tx9NqthkRjzlFmiUnM2tzC5y9WZjt2lqfOh4C9Vu4cadW5Vv51xGL4KQkO0mDqxnuMsdN9lgh2XAmlCWhguEi2reO25tdEqWDj8pqkWtFmR9I2iw3eVIaUQLZnUrrkQMApXkjKKfiCy3dGDY0kM32Hh6AqdM1eNgh8yzssyqfU24txhVjk11JFB0cY5snhRC6UlHT8Gzi3ZjpMnNY19hMVTvYEdB9fKf7Bd++aE8Jfv5IlAN3jm0HkiN1aiGts8bVQGOodYnNDi7UCfU7gN9DSUP3AsCzZlZEH2zwDraWa9soojX0+qA6/gTx2v2J8T/V+n+GFFltVOvthN2XYKVjdSU3yfsfiA8DEIB4uZJhndX3/j39mj//gPNQEhO5+xs15Q8dF8pgLAAAAA',
-  script: 'data:image/webp;base64,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',
   picture: 'data:image/webp;base64,UklGRoIEAABXRUJQVlA4WAoAAAAQAAAAWwAAWwAAQUxQSF4AAAABYBtJUqOjLgJi0vlHo8EC6wTWf0QgaNs2ybafQxjAu2iQnIbJH2x2zhPSuWzh+CKkTc4EeOJ66aQs3d3wu81FyNm2v9PXJuTqv/98PkK7tVFvhLTbJu0mK3YDfxYBVlA4IP4DAABwFgCdASpcAFwAPpFAm0klo6KkKddKkLASCWwYnybE7e6jDanm+P+58iYPmXCfVh+gN6x5jP2V9aP/G9Lp1LvoKdLX5KpMCWmAAzhrfC5T6sEXoTYF2+6920KwSzU7sY8ly3As5wkpPR6DM351+6hmKGdujK4wdP3FSiwGE7x4cC8pxT1npnfwI6BxLVY2UvlUmXJVULZmkD952lI/wxlj+Swcvm9OIfHdZAtHoVneQKZFxFw8jTlNWnl2IADZoedvoFqZlMfYSmNeyVrZdbad7n2vyQTbcQeYNpl3Iy4AoSei3waVtAFZn3fxeymoHrcb4M5BoVoQhA6cK1W2C4/2sxzaQmLtYIZmaJAqlKpb1Y+ijdXSS78fApUcRO1yx/8DY8jRE3CiVj0hTPkpFVPvrYNDyTYkZi5wketsZfmyZFd/O8YxEmPUdfpdxCWR9FpENZPi1g0Wuiz/tM2GpBcamPMNjGixaaWcWf+Cds6xkufuwUVVV1dtbwCMw0LfWeJ/Yfcfefy8eV2lbMyOVrZRLH7aOmQbvtcjt/bz3PPcMRLAmOZbW2SRCheysYG6/ATxn620ExJcob+Lptfu3/AaQIQJrir2+mUgKan5yvw2T85ovtvrafZccLPoYqQ7jZHNbV40eE3+93bYtXsRnyGsEaCNh/VV8bwOkFjVyx/wwMkOxYDGi/ohMi5jWHIHTs7pAnMkOU6nVYwyznoB3DNDfZXVlAgNpbprPS9HtQjedPfvf1N6jzw7XfC9HDk4LlIH7KxDXcsK+ZSbtydqSyb49n/z8FTsS0g8EPPt0m+kpVjtw0UmEZwgemSSwytwhkTlvVdE8/B5v/ArFphaAPqJUJMKNd2q7DEEF6bwObq+o4Tee4UTXDWsh3nOrXSrgKThaapfBkaep4Dp6PqFMtANkoCokk7CgCNrMGpyrS+GDjyvPMpYFNMgZSSLQjcYJKfFkLOWHTNF0Gkti7K6pRRMpHY1RXpPsbFBM5qQPxMgG0oNXhIXlloTQyaELwt57iFaMjHsNfarrt5v1CRW9qi+w/R0n3nmAkV99QS9BVG6s9f5vcBUzESFmj7R0yTjynSIUei9RUDH99hg4vl2p6dqk8Rabs4+RNm5LpdfJUL10yGqi33r3/ek21FJxejC69+YtDGiDB2mJFYl3TCqoL34Pe9EGuUkKcE+rzb2FxM3RKPjYcy+M/cwj/Cn0K5zyheGwvm3JUYcP1QJbuAOaMK5VMQC2cAGw6p+WH38NUdbGi95pTMGZ894zPsLZk9veaWPwTEpLMlqpq+duN0gJybJIfy3ZwP5eT8yAnXQpxskOl+Dbr50dff+F/hN4aC3iPrAnKRm/XViyoPC/LAAAA==',
   money: 'data:image/webp;base64,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',
   clapper: 'data:image/webp;base64,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',
-  camera: 'data:image/webp;base64,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',
   eyes: 'data:image/webp;base64,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',
   package: 'data:image/webp;base64,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',
   calendar: 'data:image/webp;base64,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',
   sparkles: 'data:image/webp;base64,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',
-  tray: 'data:image/webp;base64,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',
 });
 
 const ICON_PATHS = Object.freeze({
@@ -6488,17 +6384,6 @@ export function agentView(agent) {
   if (used) return { state, called: true, ...AGENT_VIEWS[state] };
   return { state, called: false, word: state === 'up_next' ? 'Up next' : 'Waiting its turn', tone: 'idle', mood: 'sleepy' };
 }
-export function agentAgo(value, now = Date.now()) {
-  const at = Date.parse(value);
-  if (!Number.isFinite(at) || at > now) return '';
-  const minutes = Math.floor((now - at) / 60000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return days < 7 ? `${days}d` : agentTime(value);
-}
 
 // @module flow
 // Replies the person has opened. A per-viewer convenience kept in the browser, so every read and write of it is guarded.
@@ -6523,38 +6408,32 @@ export function markRepliesSeen(agent) {
   try { globalThis.localStorage?.setItem(SEEN_REPLIES_KEY, JSON.stringify([...seenReplies].slice(-500))); } catch { /* Kept for this visit only. */ }
 }
 
-function agentRow({ agent, view }, { now, needText = '', questions = 0, active = false }) {
+function agentRow({ agent, view }, { needText = '', questions = 0, active = false }) {
   const name = agentNameOf(agent);
-  const time = agentAgo(agent.since, now);
   const note = agentPlain(agent.note);
   const line = isDirectorAgent(agent) && view.state === 'needs_you' && needText ? needText : view.state === 'waiting' && note ? note : agentPlain(agent.task);
   const unread = unreadReplies(agent);
   const badge = questions ? `<span class="ag-count" title="Questions waiting on you">${questions}</span>` : unread ? '<i class="ag-dot" role="img" aria-label="New reply" title="A reply you have not read"></i>' : '';
-  return `<button type="button" class="ag st-${view.tone}${active ? ' sel' : ''}" data-ab-open="${esc(agent.id)}"${line && capWords(line, 12) !== line ? ` title="${esc(line)}"` : ''}><span class="ag-f">${blob(agent.id, view.mood, 36)}<i class="ag-d" aria-hidden="true"></i></span><span class="ag-b"><span class="ag-n"><b>${esc(name)}</b>${time ? `<span class="ag-time num">${esc(time)}</span>` : ''}</span><span class="ag-l"><span class="ag-w">${esc(view.word)}</span>${line ? ` · ${esc(capWords(line, 12))}` : ''}</span></span><span class="ag-t">${badge}</span></button>`;
+  return `<button type="button" class="ag st-${view.tone}${active ? ' sel' : ''}" data-ab-open="${esc(agent.id)}"${line && capWords(line, 12) !== line ? ` title="${esc(line)}"` : ''}><span class="ag-f">${blob(agent.id, view.mood, 36)}<i class="ag-d" aria-hidden="true"></i></span><span class="ag-b"><span class="ag-n"><b>${esc(name)}</b></span><span class="ag-l"><span class="ag-w">${esc(view.word)}</span>${line ? ` · ${esc(capWords(line, 12))}` : ''}</span></span><span class="ag-t">${badge}</span></button>`;
 }
 
-/** The Inbox: the Director first, then the agents that have been called, then the ones not called yet. */
-export function agentInbox(agents, { now = Date.now(), need = '', needText = '', questions = 0, waitingOnYou = 0 } = {}) {
+/** The Team: the Director first, then the people on this job, then the ones not called yet. Each row is a face, a name, a state word and one line. */
+export function agentInbox(agents, { needText = '', questions = 0, waitingOnYou = 0 } = {}) {
   const rows = (Array.isArray(agents) ? agents : []).map(agent => ({ agent, view: agentView(agent) }));
   const rank = { working: 0, needs_you: 1, waiting: 2, done: 3 };
   const director = rows.filter(row => isDirectorAgent(row.agent));
   const called = rows.filter(row => !isDirectorAgent(row.agent) && row.view.called)
     .sort((a, b) => (rank[a.view.state] ?? 4) - (rank[b.view.state] ?? 4) || (Date.parse(b.agent.since) || 0) - (Date.parse(a.agent.since) || 0));
   const quiet = rows.filter(row => !isDirectorAgent(row.agent) && !row.view.called);
-  const working = rows.filter(row => row.view.state === 'working').length;
-  const summary = [waitingOnYou ? `${waitingOnYou} waiting on you` : '', working ? `${working} working` : ''].filter(Boolean).join(' · ');
-  const options = row => ({ now, needText, questions: isDirectorAgent(row.agent) ? questions : 0 });
-  return `<section class="ag-inbox" aria-labelledby="ag-inbox-title"><div class="in-h"><h2 id="ag-inbox-title">Inbox</h2>${summary ? `<span class="meta num">${esc(summary)}</span>` : ''}</div>${need}<div class="in-l" data-scroll="inbox">${[...director, ...called].map(row => agentRow(row, options(row))).join('')}${quiet.length ? `<div class="in-sep">Not called yet</div>${quiet.map(row => agentRow(row, options(row))).join('')}` : ''}</div></section>`;
+  const summary = waitingOnYou ? `${waitingOnYou} ${waitingOnYou === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you';
+  const options = row => ({ needText, questions: isDirectorAgent(row.agent) ? questions : 0 });
+  return `<section class="ag-inbox" aria-labelledby="ag-inbox-title"><div class="in-h"><h2 id="ag-inbox-title">Team</h2><span class="meta">${esc(summary)}</span></div><div class="in-l" data-scroll="inbox">${director.map(row => agentRow(row, options(row))).join('')}${called.length ? `<div class="in-sep">On this job</div>${called.map(row => agentRow(row, options(row))).join('')}` : ''}${quiet.length ? `<div class="in-sep">Not called yet</div>${quiet.map(row => agentRow(row, options(row))).join('')}` : ''}</div></section>`;
 }
 
-/** "What you need to do": the top thing waiting on the person, with the button that goes to it. */
+/** The offer to send a finished video to Post-production, as a card with its buttons. Nothing else is drawn here: a decision is its own card, a question has its own, and the Team row says what is waiting. */
 export function inboxNeed(parts, jobId, item = null, handoff = {}) {
-  if (!parts) return '';
-  if (isHandoffItem(item)) return `<div class="in-need"><span class="eyebrow">What you need to do</span><p>${esc(parts.need)}</p>${handoffButtons({ ...item, jobId: item.jobId || jobId }, handoff)}</div>`;
-  const jump = parts.jump && jobId
-    ? `<button type="button" class="primary" data-inbox-jump="${esc(jobId)}" data-inbox-target="${esc(parts.jump.target)}">${esc(parts.jump.label)}</button>`
-    : item?.kind === 'question' ? '<button type="button" class="primary" data-ab-open="producer">Answer in the chat</button>' : '';
-  return `<div class="in-need${item || jump ? '' : ' is-idle'}"><span class="eyebrow">What you need to do</span><p>${esc(parts.need)}</p>${jump}</div>`;
+  if (!parts || !isHandoffItem(item)) return '';
+  return `<section class="panel need-card" aria-label="${esc(parts.need)}"><p>${esc(parts.need)}</p>${handoffButtons({ ...item, jobId: item.jobId || jobId }, handoff)}</section>`;
 }
 
 function refMatches(ref, path) {
@@ -6595,9 +6474,13 @@ function runOverlaps(run, win) {
   const ended = traceMs(run.end) ?? (run.state === 'running' ? Infinity : began);
   return (win.to === null || began <= win.to) && (win.from === null || ended >= win.from);
 }
-function traceFact(label, value) { return value ? `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>` : ''; }
 function traceSection(title, inner) { return inner ? `<section class="trace-sec"><h4>${esc(title)}</h4>${inner}</section>` : ''; }
-const traceWho = (id, person, model) => (person ? `<span class="trace-who">${blob(id, person.mood, 20)}<span>${esc(person.name)}${trimmed(model) ? ` · ${esc(model)}` : ''}</span></span>` : '');
+// A card's meta is one line, who and when ("Scriptwriter, 3:31 pm"), never a model name. Nothing is drawn when neither is known.
+function traceMeta(id, person, at) {
+  const when = agentTime(at).replace(/\s*([AP])M$/i, (_, half) => ` ${half.toLowerCase()}m`);
+  const text = [trimmed(person?.name), when].filter(Boolean).join(', ');
+  return text ? `<p class="trace-meta muted"><span class="trace-who">${person ? blob(id, person.mood, 20) : ''}<span>${esc(text)}</span></span></p>` : '';
+}
 
 // What the agents ran inside the window: one line each, with when, how long and how it ended.
 function traceRuns(agents, win) {
@@ -6682,27 +6565,19 @@ function requestTrace(item) {
  * `withWho` (false in that agent's own chat).
  */
 export function stepTrace(item, ctx = {}) {
-  const { agent = null, person = null, withWho = true, withFiles = true } = ctx;
+  const { agent = null, person = null, withWho = true, withFiles = true, compact = false } = ctx;
   const win = stepWindow(item);
   const status = item.status;
   const files = (Array.isArray(agent?.files) ? agent.files : []).filter(file => file && trimmed(file.path) && (item.outputs || []).some(ref => refMatches(ref, file.path)));
   const priceList = withFiles && item.quote && status === 'done' ? `<p><b>Price list</b></p>${priceTable(item.quote, { withProvider: true })}` : '';
-  const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList && !item.request ? '<p class="muted">No files listed for this step.</p>' : ''));
-  const took = win.from !== null && win.to !== null && win.to >= win.from ? tookWords(win.to - win.from) : '';
+  const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList && !item.request && !compact ? '<p class="muted">No files listed for this step.</p>' : ''));
   const boards = withFiles ? stepStoryboards(item, files, ctx.chipContext?.doc) : [];
   const shotPlan = boards.length ? traceSection('Storyboard', boards.map(board => storyboardStrip(board) + storyboardReadout(board)).join('')) : '';
-  const facts = [
-    withWho ? traceFact('Done by', traceWho(item.agent || agent?.id, person, agent?.model)) : '',
-    traceFact(status === 'done' || status === 'running' ? 'Started' : 'Waiting since', esc(traceWhen(item.startedAt))),
-    status === 'done' ? traceFact('Finished', esc([traceWhen(item.doneAt), took].filter(Boolean).join(' · '))) : '',
-    status === 'running' ? traceFact('Now', TXT_WORKING_ON_IT) : '',
-    status === 'waiting' ? traceFact('Now', TXT_WAITING_ON_YOU) : '',
-  ].join('');
-  const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
+  const meta = compact ? '' : traceMeta(item.agent || agent?.id, withWho ? person : null, status === 'done' ? item.doneAt || item.startedAt : item.startedAt);
+  const session = win.known && !compact ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
   const asked = withFiles ? requestTrace(item) : '';
-  const none = !facts && !made && !session && !asked && !shotPlan;
-  const sessionBody = win.known ? (session || '<p class="muted">Nothing recorded.</p>') : '<p class="muted">No time recorded.</p>';
-  return `<dl class="trace-facts">${facts}</dl>${asked}${traceSection(TXT_WHAT_IT_MADE, made)}${shotPlan}${traceSection('Session', sessionBody)}${none ? '<p class="muted">No history yet.</p>' : ''}`;
+  const none = !meta && !made && !session && !asked && !shotPlan;
+  return `${meta}${asked}${traceSection(TXT_WHAT_IT_MADE, made)}${shotPlan}${traceSection('Session', session)}${none && !compact ? '<p class="muted">No history yet.</p>' : ''}`;
 }
 
 const APPROVAL_WORDS = Object.freeze({ approved: 'Approved', changes: 'Asked for changes' });
@@ -6722,20 +6597,16 @@ export function gateReceipt(item) {
 }
 /** What opens under a gate section: who prepared it, when it opened, what the person decided (with any change requests), and the session in between. */
 export function gateTrace(item, ctx = {}) {
-  const { agent = null, person = null, director = null } = ctx;
+  const { agent = null, person = null, director = null, compact = false } = ctx;
   const win = gateWindow(item);
   const history = Array.isArray(item.history) ? item.history : [];
   const decisions = gateDecisionRows(item);
   const reviewed = [...new Set(history.flatMap(entry => (Array.isArray(entry.files) ? entry.files : [])))].map(path => ({ path }));
   const agents = [agent, director].filter((one, at, list) => one && list.indexOf(one) === at);
-  const facts = [
-    traceFact('Prepared by', traceWho(item.agent || agent?.id, person, agent?.model)),
-    traceFact('Asked you', esc(traceWhen(item.openedAt))),
-    item.status === 'waiting' ? traceFact('Now', TXT_WAITING_ON_YOU) : '',
-  ].join('');
-  const session = win.known ? [traceRuns(agent ? [agent] : [], win), traceMessages(agents, win)].join('') : '';
+  const meta = compact ? '' : traceMeta(item.agent || agent?.id, person, item.openedAt);
+  const session = win.known && !compact ? [traceRuns(agent ? [agent] : [], win), traceMessages(agents, win)].join('') : '';
   const decided = decisions ? `<ol class="trace-list">${decisions}</ol>` : '';
-  return `<dl class="trace-facts">${facts}</dl>${traceSection('Your decision', decided || (item.status === 'waiting' ? '<p class="muted">Not decided yet.</p>' : ''))}${traceSection('What you saw', (item.quote && item.status === 'done' ? priceTable(item.quote, { withProvider: true }) : '') + traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', win.known ? (session || '<p class="muted">Nothing else recorded.</p>') : '')}`;
+  return `${meta}${traceSection('Your decision', decided)}${traceSection('What you saw', (item.quote && item.status === 'done' ? priceTable(item.quote, { withProvider: true }) : '') + traceFiles(reviewed, ctx, `Files you reviewed for ${item.name}`))}${traceSection('Session', session)}`;
 }
 
 // One bubble for each finished step of this agent: the step's name, the files it made as links, and a small footer.
@@ -6754,12 +6625,11 @@ function workBubbles(agent, tasks, chipContext) {
   }
   groups.at(-1).files.push(...files.filter(file => !taken.has(file.path)));
   const runs = Array.isArray(agent.runs) ? agent.runs : [];
-  const model = trimmed(agent.model);
   return groups.map((group, index) => {
     const run = runs[runs.length - (groups.length - index)] || null;
     const last = index === groups.length - 1;
     const chips = agentChips(group.files, last ? Number(agent.filesMore) || 0 : 0, { ...chipContext, label: `${group.task.name}, files from the ${agentNameOf(agent)}`, by: `by the ${agentNameOf(agent)}` });
-    const foot = [model, run?.at ? agentTime(run.at) : '', tookWords(run?.tookMs)].filter(Boolean).join(' · ');
+    const foot = [run?.at ? agentTime(run.at) : '', tookWords(run?.tookMs)].filter(Boolean).join(' · ');
     return `<div class="msg-r a"><div class="bub"><div class="bub-h"><b>${esc(group.task.name)}</b></div>${chips || '<p class="bub-note">Finished.</p>'}${foot ? `<div class="bub-f"><span class="num">${esc(foot)}</span></div>` : ''}</div></div>`;
   }).join('');
 }
@@ -6778,17 +6648,6 @@ function messageBubbles(agent) {
 }
 
 const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', cut: 'clapper', finishing: 'sparkles', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
-// The picture for a step is picked from what the step is: its short name says it.
-const STEP_PICTURES = Object.freeze([
-  [/request|setting the plan/, 'folder'], [/price|cost/, 'money'], [/storyboard|media spec|shot plan|slide plan|cut plan|still frames/, 'picture'],
-  [/report|strategy|brief|campaign plan|ad requirements|finishing/, 'memo'], [/caption|copy|words/, 'script'], [/idea/, 'sparkles'],
-  [/research|sources|watching|breaking down|reading the posts|key phrases/, 'magnifier'], [/making/, 'clapper'],
-  [/check|logo|review|quality/, 'eyes'], [/going live|posting|post plan/, 'calendar'], [/ready to post|hand/, 'package'],
-]);
-function stepPicture(name) {
-  const text = String(name || '').toLowerCase();
-  return STEP_IMG[STEP_PICTURES.find(([pattern]) => pattern.test(text))?.[1]] || STEP_IMG.tray;
-}
 const gatePicture = gate => STEP_IMG[GATE_PICTURES[gate]] || STEP_IMG.package;
 
 export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} } = {}) {
@@ -6839,14 +6698,14 @@ export function agentChat(agent, ctx = {}) {
   const name = agentNameOf(agent);
   const director = isDirectorAgent(agent);
   const role = agentPlain(agent.role) || (director ? DIRECTOR_ROLE : agentPlain(agent.task));
-  const card = item ? `<div class="msg-r a"><div class="dc s-waiting"><div class="dc-h"><span class="node pic" aria-hidden="true"><img src="${gatePicture(item.gate)}" alt=""></span><div><b>${esc(item.title)}</b><span class="pill st-waiting">Waiting on you</span></div></div>${item.line ? `<p>${esc(item.line)}</p>` : ''}<div class="bub-act"><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('change')} Request change</button><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('open')} Open details</button></div></div></div>` : '';
+  const card = item ? `<div class="msg-r a"><div class="dc s-waiting"><div class="dc-h"><span class="node pic" aria-hidden="true"><img src="${gatePicture(item.gate)}" alt=""></span><div><b>${esc(item.title)}</b><span class="pill st-waiting">Waiting on you</span></div></div>${item.line ? `<p>${esc(item.line)}</p>` : ''}<div class="bub-act"><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('change')} Ask for changes</button><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('open')} Open details</button></div></div></div>` : '';
   const typing = view.state === 'working' ? `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>` : '';
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
   const askBubbles = (Array.isArray(asks) ? asks : []).join('');
   const word = waiting > 0 ? `${view.word} · ${waiting}` : view.word;
-  return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost icon" data-ab-back aria-label="Back to the inbox" title="Back to the inbox">${icon('back')}</button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
+  return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost back" data-ab-back aria-label="Back to the team" title="Back to the team">${icon('back')}<span>Back</span></button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
 }
 
 // What the agent did lately, in a small fold at the end of its chat: short plain lines, newest last.
@@ -6913,33 +6772,6 @@ export function stageItems(project, { pendingGate = null } = {}) {
   return stages;
 }
 
-function stepCard(item, prev, who, { trace = '', open = false, key = '' } = {}) {
-  const person = who(item.agent) || { name: humanize(item.agent), mood: 'sleepy' };
-  const status = item.status;
-  const starting = status === 'running' && person.called === false;
-  const saidFull = status === 'pending' ? (prev ? `Waits on ${prev}` : TXT_NOT_STARTED_YET) : status === 'waiting' ? TXT_WAITING_ON_YOU : starting ? `The Director is calling the ${person.name}` : status === 'done' && item.receipt ? item.receipt : item.line || (status === 'done' ? 'Finished' : TXT_WORKING_ON_IT);
-  const said = capWords(saidFull);
-  const glyph = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : status === 'running' ? '<span class="pip"></span>' : '';
-  const row = `<span class="node pic" aria-hidden="true"><img src="${stepPicture(item.name)}" alt=""><i class="st">${glyph}</i></span><div class="step-m"><span class="step-t"><b>${esc(item.name)}</b><span class="pill st-${status}">${starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status]}</span></span><span class="step-s">${esc(said.replace(/\.$/, ''))}</span></div><span class="step-a">${blob(item.agent, person.mood, 22)}<span class="ag-s">${esc(person.name)}</span></span>`;
-  // A step that is done, working or waiting opens to its history. One not reached yet is shown disabled: no control, no history.
-  if (status === 'pending') return `<li class="step s-pending is-locked" aria-disabled="true"><div class="step-row">${row}</div></li>`;
-  return `<li class="step s-${status} has-trace"><details class="step-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="step-row" title="${esc(`Show the history of ${item.name}`)}">${row}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${saidFull !== said ? `<p class="muted step-full">${esc(saidFull)}</p>` : ''}${trace}</div></details></li>`;
-}
-
-function gateSection(item, { jobId, body, open, isOpen, trace = '' }) {
-  const status = item.status;
-  const approved = gateReceipt(item) || 'Done';
-  const meta = status === 'waiting' ? TXT_WAITING_ON_YOU : status === 'done' ? approved : TXT_NOT_STARTED_YET;
-  const badge = status === 'done' ? icon('check') : status === 'waiting' ? icon('user') : icon('gate');
-  const head = `<span class="gl" aria-hidden="true">${badge}</span><span class="gt"><b>${esc(item.name)}</b><span class="meta">${esc(meta)}</span></span>`;
-  const cls = `gateband g-${status}`;
-  // The history opens for a gate that is done or waiting on the person. A gate not reached yet is disabled, unless it already holds something to show.
-  const history = status === 'pending' ? '' : trace;
-  if (!body && !history) return `<li class="${cls}${status === 'pending' ? ' is-locked' : ''}" data-gate="${esc(item.gate)}"${status === 'pending' ? ' aria-disabled="true"' : ''}><div class="gb">${head}</div></li>`;
-  const key = `gate:${jobId}:${item.gate}:${status}`;
-  return `<li class="${cls}" data-gate="${esc(item.gate)}"><details class="gate" data-open-key="${esc(key)}"${isOpen(key, open || status === 'waiting') ? ' open' : ''}><summary class="gb">${head}<span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="gate-body">${body}${history ? `<div class="trace" role="group" aria-label="${esc(`History of ${item.name}`)}">${history}</div>` : ''}</div></details></li>`;
-}
-
 // A decided approval gate that belongs to a done step is drawn on that step's card, not as a row of its own. A gate belongs to the
 // step plan row that names it (the step drawn just before it in its stage: the ideas, the shot plan), and the price gate belongs to
 // the "Pricing the media" step. Any other gate keeps its row. The result has fresh stage and step objects; `gates` lists the merged gates.
@@ -6971,55 +6803,98 @@ function decidedGateTrace(gate, body) {
   return traceSection('Your approval', (body || '') + (rows ? `<ol class="trace-list">${rows}</ol>` : ''));
 }
 
-/**
- * The stages, drawn: a heading ("Stage 2  Writing", "1 of 3 done") and under it the step cards joined by a line, with each
- * gate section between them. `bodies` maps a gate to what opens inside it ({ html, open }); the gates that got a body are
- * returned in `placed`, so the page can show anything left over after the stages. A step or gate that is done, working or
- * waiting opens to its history (`who` gives the agent card behind a step as `agent`, `chipContext` links its files);
- * one not reached yet is disabled.
- */
-// The Director's open questions on a job, with their answers, for the stage that is waiting on them.
+// The Director's open questions on a job, as one card with their answer buttons. The job page draws it once: above the steps, or in the Director's chat while that is open.
 export function stageQuestions(items, { stateOf = () => ({}), signal = {} } = {}) {
   const open = (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && item.questionId);
   if (!open.length) return '';
   const blocks = open.map((item, at) => `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionCard(item, stateOf(item) || {}, signal, at, { place: 'stage' })}</div>`).join('');
-  return `<div class="stage-ask" role="group" aria-label="Claude's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'Claude needs your answer' : `Claude needs ${open.length} answers`)}</p>${blocks}</div>`;
+  return `<div class="stage-ask" role="group" aria-label="The Director's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'The Director needs your answer' : `The Director needs ${open.length} answers`)}</p>${blocks}</div>`;
 }
 
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, asking = '' } = {}) {
+// ---- The steps of a job, drawn as a fold of stops ----
+// One card for each stop: its number, its name, a line about when, and (opened) the work it holds with its files. A stop that began opens and
+// closes; one not reached yet is a quiet row with a number and a name. A step or a decision inside a stop shows no agent's name.
+const stopTime = value => (Number.isFinite(Date.parse(value ?? '')) ? agentTime(value).replace(/\s*([AP])M$/i, (_, half) => ` ${half.toLowerCase()}m`) : '');
+const stopTimes = values => values.filter(value => Number.isFinite(Date.parse(value ?? ''))).sort((a, b) => Date.parse(a) - Date.parse(b));
+const approvedAtOf = gate => trimmed(gate?.approval?.at) || [...(Array.isArray(gate?.history) ? gate.history : [])].reverse().find(entry => entry?.decision === 'approved')?.at || '';
+// How a stop stands: what its steps and decisions say, or else what the plan says of the stop itself.
+function stopStatus(stage) {
+  const has = status => stage.items.some(item => item.status === status);
+  if (has('waiting') || stage.source?.status === 'waiting') return 'waiting';
+  if (has('running') || stage.source?.status === 'running') return 'running';
+  if (stage.source?.status === 'complete' || (stage.items.length > 0 && stage.items.every(item => item.status === 'done'))) return 'done';
+  return has('done') ? 'running' : 'pending';
+}
+// "Picked by you, 3:06 pm", "Approved by you, 4:27 pm", "Done, 3:31 pm", "Started 3:31 pm", "Since 4:27 pm". Empty when no time is known.
+function stopLine(status, items) {
+  const gates = items.flatMap(item => (item.kind === 'gate' ? [item] : item.decided ? [item.decided] : []));
+  if (status === 'done') {
+    const gate = gates.filter(item => item.status === 'done' && stopTime(approvedAtOf(item))).at(-1);
+    if (gate) return `${gate.gate === 'concept' ? 'Picked by you' : 'Approved by you'}, ${stopTime(approvedAtOf(gate))}`;
+    const at = stopTime(stopTimes(items.map(item => item.doneAt)).at(-1));
+    return at ? `Done, ${at}` : '';
+  }
+  if (status === 'running') { const at = stopTime(stopTimes(items.filter(item => item.status === 'running').map(item => item.startedAt))[0]); return at ? `Started ${at}` : ''; }
+  if (status === 'waiting') { const at = stopTime(stopTimes(gates.filter(item => item.status === 'waiting').map(item => item.openedAt)).at(-1)); return at ? `Since ${at}` : ''; }
+  return '';
+}
+
+// One step inside an opened stop: its name and plain line, and what it made.
+function stopStep(item, { who, chipContext, bodies }) {
+  const person = who(item.agent);
+  const status = item.status;
+  const starting = status === 'running' && person?.called === false;
+  const said = status === 'pending' ? TXT_NOT_STARTED_YET : status === 'waiting' ? TXT_WAITING_ON_YOU : starting ? 'The Director is getting this started' : status === 'done' && item.receipt ? item.receipt : item.line || (status === 'done' ? 'Finished' : TXT_WORKING_ON_IT);
+  const mark = status === 'done' ? icon('check') : status === 'running' ? '<span class="pip"></span>' : status === 'waiting' ? icon('q') : '';
+  const decided = item.decided ? decidedGateTrace(item.decided, bodies[item.decided.gate]?.html || '') : '';
+  const work = status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext, compact: true }) + decided;
+  return `<li class="sub s-${status}"><span class="sub-m" aria-hidden="true">${mark}</span><div class="sub-b"><span class="sub-t"><b>${esc(item.name)}</b><span class="sub-s">${esc(said)}</span></span>${work ? `<div class="stg-work">${work}</div>` : ''}</div></li>`;
+}
+
+// A decision inside an opened stop. The one waiting on the person is the card above the fold, so here it only points up to it.
+function stopGate(item, { who, chipContext, bodies, placed, above }) {
+  const own = bodies[item.gate] || null;
+  const status = item.status;
+  const said = status === 'waiting' ? TXT_WAITING_ON_YOU : status === 'done' ? gateReceipt(item) || 'Done' : TXT_NOT_STARTED_YET;
+  const mark = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : '';
+  const link = status === 'waiting' && above === item.gate ? `<button type="button" class="sm" data-ab-gate="${esc(item.gate)}">Show it above</button>` : '';
+  let work = '';
+  if (status !== 'pending') {
+    if (own?.html) { placed.add(item.gate); work += `<div class="stg-panels">${own.html}</div>`; }
+    const author = item.agent ? who(item.agent) : null;
+    work += gateTrace(item, { agent: author?.agent || null, person: author, director: who('producer')?.agent || null, chipContext, compact: true });
+  }
+  return `<li class="sub sub-gate s-${status}" data-gate="${esc(item.gate)}"><span class="sub-m" aria-hidden="true">${mark}</span><div class="sub-b"><span class="sub-t"><b>${esc(item.name)}</b><span class="sub-s">${esc(said)}</span>${link}</span>${work ? `<div class="stg-work">${work}</div>` : ''}</div></li>`;
+}
+
+/**
+ * The stops, drawn: an ordered list with one card for each stop (see above). `bodies` maps a gate to what opens inside it ({ html, open });
+ * the gates that got a body are returned in `placed`, so the page can show anything left over after the stops. `above` is the gate whose card
+ * the page draws above the list; `ask` is the Director's chat id and its draft is what "Ask for changes" starts. `who` gives the agent card
+ * behind a step (`agent`, `called`), `chipContext` links its files. `done` and `total` count the stops, once.
+ */
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer' } = {}) {
   const placed = new Set();
-  let prev = '';
-  let askPlaced = false;
-  // The open questions sit right under the first step or decision that waits on the person, so "Waiting on you" always has its buttons.
-  const withAsk = (row, item) => {
-    if (!asking || askPlaced || item.status !== 'waiting') return row;
-    askPlaced = true;
-    return `${row}<li class="step step-ask">${asking}</li>`;
-  };
   const merged = mergeDecidedGates(model);
   for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
-  const stages = merged.stages.map((stage, at) => {
-    const done = stage.items.filter(item => item.status === 'done').length;
-    const rows = stage.items.map((item, index) => {
-      if (item.kind === 'step') {
-        const person = who(item.agent);
-        const key = `step:${jobId}:${stage.id ?? at}:${item.name}`;
-        const decided = item.decided ? decidedGateTrace(item.decided, bodies[item.decided.gate]?.html || '') : '';
-        const card = stepCard(item, prev, who, { trace: item.status === 'pending' ? '' : stepTrace(item, { agent: person?.agent || null, person, chipContext }) + decided, open: isOpen(key, false), key });
-        prev = item.name;
-        return withAsk(card, item);
-      }
-      const own = bodies[item.gate] || null;
-      if (own?.html) placed.add(item.gate);
-      prev = item.name;
-      const author = item.agent ? who(item.agent) : null;
-      const director = who('producer');
-      const trace = item.status === 'pending' ? '' : gateTrace(item, { agent: author?.agent || null, person: author, director: director?.agent || null, chipContext });
-      return withAsk(gateSection(item, { jobId, body: own?.html || '', open: Boolean(own?.open), isOpen, trace }), item);
-    });
-    return `<li class="stg"><div class="stg-h"><h3>Stage ${at + 1} <span>${esc(stage.label)}</span></h3><span class="cnt num">${done} of ${stage.items.length} done</span></div><ol class="steps">${rows.join('')}</ol></li>`;
+  let done = 0;
+  const stops = merged.stages.map((stage, at) => {
+    const status = stopStatus(stage);
+    const name = esc(stage.label);
+    if (status === 'done') done += 1;
+    if (status === 'pending') return `<li class="stg s-pending"><div class="stg-row"><span class="n">${at + 1}</span><span class="stg-t"><h3>${name}</h3></span></div></li>`;
+    const key = `stop:${jobId}:${stage.id ?? at}:${status}`;
+    // A stop that holds a panel the person should see (the posts that went out, the report) opens by itself even when done.
+    const holds = stage.items.some(item => { const gate = item.kind === 'gate' ? item : item.decided; return Boolean(gate && bodies[gate.gate]?.html && bodies[gate.gate].open); });
+    const rows = stage.items.map(item => (item.kind === 'step' ? stopStep(item, { who, chipContext, bodies }) : stopGate(item, { who, chipContext, bodies, placed, above })));
+    const foot = status === 'done' ? `<div class="stg-foot"><button type="button" class="sm" data-ab-open="${esc(ask)}" data-ab-draft="${esc(`Change the ${String(stage.label).toLowerCase()}: `)}">Ask for changes</button></div>` : '';
+    const line = stopLine(status, stage.items);
+    const running = stage.items.filter(item => item.kind === 'step' && item.status === 'running');
+    const starting = status === 'running' && running.length > 0 && running.every(item => who(item.agent)?.called === false);
+    const word = starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status];
+    return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${isOpen(key, status !== 'done' || holds) ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body"><ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
   });
-  return { html: stages.length ? `<ol class="flow" aria-label="Steps of this job">${stages.join('')}</ol>` : '', placed, askPlaced };
+  return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length };
 }
 
 /**
@@ -7086,12 +6961,12 @@ export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId
 // A post card has a picture (or a platform tile), the numbers, the labels and two controls: Open post and Copy link. The page state (open
 // tab, subtopic edits, the cell being confirmed) lives in the app, one record per brand; everything here is a function of the brand and it.
 export const INTEL_TABS = Object.freeze([
-  { id: 'plan', label: '6×5 plan' },
+  { id: 'plan', label: 'Post plan' },
   { id: 'own', label: 'Your winners' },
-  { id: 'subtopics', label: '6 subtopics' },
+  { id: 'subtopics', label: 'Topics' },
   { id: 'competitors', label: 'Competitors' },
   { id: 'viral', label: 'Viral now' },
-  { id: 'banks', label: 'Pains and banks' },
+  { id: 'banks', label: 'What customers say' },
 ]);
 export const INTEL_SUBTOPIC_COUNT = 6;
 export const INTEL_SUBTOPIC_MAX = 8;
@@ -7270,7 +7145,7 @@ function intelPlanPanel(intel, ui) {
     ? `<div class="intel-confirm" role="group" aria-labelledby="intel-confirm-title" tabindex="-1" data-intel-focus="cell-confirm"><p id="intel-confirm-title"><strong>Start a post from this cell?</strong></p><p class="muted">${esc(chosen.row.name)} &times; ${esc(chosen.col.name)}</p><p class="intel-idea">${esc(cell.idea)}</p>${detail}<div class="intel-actions"><button type="button" class="primary" data-intel-act="cell-go" data-intel-focus="cell-go"${ui.cellBusy ? ' disabled aria-busy="true"' : ''}>${ui.cellBusy ? 'Sending...' : 'Start this post'}</button><button type="button" class="quiet" data-intel-act="cell-cancel" data-intel-focus="cell-cancel">Cancel</button></div>${ui.cellError ? `<p class="inline-error" role="alert">${esc(ui.cellError)}</p>` : ''}</div>`
     : '';
   const sent = ui.cellSent && !cell ? `<p class="intel-note" role="status" tabindex="-1" data-intel-focus="cell-sent">${esc(ui.cellSent)}</p>` : '';
-  return `<p class="intel-intro">Your ${plan.rows.length} subtopics down, the ${plan.cols.length} formats that work best across. Every cell is a post idea. Choose one to start a post from it; you confirm before anything is made.</p><div class="intel-scroll" tabindex="0" role="region" aria-label="6 by 5 plan, scrolls sideways on a narrow screen"><table class="intel-plan"><thead>${head}</thead><tbody>${body}</tbody></table></div>${confirm}${sent}`;
+  return `<p class="intel-intro">Your ${plan.rows.length} subtopics down, the ${plan.cols.length} formats that work best across. Every cell is a post idea. Choose one to start a post from it; you confirm before anything is made.</p><div class="intel-scroll" tabindex="0" role="region" aria-label="Post plan, scrolls sideways on a narrow screen"><table class="intel-plan"><thead>${head}</thead><tbody>${body}</tbody></table></div>${confirm}${sent}`;
 }
 
 function intelOwnPanel(intel, ui, ctx) {
@@ -7348,7 +7223,7 @@ function intelTabs(slug, name, current) {
 }
 function intelRunningBody(intel) {
   const steps = intelSteps(intel);
-  if (!steps.length) return '<p class="muted">Claude is starting the research.</p>';
+  if (!steps.length) return '<p class="muted">The Director is starting the research.</p>';
   const done = steps.filter(step => step.state === 'done').length;
   const percent = Math.round((done / steps.length) * 100);
   const rows = steps.map(step => `<li class="is-${step.state}"><span class="intel-dot" aria-hidden="true"></span><span class="intel-step-text">${esc(step.label)}<span class="visually-hidden">${esc(` (${INTEL_STEP_WORDS[step.state]})`)}</span>${step.detail ? `<span class="intel-step-detail">${esc(step.detail)}</span>` : ''}</span></li>`).join('');
@@ -8102,18 +7977,19 @@ if (typeof document !== 'undefined') {
     // "ready" for the artifact relay, so freshness reads from the projection's
     // own updatedAt instead (see boardSyncDetail).
     const ready = Boolean(data.updatedAt);
-    const status = 'Online board';
-    const detail = boardSyncDetail(data.updatedAt);
+    // The words follow the dot: a board the studio has not written yet says so once, not "Online board" over a grey dot.
+    const status = ready ? 'Online board' : 'Waiting for your studio';
+    const detail = ready ? boardSyncDetail(data.updatedAt) : '';
     const connectorsLink = Array.isArray(data.connectors) && data.connectors.length && data.setupStep && data.setupStep !== 'connectors'
       ? '<button class="quiet" data-action="connectors">Connectors</button>' : '';
     const route = routeOf(location.hash);
     const groupId = project ? PIPELINE_KINDS[project.kind]?.group || '' : route.page === 'pipeline' ? route.group : '';
-    const door = groupId ? pipelineDoors(data.projects || [], workspaceInbox(data).items).find(item => item.group === groupId) : null;
+    const door = groupId ? pipelineGroupPages(data.projects || []).find(item => item.group === groupId) : null;
     // Back goes up one level: a job to its group's page, a group's page to home. The title names where this page is.
     const back = project ? (door ? { href: `#/pipeline/${encodeURIComponent(door.group)}`, label: door.title } : { href: '#/', label: 'Social Campaign' }) : route.page === 'pipeline' ? { href: '#/', label: 'Social Campaign' } : null;
-    const title = project ? kindNameOf(project.kind) || kindLabelOf(project) : route.page === 'pipeline' ? door?.title || 'Social Campaign' : 'Social Campaign';
+    const title = project ? trimmed(project.title) || kindNameOf(project.kind) || kindLabelOf(project) : route.page === 'pipeline' ? door?.title || 'Social Campaign' : 'Social Campaign';
     const backLink = back ? `<a class="back" href="${esc(back.href)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>${esc(back.label)}</a>` : '';
-    return `<header class="top"><div class="brand">${backLink}<a href="#/" class="brand-logo" aria-label="Social Campaign home">${logo}</a><span class="sep" aria-hidden="true"></span><span class="brand-copy"><strong>${esc(title)}</strong></span></div><div class="header-tools"><span class="connection"><i class="dot ${ready ? 'ready' : ''}"></i><b>${esc(status)}</b><small>${esc(detail)}</small></span><span class="header-actions">${connectorsLink}${boardUpdateAvailable() ? `<button class="header-refresh" data-action="update-board" title="A newer version of the board is installed. Claude will republish it." ${loading || boardUpdatePending || boardUpdateWaiting() ? 'disabled aria-busy="true"' : ''}>${boardUpdatePending || boardUpdateWaiting() ? 'Updating board…' : loading ? 'Refreshing...' : 'Update board'}</button>` : `<button class="header-refresh" data-action="refresh" ${loading ? 'disabled' : ''}>${loading ? 'Refreshing...' : 'Refresh'}</button>`}</span></div></header>`;
+    return `<header class="top"><div class="brand">${backLink}<a href="#/" class="brand-logo" aria-label="Social Campaign home">${logo}</a><span class="sep" aria-hidden="true"></span><span class="brand-copy"><strong>${esc(title)}</strong></span></div><div class="header-tools"><span class="connection"><i class="dot ${ready ? 'ready' : ''}"></i><b>${esc(status)}</b>${detail ? `<small>${esc(detail)}</small>` : ''}</span><span class="header-actions">${connectorsLink}${boardUpdateAvailable() ? `<button class="header-refresh" data-action="update-board" title="A newer version of the board is installed. Claude will republish it." ${loading || boardUpdatePending || boardUpdateWaiting() ? 'disabled aria-busy="true"' : ''}>${boardUpdatePending || boardUpdateWaiting() ? 'Updating board…' : loading ? 'Refreshing...' : 'Update board'}</button>` : `<button class="header-refresh" data-action="refresh" ${loading ? 'disabled' : ''}>${loading ? 'Refreshing...' : 'Refresh'}</button>`}</span></div></header>`;
   }
   function ensureSignalAvailability() {
     if (!artifactMode() || signalAvailabilityPending || typeof transport?.checkSignalAvailability !== 'function') return;
@@ -8152,17 +8028,18 @@ if (typeof document !== 'undefined') {
   function projectCard(project, waiting = false) {
     const brand = project.brand === NO_BRAND ? '' : project.brandName || 'Unassigned brand';
     const { done, total } = stageProgress(project);
-    // Opened, usage and where it lives sit on the job page, under About this job and Usage.
+    // Opened, credits used and where it lives sit on the job page, under About this job.
     const lines = [['Steps', total ? `${done} of ${total} done` : ''], ['Now', trimmed(project.stageSummary?.current)]].filter(([, value]) => value);
     const activity = agentLineOf(project) || `<p>${esc(project.nextAction || humanize(project.state))}</p>`;
-    return `<button class="project-card${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}" style="--h:${hueOf(project.jobId)}"><span class="pc-top card-art"><span class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</span></span><span class="pc-body card-body"><span class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</span>${pill(project.state, project.stateLabel)}</span><span class="pc-act">${activity}</span><span class="pc-dots" aria-hidden="true"></span></button>`;
+    // One link to the job, never a button around a heading: the whole card is the link, so Tab and Enter work like a click.
+    return `<a class="project-card${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}" style="--h:${hueOf(project.jobId)}"><div class="pc-top card-art"><div class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</div></div><div class="pc-body card-body"><div class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</div>${pill(project.state, project.stateLabel)}</div><div class="pc-act">${activity}</div><div class="pc-dots" aria-hidden="true"></div></a>`;
   }
   // The home page's row for one job: what it is, its steps from brief to posted, and where it is now. Gold when it waits on the person.
   function jobRow(project, waiting = false) {
     const brand = project.brand === NO_BRAND ? '' : project.brandName || '';
     const sub = [kindLabelOf(project), brand].filter(Boolean).join(' · ');
     const progress = jobProgress(project) || '<div class="job-progress"><span class="job-progress-text">No steps yet</span></div>';
-    return `<button class="job-row${waiting ? ' is-waiting' : ''}" data-project="${esc(project.jobId)}"><span class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${researchLine(project) ? `<small class="jr-research">${esc(researchLine(project))}</small>` : ''}</span><span class="jr-steps">${progress}</span><span class="jr-state">${pill(project.state, project.stateLabel)}</span></button>`;
+    return `<a class="job-row${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}"><div class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div><div class="jr-steps">${progress}</div><div class="jr-state">${pill(project.state, project.stateLabel)}</div></a>`;
   }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
@@ -8397,7 +8274,7 @@ if (typeof document !== 'undefined') {
         const keep = part === 'review' && state.args ? { settled: true, args: state.args } : { args: null };
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, ...keep, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
-        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? NOTE_HAS_ANSWER : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'Claude is trying that step again.' : 'Claude applied your decision.');
+        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? NOTE_HAS_ANSWER : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'The Director is trying that step again.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
@@ -8492,9 +8369,9 @@ if (typeof document !== 'undefined') {
     const nextLine = project.nextAction || humanize(project.state);
     const railParts = stepRailParts(project, doc);
     const subtitle = [brandLabel, railParts?.here || trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<div class="job-line">${shortLine(line)}</div>` : ''}${researchLine(project) ? `<div class="muted job-line job-research">${shortLine(researchLine(project))}</div>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
+    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<div class="job-line">${shortLine(line)}</div>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
     const head = headOf(nextLine);
-    if (project.detailsLoaded === false) return `${head}${jobStats(project)}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
+    if (project.detailsLoaded === false) return `${head}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
     const downloads = downloadView(ui);
     const shown = doc?.review?.publish;
@@ -8560,31 +8437,37 @@ if (typeof document !== 'undefined') {
     extra('storyboard', storyboard);
     const openQuestions = needItems.filter(item => item.kind === 'question' && !item.closing && !questionState(item.questionId).answered);
     const stageAsking = stageQuestions(openQuestions, { stateOf: item => questionState(item.questionId), signal: signalInfo() });
-    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext, asking: stageAsking });
-    const left = (gate, html) => (flow.placed.has(gate) ? '' : html);
-    const standalone = (flow.askPlaced ? '' : stageAsking) + left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + (flow.placed.has(pendingGate) ? '' : review) + recipeStandalone;
+    // What the job waits on (its review, or the posts that went out) is drawn once, as the card above the steps; the steps only point up to it.
+    const card = pendingGate ? bodies[pendingGate]?.html || '' : '';
+    const flowBodies = { ...bodies };
+    if (pendingGate) delete flowBodies[pendingGate];
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies: flowBodies, isOpen: gateOpen, chipContext, above: card ? pendingGate : '', ask: box.director?.id || 'producer' });
+    const left = (gate, html) => (gate === pendingGate || flow.placed.has(gate) ? '' : html);
+    const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + recipeStandalone;
     const filesPanel = agentBox
       ? `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body">${agentFilesBody(agentBox, { chipContext, jobId: project.jobId, openKeys, omitted })}</div></details>`
       : `<details class="panel doc-panel" data-open-key="more:files"${openKeys.has('more:files') ? ' open' : ''}><summary><span class="doc-summary-title">Outputs and files</span></summary><div class="doc-body"><div class="section-head"><span></span><button class="quiet" data-action="source">Add source files</button></div>${outputsList(project.artifacts || [], doc, openKeys, reportJob ? { empty: 'The report will appear here.' } : {})}${omittedLine}</div></details>`;
     const asking = needItems.filter(item => item.kind === 'question' && item.wantsUpload && !item.closing && !item.inChat && !questionState(item.questionId).answered);
     if (ui.refs) pruneRemoving(ui.refs, project.references || []);
     const referencesBox = referencesPanel(project, ui.refs || {}, { openKeys, asking, uploadState: item => questionState(item.questionId).upload, brandFiles: (data.brands || []).find(item => item.slug === project.brand)?.brandFiles || [] });
-    const usagePanel = `<details class="panel doc-panel" data-open-key="more:usage"${openKeys.has('more:usage') ? ' open' : ''}><summary><span class="doc-summary-title">Usage</span></summary><div class="doc-body">${jobStats(project)}${usageFooter({ project, brands: data.brands || [], bare: true })}</div></details>`;
-    const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : '']].filter(([, value]) => value);
+    // What the job has used is credits, never tokens or hours; they sit in About this job.
+    const aboutRows = [['Brand', project.brand === NO_BRAND ? '' : brandLabel], ['Kind of job', kindLabelOf(project)], ['Opened', openedWord(project.usage?.startedAt)], ['Where', project.ownershipStatus === 'unbound' ? 'Local draft' : ''], ...jobCreditRows(project)].filter(([, value]) => value);
     const aboutPanel = `<details class="panel doc-panel" data-open-key="more:about"${openKeys.has('more:about') ? ' open' : ''}><summary><span class="doc-summary-title">About this job</span></summary><div class="doc-body"><dl class="about-list">${aboutRows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></div></details>`;
-    // The right column: the Inbox, or the chat with one agent.
+    // The right column: the Team, or the chat with one person.
     const tasksOf = id => (project.stages || []).flatMap(stage => (Array.isArray(stage?.tasks) ? stage.tasks : [])).filter(task => planWord(task?.agent) === id).map(task => ({ name: trimmed(task.name) || 'Step', line: trimmed(task.line), status: STEP_STATUSES.has(task.status) ? task.status : 'pending', outputs: Array.isArray(task.outputs) ? task.outputs : [], startedAt: trimmed(task.startedAt), doneAt: trimmed(task.doneAt) }));
     const decision = pendingGate ? needItems.find(item => item.kind === 'decision' && item.gate === pendingGate) : null;
     let side;
-    // On a phone the Inbox stacks under every stage, so the same "What you need to do" block also sits under the job header;
-    // CSS shows only one of the two, and both buttons are the same jump.
-    let needTop = '';
+    const top = needItems[0] || null;
+    // A question, or the offer to send the video on, is drawn once: above the steps, or in the Director's chat while that is open.
+    const inDirectorChat = Boolean(chatAgent && isDirectorAgent(chatAgent));
     if (chatAgent) {
       markRepliesSeen(chatAgent);
       const director = isDirectorAgent(chatAgent);
       const steps = tasksOf(chatAgent.id);
       const todo = steps.find(step => step.status !== 'done') || steps.at(-1);
-      const needs = director ? inboxAside({ ...inboxView, items: needItems }, { project, bare: true }) : '';
+      // The decision the card above holds is not drawn a second time here: the chat has its one plain pointer to it (the waiting card below).
+      const chatNeeds = needItems.filter(item => !(card && item.kind === 'decision' && item.gate === pendingGate));
+      const needs = director && chatNeeds.length ? inboxAside({ ...inboxView, items: chatNeeds }, { project, bare: true }) : '';
       // One voice: the decision card is the Director's. The agent that wrote the work behind the gate shows a plain "handed over" line.
       const waiting = chatDecisionCard(chatAgent, decision, pendingGate);
       const handed = agentHandedLine(chatAgent);
@@ -8596,12 +8479,14 @@ if (typeof document !== 'undefined') {
         compose: agentBox ? agentComposer(chatAgent, { about: director ? 'the job' : todo?.name || 'its work', ui: boxUi, signal: signalInfo() }) : '',
       });
     } else {
-      const top = needItems[0] || null;
-      const need = inboxNeed(railParts, project.jobId, top, boxUi.handoff);
-      if (need && !need.includes('class="in-need is-idle"')) needTop = `<div class="need-top">${need}</div>`;
-      side = agentInbox(box.all, { now, need, needText: railParts && top ? railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
+      side = agentInbox(box.all, { needText: railParts && top ? (top.kind === 'decision' && GATE_TITLES[top.gate]) || railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
-    return `${railParts?.need === nextLine ? headOf('') : head}${needTop}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}${needTop ? ' has-need-top' : ''}"><div class="studio-main">${intakePanel}${referencesBox}${flow.html}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${usagePanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    const lead = intakePanel + card + (inDirectorChat ? '' : stageAsking + (railParts ? inboxNeed(railParts, project.jobId, top, boxUi.handoff) : ''));
+    // The steps fold away while something waits on the person, and stay open when nothing does.
+    const waits = Boolean(pendingGate) || openNeeds.length > 0;
+    const foldKey = `fold:${project.jobId}:${waits ? 'waiting' : 'clear'}`;
+    const fold = flow.html ? `<details class="fold" data-open-key="${esc(foldKey)}"${gateOpen(foldKey, !waits) ? ' open' : ''}><summary class="fold-h"><h2>Steps, ${flow.done} of ${flow.total} done</h2><span class="chev" aria-hidden="true">${icon('chev')}</span></summary>${flow.html}</details>` : '';
+    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}"><div class="studio-main">${lead ? `<div class="studio-now"${card ? ` data-gate="${esc(pendingGate)}"` : ''}>${lead}</div>` : ''}${fold}${referencesBox}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   // The picker state for the posting plan card: the same brand-level pick and state the brand card uses.
   function planMetricool(project) {
@@ -8671,12 +8556,14 @@ if (typeof document !== 'undefined') {
     if (data.setupStep === 'connectors' && !connectorsContinued && Array.isArray(data.connectors) && data.connectors.length) return connectorsPanel(true);
     const projects = data.projects || [];
     const firstRun = readyBrands().length === 0 && projects.length === 0;
+    // The brief box is the one way to start a job, so it stays on home with jobs listed: a blank draft, or the one set aside while the
+    // person was on the Brand onboarding page.
+    if (!inline && !loading && projects.length) { inline = inlineDrafts.get('new') || newJobDraft(); inlineDrafts.delete('new'); }
     const onboarding = inlineStart();
     const newJob = Boolean(inline && inline.kind === 'new');
     const stageTitle = newJob ? 'Jobs' : firstRun || (inline && inline.kind === 'onboard') ? 'Brand onboarding' : 'Jobs';
-    const brandButton = '<button data-action="brand">Brand onboarding</button>';
-    const newButton = '<button class="primary" data-action="new">+ New job</button>';
-    const tools = !firstRun ? brandButton + newButton : newJob ? brandButton : newButton;
+    // Home offers the Brand onboarding page; that page offers the way back, to the jobs and the brief box.
+    const tools = firstRun ? '' : inline?.kind === 'onboard' ? '<button data-action="jobs">Back to jobs</button>' : '<button data-action="brand">Brand onboarding</button>';
     const head = `<div class="slate-head"><h1>${esc(stageTitle)}</h1><div class="toolbar">${tools}</div></div>`;
     const strip = brandStrip();
     // On the Brand onboarding page the agent cards say who is working, so they stand in for the "research has started" note.
@@ -8692,22 +8579,29 @@ if (typeof document !== 'undefined') {
     const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
     const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
-    // With the Director's chat on the page the side column is that chat alone; without one (a brand with no agents yet) it is the Needs you box.
-    const side = aside => (agentsPanel ? `<div class="onboard-side">${agentsPanel}</div>` : aside());
+    // The brand page: Needs you first (a strip above the form, so a phone sees it before the form), then the form. With the Director's chat on
+    // the page that chat is the side column and holds the open items itself. The brands list is not repeated under the form; home has it.
+    // The brand's own "research done" card stays as a note, without a button that opens the page the person is already on.
+    const here = item => {
+      if (!(item.kind === 'onboarding' && item.needsYou && onboardBrand && item.brand === onboardBrand.slug)) return item;
+      const lead = item.state === 'review' && item.brandName ? `${item.brandName}: research done. ` : '';
+      return { ...item, onPage: true, ...(item.state === 'review' ? { text: `${lead}Check the details below, then press Save and continue.` } : {}) };
+    };
+    // A note that says nothing is needed ("researching") is not a reason for a gold strip; the progress above the form already says it.
+    const needsList = inbox.items.filter(item => !(item.kind === 'onboarding' && item.needsYou === false)).map(here);
+    const needsHere = !agentsPanel && needsList.length ? inboxAside({ ...inbox, items: needsList }, { workspace: true, strip: true }) : '';
+    const brandPage = column => (agentsPanel ? `${head}<div class="layout"><div>${column}</div><div class="onboard-side">${agentsPanel}</div></div>` : `${head}<div class="overview-main">${column}</div>`);
     if (firstRun) {
       syncInboxDocuments();
-      if (!inbox.items.length && !agentsPanel) return `${head}${onboarding}${strip}`;
-      return `${head}<div class="layout"><div>${onboarding}${strip}</div>${side(() => (inbox.items.length ? inboxAside(inbox, { workspace: true }) : ''))}</div>`;
+      return brandPage(`${needsHere}${onboarding}`);
     }
-    const doors = pipelineDoors(projects, inbox.items);
-    const doorRow = doors.length && inline?.kind !== 'onboard' ? `<section class="doors" aria-label="Kinds of job">${doors.map(door => doorHtml(door)).join('')}</section>` : '';
     if (inline?.kind === 'onboard') {
       syncInboxDocuments(agentsPanel ? [] : inbox.items.filter(answeredInPlace).map(item => item.jobId));
-      return `${head}${doorRow}<div class="layout"><div>${overviewColumn({ strip, jobs: jobsHtml(), onboarding, onboardFirst: true })}</div>${side(() => inboxAside(inbox, { workspace: true }))}</div>`;
+      return brandPage(`${needsHere}${overviewColumn({ jobs: jobsHtml(), onboarding, onboardFirst: true })}`);
     }
-    // Home and the new-job page: "Needs you" comes first and holds every open item, the job ones included, with the same
-    // cards (pictures, Approve, Ask for changes) as the Director's chat. Then the jobs, one row each from brief to posted,
-    // newest first. The kinds of job to start come last.
+    // Home: "Needs you" comes first and holds every open item, the job ones included, with the same cards (pictures, Approve,
+    // Ask for changes) as the Director's chat. Then the brief box, the one way to start a job, and the jobs under it, one row each
+    // from brief to posted, newest first. The brands, with their intelligence and library, come last.
     const needsItems = inbox.items;
     syncInboxDocuments(needsItems.filter(answeredInPlace).map(item => item.jobId));
     const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
@@ -8715,20 +8609,18 @@ if (typeof document !== 'undefined') {
     const rank = project => (FINAL_JOB_STATES.includes(project?.state) ? 1 : 0);
     const ordered = newestJobsFirst(projects).map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
     const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
-    const startRow = doors.length ? `<section class="doors-section" aria-labelledby="doors-title"><div class="section-head"><h2 id="doors-title">Start a new job</h2></div>${doorRow}</section>` : '';
-    return `${head}<div class="overview-main">${needs}${overviewColumn({ strip, jobs: rows, onboarding })}${startRow}</div>`;
+    return `${head}<div class="overview-main">${needs}${onboarding}${rows}${strip}</div>`;
   }
-  // One pipeline group's page: its own door as the header, the jobs in it, then the composer to start another.
+  // One pipeline group's page: its title, the jobs in it, then the brief box to start another.
   function pipelinePage(group) {
-    const pipelineItems = workspaceInbox(data).items;
-    const waitingJobs = jobsWaitingOn(pipelineItems);
-    const door = pipelineDoors(data.projects || [], pipelineItems).find(item => item.group === group);
-    if (!door) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted"><a href="#/">Back to all jobs</a></p>';
-    const jobs = door.jobs.length
-      ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${door.jobs.length}</span></div><div class="project-grid">${newestJobsFirst(door.jobs).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
+    const waitingJobs = jobsWaitingOn(workspaceInbox(data).items);
+    const page = pipelineGroupPages(data.projects || []).find(item => item.group === group);
+    if (!page) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted"><a href="#/">Back to all jobs</a></p>';
+    const jobs = page.jobs.length
+      ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${page.jobs.length}</span></div><div class="project-grid">${newestJobsFirst(page.jobs).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
       : '<p class="muted empty-jobs">No jobs of this kind yet. Start one below.</p>';
     const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues, refs: starterRefs }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
-    return `<div class="slate-head"><h1>${esc(door.title)}</h1></div>${doorHtml(door, { hero: true })}${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
+    return `<div class="slate-head"><h1>${esc(page.title)}</h1></div>${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
   }
 
   function drawerOutput(a) {
@@ -8790,16 +8682,26 @@ if (typeof document !== 'undefined') {
     if (form) starterValues = Object.fromEntries(new FormData(form));
   }
   setPickPreviewReady(() => render());
+  // A text box on the brand page is about four lines tall and grows with what is typed. Browsers that know field-sizing do it in CSS; for the
+  // others the height follows the text here.
+  const FIELD_SIZING = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content');
+  function fitBox(box) {
+    if (FIELD_SIZING || !box) return;
+    box.style.height = 'auto';
+    if (box.scrollHeight > 0) box.style.height = `${box.scrollHeight + box.offsetHeight - box.clientHeight}px`;
+  }
   function render() {
     const project = current();
+    rememberBrandMarkets(data.brands);
     captureStarter();
     const jobFocus = captureJobFocus();
     const jumped = Object.values(JUMP_TARGETS).find(selector => document.activeElement?.matches?.(`${selector}[tabindex="-1"]`)) || null;
     const stripScroll = [...app.querySelectorAll('.sb-strip')].map(strip => strip.scrollLeft);
     const paneScroll = capturePaneScroll();
-    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):routeOf(location.hash).page === 'pipeline' ? pipelinePage(routeOf(location.hash).group) : overview())+(project ? '' : usageFooter({brands: data.brands || [], projects: data.projects || []}))+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
+    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):routeOf(location.hash).page === 'pipeline' ? pipelinePage(routeOf(location.hash).group) : overview())+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
     const inlineForm = app.querySelector('#inline-form');
     restoreForm(inlineForm, inline?.values);
+    inlineForm?.querySelectorAll('.context-textarea').forEach(fitBox);
     if (inlineForm && document.activeElement === document.body) {
       if (inline?.kitFocus) {
         const kitTarget = inlineForm.querySelector(inline.kitFocus);
@@ -9655,7 +9557,6 @@ if (typeof document !== 'undefined') {
     const card=event.target.closest('[data-card-job]');
     if(card&&!event.target.closest('a,button,input,textarea,select,label,form,video,[data-view-media]')){location.hash='#/project/'+encodeURIComponent(card.dataset.cardJob);return;}
     const target=event.target.closest('button,[data-action],[data-onboard],[data-project],[data-artifact],[data-tab],[data-review-action],[data-mr-action],[data-kit-action],[data-photo-action],[data-recipe-save],[data-ref-action],[data-ref-role],[data-ref-brand],[data-nref-action],[data-nref-remove],[data-aref-action],[data-qref-send],[data-ref-open],[data-ref-remove],[data-ref-keep],[data-ref-confirm],[data-ref-unqueue]');if(!target)return;
-    if(target.dataset.brandRename!==undefined){brandRenameAction(target.dataset.brandRename);return;}
     if(target.dataset.arefAction==='toggle'){const shown=current();if(shown){const state=agentBoxState(shown).attach||=freshNewJobRefs();state.open=!state.open;state.error='';render();}return;}
     if(target.dataset.arefAction==='send'){void sendUploadedReference('aref',target);return;}
     if(target.dataset.qrefSend!==undefined){void sendUploadedReference('qref',target);return;}
@@ -9758,23 +9659,11 @@ if (typeof document !== 'undefined') {
       openInline(onboardDraft(brand));
       return;
     }
-    if(target.dataset.unlock){
-      captureInlineValues();
-      if(!inline)return;
-      const name=target.dataset.unlock;
-      inline.unlocked={...(inline.unlocked || {}), [name]:true};
-      const value=String(inline.values?.[name] ?? '');
-      inline.focusName=name;
-      inline.selectionStart=value.length;
-      inline.selectionEnd=value.length;
-      render();
-      return;
-    }
     if(target.dataset.inboxAnswer!==undefined){void answerQuestion(target.dataset.inboxAnswer,{choice:Number(target.dataset.choice)});return;}
     if(target.dataset.inboxType!==undefined){openAnswerBox(target.dataset.inboxType);return;}
     if(target.dataset.inboxCancel!==undefined){closeAnswerBox(target.dataset.inboxCancel);return;}
     if(target.dataset.inboxApprove!==undefined){approveFromInbox(target.dataset.inboxApprove);return;}
-    if(target.dataset.abOpen!==undefined){openChat(target.dataset.abOpen);return;}
+    if(target.dataset.abOpen!==undefined){openChat(target.dataset.abOpen,target.dataset.abDraft||'');return;}
     if(target.dataset.abBack!==undefined){closeChat();return;}
     if(target.dataset.abGate!==undefined){leaveChatForJump();jumpToGate(target.dataset.abGate);return;}
     if(target.dataset.inboxJump!==undefined){leaveChatForJump();jumpFromInbox(target.dataset.inboxJump, target.dataset.inboxTarget);return;}
@@ -9784,7 +9673,6 @@ if (typeof document !== 'undefined') {
     if(target.dataset.bankRemove!==undefined){void submitBankRemove(target.dataset.bankBrand,target.dataset.bankRemove);return;}
     if(target.dataset.connect){void submitConnectorAction('connect_provider', target.dataset.connect);return;}
     if(target.dataset.project){location.hash='#/project/'+encodeURIComponent(target.dataset.project);return;}
-    if(target.dataset.nav){location.hash=target.dataset.nav;return;}
     if(target.dataset.abRetry!==undefined){const shown=current();if(shown)void submitRetryStep(shown);return;}
     if(target.dataset.handoff&&target.dataset.handoffJob){void submitHandoff(target.dataset.handoffJob,target.dataset.handoff);return;}
     if(target.dataset.artifact!==undefined){returnFocus=target;returnSelector=`[data-artifact="${CSS.escape(target.dataset.artifact)}"]`;drawer=current()?.artifacts?.[Number(target.dataset.artifact)];drawerTab='output';render();app.querySelector('.drawer button')?.focus();return;}
@@ -9816,14 +9704,13 @@ if (typeof document !== 'undefined') {
       case'update-board':await requestBoardUpdate();break;
       case'start-research':await submitInline(null,'start');break;
       case'close':close();break;
-      case'new':openInline(newJobDraft());break;
+      case'jobs':openInline(newJobDraft());inlineDrafts.delete('new');break;
       case'brand':{const brand=(data.brands || []).find(item=>!brandReady(item));openInline(onboardDraft(brand || null));break;}
-      case'compose':{const box=app.querySelector('#starter-text,#new-text')||app.querySelector('#pipeline-composer');const still=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;if(box){box.scrollIntoView({behavior:still?'auto':'smooth',block:'center'});box.focus({preventScroll:true});}break;}
       case'connectors':connectorsView=true;render();globalThis.scrollTo?.(0,0);break;
       case'connectors-close':connectorsView=false;render();break;
       case'connectors-continue':await continueConnectors();break;
       case'signal':try{const result=await transport?.signal?.('Notify Claude');notify(result?.message || NOTE_NOTIFY_FAILED);render();}catch(e){notify(e.message);}break;
-      case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'Claude has been told. Watch the Inbox.':(result?.message || NOTE_NOTIFY_FAILED));render();}catch(e){notify(e.message);}break;}
+      case'not-right':{const shown=current();if(!shown)break;try{const result=await transport?.signal?.(notRightMessage(shown));if(result?.status==='sent'){planNotes.set(shown.jobId,{key:`${shown.kind}|${shown.kindReason}`,sent:true});try{await transport?.markPlanNote?.(shown);}catch{/* The note still shows for this visit. */}}notify(result?.status==='sent'?'The Director has been told. Watch Needs you.':(result?.message || NOTE_NOTIFY_FAILED));render();}catch(e){notify(e.message);}break;}
       case'remind':await remindRequest(target.dataset.requestId);break;
       case'source':
         { const p=current(); const jobLabel=p?.title || 'this job'; const brandLabel=p?.brandName || 'the selected brand'; try { const result=await transport?.signal?.(`Please select the local source files for ${jobLabel} for ${brandLabel} in Claude.`); notify(result?.message || 'Ask Claude in chat to pick the source files.'); render(); } catch(e) { notify(e.message); } }
@@ -9934,7 +9821,7 @@ if (typeof document !== 'undefined') {
           active.operation = null;
           active.args = null;
           active.action = null;
-          notify(acknowledgement.message || receipt.message || result.message || (action === 'create' ? 'Brand created. Add its details.' : action === 'details' ? 'Details saved.' : 'Saved. Claude is researching this brand.'));
+          notify(acknowledgement.message || receipt.message || result.message || (action === 'create' ? 'Brand created. Add its details.' : action === 'details' ? 'Details saved.' : 'Saved. The Director is researching this brand.'));
           if (action === 'details') {
             // What was typed is saved: once the board has read it back, the form follows the saved copy again, and the kit edits
             // (logo, colours, fonts) are the saved ones. The photos wait for Start research, so they stay.
@@ -10074,7 +9961,7 @@ if (typeof document !== 'undefined') {
     if (active.needsReconciliation) { active.error = NOTE_NEEDS_CHECK; render(); return; }
     const currentBrand = active.kind === 'onboard' && active.brand ? (data.brands || []).find(item => item.slug === active.brand) : null;
     const researchPhase = active.kind === 'onboard' ? brandResearchPhase(currentBrand, active) : null;
-    if (researchPhase === 'running') { active.error = 'Claude is still researching this brand.'; render(); return; }
+    if (researchPhase === 'running') { active.error = 'The Director is still researching this brand.'; render(); return; }
     if (active.kind === 'onboard' && active.brand && !currentBrand) return;
     let action = null;
     if (active.kind === 'onboard') {
@@ -10086,7 +9973,9 @@ if (typeof document !== 'undefined') {
         active.finalizingOnboarding = false;
         values.name = named.name;
       } else {
-        const fieldErrors = validateProfile(values, active.prefilled, active.unlocked, { partial: action !== 'finish' });
+        // Every field is editable, so a field the person changed counts as theirs (a cleared one clears what research saved).
+        const nameError = brandNameArgs(values.name).error;
+        const fieldErrors = { ...(nameError ? { name: nameError } : {}), ...validateProfile(values, active.prefilled, ownedFields(active), { partial: action !== 'finish' }) };
         if (Object.keys(fieldErrors).length) { active.values = values; active.fieldErrors = fieldErrors; active.error = NOTE_FIX_FIELDS; render(); return; }
         active.fieldErrors = null;
         if (action === 'start') {
@@ -10134,12 +10023,21 @@ if (typeof document !== 'undefined') {
     } else if (action === 'start') {
       args = { requestId, brand: active.brand, profile: detailsProfile(values), ...metricoolPickArgs(values, currentBrand), ...(kitTouched(active.kit) ? { kit: kitPayload(currentBrand, active.kit || {}) } : {}) };
     } else {
-      args = { requestId, name: String(values.name).trim(), ...(active.brand ? { brand: active.brand } : {}), profile: buildProfile(values, active.prefilled, active.unlocked), ...metricoolPickArgs(values, currentBrand), kit: kitPayload(currentBrand, active.kit || {}) };
+      // The name goes as the brand has it now; a changed name is its own request (below).
+      args = { requestId, name: currentBrand?.name || String(values.name).trim(), ...(active.brand ? { brand: active.brand } : {}), profile: buildProfile(values, active.prefilled, ownedFields(active)), ...metricoolPickArgs(values, currentBrand), kit: kitPayload(currentBrand, active.kit || {}) };
     }
+    // A name changed on the brand's page is saved with whichever Save was pressed.
+    const renaming = active.kind === 'onboard' && action !== 'create' && nameChanged(currentBrand, values.name) ? submitBrandRename(currentBrand, values.name) : null;
     active.operation = operation; active.args = args; active.action = action;
     active.values = values; active.pendingName = values.name; active.busy = true; active.error = ''; active.declined = false; render();
     try {
       if (active.kind !== 'onboard' && active.refs?.items?.length) args.references = await encodeNewRefs(active.refs);
+      // The finishing save closes the page, and the answer to the rename must be seen first: it goes after the rename is applied (with the
+      // new name, which the save checks against the brand's), and a refused rename leaves the page open on the refusal with nothing else sent.
+      if (renaming && action === 'finish') {
+        if (!await renaming) { active.busy = false; active.requestId = null; render(); return; }
+        args.name = brandNameArgs(values.name).name;
+      }
       const result = await transport.call(operation, args);
       active.busy = false;
       if (result?.status && result.status !== 'applied' && !result.brand && !result.jobId) {
@@ -10172,27 +10070,28 @@ if (typeof document !== 'undefined') {
       if (result?.jobId) location.hash = '#/project/' + encodeURIComponent(result.jobId);
     } catch (e) { active.busy = false; active.error = e.message; inline = active; render(); }
   }
-  // The pencil next to the brand's name: the name becomes an input; Enter or Save sends `brand_rename`, Esc or Cancel puts it back. Only the display
-  // name changes (the folder keeps its original name), and the page shows that once Claude has applied it.
-  function renameStateOf() { return inline && inline.kind === 'onboard' ? (inline.rename ||= { open: false, value: '', busy: false, error: '' }) : null; }
-  function brandRenameAction(kind) {
-    const state = renameStateOf();
-    const brand = inline?.brand ? (data.brands || []).find(item => item.slug === inline.brand) : null;
-    if (!state || !brand) return;
-    captureInlineValues();
-    if (kind === 'open') { Object.assign(state, { open: true, value: brand.name, error: '' }); inline.renamedNote = ''; render(); app.querySelector('#brand-rename-input')?.focus(); app.querySelector('#brand-rename-input')?.select?.(); return; }
-    if (state.busy) return;
-    if (kind === 'cancel') { Object.assign(state, { open: false, error: '' }); render(); app.querySelector('[data-brand-rename="open"]')?.focus(); return; }
-    if (kind === 'save') void submitBrandRename(brand, state);
+  // The brand's name is an input on its page. A changed name is sent with the next Save as `brand_rename`; only the display name changes (the
+  // folder keeps its original name), and the page shows a note once Claude has applied it.
+  function renameStateOf() { return inline && inline.kind === 'onboard' ? (inline.rename ||= { busy: false, error: '' }) : null; }
+  // Every field is editable, so a field the person changed counts as theirs: clearing one clears what research saved for it.
+  function ownedFields(draft) { return { ...(draft?.unlocked || {}), ...Object.fromEntries(Object.keys(draft?.edited || {}).map(name => [name, true])) }; }
+  // Whether the name box holds a different valid name than the brand has now (and no rename is already on its way).
+  function nameChanged(brand, raw) {
+    const named = brandNameArgs(raw);
+    return Boolean(brand) && !named.error && named.name !== brand.name && !renameStateOf()?.busy;
   }
-  async function submitBrandRename(brand, state) {
-    const named = brandNameArgs(state.value);
-    if (named.error) { state.error = named.error; render(); app.querySelector('#brand-rename-input')?.focus(); return; }
-    if (named.name === brand.name) { Object.assign(state, { open: false, error: '' }); render(); return; }
-    if (!transport) return;
-    state.error = ''; state.busy = true; render();
+  // Resolves true once Claude has applied the rename, false when it was refused or could not be sent. The answer goes to the page that asked
+  // (`draft`), not to whatever page is open when it arrives, so it is never lost.
+  async function submitBrandRename(brand, raw) {
+    const draft = inline;
+    const state = renameStateOf();
+    const named = brandNameArgs(raw);
+    if (!state || state.busy || !transport || named.error || named.name === brand.name) return false;
+    state.error = ''; state.busy = true; draft.renamedNote = '';
     const requestId = randomId(globalThis);
-    const done = (patch, note = '') => { Object.assign(state, { busy: false, ...patch }); if (inline) inline.renamedNote = note; render(); };
+    let answer;
+    const answered = new Promise(resolve => { answer = resolve; });
+    const done = (patch, note = '') => { Object.assign(state, { busy: false, ...patch }); draft.renamedNote = note; render(); answer(!patch.error); };
     try {
       const result = await transport.call('brand_rename', { requestId, brand: brand.slug, name: named.name });
       notify(result?.message || 'Saved. Claude will rename the brand.');
@@ -10202,13 +10101,14 @@ if (typeof document !== 'undefined') {
         if (!receipt) return;
         const acknowledgement = receipt.artifactReceipt || receipt;
         const status = String(acknowledgement.status || receipt.status || 'requested');
-        if (status === 'applied') { stop(); done({ open: false, error: '' }, "Renamed. The folder name stays."); void refresh(); }
+        if (status === 'applied') { stop(); done({ error: '' }, 'Name saved.'); void refresh(); }
         else if (status === 'declined') { stop(); done({ error: String(acknowledgement.message || receipt.message || NOTE_NO_RENAME).replace(/^Declined in chat\. Nothing was changed\.\s*/i, '') || NOTE_NO_RENAME }); }
         else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) { stop(); done({ error: acknowledgement.message || receipt.message || 'Could not rename. Claude must check first.' }); }
       }, () => {});
     } catch (e) {
       done({ error: e.message || NOTE_SEND_FAILED });
     }
+    return answered;
   }
   function readIntakeForm(form) {
     const formData = new FormData(form);
@@ -10524,14 +10424,17 @@ if (typeof document !== 'undefined') {
       else if (chat) pane.scrollTop = pane.scrollHeight;
     });
   }
-  function openChat(id) {
+  // `draft` is a start for the message ("Change the idea: "); a message the person already began is kept.
+  function openChat(id, draft = '') {
     const project = current();
     if (!project) { onboardChat = id; render(); focusQuietly('#ab-chat-title'); return; }
     const box = agentBoxState(project);
     if (box.chat) box.drafts[box.chat] = box.draft;
-    Object.assign(box, { chat: id, to: id, draft: box.drafts[id] || '', error: '' });
+    Object.assign(box, { chat: id, to: id, draft: box.drafts[id] || draft, error: '' });
     render();
     focusQuietly('#ab-chat-title');
+    // Narrow screens show the chat in the page, under the card: bring it into view.
+    if (narrowScreen()) app.querySelector('.studio-side')?.scrollIntoView({ block: 'start' });
   }
   function closeChat({ focus = true } = {}) {
     const project = current();
@@ -10545,19 +10448,15 @@ if (typeof document !== 'undefined') {
     render();
     if (focus && was) focusQuietly(`[data-ab-open="${CSS.escape(was)}"]`);
   }
-  // On a narrow screen the open chat covers the whole page, so it closes before a jump to something in the centre.
+  // On a narrow screen the open chat takes the Team's place between the card and the steps, so it closes before a jump to the card or a step.
   function leaveChatForJump() {
     const project = current();
     if (project && agentBoxState(project).chat && narrowScreen()) closeChat({ focus: false });
   }
-  // Request change and Open details both go to the step's decision section, unfolded.
+  // "Ask for changes", "Open details" and "Show it above" all go to the card that holds the decision (jumpTo opens any fold around it).
   function jumpToGate(gate) {
     const selector = `[data-gate="${CSS.escape(String(gate))}"]`;
-    const section = app.querySelector(selector);
-    if (!section) { jumpTo(JUMP_TARGETS.review); return; }
-    const fold = section.querySelector('details.gate');
-    if (fold && !fold.open) { fold.open = true; if (fold.dataset.openKey) openKeys.add(fold.dataset.openKey); }
-    jumpTo(selector);
+    jumpTo(app.querySelector(selector) ? selector : JUMP_TARGETS.review);
   }
   const AGENT_SEND_FAILED = 'Message not saved. Try again.';
   async function submitAgentMessage(project, form) {
@@ -11034,13 +10933,9 @@ if (typeof document !== 'undefined') {
   }
   app.addEventListener('input', event => {
     const field = event.target;
-    if (field.dataset?.brandRenameInput !== undefined) {
+    if (field.dataset?.brandName !== undefined) {
       const state = renameStateOf();
-      if (state) {
-        state.value = field.value;
-        if (state.error) { state.error = ''; field.setAttribute('aria-invalid', 'false'); field.closest('.brand-name')?.querySelector('.field-error')?.remove(); }
-      }
-      return;
+      if (state?.error) { state.error = ''; field.setAttribute('aria-invalid', 'false'); document.getElementById('field-name-error')?.remove(); }
     }
     const answerForm = field.closest?.('[data-inbox-form]');
     if (answerForm) { questionState(answerForm.dataset.inboxForm).draft = field.value; return; }
@@ -11071,7 +10966,9 @@ if (typeof document !== 'undefined') {
         const length = contextTextLength(field.value);
         counter.textContent = `${length} / ${limit}`;
         counter.classList.toggle('over', length > limit);
+        counter.hidden = !contextCountShown(length, limit);
       }
+      if (field.classList?.contains('context-textarea')) fitBox(field);
     }
     const project = current();
     if (!project) return;
@@ -11107,12 +11004,6 @@ if (typeof document !== 'undefined') {
   });
   app.addEventListener('keydown', event => {
     const field = event.target;
-    if (field instanceof HTMLInputElement && field.dataset.brandRenameInput !== undefined) {
-      if (event.isComposing) return;
-      if (event.key === 'Enter') { event.preventDefault(); brandRenameAction('save'); }
-      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); brandRenameAction('cancel'); }
-      return;
-    }
     if (field instanceof HTMLInputElement && (field.dataset.kitFolder === 'path' || field.dataset.kitFolder === 'label')) {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); void submitFolderAdd(); }
       return;

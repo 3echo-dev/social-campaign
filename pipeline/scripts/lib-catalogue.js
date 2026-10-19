@@ -74,12 +74,12 @@ const GATE_LABELS = Object.freeze({
   concept: 'Pick a concept',
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
-  sample: 'Check the sample',
+  sample: 'Approve the sample',
   content: 'Approve the final post',
-  publish: 'Confirm where and when to post',
+  publish: 'Approve the posting plan',
   campaign_proposal: 'Approve the campaign plan',
   campaign_activation: 'Approve going live',
-  findings: 'Review the report',
+  findings: 'Approve the report',
 });
 
 const ENTRY_FIELDS = Object.freeze(['name', 'purpose', 'examples', 'notFor', 'inputs', 'outputs', 'cost', 'starter']);

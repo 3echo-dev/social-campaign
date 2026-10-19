@@ -41,8 +41,8 @@ const SENTENCES = {
   AWAITING_CONTENT_APPROVAL: 'Approve the final post, or say what to change.',
   CONTENT_APPROVED: 'Approved, and everything is being put together for you.',
 
-  AWAITING_PUBLISH_APPROVAL: 'Confirm where and when to post.',
-  PUBLISH_APPROVED: 'Confirmed, and everything is being put together for you.',
+  AWAITING_PUBLISH_APPROVAL: 'Approve the posting plan.',
+  PUBLISH_APPROVED: 'Approved, and everything is being put together for you.',
 
   PROPOSAL_DRAFTED: 'The campaign plan is written and about to be sent to you.',
   AWAITING_PROPOSAL_APPROVAL: 'Approve the campaign plan, or say what to change.',
@@ -50,7 +50,7 @@ const SENTENCES = {
   AWAITING_ACTIVATION_APPROVAL: 'Approve going live, or say what to change.',
   ACTIVATION_APPROVED: 'Approved to go live, and everything is being put together for you.',
 
-  HANDOFF_READY: 'Claude is closing this job.',
+  HANDOFF_READY: 'The Director is closing this job.',
   // These sentences are retained for historical records. They must not invite a new
   // performance-review action when an old status is shown in a list or history view.
   HANDED_OFF: 'An old job, kept for your records.',
@@ -85,14 +85,14 @@ const GATE_ASKS = Object.freeze({
   cut: 'Watch the joined video, then approve it and pick what to add, or say what to change.',
   finish: 'Watch the finished video, then approve it or say what to change.',
   content: 'Approve the final post, or say what to change.',
-  publish: 'Confirm where and when to post.',
+  publish: 'Approve the posting plan.',
   campaign_proposal: 'Approve the campaign plan, or say what to change.',
   campaign_activation: 'Approve going live, or say what to change.',
   pictures: 'Look at every picture, then approve them all or say what to change on single ones.',
   clips: 'Watch every clip, then approve them all or say what to change on single ones.',
   findings: 'Read the report, then approve it or say what to change.',
 });
-const gateAsk = gate => GATE_ASKS[gate] || 'Claude needs your decision.';
+const gateAsk = gate => GATE_ASKS[gate] || 'The Director needs your decision.';
 
 const BRIEF_QUESTIONS = Object.freeze({
   request: 'What should Claude make?',
@@ -120,7 +120,7 @@ const NEEDS_YOU_IN_CHAT = 'Claude needs something from you. Check the chat.';
 const briefQuestion = (key, need) => (need && SOURCE_QUESTIONS[need]) || BRIEF_QUESTIONS[key] || FINISH_BRIEF;
 
 const BLOCKED_NOTHING = /^(nothing|none|n\/?a|-|tbd|you)$/i;
-const BLOCKED_SELF = /^(waiting|blocked|needs|awaiting|claude)\b/i;
+const BLOCKED_SELF = /^(waiting|blocked|needs|awaiting|claude|the director)\b/i;
 const BLOCKED_LIMIT = 160;
 const YOU_MUST = /^you\s+(?:(?:will\s+)?(?:need|needs)\s+to|(?:will\s+)?have\s+to|must|should)\s+(?=\S)/i;
 const YOU_TO = /^to\s+(?=\S)/i;
@@ -130,10 +130,10 @@ const upperFirst = text => text[0].toUpperCase() + text.slice(1);
 const blockedAskOf = said => {
   const plain = said.replace(/^you(?:'|\u2019)ll\b/i, 'you will');
   const must = YOU_MUST.exec(plain);
-  if (must) return `Claude is waiting for you to ${plain.slice(must[0].length)}.`;
+  if (must) return `The Director is waiting for you to ${plain.slice(must[0].length)}.`;
   const rest = plain.replace(/^you\b[\s,:-]*/i, '');
-  if (YOU_TO.test(rest)) return `Claude is waiting for you ${rest}.`;
-  return NOUN_PHRASE.test(rest) ? `Claude is waiting on you for ${rest}.` : null;
+  if (YOU_TO.test(rest)) return `The Director is waiting for you ${rest}.`;
+  return NOUN_PHRASE.test(rest) ? `The Director is waiting on you for ${rest}.` : null;
 };
 
 const blockedReason = raw => {
@@ -141,63 +141,63 @@ const blockedReason = raw => {
   if (!said || BLOCKED_NOTHING.test(said)) return null;
   const ask = /^you\b/i.test(said) ? blockedAskOf(said) : undefined;
   if (ask === null) return null;
-  const line = ask || (BLOCKED_SELF.test(said) ? `${upperFirst(said)}.` : `Claude is held up: ${said}.`);
+  const line = ask || (BLOCKED_SELF.test(said) ? `${upperFirst(said)}.` : `The Director is held up: ${said}.`);
   return line.length > BLOCKED_LIMIT ? `${line.slice(0, BLOCKED_LIMIT - 1).trimEnd()}.` : line;
 };
 
 const CALM = 'Nothing needed from you yet.';
-const TOGETHER = 'Claude is putting everything together.';
+const TOGETHER = 'The Director is putting everything together.';
 const ANNOUNCEMENTS = Object.freeze({
-  INTAKE_PENDING: `Claude is reading your brief. ${CALM}`,
-  NEEDS_CLARIFICATION: `Claude is reading your brief. ${CALM}`,
-  UNSUPPORTED: "Claude can't do this job yet, so nothing has started.",
-  ROUTED: `Claude is planning the work. ${CALM}`,
-  PLANNED: `Claude is starting the work. ${CALM}`,
-  RESEARCH_RUNNING: `Claude is researching. ${CALM}`,
-  RESEARCH_COMPLETE: `Claude is writing the brief. ${CALM}`,
-  BRIEF_READY: `Claude is coming up with ideas. ${CALM}`,
-  REPORT_DRAFTING: 'Claude is writing the report.',
+  INTAKE_PENDING: `The Director is reading your brief. ${CALM}`,
+  NEEDS_CLARIFICATION: `The Director is reading your brief. ${CALM}`,
+  UNSUPPORTED: "The Director can't do this job yet, so nothing has started.",
+  ROUTED: `The Director is planning the work. ${CALM}`,
+  PLANNED: `The Director is starting the work. ${CALM}`,
+  RESEARCH_RUNNING: `The Director is researching. ${CALM}`,
+  RESEARCH_COMPLETE: `The Director is writing the brief. ${CALM}`,
+  BRIEF_READY: `The Director is coming up with ideas. ${CALM}`,
+  REPORT_DRAFTING: 'The Director is writing the report.',
   AWAITING_REPORT_REVIEW: 'Your report is ready to read.',
-  CONCEPTS_DRAFTED: 'Claude is getting the ideas ready to show you.',
+  CONCEPTS_DRAFTED: 'The Director is getting the ideas ready to show you.',
   AWAITING_CONCEPT_APPROVAL: 'The ideas are ready for you to pick from.',
-  CONCEPT_APPROVED: 'Claude is writing the storyboard.',
+  CONCEPT_APPROVED: 'The Director is writing the storyboard.',
   AWAITING_STORYBOARD_APPROVAL: 'The storyboard is ready for you to check.',
-  STORYBOARD_APPROVED: 'Claude is working out the price.',
-  MEDIA_GENERATING: 'Claude is making the pictures and video.',
-  MEDIA_READY: 'Claude is checking the pictures and video.',
-  DRAFTS_READY: 'Claude is writing the captions.',
-  VALIDATED: 'Claude is getting the final post ready to show you.',
+  STORYBOARD_APPROVED: 'The Director is working out the price.',
+  MEDIA_GENERATING: 'The team is making the pictures and video.',
+  MEDIA_READY: 'The team is checking the pictures and video.',
+  DRAFTS_READY: 'The team is writing the captions.',
+  VALIDATED: 'The Director is getting the final post ready to show you.',
   AWAITING_CONTENT_APPROVAL: 'The final post is ready for you to check.',
   CONTENT_APPROVED: TOGETHER,
   AWAITING_PUBLISH_APPROVAL: 'The posting plan is ready for you to check.',
   PUBLISH_APPROVED: TOGETHER,
-  PROPOSAL_DRAFTED: 'Claude is getting the campaign plan ready to show you.',
+  PROPOSAL_DRAFTED: 'The Director is getting the campaign plan ready to show you.',
   AWAITING_PROPOSAL_APPROVAL: 'The campaign plan is ready for you to check.',
-  PROPOSAL_APPROVED: 'Claude is writing the steps to set up the campaign.',
+  PROPOSAL_APPROVED: 'The Director is writing the steps to set up the campaign.',
   AWAITING_ACTIVATION_APPROVAL: 'The campaign is ready for you to send live.',
   ACTIVATION_APPROVED: TOGETHER,
-  HANDOFF_READY: 'Claude is closing this job.',
+  HANDOFF_READY: 'The Director is closing this job.',
   HANDED_OFF: OLD_JOB,
   METRICS_PENDING: OLD_JOB,
   REPORT_DRAFTED: OLD_JOB,
   AWAITING_REPORT_APPROVAL: OLD_JOB,
-  CHANGES_REQUESTED: 'Claude is making the changes you asked for.',
-  BLOCKED: 'Claude is held up. Check the chat to see what it needs.',
-  ESCALATED: 'Claude is stuck and needs your help in chat.',
+  CHANGES_REQUESTED: 'The team is making the changes you asked for.',
+  BLOCKED: 'The Director is held up. Check the chat to see what it needs.',
+  ESCALATED: 'The Director is stuck and needs your help in chat.',
   COMPLETE: 'All done. See where each post stands on the board.',
   CANCELLED: 'This job was stopped.',
 });
 const GATHERING = Object.freeze({
-  research_report: `Claude is researching. ${CALM}`,
-  creative_analysis: `Claude is reading the posts. ${CALM}`,
-  video_breakdown: `Claude is watching the video. ${CALM}`,
-  results_review: `Claude is reading the results. ${CALM}`,
+  research_report: `The Director is researching. ${CALM}`,
+  creative_analysis: `The Director is reading the posts. ${CALM}`,
+  video_breakdown: `The Director is watching the video. ${CALM}`,
+  results_review: `The Director is reading the results. ${CALM}`,
 });
 const REPORT_ANNOUNCEMENTS = Object.freeze({
-  RESEARCH_COMPLETE: 'Claude is writing the report.',
+  RESEARCH_COMPLETE: 'The Director is writing the report.',
   COMPLETE: 'All done. Your report is ready.',
 });
-const PRICE_APPROVED = 'Claude is about to make the pictures and video.';
+const PRICE_APPROVED = 'The team is about to make the pictures and video.';
 
 const announcement = (id, { workflowId = null, priceApproved = false } = {}) => {
   if (stages.isReportWorkflow(workflowId)) {
@@ -206,7 +206,7 @@ const announcement = (id, { workflowId = null, priceApproved = false } = {}) => 
     if (REPORT_ANNOUNCEMENTS[id]) return REPORT_ANNOUNCEMENTS[id];
   }
   if (id === 'STORYBOARD_APPROVED' && priceApproved) return PRICE_APPROVED;
-  return ANNOUNCEMENTS[id] || 'Claude is working on it.';
+  return ANNOUNCEMENTS[id] || 'The team is working on it.';
 };
 
 // Every state the table knows must have one. The test asserts this; the helper is here so a

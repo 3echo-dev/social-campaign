@@ -32,7 +32,7 @@ user-invocable: false
 ### Asking the person
 
 The producer runs as a helper and has no chat with the person.
-It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's Post Now, Schedule Post, Save Draft or Download Files click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, and name the question in its hand-back.
+It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's "Approve and post now", "Approve and schedule", "Approve and save as a draft" or "Approve and download" click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, and name the question in its hand-back.
 The main session (the Director's chat) says the same one line in chat and records a chat answer with `pipeline_board_answer`; a board answer arrives as an `answer_question` request.
 The main session never posts a second card for a question the producer already posted.
 

@@ -181,7 +181,7 @@ When the question is no longer needed, for example the person answered some othe
 Before repeating an open question, above all after a new session resumes the job, check it is still true (a credits shortfall against the current balance, a price that is already approved, clips already made) and withdraw it instead when it is not; never bring back a question the job has moved past.
 A question about anything on the video itself (the captions on the video, on-screen text, a moment) carries the frames it is about: take 2 to 4 frames of the finished video at those moments with `media_extract_frames` into the job folder, pass them as `stills` on `pipeline_board_ask`, then run `pipeline_review_copies_prepare` so the board shows them. Call the words posted under the video "the post text", never "captions", so the two are never confused.
 Making the storyboard pictures is not spending to ask about: up to 3 pictures per panel are made with no question and counted in the job total (make-image), so never ask "may I make the sample". On a picture-only post the first picture is the sample, approved on its own card; on a video post the test clip is the sample.
-A go-ahead for sending or spending outside the posting decision is asked in chat only, so ask it with `pipeline_board_ask` and `inChat` true, with the same words you will say in chat. The posting decision is the exception: the person's click on the board's Post Now, Schedule Post, Save Draft or Download Files is the go-ahead, so never ask for another confirmation in chat after it.
+A go-ahead for sending or spending outside the posting decision is asked in chat only, so ask it with `pipeline_board_ask` and `inChat` true, with the same words you will say in chat. The posting decision is the exception: the person's click on the board's Approve and post now, Approve and schedule, Approve and save as a draft or Approve and download is the go-ahead, so never ask for another confirmation in chat after it.
 A typed "yes" never stands in for that click: see Money and posting need a click below.
 Trying a failed picture or clip again is not new spending, since it stays inside the price already approved, so it is a normal board question with "Try again" and "Leave it out" buttons; its answer goes to `pipeline_generation_retry` as described in make-image and make-video.
 For an `inChat` question, the board shows a notice to answer in chat instead of answer buttons.
@@ -243,7 +243,7 @@ An empty file list cannot authorize production or spending.
 ## Decisions on the board and in chat
 
 Every decision is answered once, on the board or in chat, and both always show the same state.
-This applies to each one: pick a concept, approve the storyboard (on a video post, with its price), approve a later price, approve the sample (the first picture, or the test clip on a video post), approve every picture redone after the storyboard, approve the rough cut, approve the final post, confirm where and when to post, approve the report, and for paid work the campaign plan and going live.
+This applies to each one: pick a concept, approve the storyboard (on a video post, with its price), approve a later price, approve the sample (the first picture, or the test clip on a video post), approve every picture redone after the storyboard, approve the rough cut, approve the final post, approve the posting plan, approve the report, and for paid work the campaign plan and going live.
 
 What to present, by decision:
 
@@ -254,7 +254,7 @@ What to present, by decision:
 - Approve the sample (the first picture, or the test clip on a video post): nothing to present; it shows on its own once the sample is saved, as described under Sample image below.
 - Approve the pictures (only after one was redone): nothing to present by hand; call `pipeline_review_present` with `gate` `pictures` and no files. The clips need no approval: `pipeline_clips_signoff` signs them off. Approve the rough cut: the finished video, with `gate` `cut` (see Pictures and clips below).
 - Approve the final post: each `drafts/D*/post.md` with its media files.
-- Confirm where and when to post: each `drafts/D*/post.md`, whose Publish plan table gives the platform, account, time and destination.
+- Approve the posting plan: each `drafts/D*/post.md`, whose Publish plan table gives the platform, account, time and destination.
 - Campaign plan and going live: the proposal and the activation checklist.
 
 When a decision opens:
@@ -284,7 +284,7 @@ A board answer can land late when a long turn delays it, so a reminder in chat a
 
 The price (and so a storyboard approval that carries it), the sample and the posting plan (where and when to post, and the final publish approval) are approved only by the person's tap on the card in the board; only a chat-only job takes them from typed words.
 On a job that uses the board, when the person types yes, ok or approve for one of these, do not record it. Say in one plain line: 'Please tap Approve on the card in the board. Money and posting steps need your click.' Name the job's brand and title, and make sure the board shows the card (write the documents again).
-The same goes for choosing where to post (Post Now, Schedule Post, Save Draft, Download Files) or the posting time.
+The same goes for choosing where to post (Post now, Schedule a post, Save as a draft, I'll post it myself) or the posting time.
 The tools enforce it: a chat approval for these is refused with that same sentence, and nothing is applied. Notes or requests for changes typed in chat still work, and so do concept picks, storyboard notes, brief answers and questions.
 An applied price approval is the explicit yes to that quote; a request for changes means re-price and present the price again.
 
