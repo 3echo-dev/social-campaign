@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { InvalidInputError } from '../lib/errors.mjs';
 import * as facts from './facts.mjs';
+import { noteOnJob } from './session-claims.mjs';
 
 /**
  * Trying a failed picture or clip again under the price the person already approved.
@@ -15,8 +16,8 @@ const SHORT_ITEM = /^\s*(D\d+)[\s/_-]+([A-Za-z][A-Za-z0-9_]*?)(?:[\s/_-]+v(\d+))
 const VERSIONED = /(?:^|[-/])v\d+\s*$/i;
 const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
-function refuse(message) {
-  throw new InvalidInputError(message);
+function refuse(message, fix) {
+  throw new InvalidInputError(message, fix ? { fix } : {});
 }
 
 /** Clip 4, Picture 2: the words the person sees for a quote item. */
@@ -62,6 +63,62 @@ function highestVersion(job, slot, quoteItems) {
 }
 
 /**
+ * The create or landed record a paid picture or clip already has under this key, or null when there is none or the earlier create
+ * ended failed or cancelled with nothing made (then the key is a retry's business, not a repeat). A key with a create or a landed
+ * record is never made again: this is the record to use instead. {key, label, state: 'making' | 'made', providerJobId,
+ * outputAssetIds, landed: {assetId, file} | null, message}. A redo is a new version key with its own price, so it never lands here.
+ */
+export function existingCreate(job, key) {
+  const wanted = facts.canonicalJobKey(key);
+  if (!wanted) return null;
+  const records = facts.readRecords(job);
+  const creates = records.filter(record => record.type === 'create' && record.provider === facts.THREE_ECHO && facts.canonicalJobKey(record.key) === wanted);
+  const landed = facts.readLanded(job).filter(entry => entry.type === 'landed' && facts.canonicalJobKey(entry.key) === wanted);
+  if (!creates.length && !landed.length) return null;
+  const state = creates.length ? facts.earlierCreateState(job, wanted) : 'made';
+  if (!state) return null;
+  const create = creates.length ? creates[creates.length - 1] : null;
+  const last = landed[landed.length - 1];
+  const providerJobId = create?.providerJobId ?? last?.providerJobId ?? null;
+  const result = providerJobId ? records.filter(record => record.type === 'result' && record.providerJobId === providerJobId).pop() : null;
+  const parsed = facts.parseJobKey(wanted);
+  const priced = facts.readQuote(job)?.quote?.items?.find(item => item && facts.canonicalJobKey(item.key) === wanted);
+  const kind = create?.kind || (create?.tool ? (create.tool === 'create_video_job' ? 'video' : 'image') : priced?.kind) || 'image';
+  const label = wordsFor({ key: wanted, panel: parsed.item, kind });
+  return {
+    key: wanted,
+    label,
+    state,
+    providerJobId,
+    outputAssetIds: Array.isArray(result?.outputAssetIds) ? result.outputAssetIds : [],
+    landed: last ? { assetId: last.assetId ?? null, file: last.file ?? null } : null,
+    message: state === 'making'
+      ? `${label} is already being made, so it was not started again and nothing more was charged.`
+      : `${label} was already made, so it was not made again and nothing more was charged.`,
+  };
+}
+
+/**
+ * A paid create asked for again under a key that already has a record. When it has one, the existing record comes back
+ * ({existing: true, ...record}) and the job's log says so in plain words; the caller must not create again. When it has none
+ * the create may go ahead as usual ({existing: false}).
+ */
+export function answerRepeatedCreate(job, key, { now = Date.now() } = {}) {
+  const record = existingCreate(job, key);
+  if (!record) return { existing: false };
+  noteOnJob(job.dir, 'repeat_create', `${record.label} was asked for again while the first one already existed, so the first one was kept and nothing was paid twice.`, { now });
+  return { existing: true, ...record };
+}
+
+/** Where to find what was already made, for the Director that asked again. */
+function whereIs(record) {
+  if (record.state === 'making') return `The first one is still running${record.providerJobId ? ` as 3Echo job ${record.providerJobId}` : ''}. Check on it with wait_for_job and do not make it again.`;
+  if (record.landed?.file) return `The first one is saved as ${record.landed.file}. Use it and do not make it again.`;
+  const assets = record.outputAssetIds.length ? ` It made ${record.outputAssetIds.join(', ')}: save it with pipeline_generation_land.` : '';
+  return `The first one exists${record.providerJobId ? ` as 3Echo job ${record.providerJobId}` : ''}.${assets} Do not make it again.`;
+}
+
+/**
  * Make the failed item's key give way to a new version of it in the approved price, and approve that price on the strength of the
  * earlier approval. Refuses in plain words unless the item is in the current approved price and every 3Echo create on it ended
  * failed or cancelled with nothing made or saved.
@@ -90,9 +147,10 @@ export function retryFailedItem({ root, brand, jobId, item, confirmedBy } = {}) 
   }
   const creates = facts.readRecords(job).filter(record => record.type === 'create' && record.provider === facts.THREE_ECHO && facts.canonicalJobKey(record.key) === failedKey);
   if (!creates.length) refuse(`${label} has not been started yet, so there is nothing to make again. Make it under its own approved item.`);
-  const earlier = facts.earlierCreateState(job, failedKey);
-  if (earlier === 'making') refuse(facts.SPEND_DENY.stillMaking);
-  if (earlier === 'made') refuse(`${label} was already made, so it does not need to be made again. A redo the person asked for needs its own price.`);
+  // A key that already has a record is never made again: the refusal carries that record, and the job's log says so.
+  const repeat = answerRepeatedCreate(job, failedKey);
+  if (repeat.existing && repeat.state === 'making') refuse(facts.SPEND_DENY.stillMaking, whereIs(repeat));
+  if (repeat.existing) refuse(`${label} was already made, so it does not need to be made again. A redo the person asked for needs its own price.`, whereIs(repeat));
 
   const parsed = facts.parseJobKey(failedKey);
   const retryKey = facts.formatJobKey({ jobId: job.jobId, deliverable: parsed.deliverable, item: parsed.item, version: highestVersion(job, slot, price.quote.items) + 1 });

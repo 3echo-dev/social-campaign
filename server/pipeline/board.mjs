@@ -27,7 +27,7 @@ import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from '.
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
 import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
-import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
+import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, checkedAbout, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
 import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId } from './session-claims.mjs';
 import { readyChecks } from './ready-checks.mjs';
@@ -799,6 +799,16 @@ export function reviewMediaPaths({ root, brand, jobId, all = false } = {}) {
   return [...new Set(paths)];
 }
 
+const reviewFilesKey = items => JSON.stringify((Array.isArray(items) ? items : []).map(item => [item?.path, item?.sha256]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+
+/** The version a review card shows: the count saved with it, else the newest take of the sample or of its pictures and clips, else 1. */
+export function reviewVersion(review) {
+  const own = Number(review?.version);
+  if (Number.isInteger(own) && own > 0) return own;
+  const takes = [review?.sample?.version, ...(Array.isArray(review?.mediaSet?.panels) ? review.mediaSet.panels.map(panel => panel?.version) : [])].map(Number).filter(take => Number.isInteger(take) && take > 0);
+  return Math.max(1, ...takes);
+}
+
 function readReviewRecord(root, brand, jobId, gate) {
   if (!gate) return null;
   try { return read(reviewFile(root, brand, jobId, gate)); } catch { return null; }
@@ -823,6 +833,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     return profiles.get(slug);
   };
   const questionsByJob = openQuestionsByJob(root);
+  const answeredByJob = answeredQuestionsByJob(root);
   const metricoolBrands = readMetricoolBrands(root);
   const metricoolOn = metricoolConnected(root);
   const stuckCtx = stuckContext(root);
@@ -841,7 +852,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
       try { publish.evaluation = evaluatePublishPlan({ root, brand: job.brand, jobId: job.jobId, measure: 'display' }); }
       catch { publish.evaluation = { ready: false, changed: false, reason: REVIEW_NOT_READY, checks: null }; }
     }
-    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot), agents: { snapshot, requests: stuckCtx.requests.get(job.jobId) || [], retriedAt: stuckCtx.retriedAt(job), blockedLine: blockedReason(snapshot) } });
+    const document = buildJobDocument({ dir: job.path, root, workspaceId, project: snapshot.project, job: snapshot.job, gate, review, details, inbox, reviewUrl, thumbDir: thumbnailDirectory(root), studioWorkspace, publish, handoffOnly: plannedBeforeMetricool(snapshot), agents: { snapshot, requests: stuckCtx.requests.get(job.jobId) || [], retriedAt: stuckCtx.retriedAt(job), blockedLine: blockedReason(snapshot), answered: answeredByJob.get(job.jobId) || [] } });
     if (gate === 'content' && document.review && kinds.suppliesMedia(snapshot.job?.kind)) suppliedCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId });
     if (document.review) readyCardChecks(document.review, { root, brand: job.brand, jobId: job.jobId, gate });
     return { jobId: job.jobId, brand: job.brand, terminal: states.isTerminal(snapshot.project.state), document };
@@ -1020,7 +1031,7 @@ function jobDetails({ root, job, snapshot, gate, review, profile, usage }) {
   const reviewArtifacts = review?.revision === snapshot.project.revision ? review.artifacts : [];
   return {
     intake: projectIntake(snapshot, profile),
-    pendingReviews: gate ? [{ reviewId: gate, gate, revision: snapshot.project.revision, artifacts: reviewArtifacts, summary: reviewArtifacts.length ? 'Review these current files before submitting your decision.' : 'Ask Claude to register the exact review files before approving.' }] : [],
+    pendingReviews: gate ? [{ reviewId: gate, gate, revision: snapshot.project.revision, ...(reviewArtifacts.length ? { version: reviewVersion(review) } : {}), artifacts: reviewArtifacts, summary: reviewArtifacts.length ? 'Review these current files before submitting your decision.' : 'Ask Claude to register the exact review files before approving.' }] : [],
     stages: withRequestRecord(withPriceList((snapshot.project.stages || []).map(boardStage), job.path), { root, jobId: job.jobId, job: snapshot.job }),
     usageStages: usage.stages.map(({ id, label, kind, tokens: stageTokens, elapsedMs, openSince }) => ({ id, label, kind, tokens: stageTokens, elapsedMs, openSince })),
     metrics: { recordedTokens: tokens.length ? tokens.reduce((a, b) => a + b, 0) : null, tokens: projection.tokens, coverage: { tokens: projection.coverage.tokens } },
@@ -1056,6 +1067,19 @@ function openQuestionsByJob(root, { readOnly = false } = {}) {
   return byJob;
 }
 
+// The answered questions of each job, newest answers last: the room shows each as a closed card of one line, wherever it was answered.
+function answeredQuestionsByJob(root) {
+  const byJob = new Map();
+  let answered = [];
+  try { answered = listQuestions({ root, status: 'answered', readOnly: true }); } catch { answered = []; }
+  for (const question of answered) {
+    if (!question.jobId) continue;
+    if (!byJob.has(question.jobId)) byJob.set(question.jobId, []);
+    byJob.get(question.jobId).push(question);
+  }
+  return byJob;
+}
+
 const NEEDS_ANSWER_IN_CHAT = 'Answer Claude in the chat';
 
 // The takes of a pick question, each with the address the board plays it from (null until its review copy is uploaded).
@@ -1071,6 +1095,7 @@ function questionItem(question, place, at = null) {
     ...(question.wantsUpload ? { wantsUpload: { type: question.wantsUpload.type } } : {}),
     ...(Array.isArray(question.takes) && question.takes.length ? { takes: takesOf(question, at) } : {}),
     ...(Array.isArray(question.stills) && question.stills.length && at?.root && at.brand && at.jobId ? { stills: question.stills.map(still => ({ label: still.label, url: reviewUrlFor(at.root, { brand: at.brand, jobId: at.jobId, file: still.file }) })) } : {}),
+    ...(question.about ? { about: { path: question.about.path, revision: question.about.revision } } : {}),
     questionId: question.questionId, options: Array.isArray(question.options) ? [...question.options] : [], allowText: question.allowText !== false,
     at: inboxAt(question.askedAt),
   };
@@ -1162,6 +1187,7 @@ function decisionItem({ root, snapshot, gate, review, place, dir, previews = fal
   const current = Boolean(review && review.revision === revision && Array.isArray(review.artifacts) && review.artifacts.length);
   const item = { kind: 'decision', ...place, text: wording.gateAsk(gate), inline: INLINE_GATES.has(gate) && current, gate, revision, at: inboxAt(review?.createdAt, snapshot.status?.updatedAt) };
   if (!current) return { ...item, summary: REVIEW_NOT_READY };
+  item.version = reviewVersion(review);
   if (gate === PRICE_GATE) {
     const job = facts.jobAt(root, snapshot.project.brand, snapshot.project.jobId);
     const saved = job ? facts.readQuote(job) : null;
@@ -1962,7 +1988,8 @@ function validatePostTime(root, args) {
 // Agent Box requests: a message to an agent, and "Try again" on a stuck job
 // ---------------------------------------------------------------------------
 
-// Exactly these fields and the workspace the board belongs to, nothing else and nothing missing.
+// Exactly these fields and the workspace the board belongs to, nothing else and nothing missing. A message may also carry `about` (the
+// frame or file it is about), which is checked against the job on its own and kept out of this list.
 const AGENT_MESSAGE_FIELDS = new Set(['requestId', 'brand', 'jobId', 'agent', 'text', 'workspaceId']);
 const RETRY_STEP_FIELDS = new Set(['requestId', 'brand', 'jobId', 'workspaceId']);
 const MESSAGE_COMMENT_CHARS = 80;
@@ -1986,7 +2013,8 @@ function validateJobRequest(root, args, fields, what) {
  * so a replay is answered the way the first try was). Returns the job and its roster.
  */
 function checkAgentMessage(root, args) {
-  const job = validateJobRequest(root, args, AGENT_MESSAGE_FIELDS, 'a message to an agent');
+  const { about, ...rest } = plainObject(args) ? args : {};
+  const job = validateJobRequest(root, plainObject(args) ? rest : args, AGENT_MESSAGE_FIELDS, 'a message to an agent');
   if (typeof args.agent !== 'string' || typeof args.text !== 'string' || typeof args.requestId !== 'string') throw new Error('Choose who the message is for and write it first.');
   if (facts.isFinishedState(job.state)) throw new Error('This job is finished, so it can no longer take messages.');
   const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
@@ -1996,8 +2024,12 @@ function checkAgentMessage(root, args) {
   if (problem) throw new Error(problem);
   const id = messageId(args.requestId);
   const saved = readAgentMessages(job.dir, args.agent);
-  if (!saved.some(message => message.id === id) && saved.filter(message => isPending(message, args.agent)).length >= PENDING_LIMIT) {
-    throw new Error(`${PENDING_LIMIT} messages are already waiting for the ${agentLabel(args.agent)}. They will be passed on at its next step.`);
+  if (!saved.some(message => message.id === id)) {
+    if (saved.filter(message => isPending(message, args.agent)).length >= PENDING_LIMIT) {
+      throw new Error(`${PENDING_LIMIT} messages are already waiting for the ${agentLabel(args.agent)}. They will be passed on at its next step.`);
+    }
+    // A frame or file that is not in the job any more is refused here, before anything is claimed (a replay of a saved message is answered as before).
+    checkedAbout(job.dir, about);
   }
   return { job, roster };
 }
@@ -2940,7 +2972,7 @@ export function boardOperation({ root,operation,args = {},source = 'local' }) {
   }
   if(operation==='agent_message') {
     const { job, roster } = checkAgentMessage(root,args);
-    const saved = saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.agent,text:args.text,requestId:args.requestId,roster});
+    const saved = saveAgentMessage({root,brand:job.brand,jobId:job.jobId,agent:args.agent,text:args.text,requestId:args.requestId,roster,about:args.about});
     const said = args.text.replace(/\s+/g,' ').trim().slice(0,MESSAGE_COMMENT_CHARS);
     return {jobId:saved.jobId,agent:saved.agent,messageId:saved.messageId,message:`Message for the ${agentLabel(saved.agent)}: "${said}".`};
   }
@@ -3038,11 +3070,14 @@ function safeAppliedResult(operation, result) {
   // A picked folder has no typed name for the board to show, so its receipt names it (the folder's last part or the person's label, never a path).
   if (operation === 'brand_folder_pick') return result.folderId ? { brand: result.brand, folderId: result.folderId, ...(typeof result.name === 'string' && result.name ? { name: result.name.slice(0, 120) } : {}) } : null;
   if (HANDOFF_OPERATIONS.includes(operation)) return result.jobId ? { jobId: result.jobId } : null;
-  if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null } : null;
+  // A board tap that came after the question was already answered: the receipt carries what was saved and when, so the card can close on it.
+  if (operation === 'answer_question') return result.questionId ? { questionId: result.questionId, status: result.status, answeredVia: result.answeredVia ?? null, ...(result.alreadyAnswered === true ? { message: String(result.message || '').slice(0, 120), answer: questionAnswerWords(result).slice(0, 300) } : {}) } : null;
   return null;
 }
 
 function declineMessage(reason) {
+  // The refusal for an old card is the one plain line, not wrapped in the chat wording.
+  if (reason === DECISION_CHANGED) return reason;
   return reason ? `Declined in chat. Nothing was changed. ${reason}` : 'Declined in chat. Nothing was changed.';
 }
 
@@ -3163,9 +3198,14 @@ function validateMediaPanels(registered, panels, decision, note) {
   if(decision==='request_changes' && !changes.length && !(typeof note==='string' && note.trim())) throw new Error(`Say what should change in the ${word}.`);
 }
 
+// A tap on a card that is no longer the latest (the job moved on, or its files changed after the card was shown) is refused in these words.
+// The board shows the line and loads the latest card.
+export const DECISION_CHANGED = 'This changed, here is the latest';
+const decisionChanged = () => new UserFacingError(DECISION_CHANGED,{code:'review_changed',fix:'Decline the request with that line as the reason, then show the latest card on the board.'});
+
 export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,decision,chosen,credits,totals,note,recipe,panels,acceptedFlagIds,finishing,combine}) {
   const snapshot = runtime.readJobSnapshot({root,brand,jobId});
-  if(snapshot.project.revision!==revision) throw new Error('This job revision has changed. Refresh and review it again.');
+  if(snapshot.project.revision!==revision) throw decisionChanged();
   const pending = pendingReview(root,brand,jobId,snapshot);
   if(pending.gate!==reviewId) throw new Error('This review is no longer awaiting a decision.');
   if(!['approve','request_changes'].includes(decision)) throw new Error('Unsupported decision.');
@@ -3204,11 +3244,11 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
   const registered = reviewId===SAMPLE_GATE || MEDIA_GATES.includes(reviewId) ? pending.review : read(reviewFile(root,brand,jobId,reviewId));
   if(!registered) throw new Error('This review is no longer awaiting a decision.');
   const identity = items => JSON.stringify(items.map(item=>[item.path,item.sha256]).sort((a,b)=>a[0].localeCompare(b[0])));
-  if(registered.revision!==revision || identity(registered.artifacts)!==identity(artifacts)) throw new Error('The decision must cover the exact registered review files.');
+  if(registered.revision!==revision || identity(registered.artifacts)!==identity(artifacts)) throw decisionChanged();
   const dir = jobDirectory(root,brand,jobId);
   for(const artifact of artifacts) {
     if(!/^[a-f0-9]{64}$/.test(artifact.sha256 || '')) throw new Error('A review file is missing its content hash.');
-    if(digest(readFileSync(artifactFile(dir,artifact.path)))!==artifact.sha256) throw new Error('A review file has changed. Refresh and review it again.');
+    if(digest(readFileSync(artifactFile(dir,artifact.path)))!==artifact.sha256) throw decisionChanged();
   }
   if(MEDIA_GATES.includes(reviewId)) validateMediaPanels(registered,panels,decision,note);
   else if(panels!==undefined) validatePanels(dir,artifacts,panels,decision,note);
@@ -3454,7 +3494,10 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   }
   const dir=jobDirectory(root,brand,jobId);
   const artifacts=paths.map(path=>{const bytes=readFileSync(artifactFile(dir,path));return {path,sha256:digest(bytes),bytes:bytes.length};});
-  const record={brand,jobId,gate,revision:snapshot.project.revision,artifacts,createdAt:new Date().toISOString()};
+  // The card's version counts the different sets of files this review was shown with; the same files shown again keep their version.
+  const before=readReviewRecord(root,brand,jobId,gate);
+  const version=before ? reviewVersion(before)+(reviewFilesKey(before.artifacts)===reviewFilesKey(artifacts) ? 0 : 1) : 1;
+  const record={brand,jobId,gate,version,revision:snapshot.project.revision,artifacts,createdAt:new Date().toISOString()};
   writeFileSync(reviewFile(root,brand,jobId,gate),JSON.stringify(record,null,2));
   return moved ? {...record,moved} : record;
 }
@@ -3939,7 +3982,7 @@ function applyPriceDecision({root,file,record,args,validated,confirmedBy}) {
   const current = job ? facts.readQuote(job) : null;
   if(!current) throw new Error('This price is no longer saved. Ask Claude to save and present it again.');
   const shown = args.artifacts.find(item=>item.path===facts.FACT_FILES.quote);
-  if(!shown || shown.sha256!==current.fileSha256) throw new Error('The price changed after it was shown. Refresh and review it again.');
+  if(!shown || shown.sha256!==current.fileSha256) throw decisionChanged();
   const totals = facts.quoteTotals(current.quote.items);
   if(approve && !facts.sameTotals(args.totals,totals)) throw new Error(`Approve this price at the total the board shows: ${facts.priceWords(totals)}.`);
   const claimed = claimBoardRequest(file);
@@ -3981,7 +4024,7 @@ function checkStoryboardPrice({root,args}) {
   const current = job ? facts.readQuote(job) : null;
   if(!current) throw new Error('This price is no longer saved. Ask Claude to save and present it again.');
   const shown = args.artifacts.find(item=>item.path===facts.FACT_FILES.quote);
-  if(!shown || shown.sha256!==current.fileSha256) throw new Error('The price changed after it was shown. Refresh and review it again.');
+  if(!shown || shown.sha256!==current.fileSha256) throw decisionChanged();
   const totals = facts.quoteTotals(current.quote.items);
   if(!facts.sameTotals(args.totals,totals)) throw new Error(`Approve this price at the total the board shows: ${facts.priceWords(totals)}.`);
   return {job,current,totals};

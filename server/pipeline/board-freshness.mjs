@@ -9,7 +9,7 @@ import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 import { handoffSent } from './handoff.mjs';
-import { BOARD_OWNER_TTL_MS, releaseClaim, takeClaim } from './session-claims.mjs';
+import { BOARD_OWNER_TTL_MS, JOB_CLAIM_TTL_MS, jobClaimFile, liveClaim, readClaimRecord, releaseClaim, takeClaim } from './session-claims.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
@@ -359,10 +359,66 @@ export function endBoardTurn(root, sessionId, now = Date.now()) {
   return updateOwnerRecord(root, sessionId, () => ({ claimedAt: at, activeAt: at, boardTurn: false }));
 }
 
-/** A window that ends gives the board back (only the owner can), so a window left open can pick it up again. */
+/** A window that ends gives the board back (only the owner can), so a window left open can pick it up again. It lets go of its jobs too. */
 export function releaseBoardOwner(root, sessionId) {
   if (!sessionId) return false;
+  try { releaseJobRunners(root, sessionId); } catch { /* a job claim left behind goes stale by itself */ }
   try { return releaseClaim(ownerPath(root), sessionId); } catch { return false; }
+}
+
+/** Give back every job this window holds as its Director (only the holder can). Returns how many were given back. */
+export function releaseJobRunners(root, sessionId) {
+  if (!sessionId) return 0;
+  let count = 0;
+  for (const job of listJobs(root)) {
+    try {
+      const file = jobClaimFile(job.dir);
+      // The window's hook session id can be the second id on its claim (see stampJobClaimSession): it is the holder too.
+      const held = readClaimRecord(file);
+      if (releaseClaim(file, held?.hookSessionId === String(sessionId) ? held.sessionId : sessionId)) count += 1;
+    } catch { /* the claim goes stale by itself */ }
+  }
+  return count;
+}
+
+/**
+ * Is this job held right now by a different window that is still within its claim? Read only. Without a session id nothing can be told apart, so no.
+ * A window holds the claim under its server's id and, once stamped (stampJobClaimSession), under the session id its hooks get: either one is the holder.
+ */
+export function jobHeldByOtherDirector(job, sessionId, now = Date.now()) {
+  if (!sessionId || !job?.dir) return false;
+  try {
+    const held = liveClaim(jobClaimFile(job.dir), { ttlMs: JOB_CLAIM_TTL_MS, now });
+    const id = String(sessionId);
+    return Boolean(held) && held.sessionId !== id && held.hookSessionId !== id;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * After /clear, /resume or a fork the MCP server keeps the session id it started with (it holds the claim under it) while the hooks of
+ * the same window get the new one. Call this right after a job tool succeeded in that window, with the hook's session id: it is written
+ * on the job's live claim as a second id. A claim that is not live, or already carries this id, is left alone. Never takes a job.
+ */
+export function stampJobClaimSession(job, hookSessionId, now = Date.now()) {
+  const id = typeof hookSessionId === 'string' ? hookSessionId.trim() : '';
+  if (!id || !job?.dir) return false;
+  const file = jobClaimFile(job.dir);
+  const temp = `${file}.${randomUUID()}.tmp`;
+  try {
+    const held = liveClaim(file, { ttlMs: JOB_CLAIM_TTL_MS, now });
+    if (!held || held.sessionId === id || held.hookSessionId === id) return false;
+    writeFileSync(temp, JSON.stringify({ ...held, hookSessionId: id }));
+    // A newer window may have taken the claim while this was written: check again just before replacing.
+    if (readClaimRecord(file)?.sessionId !== held.sessionId) return false;
+    renameReplacing(temp, file);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(temp, { force: true });
+  }
 }
 
 /** True the first time this window is told which window owns the board, false after, so it is said once. */
@@ -714,7 +770,8 @@ function yourTurnJobs(board, root, jobs, questions, sessionId, now = Date.now())
       const lines = readAgentLines(job.dir);
       const at = lastActiveAt(job, lines);
       if (ref !== mine && !(at !== null && now - at <= STUCK_RECENT_MS)) continue;
-      if (elsewhere(ref)) continue;
+      // Another window that holds the job as its Director (a live claim, see runtime.takeJobRunner) is carrying it on.
+      if (elsewhere(ref) || jobHeldByOtherDirector(job, sessionId, now)) continue;
       if (waitingFor(board, root, job, questions) || hasOpenRun(lines, now)) continue;
       const title = readJson(join(job.dir, 'job.json'))?.title;
       out.push({ ref, jobId: job.jobId, title: typeof title === 'string' && title.trim() ? title.trim() : job.jobId, state, revision: job.revision ?? 0, next: nextStageName(job, state) });

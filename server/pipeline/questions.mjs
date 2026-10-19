@@ -180,8 +180,21 @@ function questionTakes(root, takes, jobId, brand) {
   });
 }
 
-export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined, stills = undefined, blocking = undefined }) {
+// What a question is about: a file in the job and the revision of it the person is looking at, for example drafts/D1/storyboard.md at
+// revision 3. It is kept on the record for the board to word ("Storyboard, version 3"); the path itself is never shown to the person.
+function questionAbout(about, jobId) {
+  if (about === undefined || about === null) return null;
+  if (!jobId) throw new TypeError('A question about a file must be about one job (pass jobId).');
+  if (typeof about !== 'object' || Array.isArray(about)) throw new TypeError('about must give the file and its revision.');
+  const path = typeof about.path === 'string' ? about.path.trim().replace(/\\/g, '/') : '';
+  if (!path || path.length > 200 || path.startsWith('/') || /^[a-z]:/i.test(path) || path.split('/').includes('..')) throw new TypeError('about.path must be a file inside the job, such as drafts/D1/storyboard.md.');
+  if (!Number.isSafeInteger(about.revision) || about.revision < 0) throw new TypeError('about.revision must be the whole-number revision the person is looking at.');
+  return { path, revision: about.revision };
+}
+
+export function askQuestion({ root, brand = null, jobId = null, text, options, allowText, inChat = false, wantsUpload = null, takes = undefined, stills = undefined, blocking = undefined, about = undefined }) {
   const place = questionPlace(root, { brand, jobId });
+  const subject = questionAbout(about, place.jobId);
   const question = plainLine(text, { label: 'The question', limit: QUESTION_TEXT_LIMIT });
   const picks = inChat ? [] : questionTakes(root, takes, place.jobId, place.brand);
   const pictures = inChat ? [] : questionStills(root, stills, place.jobId, place.brand);
@@ -204,6 +217,7 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
     allowText: typed,
     ...(inChat ? { inChat: true } : {}),
     ...(blocking === true && !inChat ? { blocking: true } : {}),
+    ...(subject ? { about: subject } : {}),
     ...(wish ? { wantsUpload: wish } : {}),
     ...(picks.length ? { takes: picks } : {}),
     ...(pictures.length ? { stills: pictures } : {}),
@@ -246,10 +260,22 @@ export function validateAnswer({ root, questionId, choice, text, via = 'board' }
   return question;
 }
 
+/** "Answered on the board at 3:42 pm" or "Answered in chat at 3:42 pm": what a second answer is told, in the person's local time. */
+export function answeredWords(question) {
+  const when = new Date(question?.answeredAt || '');
+  const clock = Number.isNaN(when.getTime()) ? '' : ` at ${when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s*([AP])M$/i, (_, half) => ` ${half.toLowerCase()}m`)}`;
+  return `Answered ${question?.answeredVia === 'chat' ? 'in chat' : 'on the board'}${clock}`;
+}
+
+// The first answer wins, on the board or in chat. A later one changes nothing: it gets the saved question back with
+// alreadyAnswered and the words above. The same board request arriving again is the same answer, not a second one.
 export function answerQuestion({ root, questionId, choice, text, via, requestId = null }) {
   if (via !== 'board' && via !== 'chat') throw new Error('Say whether this answer came from the board or the chat.');
   const question = readQuestion({ root, questionId });
-  if (question.status === 'answered') return question;
+  if (question.status === 'answered') {
+    if (typeof requestId === 'string' && requestId && question.requestId === requestId) return question;
+    return { ...question, alreadyAnswered: true, message: answeredWords(question) };
+  }
   if (question.status !== 'open') throw new Error(WITHDRAWN);
   const answer = answerFor(question, { choice, text, via });
   const next = { ...question, status: 'answered', answer, answeredVia: via, answeredAt: new Date().toISOString(), requestId: typeof requestId === 'string' && requestId ? requestId : null };

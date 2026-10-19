@@ -27,7 +27,7 @@ import { FIELDS as RECIPE_FIELDS, readJobRecipes } from './recipe.mjs';
 import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, validZone, whenText } from './publish-preflight.mjs';
 import { attemptState, projectPublishStatus, readAttempts } from './publish-attempts.mjs';
 import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
-import { agentBox, coreOnlyAgentBox } from './agent-box.mjs';
+import { agentBoxAndRoom, coreOnlyAgentBox, trimRoom } from './agent-box.mjs';
 import { musicSection } from './music.mjs';
 import { combineSection } from './combine.mjs';
 // strategy-options.mjs reaches brand-library.mjs, which imports this file: it is only used inside functions, never at load time.
@@ -1413,8 +1413,8 @@ function postOutputTitles(post, label, media) {
  *   publish-intent.mjs): connected, found, label, networks, coverage. Only read for the posting decision.
  * @param {boolean} [options.handoffOnly] a job routed before 0.8, whose posting decision was folded into the final
  *   approval: it ends with the hand-off package, and the document says so
- * @param {object|null} [options.agents] what agentBox needs besides the document itself (snapshot, requests, retriedAt, blockedLine):
- *   when given, the document carries `agents`, the Agent Box section; left out, it carries none
+ * @param {object|null} [options.agents] what agentBox needs besides the document itself (snapshot, requests, retriedAt, blockedLine,
+ *   answered): when given, the document carries `agents`, the Agent Box section, and `room`, the job's feed; left out, it carries neither
  * @param {number} [options.now] the clock the publish status is projected at (ms since 1970)
  * @param {number} [options.budgetBytes]
  */
@@ -1864,7 +1864,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
       if (title !== basename(item.path)) titles.set(item.path, title);
     }
     try {
-      document.agents = agentBox({ ...agents, dir, details, inbox: document.inbox, now, pinned, titles });
+      // The room goes in with the agents section, each held to its own 32 KiB, newest kept.
+      const box = agentBoxAndRoom({ ...agents, dir, details, inbox: document.inbox, now, pinned, titles });
+      document.agents = box.agents;
+      if (box.room.rows.length || box.room.older) document.room = box.room;
     } catch { /* the board still shows the job without its agents */ }
   }
 
@@ -1937,12 +1940,20 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     size += cost;
   }
   // Only pathological input makes the parsed review itself too large: shed the
-  // file contents, then the review thumbnails, then the parsed structures,
+  // file contents, then the room, then the review thumbnails, then the parsed structures,
   // rather than exceed the budget.
   if (byteSize(document) > budgetBytes && kitPreviews.length) for (const [entry] of kitPreviews) delete entry.preview;
   if (byteSize(document) > budgetBytes) {
     document.truncated = true;
     document.files = document.files.map(({ path, sha256, title, mimeType, kind }) => ({ path, sha256, title, mimeType, kind, omitted: true }));
+  }
+  // The room is closed history, so it sheds its oldest rows before anything the open card shows: the newest few stay, with the count of
+  // what is left out. The agent cards go later, once the review has been cut.
+  for (const keep of [12, 4, 0]) {
+    if (byteSize(document) > budgetBytes && document.room) {
+      document.truncated = true;
+      document.room = trimRoom(document.room, keep);
+    }
   }
   if (byteSize(document) > budgetBytes && document.storyboards) {
     document.truncated = true;

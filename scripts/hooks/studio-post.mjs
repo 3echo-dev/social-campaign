@@ -1,7 +1,7 @@
 import {
   ELEVEN_LABS, THREE_ECHO, VOICE_RESULTS, VOICE_SPENDERS, isMusicCall,
   appendEstimate, appendLinks, appendRecord, asObject, currentPriceApproval, findGenerationOwner, isLanded, isReferenceItem, isTranscriptionItem, itemKeyFor,
-  jobAt, latestEstimate, mediaLinks, parseToolResponse, priceKey, quoteItem, readRecords, readSessionBinding,
+  jobAt, latestEstimate, markAttemptChecked, mediaLinks, openAttempt, parseToolResponse, priceKey, quoteItem, readRecords, readSessionBinding,
   resolveJobForCall, resolveWorkspaceRoot, startMediaIfDue, toolBase, voiceOutputs, voiceRunCredits, voiceRunFinished,
 } from '../../server/pipeline/facts.mjs';
 import { spawnLander } from '../../server/pipeline/land-outputs.mjs';
@@ -313,9 +313,23 @@ function recordVoiceResult(ctx) {
   tell(said.join(' '));
 }
 
+// A paid create that came back as an error made nothing. The try that studio-pre.mjs wrote down when the call went out is settled, so asking again for
+// the same key does not cost a refusal. An interrupt is left open: the call may have reached the studio, which is what that line is there to catch.
+function settleFailedAttempt(event) {
+  const base = toolBase(event.tool_name);
+  if ((base !== 'create_image_job' && base !== 'create_video_job') || event.is_interrupt === true) return;
+  const root = resolveWorkspaceRoot(event.cwd);
+  if (!root) return;
+  const job = resolveJobForCall({ root, sessionId: event.session_id ?? null, toolInput: asObject(event.tool_input) });
+  const key = job ? itemKeyFor(job) : null;
+  const attempt = key ? openAttempt(job, key) : null;
+  if (attempt && (!text(event.tool_use_id) || attempt.toolUseId === event.tool_use_id)) markAttemptChecked(job, attempt);
+}
+
 async function main() {
   const event = await readEvent();
   if (!event) return;
+  if (event.hook_event_name === 'PostToolUseFailure') return settleFailedAttempt(event);
   const base = toolBase(event.tool_name);
   const data = parseToolResponse(event.tool_response);
   if (!data || typeof data !== 'object') return;

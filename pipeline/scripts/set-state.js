@@ -3,6 +3,11 @@
 //
 //   node set-state.js <brand> <job-id> <STATE> --by <who> [--note "<text>"]
 //        [--notes-file <path>] [--next "<one line>"] [--blocked "<who or what>"] [--json]
+//   node set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>" [--json]
+//   node set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>" [--json]
+//
+// The handoff forms add lines to the stage log and do not move the job: work that passes from one employee to the next after a check,
+// or goes back to its author (pipeline/docs/STAGES.md, "Handoff lines in the stage log"). The words of each line are made here.
 //
 // Status used to be edited by hand: rewrite the state, rewrite the timestamp, append a log
 // row, rewrite the notes. Six string replacements in one run, and list-jobs.js then scraped
@@ -42,16 +47,42 @@ const compatibility = argv.includes('--compatibility') || argv.includes('--migra
 
 if (!brand || !jobId || !target || !by) {
   console.error('usage: set-state.js <brand> <job-id> <STATE> --by <who> [--note "<text>"] [--notes-file <path>] [--next "<line>"] [--blocked "<text>"]');
+  console.error('   or: set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>"');
+  console.error('   or: set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>"');
   console.error('states: ' + states.ids().join(' '));
   process.exit(2);
 }
-if (!states.exists(target)) {
+// A handoff adds lines to the stage log, not a move: the job keeps its state and its revision.
+const handoffArgs = { kind: resolved.rest[1], author: resolved.rest[2], to: resolved.rest[3], by, note: flag('note', '') };
+const isHandoff = target === 'handoff';
+if (isHandoff && !stages.handoffRows(handoffArgs)) {
+  console.error('usage: set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>"');
+  console.error('   or: set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>"');
+  process.exit(2);
+}
+if (!isHandoff && !states.exists(target)) {
   console.error('"' + target + '" is not a state. Known states:\n  ' + states.ids().join(' '));
   process.exit(2);
 }
 if (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) {
   console.error('--expect-revision must be a non-negative integer.');
   process.exit(2);
+}
+
+// Stage log: append, never rewrite. The row goes after the last row of the log table; null when the file has no such table.
+const logHeader = /\| Timestamp \| From \| To \| By \| Note \|\n\|[-| ]+\|\n/;
+function withLogRow(text, row) {
+  if (!logHeader.test(text)) return null;
+  const start = text.search(logHeader);
+  const after = start + text.match(logHeader)[0].length;
+  let end = after;
+  while (end < text.length) {
+    const lineEnd = text.indexOf('\n', end);
+    const line = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
+    if (!line.trim().startsWith('|')) break;
+    end = (lineEnd === -1 ? text.length : lineEnd + 1);
+  }
+  return text.slice(0, end) + row + text.slice(end);
 }
 
 const statusPath = path.join(dir, 'status.md');
@@ -70,6 +101,23 @@ let raw;
 try { raw = fs.readFileSync(statusPath, 'utf8'); } catch (e) { fail('Could not read the job state: ' + e.message); }
 const nl = raw.includes('\r\n') ? '\r\n' : '\n';
 let text = raw.replace(/\r\n/g, '\n');
+
+if (isHandoff) {
+  const revisionNow = Number((text.match(/\*\*Revision:\*\*\s*`?(\d+)`?/i) || [])[1]) || 0;
+  const lines = stages.handoffRows({ ...handoffArgs, revision: revisionNow });
+  let written = text;
+  for (const line of lines) {
+    written = withLogRow(written, line.row + '\n');
+    if (written === null) fail('status.md has no stage log table; the handoff was not recorded. Re-scaffold from templates/status.md.');
+  }
+  try { durable.atomicWrite(statusPath, written.replace(/\n/g, nl)); }
+  catch (e) { fail('Could not write the job state: ' + e.message); }
+  release();
+  release = null;
+  if (json) console.log(JSON.stringify({ brand, job: jobId, lines: lines.map(({ text: said, kind, with: named }) => ({ text: said, kind, with: named })), syncNeeded: true }, null, 2));
+  else console.log(lines.map(line => line.text).join('\n') + '\nSYNC NEEDED');
+  process.exit(0);
+}
 
 const field = name => {
   const m = text.match(new RegExp('\\*\\*' + name + ':\\*\\*\\s*`?([^`\\n]*)`?'));
@@ -188,7 +236,6 @@ setField('Next action', nextLine);
 setField('Blocked on', flag('blocked', waitingOnAnswer ? wording.QUESTION_BLOCKED_ON : states.isGate(target) ? 'You' : (target === 'BLOCKED' || target === 'ESCALATED' ? 'You' : 'Nothing')));
 
 // Stage log: append, never rewrite.
-const logHeader = /\| Timestamp \| From \| To \| By \| Note \|\n\|[-| ]+\|\n/;
 const metadata = ['revision=' + nextRevision];
 if (reason) metadata.push('reason=' + reason);
 if (compatibility) metadata.push('compatibility=true');
@@ -197,21 +244,9 @@ if (decisionId) metadata.push('decisionId=' + decisionId);
 const logNote = ((note || states.label(target)) + ' [' + metadata.join('; ') + ']')
   .replace(/\|/g, '/').replace(/\n+/g, ' ');
 const row = '| ' + [new Date().toISOString(), current || '-', '`' + target + '`', by, logNote].join(' | ') + ' |\n';
-if (logHeader.test(text)) {
-  // insert after the existing rows of that table
-  const start = text.search(logHeader);
-  const after = start + text.match(logHeader)[0].length;
-  let end = after;
-  while (end < text.length) {
-    const lineEnd = text.indexOf('\n', end);
-    const line = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
-    if (!line.trim().startsWith('|')) break;
-    end = (lineEnd === -1 ? text.length : lineEnd + 1);
-  }
-  text = text.slice(0, end) + row + text.slice(end);
-} else {
-  fail('status.md has no stage log table; the transition was not recorded. Re-scaffold from templates/status.md.');
-}
+const logged = withLogRow(text, row);
+if (logged === null) fail('status.md has no stage log table; the transition was not recorded. Re-scaffold from templates/status.md.');
+text = logged;
 
 // Notes describe now, so they are replaced rather than appended. A stale note reads as a live
 // instruction to the next session.

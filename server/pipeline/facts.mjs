@@ -1295,6 +1295,57 @@ export function earlierCreateState(job, key) {
   return state;
 }
 
+// A paid create is written down when the call is about to go out (the PreToolUse hook), not only when its answer comes back
+// (the PostToolUse hook writes the create record). A window interrupted after the provider took the call leaves this line and no
+// create record, so the same key asked for again finds it. The line is settled by the create record that follows it, or when
+// a refusal has told the Director to check with the provider (it is said once, so a call that truly failed is never blocked
+// for good). Jobs written before this have no such lines and read as they always did.
+export const ATTEMPT_RECENT_MS = 15 * 60 * 1000;
+export const ATTEMPT_DENY = Object.freeze({
+  noAnswerYet: "This item was started a moment ago and no answer came back, so it was not started again and nothing more was charged. Check whether 3Echo made it first (list_jobs, then wait_for_job on the one that matches) and use that one. If nothing was made, ask again and it goes through.",
+});
+
+/** Write down that a paid 3Echo create is about to go out under this key. Returns the line, or null when this same call is already written. */
+export function recordAttempt(job, { tool, key, toolUseId = null, sessionId = null } = {}) {
+  const wanted = canonicalJobKey(key);
+  if (!wanted) return null;
+  if (toolUseId && readRecords(job).some(record => record.type === 'attempt' && record.toolUseId === toolUseId)) return null;
+  return appendRecord(job, { type: 'attempt', provider: THREE_ECHO, tool: tool ?? null, key: wanted, toolUseId, sessionId });
+}
+
+/**
+ * The newest try at this key that has no answer yet and is still recent, or null. A create record for the key written after the
+ * try settles it (the PostToolUse hook's record is the answer); so does a refusal that already told the Director to check.
+ * exceptToolUseId leaves out the call being judged, so a call is never held back by its own line.
+ */
+export function openAttempt(job, key, { now = Date.now(), exceptToolUseId = null } = {}) {
+  const wanted = canonicalJobKey(key);
+  if (!wanted) return null;
+  let open = [];
+  for (const record of readRecords(job)) {
+    if (record.provider !== THREE_ECHO || canonicalJobKey(record.key) !== wanted) continue;
+    if (record.type === 'create') open = [];
+    else if (record.type === 'attempt') open.push(record);
+    else if (record.type === 'attempt_checked') open = open.filter(attempt => attempt.at !== record.attemptAt);
+  }
+  open = open.filter(attempt => !(exceptToolUseId && attempt.toolUseId === exceptToolUseId) && now - Date.parse(attempt.at ?? '') <= ATTEMPT_RECENT_MS);
+  return open.length ? open[open.length - 1] : null;
+}
+
+/** Say that the Director was told to check this try with the provider, so the next ask for the key is not held back by it. */
+export function markAttemptChecked(job, attempt) {
+  if (!attempt?.at) return null;
+  return appendRecord(job, { type: 'attempt_checked', provider: THREE_ECHO, key: attempt.key, attemptAt: attempt.at });
+}
+
+// What a second ask for a key that already has a create (made or being made) or a try without an answer gets back, or null.
+function repeatVerdict(job, key, { now, toolUseId } = {}) {
+  const earlier = earlierCreateState(job, key);
+  if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider: THREE_ECHO, repeat: true };
+  const attempt = openAttempt(job, key, { now, exceptToolUseId: toolUseId });
+  return attempt ? { allow: false, reason: ATTEMPT_DENY.noAnswerYet, key, provider: THREE_ECHO, repeat: true, attempt } : null;
+}
+
 // Pictures cost 1 credit each and go ahead with no price approval, so a person is not asked to click for every storyboard
 // picture. Each one is still recorded (the hook writes its create record with the credits reserved) and counted in the job's
 // credit total. The free pass ends at FREE_PICTURES_PER_PANEL pictures for one panel (the first picture and two redos): the next
@@ -1347,14 +1398,14 @@ function pictureSampleLocked(job, key, made) {
 
 // A picture the approved price does not list goes ahead on its own, with the checks above. null: this item is in the approved
 // price, so the normal price checks judge it.
-function freePictureDecision(job, price) {
+function freePictureDecision(job, price, options) {
   const deny = reason => ({ allow: false, reason });
   const key = itemKeyFor(job);
   if (!key) return deny(SPEND_DENY.noItem);
   if (price && quoteItem(price.quote, key)) return null;
   if (isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
-  const earlier = earlierCreateState(job, key);
-  if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider: THREE_ECHO, repeat: true };
+  const again = repeatVerdict(job, key, options);
+  if (again) return again;
   // A key whose create failed made nothing, but 3Echo hands back the same failed job for it, so the next try is the next version.
   if (readRecords(job).some(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key)) return { allow: false, reason: SPEND_DENY.failedBefore, key, provider: THREE_ECHO, repeat: true };
   const made = madePictures(job);
@@ -1433,7 +1484,8 @@ function clipShape(inputs) {
   ]);
 }
 
-export function spendDecision(job, toolName, toolInput) {
+// options: {toolUseId} the call being judged (a try already written for it never holds it back), {now} for tests.
+export function spendDecision(job, toolName, toolInput, options = {}) {
   const base = toolBase(toolName);
   const input = asObject(toolInput);
   const deny = reason => ({ allow: false, reason });
@@ -1447,7 +1499,7 @@ export function spendDecision(job, toolName, toolInput) {
   if (transcription && isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
   const price = transcription ? currentTranscriptionApproval(job) : currentPriceApproval(job);
   if (base === 'create_image_job') {
-    const free = freePictureDecision(job, price);
+    const free = freePictureDecision(job, price, options);
     if (free) return free;
   }
   if (!price) return deny(SPEND_DENY.noApproval);
@@ -1482,8 +1534,8 @@ export function spendDecision(job, toolName, toolInput) {
   if (item.provider && item.provider !== provider) return deny(SPEND_DENY.mismatch);
   if (provider === THREE_ECHO && item.kind && item.kind !== (base === 'create_image_job' ? 'image' : 'video')) return deny(SPEND_DENY.mismatch);
   if (provider === THREE_ECHO) {
-    const earlier = earlierCreateState(job, key);
-    if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider, repeat: true };
+    const again = repeatVerdict(job, key, options);
+    if (again) return again;
   }
   // The first version and two redos: a slot with that many versions made or being made takes no more without a new price.
   if (redo && madeClips(job).filter(clip => slotOfKey(clip.key) === slotOfKey(key)).length >= CLIP_VERSIONS_PER_SLOT) return deny(REDO_DENY.tooMany);

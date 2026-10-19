@@ -24,9 +24,22 @@ function leanStages(stages) {
   });
 }
 
+// A blank cell says nothing, and a Role that is only the Agent's own name says it twice: the short rows leave both out.
+function leanRows(rows) {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map(row => (plain(row) ? Object.fromEntries(Object.entries(row).filter(([key, value]) => value !== '' && !(key === 'Role' && value === row.Agent))) : row));
+}
+
 export function leanPlan(plan) {
-  if (!plain(plan) || plan.markdown === undefined) return plan;
+  if (!plain(plan)) return plan;
   const { markdown: _markdown, ...rest } = plan;
+  return Array.isArray(rest.rows) ? { ...rest, rows: leanRows(rest.rows) } : rest;
+}
+
+// The reasons of a routed job are only the log of the rules that fired, so the short form leaves them out. A route that is not routed keeps them: they say why.
+function leanRoute(route) {
+  if (!plain(route) || route.status !== 'ROUTED' || route.rationale === undefined) return route;
+  const { rationale: _rationale, ...rest } = route;
   return rest;
 }
 
@@ -79,6 +92,7 @@ export function leanSnapshot(snapshot) {
   }
   if (Array.isArray(lean.stages)) lean.stages = leanStages(lean.stages);
   if (plain(lean.plan)) lean.plan = leanPlan(lean.plan);
+  if (plain(lean.route)) lean.route = leanRoute(lean.route);
   if (Array.isArray(lean.events)) {
     const tokenEvents = lean.events.filter(isTokenEvent).length;
     if (tokenEvents) {
@@ -98,12 +112,17 @@ export function leanResult(result) {
   if (!plain(result)) return result;
   const lean = { ...result };
   if (plain(lean.plan)) lean.plan = leanPlan(lean.plan);
+  if (plain(lean.route)) lean.route = leanRoute(lean.route);
   if (plain(lean.snapshot)) {
     const snapshot = leanSnapshot(lean.snapshot);
-    // The reply already carries the route, the plan and the job beside the snapshot: say each once.
+    // The reply already carries the route, the plan and the job beside the snapshot: say each once. The reply's plan is the plan's own
+    // text, which says the same as the snapshot's rows.
     const repeated = [];
+    const said = key => (key === 'plan'
+      ? typeof lean.plan === 'string' && plain(snapshot.plan) && Array.isArray(snapshot.plan.rows)
+      : snapshot[key] !== undefined && lean[key] !== undefined && JSON.stringify(snapshot[key]) === JSON.stringify(lean[key]));
     for (const key of ['route', 'plan', 'job']) {
-      if (snapshot[key] !== undefined && lean[key] !== undefined && JSON.stringify(snapshot[key]) === JSON.stringify(lean[key])) {
+      if (said(key)) {
         delete snapshot[key];
         repeated.push(key);
       }

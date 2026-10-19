@@ -225,7 +225,7 @@ pipeline_board_open defaults to the bound private Claude artifact URL and return
 
 When no artifact is bound, it returns needs_publication.
 
-Each `jobs` entry has jobId, brand, brandSlug, title, state, revision and waitingOn; full detail comes from `pipeline_job_read`.
+Each `jobs` entry has jobId, brand, brandSlug, title, state, revision and waitingOn; full detail for a summary comes from `pipeline_board_job_documents`; call `pipeline_job_read` only for the job this chat runs, since reading a job makes this chat its Director.
 
 Read pipeline_board_requests before handling a request submitted from a board artifact.
 

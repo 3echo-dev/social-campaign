@@ -91,8 +91,8 @@ export const SPEND_DENY = Object.freeze({
   shapeChanged: "This clip's shape, length, resolution or sound differs from the price the person approved. Use the approved settings, or price the new settings and get a new yes.",
   itemOver: 'This costs more than the price approved for this item. Get the new price approved first.',
   overBudget: 'This would go over the approved price for this job. Show the new price and get it approved first.',
-  alreadyMade: 'This item has already been made. To make it again, ask for a redo on the board.',
-  stillMaking: "This item is still being made. Check on it with wait_for_job instead of making it again.",
+  alreadyMade: 'This item has already been made, so it was not made again and nothing more was charged. Use the one that exists. To make it again, ask for a redo on the board.',
+  stillMaking: "This item is still being made, so it was not started again and nothing more was charged. Check on it with wait_for_job instead of making it again.",
   unsupported: "This 3Echo or ElevenLabs tool isn't covered by an approved price, so it isn't used for campaign jobs. Pictures and clips are made with create_image_job and create_video_job, voice with creative_generate_speech, and music with creative_generate_in_flow (node_type music).",
   unchecked: "The price check couldn't finish, so nothing was made. Try again in a moment.",
 });
@@ -153,8 +153,9 @@ export const honoursEstimateOnly = (base, input) => asObject(input).estimate_onl
 
 // messages/ holds what the person wrote to each agent on the board and the Director's replies; the model never writes it by hand.
 const FACT_DIRS = new Set(['generation', 'pricing', 'approvals', 'messages']);
-// The record of which agents ran, written by the agent-run hook, at the job root (and under a brand's onboarding folder).
-const ROOT_FACT_FILES = new Set(['agents.jsonl']);
+// The record of which agents ran, written by the agent-run hook, at the job root (and under a brand's onboarding folder), the Director claim
+// and the plain-words log of it and of paid items asked for twice, which the plugin writes (session-claims.mjs).
+const ROOT_FACT_FILES = new Set(['agents.jsonl', '.director.claim', 'director-log.jsonl']);
 const RECIPE_FACT_FILES = new Set(['recipe.json', 'recipe-options.json', 'recipe-history.jsonl']);
 // The approved posting plan, the record of uploads and the remembered file measurements and the log of sends, all in the job's publish/ folder: the model must not
 // write any of them, since media upload and the send guard trust them. handoff/ stays the person's package.

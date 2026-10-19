@@ -133,6 +133,12 @@ const TASK_DEFAULTS = Object.freeze({
     contextRefs: ['drafts/', 'brief.md', 'research/accepted-snapshot.json', 'validation/'],
     completion: 'one_consolidated_review_with_blocking_or_advisory_findings',
   },
+  'review.handoff': {
+    allowedCapabilities: ['read_assigned_inputs', 'write_task_output'],
+    inputRefs: ['drafts/', 'brief.md', 'validation/'],
+    contextRefs: ['drafts/', 'brief.md', 'validation/'],
+    completion: 'work_is_checked_against_the_brief_and_passes_on_or_goes_back_with_the_reason',
+  },
   'human.content-gate': {
     allowedCapabilities: ['read_approved_artifacts', 'hold_approval'],
     inputRefs: ['drafts/', 'media/', 'validation/'],
@@ -200,6 +206,8 @@ function rowTaskKey(row) {
   const stage = String(row && row.Stage || '').toLowerCase();
   const task = String(row && row.Task || '').toLowerCase();
   const text = stage + ' ' + task;
+  // The Editor's check of work before it moves to the next employee; its words (script, brief, hand over) must not pick another key.
+  if (/^editor check\b/.test(stage)) return 'review.handoff';
   if (/^sources\b/.test(stage)) return 'source.fetch';
   if (/^read the posts\b/.test(stage)) return 'research.evidence';
   if (/^write the report\b/.test(stage)) return 'report.write';

@@ -13,6 +13,19 @@
 //   state is one of AGENT_STATES. `note` (only when there is one) says why a card waits: "Starts after researching".
 //   Director only: `needs` lists what the person must act on (the inbox keys, with `from`, the agent that wrote the work behind it).
 //   Director only, and only when the job is stuck: `stuck` = { reason, kind, since, asked, canRetry, retry? }, see stuckOf below.
+//
+// The room (document.room, plan 0.19 B2.1) is the same job as one ordered feed, oldest first: { v: 1, rows, older, truncated }. It is built from
+// facts only (messages/, agents.jsonl, the stage log, the decisions and the answered questions), so it is a view of the job record and a
+// second window shows the same lines. Rows, each with `k`, `id` and `at`:
+//   you   a thing the person wrote: the brief (job.json `request`, to the Director) or a message (messages/<agent>.jsonl `sent`);
+//         { text, to, status, progress, about?, attachment? } (the brief has `brief: true` and no status)
+//   dir   the Director's reply to a message to the Director: { who: 'producer', text, asks? }
+//   msg   one agent's result (a finished run of agents.jsonl): { who, text, files, filesMore }; a failed run is { failed: true }. A reply the
+//         Director wrote for another agent's thread is { who, reply: true, text, asks? } and belongs to that thread only
+//   hand  a handoff line, a stage-log row whose note ends in [handoff=checked|handed|back]: { text, kind, with? } with the agents it names
+//   card  a card that is closed, as one line: an answered question or a decision made: { title, answer?, note?, key?, about? } (about: the file it was about)
+// Nothing between agents enters it (no brief, worker prompt or return), only what the person wrote and what the employees made.
+// An open card is the live card of the page and is not a row. Held to ROOM_BUDGET_BYTES, newest kept; `older` counts the rows left out.
 
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -20,6 +33,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { STALE_RUN_MS, clipOneLine, readAgentLines } from './agent-log.mjs';
+import { aboutOf, attachmentOf, messageProgress } from './agent-messages.mjs';
 import { plainWordsProblem } from './questions.mjs';
 import { handoffSent } from './handoff.mjs';
 
@@ -38,6 +52,12 @@ export const DIRECTOR_NAME = 'Director';
 export const DIRECTOR_TASK = 'Runs the job and talks to you';
 /** The agents section is held to this many bytes (as JSON text) before it goes into the job document. */
 export const AGENT_BOX_BUDGET_BYTES = 32 * 1024;
+/** The room is held to the same size as the agents section, newest rows kept. */
+export const ROOM_BUDGET_BYTES = AGENT_BOX_BUDGET_BYTES;
+export const ROOM_ROWS_MAX = 300;
+export const ROOM_TEXT_LIMIT = 600;
+export const ROOM_FILES_SHOWN = 4;
+export const ROOM_CARD_LIMIT = 120;
 export const TASK_LIMIT = 120;
 export const ACTIVITY_SHOWN = 5;
 export const ACTIVITY_SHED = 2;
@@ -361,17 +381,19 @@ export function readMessages(dir, agent) {
     if (!plain(line) || typeof line.id !== 'string') continue;
     if (line.kind === 'sent' && typeof line.text === 'string') {
       if (byId.has(line.id)) continue;
-      const message = { id: line.id, text: line.text.slice(0, MESSAGE_LIMIT), at: text(line.at), status: 'sent', deliveredAt: null, reply: null, repliedAt: null };
+      const message = { id: line.id, to: agent, text: line.text.slice(0, MESSAGE_LIMIT), at: text(line.at), status: 'sent', deliveredAt: null, deliveredToolUseId: null, reply: null, repliedAt: null, asks: false, ...(attachmentOf(line.attachment) ? { attachment: attachmentOf(line.attachment) } : {}), ...(aboutOf(line.about) ? { about: aboutOf(line.about) } : {}) };
       byId.set(line.id, message);
       order.push(message);
     } else if (line.kind === 'delivered' && byId.has(line.id)) {
       const message = byId.get(line.id);
       message.deliveredAt ??= text(line.at);
+      message.deliveredToolUseId ??= text(line.toolUseId);
       if (message.status === 'sent') message.status = 'delivered';
     } else if (line.kind === 'reply' && byId.has(line.id) && typeof line.text === 'string') {
       const message = byId.get(line.id);
       message.reply = line.text.slice(0, MESSAGE_LIMIT);
       message.repliedAt = text(line.at);
+      message.asks = line.asks === true;
       message.status = 'answered';
     }
   }
@@ -443,6 +465,162 @@ function directorActivity({ dir, decisions }) {
     out.push({ at: record.decidedAt, text: approved ? `You approved the ${words}` : `You asked for changes to the ${words}` });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// The room
+// ---------------------------------------------------------------------------
+
+const HANDOFF_KINDS = new Set(['checked', 'handed', 'back']);
+const isoAt = ms => new Date(ms).toISOString();
+const cut = (value, limit) => (value.length > limit ? `${value.slice(0, limit - 3).trimEnd()}...` : value);
+
+/**
+ * The handoff lines of a job: the rows of status.md's stage log whose note ends in a bracket that says `handoff=checked`, `handoff=handed`
+ * or `handoff=back` (the metadata the log already carries, like `revision=3`), for example
+ * "Script checked by the Editor [revision=4; handoff=checked; with=scriptwriter,editor]". The note before the bracket is the line the
+ * person reads and `with` names the agents it is about, so their threads show it. Every other row is a state move and stays out.
+ */
+export function handoffLines(dir) {
+  let log = '';
+  try {
+    log = dir ? readFileSync(join(dir, 'status.md'), 'utf8') : '';
+  } catch {
+    log = '';
+  }
+  const active = agentRegistry();
+  const out = [];
+  for (const row of log.split(/\r?\n/)) {
+    const cells = row.split('|').map(cell => cell.trim());
+    if (cells.length < 6 || !/^\d{4}-\d{2}-\d{2}T/.test(cells[1])) continue;
+    const marked = /^(.*?)\s*\[([^\]]*)\]\s*$/.exec(cells[5]);
+    if (!marked) continue;
+    const meta = Object.fromEntries(marked[2].split(';').map(pair => pair.split('=').map(part => part.trim())).filter(pair => pair.length === 2 && pair[0]));
+    const line = plainLine(marked[1], 140);
+    if (!HANDOFF_KINDS.has(meta.handoff) || !line) continue;
+    const named = String(meta.with ?? '').split(',').map(id => id.trim()).filter(id => id === DIRECTOR || active.has(id));
+    out.push({ at: cells[1], text: line, kind: meta.handoff, ...(named.length ? { with: named } : {}) });
+  }
+  return out;
+}
+
+/** The file a closed card was about, as the open card carried it ({ path, revision }), so the thread of the person who made it can show the line. */
+const aboutRow = about => (plain(about) && text(about.path) ? { about: { path: text(about.path), ...(Number.isSafeInteger(about.revision) && about.revision >= 0 ? { revision: about.revision } : {}) } } : {});
+
+/** What the person answered, in a few words: the option they picked, or what they typed. */
+function answerWords(answer) {
+  return plain(answer) ? text(answer.choice) ?? text(answer.text) ?? (text(answer.file) ? 'A file' : null) : null;
+}
+
+/**
+ * The cards that are closed, as one line each: a decision the person made (approved, or changes asked for) and a question that was answered
+ * on the board or in chat. `answered` is the job's answered question records. Open cards are the page's live cards and are not here.
+ */
+function closedCards({ decisions, answered }) {
+  const out = [];
+  for (const record of Array.isArray(decisions) ? decisions : []) {
+    if (!plain(record) || record.malformed || typeof record.gate !== 'string') continue;
+    const at = timeOf(record.decidedAt);
+    const sample = record.gate === 'sample' && /-S\d+-v\d+$/i.test(String(record.key || record.sample?.key || ''));
+    const words = sample ? 'test clip' : DECISION_WORDS[record.gate];
+    if (at === null || !words) continue;
+    const approved = /^approved?$/.test(String(record.decision));
+    const asked = approved ? null : clipOneLine(record.comment, ROOM_CARD_LIMIT);
+    out.push({ k: 'card', id: `decision:${text(record.path) ?? `${record.gate}-${record.round ?? ''}-${at}`}`, at: isoAt(at), title: approved ? `${words.charAt(0).toUpperCase()}${words.slice(1)} approved` : `Changes asked for the ${words}`, ...(asked ? { answer: asked } : {}), ...aboutRow(Array.isArray(record.artifacts) ? record.artifacts.find(item => plain(item) && text(item.path)) : null) });
+  }
+  for (const question of Array.isArray(answered) ? answered : []) {
+    const at = timeOf(question?.answeredAt);
+    const title = plainLine(question?.text, ROOM_CARD_LIMIT);
+    if (!plain(question) || question.status !== 'answered' || at === null || !title || typeof question.questionId !== 'string') continue;
+    const answer = clipOneLine(answerWords(question.answer), ROOM_CARD_LIMIT);
+    out.push({ k: 'card', id: `question:${question.questionId}`, key: `question-${question.questionId}`, at: isoAt(at), title, ...(answer ? { answer } : {}), note: `Answered ${question.answeredVia === 'chat' ? 'in chat' : 'on the board'}`, ...aboutRow(question.about) });
+  }
+  return out;
+}
+
+/** The line for one agent's result: what it made ("Brief ready"), else that it finished. */
+function resultText(files) {
+  const names = files.map(file => plainLine(file.title, 60)).filter(Boolean);
+  if (!names.length) return 'Finished';
+  return names.length === 1 ? `${names[0]} ready` : `${names[0]} and ${names.length - 1} more ready`;
+}
+
+/**
+ * Hold the rows to `budget` bytes as JSON, newest kept, and count the rows left out in `older`. Sets `truncated` when it shed any.
+ * `rows` are oldest first. The board says "Older messages are on your computer" when `older` is above 0.
+ */
+export function fitRoom(rows, { budget = ROOM_BUDGET_BYTES, older = 0 } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const room = (kept, shed) => ({ v: 1, rows: kept, older: shed, truncated: shed > 0 });
+  let used = byteSize(room([], list.length + older));
+  let first = list.length;
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const cost = byteSize(list[index]) + 1;
+    if (used + cost > budget) break;
+    used += cost;
+    first = index;
+  }
+  return room(list.slice(first), first + older);
+}
+
+/** The same room cut to its newest `keep` rows, for a job document that is still too large. */
+export function trimRoom(section, keep) {
+  const rows = Array.isArray(section?.rows) ? section.rows : [];
+  if (rows.length <= keep) return section;
+  const older = (Number(section.older) || 0) + rows.length - keep;
+  return { v: 1, rows: rows.slice(rows.length - keep), older, truncated: true };
+}
+
+/**
+ * The room of one job, from what agentBox already read. `parts` is each agent's `{ agent, sent, runs, files }` (all its messages with their
+ * progress, all its runs, all its files); `answered` the job's answered questions. Nothing between agents is read: not a run's description,
+ * its summary or its error, only that it finished, failed or made files.
+ */
+function roomOf({ parts, dir, snapshot, answered, files = ROOM_FILES_SHOWN }) {
+  const rows = [];
+  const brief = text(snapshot?.job?.request);
+  const briefAt = timeOf(snapshot?.job?.requestedAt ?? snapshot?.job?.createdAt);
+  if (brief && briefAt !== null) rows.push({ k: 'you', id: 'brief', at: isoAt(briefAt), text: cut(brief, ROOM_TEXT_LIMIT), to: DIRECTOR, brief: true });
+  for (const part of parts) {
+    for (const message of part.sent) {
+      const sentAt = timeOf(message.at);
+      if (sentAt !== null) {
+        rows.push({ k: 'you', id: message.id, at: isoAt(sentAt), text: cut(message.text, ROOM_TEXT_LIMIT), to: part.agent, status: message.status, progress: message.progress, ...(message.about ? { about: message.about } : {}), ...(message.attachment ? { attachment: message.attachment } : {}) });
+      }
+      const repliedAt = timeOf(message.repliedAt);
+      const said = text(message.reply);
+      if (said && repliedAt !== null) {
+        rows.push(part.agent === DIRECTOR
+          ? { k: 'dir', id: `${message.id}:reply`, at: isoAt(repliedAt), who: DIRECTOR, text: cut(said, ROOM_TEXT_LIMIT), ...(message.asks ? { asks: true } : {}) }
+          : { k: 'msg', id: `${message.id}:reply`, at: isoAt(repliedAt), who: part.agent, reply: true, text: cut(said, ROOM_TEXT_LIMIT), ...(message.asks ? { asks: true } : {}) });
+      }
+    }
+    if (part.agent === DIRECTOR) continue;
+    // One line for each result. The files the agent has now go on its newest finished run; an earlier run is only "Finished".
+    const done = part.runs.filter(run => run.ended === 'finished' && timeOf(run.endedAt) !== null);
+    part.runs.forEach((run, index) => {
+      const endedAt = timeOf(run.endedAt);
+      if (endedAt === null) return;
+      const id = `run:${run.toolUseId ?? `${part.agent}-${index}`}`;
+      if (run.ended === 'failed') {
+        const reason = plainLine(run.error, 100);
+        rows.push({ k: 'msg', id, at: isoAt(endedAt), who: part.agent, failed: true, text: reason ? `Could not finish: ${reason}` : 'Could not finish' });
+      } else if (run.ended === 'finished') {
+        const mine = run === done.at(-1) ? part.files.filter(file => file.path).slice(0, files) : [];
+        const more = run === done.at(-1) ? Math.max(0, part.files.length - mine.length) : 0;
+        rows.push({ k: 'msg', id, at: isoAt(endedAt), who: part.agent, text: resultText(mine), ...(mine.length ? { files: mine.map(({ path, title, pinned }) => ({ path, title, ...(pinned ? { pinned: true } : {}) })) } : {}), ...(more ? { filesMore: more } : {}) });
+      }
+    });
+  }
+  for (const line of handoffLines(dir)) {
+    const at = timeOf(line.at);
+    if (at !== null) rows.push({ k: 'hand', id: `hand:${line.at}`, ...line, at: isoAt(at) });
+  }
+  rows.push(...closedCards({ decisions: snapshot?.project?.decisions, answered }));
+  // Oldest first; the same moment keeps the order the rows were found in. Past ROOM_ROWS_MAX the oldest are left out and counted.
+  const ordered = rows.map((row, index) => ({ row, index, time: Date.parse(row.at) })).sort((a, b) => a.time - b.time || a.index - b.index).map(item => item.row);
+  const over = Math.max(0, ordered.length - ROOM_ROWS_MAX);
+  return fitRoom(ordered.slice(over), { older: over });
 }
 
 /** Newest first, at most `limit`. Entries with no readable time are dropped. */
@@ -731,9 +909,15 @@ function eventModel(events) {
  * @param {Array<{at:string,detail?:string}>} [input.requests] the job's board requests that need reconciliation (a stuck signal)
  * @param {number|null} [input.retriedAt] when "Try again" was last applied for this job, in ms
  * @param {string|null} [input.blockedLine] the plain line the board shows for a held-up job (null when there is none)
+ * @param {object[]} [input.answered] the job's answered question records, for the closed cards of the room
  * @returns {{v:1, list:object[], unassigned:object, truncated:boolean}}
  */
-export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, dir, lines, contracts, messages, pinned, titles, requests, retriedAt, blockedLine } = {}) {
+export function agentBox(input = {}) {
+  return agentBoxAndRoom(input).agents;
+}
+
+/** agentBox and the room (see the top of this file) from one reading of the job: { agents, room }. */
+export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, now, dir, lines, contracts, messages, pinned, titles, requests, retriedAt, blockedLine, answered } = {}) {
   const clock = clockOf(now);
   const folder = dir ?? (root && brand && jobId ? join(resolve(root), 'workspaces', brand, 'jobs', jobId) : null);
   const project = plain(snapshot?.project) ? snapshot.project : {};
@@ -794,6 +978,7 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
   const oldestNeed = inboxItems.map(item => timeOf(item?.at)).filter(time => time !== null).sort((a, b) => a - b)[0];
   const iso = ms => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 
+  const parts = [];
   const list = roster.map(agent => {
     const runs = allRuns.filter(run => run.agent === agent);
     const live = runs.filter(run => isOpen(run) && isFresh(run, clock));
@@ -848,7 +1033,15 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
     const activity = isDirector
       ? [...directorActivity({ dir: folder, decisions: project.decisions }), ...messageActivity(sent, agent)]
       : [...runs.flatMap(runActivity), ...messageActivity(sent, agent)];
-    const shown = sent.slice(-MESSAGES_SHOWN).map(({ id, text: body, at: sentAt, status, deliveredAt, reply, attachment }) => ({ id, text: body, at: sentAt, status, deliveredAt, reply, ...(attachment ? { attachment } : {}) }));
+    // The word each message shows comes from its records: the run that carried it (matched by the pickup's toolUseId) and the reply. A run that stopped responding is not "working".
+    const carriedBy = message => {
+      const run = message.deliveredToolUseId ? runs.find(item => item.toolUseId === message.deliveredToolUseId) : null;
+      return run && !(isOpen(run) && !isFresh(run, clock)) ? run : null;
+    };
+    const wroteAfter = (message, index) => { const replied = timeOf(message.repliedAt); return replied !== null && sent.slice(index + 1).some(next => (timeOf(next.at) ?? -1) > replied); };
+    const progressed = sent.map((message, index) => ({ ...message, progress: messageProgress(message, { run: carriedBy(message), followed: wroteAfter(message, index) }) }));
+    const shown = progressed.slice(-MESSAGES_SHOWN).map(({ id, text: body, at: sentAt, status, deliveredAt, reply, attachment, about, progress }) => ({ id, text: body, at: sentAt, status, progress, deliveredAt, reply, ...(attachment ? { attachment } : {}), ...(about ? { about } : {}) }));
+    parts.push({ agent, sent: progressed, runs, files });
     const model = isDirector ? eventModel(snapshot?.events) : (shortModel(registry.get(agent)?.model) ?? shortModel(runs.map(run => run.model).filter(Boolean).pop()));
     const card = {
       id: agent,
@@ -877,12 +1070,13 @@ export function agentBox({ root, brand, jobId, snapshot, details, inbox, now, di
     const kept = files.slice(0, UNASSIGNED_SHOWN);
     return { [key]: kept, [`${key}More`]: files.length - kept.length };
   };
-  return fitAgentBox({
+  const agents = fitAgentBox({
     v: 1,
     list,
     unassigned: { ...cap(unassigned.yours, 'yours'), ...cap(unassigned.records, 'records'), ...cap(unassigned.other, 'other') },
     truncated: false,
   });
+  return { agents, room: roomOf({ parts, dir: folder, snapshot, answered }) };
 }
 
 /**

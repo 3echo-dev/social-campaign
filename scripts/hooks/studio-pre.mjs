@@ -87,6 +87,23 @@ function judgeWrite(event) {
   return tools.isFactFile(input.file_path, event.cwd) ? denial(tools.FACT_FILE_DENY) : null;
 }
 
+// A paid create asked for again is said on the job in plain words. It never changes the answer: a note that cannot be written is skipped.
+async function noteRepeat(facts, job, verdict) {
+  try {
+    if (verdict.attempt) {
+      // The refusal tells the Director to check with the provider; it is said once, so the next ask goes through.
+      facts.markAttemptChecked(job, verdict.attempt);
+      const { noteOnJob } = await import('../../server/pipeline/session-claims.mjs');
+      noteOnJob(job.dir, 'repeat_create', 'A picture or clip was asked for again before the first try had an answer, so it was held back until the studio is checked.');
+    } else {
+      const { answerRepeatedCreate } = await import('../../server/pipeline/generation-retry.mjs');
+      answerRepeatedCreate(job, verdict.key);
+    }
+  } catch {
+    // the refusal stands without it
+  }
+}
+
 // A paid call is judged against the job's approved price. Any other 3Echo or ElevenLabs tool that is not a reviewed read or
 // upload is refused inside a campaign workspace, since no price covers it; outside one it is left alone, as before. When
 // that check cannot run, nothing is made.
@@ -103,9 +120,16 @@ async function judgeSpend(event) {
     if (kind === 'unsupported') return inWorkspace ? denial(tools.SPEND_DENY.unsupported) : null;
     const job = root ? facts.resolveJobForCall({ root, sessionId: event.session_id, toolInput: input }) : null;
     if (!job) return inWorkspace ? denial(tools.NO_JOB_DENY) : { systemMessage: tools.NO_JOB_WARNING };
-    const verdict = facts.spendDecision(job, base, input);
+    const toolUseId = typeof event.tool_use_id === 'string' && event.tool_use_id ? event.tool_use_id : null;
+    const verdict = facts.spendDecision(job, base, input, { toolUseId });
     if (stopped) return denial(tools.SPEND_DENY.unchecked);
-    return verdict.allow ? null : denial(verdict.reason);
+    if (!verdict.allow) {
+      if (verdict.repeat) await noteRepeat(facts, job, verdict);
+      return denial(verdict.reason);
+    }
+    // The call is about to go out: write that down now, so an interruption before its answer comes back leaves a trace (facts.recordAttempt).
+    if (tools.THREE_ECHO_SPENDERS.includes(base) && verdict.key) facts.recordAttempt(job, { tool: base, key: verdict.key, toolUseId, sessionId: event.session_id });
+    return null;
   } catch {
     return denial(tools.SPEND_DENY.unchecked);
   }

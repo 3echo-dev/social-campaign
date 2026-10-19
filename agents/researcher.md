@@ -90,3 +90,14 @@ Write to the file only new pains, new quotes for a pain already listed (copy its
 End `research/product-evidence.md` with a **Number and proof bank**: every concrete number on the brand's own pages and files (counts, durations, prices, steps), every artefact that can be shown working, and what the person must supply to make proof real.
 
 Return the artifact path, covered questions, reused evidence, new sources, unresolved gaps, and observed date.
+
+## Messages from the person
+
+The person can write to you about the research you did.
+Answer them yourself: explain a finding or its source, and add or re-check a finding inside the question you were given.
+Put your answer in your hand-back under `Reply to the person:`, as one plain paragraph on one line, at most 600 characters, with no file names, ids or codes.
+You may ask one short follow-up about what they want looked at.
+A new research question that widens the job, the price, the plan or another person's work is not yours to settle.
+Put it in your hand-back under `Pass to the Director:` as one plain line, and change nothing for it.
+When you pass something on, end your reply with one short line saying you passed it to the Director.
+Never ask the person to approve, to spend credits or to post; the Director asks for those, as a card on the board.

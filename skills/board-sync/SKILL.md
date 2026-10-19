@@ -76,7 +76,8 @@ For a `refresh_board` request (the header button reads Update board when a newer
 A connector check changes what the Connectors step shows, and the projection from before it is out of date: after `integration_probe`, `integration_probes_save`, `pipeline_metricool_brands_save` or `pipeline_ad_accounts_save`, call `pipeline_status` again and write the documents it returns, so a connected connector reads Connected on its card.
 Use the workspace's existing artifact binding from `pipeline_board_open`.
 `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` and `pipeline_review_present` return `documents`: a list of `{collection, doc_id, file_path}` entries, the job documents first and the workspace projection last.
-Get full job detail from `pipeline_job_read`; `pipeline_status` gives each job's `brand`, `title`, `jobId`, `revision`, `state` and `waitingOn` for a summary line, not a job's full content or pending review details.
+Get one job's full detail from `pipeline_board_job_documents` with its brand and jobId, never from `pipeline_job_read`: reading a job makes this chat its Director, and that is refused while another chat is running it.
+`pipeline_status` gives each job's `brand`, `title`, `jobId`, `revision`, `state` and `waitingOn` for a summary line, not a job's full content or pending review details.
 Write every entry in one call with the host's ArtifactData `batch` action:
 
 ```
@@ -164,19 +165,23 @@ Moved to `references/brand-intelligence.md` (relative to this skill folder); see
 
 ## Questions on the board
 
-Before Claude asks the person anything in the chat, it first posts the same question on the board, then asks in chat.
+Every question to the person is a `pipeline_board_ask` card, never only a line in chat: Claude first posts the question on the board, then asks the same one in chat.
 Call `pipeline_board_ask` with one plain question, up to 6 short options, and `allowText` when a typed answer also makes sense.
 Pass `jobId` for a question about one job, `brand` for a brand-wide question, or neither for a workspace question such as choosing which job a chat answer belongs to.
+When the question is about a file in the job, also pass `about` with that file and the revision the person is looking at, for example `drafts/D1/storyboard.md` at revision 3, so the card says which version it asks about.
 Write the returned `documents` in the one batch call before asking the same question in chat, as plain numbered options, and say it can be answered here or on the board.
 Home and new-job pages summarize open questions in Needs you, grouped with other waiting items for that job.
 A workspace question (no `jobId` or `brand`) shows in Needs you.
 Job questions also appear at the waiting stage and in the Director chat; when no stage is waiting, they appear below the stages.
 Brand questions appear in that brand's Director chat.
-These are views of one question and answer; never create separate questions for each location.
+These are views of one card: answered anywhere, it closes everywhere and shows as one line with the answer.
+Never create separate questions for each location.
 Take whichever answer arrives first, the same as any other decision, and never ask the same thing twice.
 A board answer arrives as an `answer_question` request: land it with `pipeline_board_request_land` (with `from` set to `board`) and apply it with `pipeline_board_request_apply` like any other non-decision request, then call `pipeline_board_questions` with that `questionId` to read the saved answer.
 A chat answer is recorded with `pipeline_board_answer`, passing `choice` when the person picked one of the options word for word or `text` for anything else they said, then write the documents again so the board stops asking it.
-An already answered question returns its saved answer instead of an error, from either tool; act on that saved answer rather than asking again.
+The first answer wins, and a second one changes nothing.
+An already answered question returns its saved answer instead of an error, from either tool; `pipeline_board_answer` also returns `alreadyAnswered` and a message such as "Answered on the board at 3:42 pm" or "Answered in chat at 3:42 pm".
+Say that line to the person in one sentence, act on the saved answer, and do not ask again.
 When the question is no longer needed, for example the person answered some other way or the job moved on, call `pipeline_board_withdraw` with its `questionId`.
 Before repeating an open question, above all after a new session resumes the job, check it is still true (a credits shortfall against the current balance, a price that is already approved, clips already made) and withdraw it instead when it is not; never bring back a question the job has moved past.
 A question about anything on the video itself (the captions on the video, on-screen text, a moment) carries the frames it is about: take 2 to 4 frames of the finished video at those moments with `media_extract_frames` into the job folder, pass them as `stills` on `pipeline_board_ask`, then run `pipeline_review_copies_prepare` so the board shows them. Call the words posted under the video "the post text", never "captions", so the two are never confused.
@@ -204,6 +209,12 @@ Claim success, saved diagnostics or team notification only when tool results con
 
 After an agent starts or returns, call `pipeline_board_job_documents` with the brand and jobId, and write its documents in one ArtifactData batch, as Publish current state describes.
 Say nothing in chat about it.
+Publish after every room event, not only when an agent returns: a message the person sent, a reply the Director wrote, an agent's result, a handoff entry the Director recorded, and a question answered or a decision made in the chat or on the board.
+The room is the job's feed in the Director's thread, read from the job's own records, so the same lines show in every window once the documents are written again.
+A handoff is a row of the job's stage log whose note ends in a bracket like `[revision=N; handoff=checked; with=scriptwriter,editor]`, where `handoff` is `checked`, `handed` or `back` and `with=` names the agents it is about; it shows as one short line, and no other row does.
+The Director records a checked handoff with `set-state.js handoff passed` or `handoff back` (agents/producer.md, Handing work on), which writes those rows in the right shape; write the job's documents again right after it, before the next step starts.
+Keep the room quiet: never add a line for progress, a brief or a reply between agents, or a message that only starts work.
+Only a card, a failure or finished work adds to Needs you.
 A message the person sends to an agent arrives as an `agent_message` request, and a "Try again" click arrives as a `retry_step` request.
 Land both with `pipeline_board_request_land` (with `from` set to `board`) and apply them with `pipeline_board_request_apply` like any other non-decision request, then write the job's documents again.
 For `retry_step`, re-run the failed step once, then say in one plain line how it went.

@@ -10,8 +10,11 @@ A concept pick arrives as `args.chosen` with the concept letter, and a request f
 A concept pick's `args.note` can also carry the person's Strategy gate choices: a `Strategy picks:` line (industry, funnel stage, ad style, format, CTA, problem, angle, subtopic, editing, visual hook) and `Your own ...` lines for options they added (a problem or angle they add is saved to their brand library by the plugin).
 Pass the note on unchanged and never edit or drop those lines: applying the decision saves the person's own options to the brand library, and the agents read the picks from the approval note, where they replace the concept's own fields.
 The tool validates the exact registered file set, hashes, current gate, and revision before applying the decision.
+Every decision card shows what it is about and its version, such as `Storyboard, version 3`: presenting the same files again keeps the version, and presenting changed files raises it.
 `confirmedBy` is a local audit label and does not authenticate a Studio user.
-When the job revision or the registered files no longer match, because the quote or the files changed since the person clicked, the apply fails: say so in chat in one line and re-present the current decision on the board, rather than asking in chat for approval.
+When the job revision or the registered files no longer match, because the quote or the files changed since the person clicked on an older version of the card, the apply fails with the line `This changed, here is the latest`.
+Decline that request with `pipeline_board_request_decline`, `reason` set to that exact line and `handled` left out, then merge the returned `artifactReceipt` into the request's board document: the board shows the line as it is and loads the latest card.
+Then say so in chat in one line and re-present the current decision on the board if it is not already there, rather than asking in chat for approval.
 If the tool reports `needs_reconciliation` instead, inspect the local request and approval record before taking any further action.
 Use `pipeline_request_reconcile` only after establishing the actual outcome from local records.
 Record `applied` when the effect is present, or `retry` when the effect did not apply, and include the evidence and confirmer.

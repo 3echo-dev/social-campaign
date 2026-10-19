@@ -295,19 +295,63 @@ function reachedMaking(stateIds, workflowId) {
   });
 }
 
+// A handoff is a row in the stage log between the moves of the job, in the shape the room feed reads (server/pipeline/agent-box.mjs,
+// handoffLines): the note is the line the person reads, then a bracket with `handoff=checked|handed|back` and `with=` the agents whose
+// threads show it, like the `revision=` the log already carries. Its "To" cell says `handoff`, which is no state, so the readers of the
+// moves skip it and an older log reads as before.
+//   | 2026-10-20T01:05:00.000Z | - | handoff | editor | Script checked by the Editor [revision=4; handoff=checked; with=scriptwriter,editor] |
+const HANDOFF_TO = 'handoff';
+const isHandoffTo = cell => String(cell || '').replace(/`/g, '').trim() === HANDOFF_TO;
+const handoffId = value => String(value || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+// What a person reads for an employee: "the Director" for the producer, the role label otherwise, and the name in capitals for one the
+// roles table does not know.
+function handoffWords(id) {
+  if (id === 'producer') return 'Director';
+  const known = require('./lib-roles.js').roleOf(id);
+  const words = String(id).split('-').join(' ');
+  return known ? known.label : words.charAt(0).toUpperCase() + words.slice(1);
+}
+const handoffText = (value, limit) => String(value || '').replace(/[[\]|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit).trim();
+
+/**
+ * The stage log rows for a handoff, each { row, text, kind, with } (row has no line break), oldest first. Null when an agent is missing.
+ *   kind 'passed': work of `author` that `by` checked and that now goes to `to`: two rows, "<note> checked by the <by>" (checked) and
+ *                  "Handed to the <to>" (handed). `note` names the piece ("Script", "Post text").
+ *   kind 'back':   work of `author` that `by` sent back: "Back to the <author>: <note>" (back). `note` is the reason in plain words.
+ * `revision` is the job's revision, which a handoff does not change. The second row of a pair is a millisecond later, so no two share a time.
+ */
+function handoffRows({ kind, author, to, by, note, revision = 0, now = Date.now() }) {
+  const [writer, next, checker] = [handoffId(author), handoffId(to), handoffId(by)];
+  if (!writer || !checker || (kind === 'passed' && !next) || !['passed', 'back'].includes(kind)) return null;
+  const piece = handoffText(note, 60);
+  const reason = handoffText(note, 100);
+  const lines = kind === 'back'
+    ? [{ by: checker, kind: 'back', with: [writer], text: reason ? `Back to the ${handoffWords(writer)}: ${reason}` : `Back to the ${handoffWords(writer)}` }]
+    : [
+      { by: checker, kind: 'checked', with: [...new Set([writer, checker])], text: piece ? `${piece} checked by the ${handoffWords(checker)}` : `Checked by the ${handoffWords(checker)}` },
+      { by: 'producer', kind: 'handed', with: [next], text: `Handed to the ${handoffWords(next)}` },
+    ];
+  return lines.map((line, index) => ({
+    row: '| ' + [new Date(now + index).toISOString(), '-', HANDOFF_TO, line.by, `${line.text} [revision=${Number(revision) || 0}; handoff=${line.kind}; with=${line.with.join(',')}]`].join(' | ') + ' |',
+    text: line.text, kind: line.kind, with: line.with,
+  }));
+}
+
 // The states a job's status.md stage log records, in order: the "To" column of its log table.
+// A handoff row is not a move of the job, so it is not listed.
 function loggedStates(statusText) {
   const found = [];
   for (const line of String(statusText || '').split(/\r?\n/)) {
     const cells = line.split('|').map(cell => cell.trim());
     if (cells.length < 5 || !/^\d{4}-\d{2}-\d{2}T/.test(cells[1])) continue;
     const state = cells[3].replace(/`/g, '');
-    if (state) found.push(state);
+    if (state && !isHandoffTo(state)) found.push(state);
   }
   return found;
 }
 
 module.exports = {
   STAGE_OF, STAGE_IDS, REPORT_STAGE_IDS, APPROVAL_STAGE_IDS, CREDIT_SKILLS, nextRunning, walkedStages, pricesMedia, reachedMaking, loggedStates,
+  isHandoffTo, handoffRows,
   BRAND_STAGE_IDS, SHORT_OF, ACCEPTED_STAGE_IDS, forState, resolveStage, isReportWorkflow,
 };

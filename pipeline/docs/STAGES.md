@@ -85,6 +85,38 @@ They are marked fixed so the board counts them once.
 - A job asked for changes, held up or cancelled keeps all its stops.
   Where it was is read from the stage log (the last state before it left the normal flow) and the decisions recorded, not from the state alone.
 
+## Checked handoffs
+
+Work never goes straight from one employee to the next.
+A video post's plan has two Editor check rows (`Editor check (script)` and `Editor check (post text)`).
+The script check ends at `AWAITING_STORYBOARD_APPROVAL`, right after the script row, so it sits in the Storyboard and price stop; it runs before the storyboard and its price are shown, and a send-back is fixed before the person sees them.
+The post text check ends at `CONTENT_APPROVED`, right after the Content gate row, so it sits in the Post text stop.
+The Director confirms the file is on disk and current, the Editor checks it against the brief, and the work moves on or goes back to its author with the reason.
+A card is raised only when the fix changes the idea, the price or the posting.
+
+## Handoff lines in the stage log
+
+Each handoff is a row in the stage log of `status.md`, written by `set-state.js` and read by the room feed (`handoffLines` in `server/pipeline/agent-box.mjs`).
+A handoff does not move the job: its state and revision stay as they were.
+The row's To cell says `handoff`, which is no state, so every reader of the state moves skips it and an older log reads as before.
+The Note cell is the plain line the person reads, then a bracket: `handoff=checked`, `handoff=handed` or `handoff=back`, and `with=` the agents whose threads show the line.
+`set-state.js {brand} {job-id} handoff passed {author} {to} --by {checker} --note "{piece}"` writes two rows, a millisecond apart:
+
+```
+| 2026-10-20T01:05:00.000Z | - | handoff | editor | Script checked by the Editor [revision=4; handoff=checked; with=scriptwriter,editor] |
+| 2026-10-20T01:05:00.001Z | - | handoff | producer | Handed to the Videographer [revision=4; handoff=handed; with=videographer] |
+```
+
+`set-state.js {brand} {job-id} handoff back {author} --by {checker} --note "{reason}"` writes one row:
+
+```
+| 2026-10-20T01:07:00.000Z | - | handoff | editor | Back to the Scriptwriter: too long for 22 seconds [revision=4; handoff=back; with=scriptwriter] |
+```
+
+The agent names are the ones in the table above, plus `publisher` (the posting step).
+The command makes the words, so the lines read the same every time.
+The piece in `--note` is plain words ("Script", "Post text"), the reason is under 100 characters, and a bracket or a bar in either is dropped.
+
 ## Brand page stages
 
 A brand page uses the key `brand:{slug}` and its own shorter list.

@@ -2879,6 +2879,17 @@ const GATE_TITLES = Object.freeze({
   campaign_activation: 'Approve going live',
   findings: 'Approve the report',
 });
+// What a decision card is about and its version, in the card's header: "Storyboard, version 3". A tap on an older version is refused.
+const CARD_NAMES = Object.freeze({ concept: 'Concepts', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Rough cut', finish: 'Finished video', content: 'Final post', publish: 'Posting plan', campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report' });
+export function cardAbout(gate, version, { clip = false } = {}) {
+  const name = gate === 'sample' && clip ? 'Test clip' : CARD_NAMES[gate] || humanize(gate);
+  const number = Number(version);
+  return Number.isInteger(number) && number > 0 ? `${name}, version ${number}` : name;
+}
+/** What the server says when a tap was on a card that is no longer the latest. */
+export const CHANGED_LINE = 'This changed, here is the latest';
+/** Whether a refusal says the card changed (the plain line, with or without the older "Declined in chat" lead). */
+export const changedRefusal = message => String(message || '').includes(CHANGED_LINE);
 const REVIEW_WAITING = Object.freeze({
   preparing: 'The Director is preparing the files.',
   loading: 'Loading this review...',
@@ -4116,6 +4127,24 @@ function notSentPill(state) {
   return state?.submitted || state?.settled ? '' : ' <span class="pill pending">Not sent yet</span>';
 }
 
+/**
+ * What a message about one frame is about: "Frame 3" (a slide of a carousel), the storyboard file and the panel's name in it ("P3"). The
+ * revision is added when the message starts, from the job the page shows.
+ */
+export function frameAbout(board, panel, index) {
+  const path = trimmed(board?.path);
+  const ref = panelRefOf(panel, index);
+  return { label: `${board?.format === 'carousel' ? 'Slide' : 'Frame'} ${index + 1}`, ...(path ? { path, panel: ref } : {}) };
+}
+function frameAboutButton(board, panel, index, dis = '') {
+  const about = frameAbout(board, panel, index);
+  return `<button type="button" class="quiet" data-ab-open="@owner" data-ab-about="${esc(JSON.stringify(about))}" ${dis}>Message about this ${board?.format === 'carousel' ? 'slide' : 'frame'}</button>`;
+}
+/** The employee whose files hold `path` (the one who made it), else the Director. */
+export function ownerOfFile(agents, path) {
+  const owner = (Array.isArray(agents) ? agents : []).find(agent => agent?.id !== 'producer' && Array.isArray(agent.files) && agent.files.some(file => file?.path === path));
+  return owner?.id || 'producer';
+}
 export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const all = storyboardPanelsOf(boards);
   if (!all.length) return '';
@@ -4135,7 +4164,8 @@ export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const actions = editing
     ? `<div class="sb-change"><label for="sb-note">What should change in ${board?.format === 'carousel' ? 'this slide' : 'this panel'}?</label><textarea id="sb-note" name="sb_note" maxlength="1000" placeholder="For example: show the bottle in her hand." ${dis}>${esc(state.panelDraft ?? saved.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-sb-action="cancel-change" ${dis}>Cancel</button><button type="button" class="primary" data-sb-action="save-change" ${dis}>Ask for changes</button></div></div>`
     // With one panel there is nothing to go through: the storyboard's own Approve and Ask for changes are all there is.
-    : all.length === 1 ? '' : `<div class="sb-slot-actions"><button type="button" data-sb-action="change" ${dis}>Ask for changes</button></div>`;
+    // "Message about this" opens a message to whoever made the storyboard, carrying the frame it is about (an About chip in the composer).
+    : `<div class="sb-slot-actions">${all.length === 1 ? '' : `<button type="button" data-sb-action="change" ${dis}>Ask for changes</button>`}${frameAboutButton(board, panel, index, dis)}</div>`;
   const frame = panelFrameHtml(panel, index, { large: true });
   const image = frame.startsWith('<img') ? frame : '';
   const frameBox = image
@@ -5457,7 +5487,8 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
     ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: shorten the hook.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? TXT_WAITING_FOR_CLAUDE : 'Ask for changes'}</button></div></div></div>`
     : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button>${primaryButtons}</div></div>`;
   const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : ready && pricedStoryboard(doc) ? 'Approve the storyboard and price' : GATE_TITLES[gate] || humanize(gate);
-  return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
+  const about = review.artifacts?.length && Number(review.version) > 0 ? `<span class="count review-version">${esc(cardAbout(gate, review.version, { clip: doc?.review?.sample?.kind === 'video' }))}</span>` : '';
+  return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${about}${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
 }
 
 // @module inbox
@@ -5465,7 +5496,6 @@ export const INBOX_LIMIT = 20;
 export const ANSWER_LIMIT = 1000;
 export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
-export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'Some brief answers are missing.';
 const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'test clip': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'rough cut': 'cut', 'finished video': 'finish', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
@@ -5638,6 +5668,16 @@ export function questionStillList(stills) {
   }).join('')}</div>`;
 }
 
+// A question answered anywhere is closed everywhere, and a closed card is one line: a tick, the title and the answer.
+// A tap that came after the question was already answered shows what was saved and when ("Answered in chat at 3:42 pm").
+export const questionClosed = (item, state = {}) => Boolean(state.answered && item && !item.inChat);
+export function closedQuestionLine(item, state = {}) {
+  const inOption = Number.isInteger(state.choice) ? inboxOptions(item.options)[state.choice]?.label : '';
+  const answer = trimmed(state.savedAnswer) || trimmed(state.text) || inOption || '';
+  const note = trimmed(state.closedNote);
+  return `<div class="q-closed" role="status"><span class="q-tick">${CHECK_ICON}</span><span class="q-closed-title">${esc(inboxItemText(item))}</span>${answer ? `<b class="q-closed-answer">${esc(truncateText(answer, 120))}</b>` : ''}${note ? `<small class="q-closed-note">${esc(note)}</small>` : ''}</div>`;
+}
+
 function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } = {}) {
   if (item.inChat) return `<p class="inbox-note">${esc(IN_CHAT_LINE)}</p>`;
   const key = String(item.questionId);
@@ -5662,19 +5702,6 @@ function questionCard(item, state = {}, signal = {}, index = 0, { place = '' } =
   return `${questionStillList(item.stills)}${takeList(item.takes)}${row}${upload}${box}${sent}${inboxError(state)}${done}`;
 }
 
-function sampleThumb(doc) {
-  const sample = doc?.review?.sample;
-  if (!sample) return '';
-  const video = sample.kind === 'video';
-  const full = video ? null : safePreviewUrl(sample.reviewUrl);
-  const src = video ? safePreviewUrl(sample.poster) : safePreviewUrl(sample.thumb) || full;
-  if (!src) return '';
-  const board = (doc.storyboards || []).find(item => trimmed(item?.ref) && trimmed(item.ref) === trimmed(sample.deliverable)) || (doc.storyboards || [])[0];
-  const image = `<img src="${esc(src)}" alt="${video ? 'Sample clip' : 'Sample image'}">`;
-  const body = full ? `<button type="button" class="media-open" data-view-media="${esc(full)}" data-view-alt="Sample image" aria-label="Open the sample image full size">${image}</button>` : image;
-  return `<figure class="inbox-thumb" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${body}</figure>`;
-}
-
 // The server and saved board snapshots still use the longer message.
 // Both versions mean the review has no action yet, regardless of displayed copy.
 const REVIEW_NOT_READY = new Set(['Claude is getting this ready to show you.', 'The Director is getting this ready to show you.', 'Getting this ready.']);
@@ -5688,40 +5715,19 @@ function decisionPreviews(item, jobId) {
   return `<div class="inbox-previews">${figures}</div>`;
 }
 
-export function inboxDecisionArgs(item, { brand = null, requestId } = {}) {
-  const artifacts = Array.isArray(item?.artifacts) ? item.artifacts.filter(entry => entry && typeof entry.path === 'string' && typeof entry.sha256 === 'string') : [];
-  if (!item?.jobId || !INLINE_DECISIONS.has(item.gate) || !artifacts.length || !Number.isSafeInteger(item.revision)) return { error: 'Open the review.' };
-  const args = { requestId, brand, jobId: item.jobId, reviewId: item.gate, revision: item.revision, artifacts: artifacts.map(({ path, sha256 }) => ({ path, sha256 })), decision: 'approve' };
-  if (trimmed(item.jobTitle)) args.title = trimmed(item.jobTitle);
-  if (item.gate === 'price') {
-    const credits = item.credits && typeof item.credits === 'object' ? item.credits : null;
-    if (!credits || PRICE_PROVIDERS.some(provider => credits[provider] !== undefined && creditNumber(credits[provider]) === null)) return { error: NOTE_NEEDS_PRICE };
-    args.totals = Object.fromEntries(PRICE_PROVIDERS.map(provider => [provider, creditNumber(credits[provider]) || 0]));
-  }
-  return { args };
-}
+// The card's header line on home and in chat: what it is about and its version.
+const decisionAbout = item => (item.gate && Number(item.version) > 0 && !reviewNotReady(item) ? `<p class="inbox-place review-version">${esc(cardAbout(item.gate, item.version, { clip: /\.(mp4|mov|webm|m4v)$/i.test(String(item.artifacts?.[0]?.path || '')) }))}</p>` : '');
 
+// A decision on home or in chat opens the card on its job page. Money and posting are approved there, on the full card, never from a thumbnail.
 function decisionCard(item, ctx = {}) {
-  const { project = null, doc = null, docState = 'loaded', review: state = {}, signal = {} } = ctx;
-  const gate = item.gate || null;
-  const jobId = item.jobId || project?.jobId || '';
+  const jobId = item.jobId || ctx.project?.jobId || '';
   const summary = inboxSummary(item);
   const summaryLine = text => (text ? `<p class="inbox-summary">${esc(text)}</p>` : '');
   if (reviewNotReady(item)) return summaryLine(summary);
-  const inline = Boolean(item.inline) && !inboxDecisionArgs(item).error;
-  const reviewButton = `<button type="button"${inline ? '' : ' class="primary"'} data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
+  const reviewButton = `<button type="button" class="primary" data-inbox-jump="${esc(jobId)}" data-inbox-target="review">Review</button>`;
   // The Post-production offer sits beside Review: two ways to finish the same joined video.
   const offer = ctx.offer ? handoffButtons(ctx.offer, ctx.offerState || {}, { sendOnly: true, bare: true }) : '';
-  if (!inline) return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${offer}${reviewButton}</div>${ctx.offer ? inboxError(ctx.offerState || {}) : ''}`;
-  const shown = doc && doc.revision === item.revision && doc.review?.gate === gate ? doc : null;
-  const status = shown && project && project.detailsLoaded !== false ? reviewStatus(project, shown, docState) : null;
-  const plan = status === 'ready' ? approval(gate, shown, state, {}) : { label: gate === 'price' ? 'Approve price' : 'Approve sample', line: '' };
-  const blocked = (docState === 'loading' && !shown) || status === 'changed' || Boolean(plan.disabled);
-  const decided = Boolean(state.busy || state.submitted || state.needsReconciliation);
-  const label = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? TXT_WAITING_FOR_CLAUDE : plan.label;
-  const line = plan.disabled && plan.line ? plan.line : status === 'changed' ? REVIEW_WAITING.changed : summary || plan.line;
-  const thumb = gate === 'sample' && shown ? sampleThumb(shown) : '';
-  return `${summaryLine(line)}${thumb}${inboxError(state)}<div class="inbox-actions">${reviewButton}<button type="button" class="primary" data-inbox-approve="${esc(jobId)}" ${blocked || decided ? 'disabled' : ''}>${esc(label)}</button></div>${inboxStatus(state, signal)}`;
+  return `${summaryLine(summary)}${decisionPreviews(item, jobId)}<div class="inbox-actions">${offer}${reviewButton}</div>${ctx.offer ? inboxError(ctx.offerState || {}) : ''}`;
 }
 
 const INBOX_FIELD_INPUTS = new Set(['select', 'checkboxes', 'textarea', 'url']);
@@ -5891,6 +5897,7 @@ function postCard(item) {
 
 export function inboxCard(item, ctx = {}) {
   const index = Number.isInteger(ctx.index) ? ctx.index : 0;
+  if (item.kind === 'question' && questionClosed(item, ctx.question)) return `<li class="inbox-item is-closed" data-inbox-key="${esc(inboxKey(item))}">${closedQuestionLine(item, ctx.question)}</li>`;
   const text = inboxItemText(item);
   const onboarding = item.kind === 'onboarding';
   const body = onboarding ? onboardingCard(item)
@@ -5902,7 +5909,7 @@ export function inboxCard(item, ctx = {}) {
         : briefCard(item, ctx, index);
   const more = Number.isInteger(ctx.more) && ctx.more > 0 ? `<p class="inbox-more">${esc(`${ctx.more} more ${ctx.more === 1 ? 'thing waits' : 'things wait'} in this job.`)}</p>` : '';
   const opens = ctx.opensJob && item.jobId ? ` data-card-job="${esc(item.jobId)}"` : '';
-  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${more}${body}</li>`;
+  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${item.kind === 'decision' ? decisionAbout(item) : ''}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${more}${body}</li>`;
 }
 
 // Several questions from one job on one card: the job line once, then each question with its own answers.
@@ -5910,6 +5917,7 @@ function questionGroupCard(items, contexts, indexes, { signal = {}, workspace = 
   const head = items[0];
   const blocks = items.map((item, at) => {
     const text = inboxItemText(item);
+    if (questionClosed(item, contexts[at].question)) return `<div class="inbox-question is-closed" data-inbox-key="${esc(inboxKey(item))}">${closedQuestionLine(item, contexts[at].question)}</div>`;
     return `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}">${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${questionCard(item, contexts[at].question || {}, signal, indexes[at])}</div>`;
   }).join('');
   const lead = `<p class="inbox-summary">${esc(`${items.length} questions from Claude.`)}</p>`;
@@ -6205,9 +6213,12 @@ const AGENT_STATES = Object.freeze({
 const AGENT_JARGON = /\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\b[\w-]+\.(?:jsonl?|mjs|js|ts|md|html|png|jpe?g|mp4)\b|\b[A-Za-z]:\\/;
 const agentPlain = (text, fallback = '') => { const value = trimmed(text); return value && !AGENT_JARGON.test(value) && !CODE_TOKEN.test(value) ? value : fallback; };
 // "Strategist working" on a project card: one short line from the projection, with a pulse dot while an agent works.
-export function agentLineOf(project) {
+// `closed`: no session watches the board (see agentBoxOf), so nothing is working and the line says the studio has to open first.
+export function agentLineOf(project, { closed = false } = {}) {
   const line = agentPlain(truncateText(project?.agentLine, 80));
-  return line ? `<p class="card-agent">${/\bworking\b/i.test(line) ? '<span class="ab-live" aria-hidden="true"></span>' : ''}${esc(line)}</p>` : '';
+  const working = /\bworking\b/i.test(line);
+  if (closed && working) return `<p class="card-agent">${esc(ENGINE_CLOSED_WORD)}</p>`;
+  return line ? `<p class="card-agent">${working ? '<span class="ab-live" aria-hidden="true"></span>' : ''}${esc(line)}</p>` : '';
 }
 export function agentStateOf(value) {
   const key = String(value || '').toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '');
@@ -6221,9 +6232,10 @@ export const chatDecisionCard = (agent, decision, gate) => Boolean(decision && g
 export const agentHandedLine = agent => (!isDirectorAgent(agent) && trimmed(agent?.note) === AGENT_HANDED_NOTE ? AGENT_HANDED_NOTE : '');
 const agentNameOf = agent => trimmed(agent?.name) || humanize(agent?.id);
 // The Director first, then the others in the order the projection gives them; null when this job has no agents section.
-export function agentBoxOf(doc) {
+// `closed`: no Claude session is watching this board (the page's own live check), so nothing can be working right now. Each card then carries engineClosed.
+export function agentBoxOf(doc, { closed = false } = {}) {
   const source = doc?.agents;
-  const all = (Array.isArray(source?.list) ? source.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
+  const all = (Array.isArray(source?.list) ? source.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id)).map(agent => (closed ? { ...agent, engineClosed: true } : agent));
   if (!all.length) return null;
   const director = all.find(isDirectorAgent) || null;
   return { all: director ? [director, ...all.filter(agent => agent !== director)] : all, director, others: all.filter(agent => !isDirectorAgent(agent)), unassigned: source.unassigned && typeof source.unassigned === 'object' ? source.unassigned : {} };
@@ -6242,21 +6254,44 @@ export function agentMessageProblem(text, agent) {
   return '';
 }
 export const agentMessageText = text => String(text ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim();
-/** The request the composer sends: exactly these fields (the transport adds the workspace). */
-export function agentMessageArgs({ project, agent, text, requestId }) {
-  return { requestId, brand: project.brand, jobId: project.jobId, agent, text: agentMessageText(text) };
+/** What a message is about, as the request carries it: a short label, and the file, the revision and the storyboard panel when the button knew them. */
+export function agentAboutOf(about) {
+  const label = trimmed(about?.label).slice(0, 60);
+  if (!label) return null;
+  const path = trimmed(about?.path);
+  const panel = trimmed(about?.panel);
+  return { label, ...(path ? { path } : {}), ...(Number.isSafeInteger(about?.revision) && about.revision >= 0 ? { revision: about.revision } : {}), ...(panel ? { panel } : {}) };
+}
+/** The request the composer sends: exactly these fields, and `about` when the message started from a frame or file (the transport adds the workspace). */
+export function agentMessageArgs({ project, agent, text, requestId, about = null }) {
+  const subject = agentAboutOf(about);
+  return { requestId, brand: project.brand, jobId: project.jobId, agent, text: agentMessageText(text), ...(subject ? { about: subject } : {}) };
 }
 /** The request "Try again" sends, for a job that went wrong on our side. */
 export function retryStepArgs({ project, requestId }) {
   return { requestId, brand: project.brand, jobId: project.jobId };
 }
 
+// The six words a message shows. Each one is there only because its record is: the projection's `progress` is read from the
+// job's records, never from time passing. A document from before it carries only `status`, which maps to the first three.
+const MESSAGE_WORDS = Object.freeze({ saved: 'Saved', picked_up: 'Picked up', needs_answer: 'Needs your answer', working: 'Working', done: 'Done', failed: 'Failed' });
+export const ENGINE_CLOSED_WORD = 'Waits for your studio to open';
+export const agentMessageProgress = message => (MESSAGE_WORDS[message?.progress] ? message.progress : message?.status === 'answered' ? 'done' : message?.status === 'delivered' ? 'picked_up' : 'saved');
+// The colour of a message's status line: answered, in hand, failed, or only sent.
+const messageMark = progress => (progress === 'done' ? 'answered' : progress === 'failed' ? 'failed' : ['picked_up', 'working', 'needs_answer'].includes(progress) ? 'delivered' : 'sent');
 function agentMessageStatus(agent, message) {
   const name = agentNameOf(agent);
-  if (message.status === 'answered') return { word: 'Answered', note: '' };
-  if (message.status === 'delivered') return { word: `Delivered${message.deliveredAt ? ' ' + agentTime(message.deliveredAt) : ''}`, note: '' };
-  if (isDirectorAgent(agent)) return { word: 'Sent', note: 'The Director replies here.' };
-  return { word: 'Sent', note: agentStateOf(agent.state) === 'done' ? `The ${name} has finished. The Director will answer.` : `Passed on at the ${name}'s next step.` };
+  const progress = agentMessageProgress(message);
+  const asleep = agent?.engineClosed === true;
+  // While no session is watching the board nothing is working, so the board says it waits instead of "Working".
+  if (progress === 'working' && asleep) return { progress, word: ENGINE_CLOSED_WORD, note: '' };
+  const word = MESSAGE_WORDS[progress];
+  if (progress === 'failed') return { progress, word, note: 'Send it again if you still need it.' };
+  if (progress !== 'saved' && progress !== 'picked_up') return { progress, word, note: '' };
+  if (asleep) return { progress, word, note: `${ENGINE_CLOSED_WORD}.` };
+  if (progress === 'picked_up') return { progress, word, note: '' };
+  if (isDirectorAgent(agent)) return { progress, word, note: 'The Director replies here.' };
+  return { progress, word, note: agentStateOf(agent.state) === 'done' ? `The ${name} has finished. The Director will answer.` : `Passed on at the ${name}'s next step.` };
 }
 
 function agentChips(files, more, { artifacts, doc, label, by }) {
@@ -6381,6 +6416,8 @@ export function agentView(agent) {
   const note = trimmed(agent?.note);
   const lists = [agent?.files, agent?.messages, agent?.runs];
   const used = state === 'working' || state === 'done' || state === 'needs_you' || lists.some(list => Array.isArray(list) && list.length > 0) || (state === 'waiting' && note !== '' && !/^starts after/i.test(note));
+  // No session is watching the board (see agentBoxOf), so a card that reads working says it waits for the studio to open.
+  if (used && state === 'working' && agent?.engineClosed === true) return { state, called: true, asleep: true, ...AGENT_VIEWS.waiting, word: ENGINE_CLOSED_WORD };
   if (used) return { state, called: true, ...AGENT_VIEWS[state] };
   return { state, called: false, word: state === 'up_next' ? 'Up next' : 'Waiting its turn', tone: 'idle', mood: 'sleepy' };
 }
@@ -6643,8 +6680,95 @@ function messageBubbles(agent) {
     const status = agentMessageStatus(agent, message);
     const reply = message.status === 'answered' ? agentPlain(message.reply) : '';
     const sent = [status.word, status.note, agentTime(message.at)].filter(Boolean).join(' · ');
-    return `<div class="msg-r me" data-status="${esc(message.status === 'answered' || message.status === 'delivered' ? message.status : 'sent')}"><div class="bub"><p>${esc(truncateText(message.text, 600))}</p>${message.attachment?.name ? `<span class="ab-chip att">${esc(truncateText(message.attachment.name, 40))}<small>${esc(message.attachment.label || 'Reference')}</small></span>` : ''}</div><span class="msg-t">${esc(sent)}</span></div>${reply ? `<div class="msg-r a"><div class="bub"><p>${esc(reply)}</p></div><span class="msg-t">${esc(`${name}${message.repliedAt ? ` · ${agentTime(message.repliedAt)}` : ''}`)}</span></div>` : ''}`;
+    return `<div class="msg-r me" data-status="${esc(messageMark(status.progress))}"><div class="bub"><p>${esc(truncateText(message.text, 600))}</p>${message.attachment?.name ? `<span class="ab-chip att">${esc(truncateText(message.attachment.name, 40))}<small>${esc(message.attachment.label || 'Reference')}</small></span>` : ''}</div><span class="msg-t">${esc(sent)}</span></div>${reply ? `<div class="msg-r a"><div class="bub"><p>${esc(reply)}</p></div><span class="msg-t">${esc(`${name}${message.repliedAt ? ` · ${agentTime(message.repliedAt)}` : ''}`)}</span></div>` : ''}`;
   }).join('');
+}
+
+// ---- The room: the job as one ordered feed (document.room, plan 0.19 B2.1) ----
+// The Director's thread shows it: what the person wrote to the Director and the Director's replies, one line for each result an employee made
+// (its files as chips), the handoff lines, and the cards that are closed, each as one line. A person's thread is the same feed filtered to that
+// person. An open card is the page's live card, drawn after the feed, so only closed cards are rows. A job document from before the room has none.
+export const ROOM_OLDER_LINE = 'Older messages are on your computer';
+/** The job document's room as { rows, older }, or null when the document has none (then the old bubbles are drawn). */
+export function roomOf(doc) {
+  const rows = doc?.room?.rows;
+  if (!Array.isArray(rows)) return null;
+  const older = Number(doc.room.older);
+  return { rows: rows.filter(row => row && typeof row === 'object' && trimmed(row.k)), older: Number.isSafeInteger(older) && older > 0 ? older : 0 };
+}
+/**
+ * The rows one thread shows. The Director's: its own talk, every result, the handoff lines and the closed cards, and each message to a person
+ * as one line (roomRow draws it small); their replies stay in their thread. A person's: what was said to and by them, their results, the lines naming them and the closed cards about their files.
+ */
+export function roomRowsFor(room, agentId, agent = null) {
+  const director = agentId === 'producer';
+  return (room?.rows || []).filter(row => {
+    if (row.k === 'you') return director || row.to === agentId;
+    if (row.k === 'dir') return director;
+    if (row.k === 'msg') return director ? !row.reply : row.who === agentId;
+    if (row.k === 'hand') return director || (Array.isArray(row.with) && row.with.includes(agentId));
+    // A closed card shows in the Director's thread, and in the thread of the person whose file it was about (the way an open card does).
+    return row.k === 'card' && (director || (typeof row.about?.path === 'string' && threadPaths(agent).has(row.about.path)));
+  });
+}
+// The files a person made and the things the person was asked about: the cards about them belong in that person's thread.
+function threadPaths(agent) {
+  return new Set([...(Array.isArray(agent?.files) ? agent.files.map(file => file?.path) : []), ...(Array.isArray(agent?.messages) ? agent.messages.map(message => message?.about?.path) : [])].filter(path => typeof path === 'string' && path));
+}
+/**
+ * The open question cards that belong in one person's thread: the ones the Director raised about a file that person made, or about the
+ * thing a message to them named. The Director's thread holds every card; this is the person's share of them, shown there as well.
+ */
+export function cardsForThread(items, agent) {
+  const paths = threadPaths(agent);
+  return (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && typeof item.about?.path === 'string' && paths.has(item.about.path));
+}
+function roomRow(row, { agentOf, chipContext, named, viewer = '' }) {
+  const time = agentTime(row.at);
+  // In the Director's thread, a message to an employee is one line: who it was for, the start of it, and how far it got. The talk itself stays in that person's thread.
+  if (viewer === 'producer' && row.k === 'you' && row.to !== 'producer') {
+    const said = trimmed(row.text).replace(/\s+/g, ' ');
+    const to = agentOf(row.to);
+    const progress = agentMessageStatus(to, row).word;
+    return said ? `<div class="room-hand" data-kind="talk"><span>${esc(`You to the ${agentNameOf(to)}: ${truncateText(said, 80)} · ${progress}`)}</span></div>` : '';
+  }
+  if (row.k === 'hand') {
+    const line = agentPlain(row.text);
+    return line ? `<div class="room-hand" data-kind="${esc(row.kind || 'handed')}"><span>${esc(line)}</span></div>` : '';
+  }
+  if (row.k === 'card') {
+    const title = trimmed(row.title);
+    const answer = trimmed(row.answer);
+    const note = [trimmed(row.note), time].filter(Boolean).join(' · ');
+    return title ? `<div class="msg-r a bub-wide room-card"><div class="bub"><div class="q-closed" role="status"><span class="q-tick">${CHECK_ICON}</span><span class="q-closed-title">${esc(title)}</span>${answer ? `<b class="q-closed-answer">${esc(truncateText(answer, 120))}</b>` : ''}</div></div>${note ? `<span class="msg-t">${esc(note)}</span>` : ''}</div>` : '';
+  }
+  if (row.k === 'you') {
+    if (!trimmed(row.text)) return '';
+    const status = row.brief ? null : agentMessageStatus(agentOf(row.to), row);
+    const sent = (status ? [status.word, status.note, time] : ['Your request', time]).filter(Boolean).join(' · ');
+    const mark = status ? messageMark(status.progress) : 'sent';
+    const about = trimmed(row.about?.label) ? `<span class="ab-chip att">${esc(truncateText(row.about.label, 40))}<small>About</small></span>` : '';
+    const file = row.attachment?.name ? `<span class="ab-chip att">${esc(truncateText(row.attachment.name, 40))}<small>${esc(row.attachment.label || 'Reference')}</small></span>` : '';
+    return `<div class="msg-r me" data-status="${mark}"><div class="bub"><p>${esc(truncateText(row.text, 600))}</p>${about}${file}</div><span class="msg-t">${esc(sent)}</span></div>`;
+  }
+  const who = agentOf(row.k === 'dir' ? 'producer' : row.who);
+  const name = agentNameOf(who);
+  const line = agentPlain(row.text);
+  if (!line) return '';
+  const chips = row.k === 'msg' ? agentChips(row.files, row.filesMore, { ...chipContext, label: `Files from the ${name}`, by: `by the ${name}` }) : '';
+  const head = row.k === 'msg' && named ? `<div class="bub-h"><b>${esc(name)}</b></div>` : '';
+  return `<div class="msg-r a"><div class="bub">${head}<p>${esc(truncateText(line, 600))}</p>${chips}</div><span class="msg-t">${esc(row.k === 'dir' ? [name, time].filter(Boolean).join(' · ') : time)}</span></div>`;
+}
+/**
+ * The feed one thread shows, as HTML, or null when the job has no room (the caller draws the older bubbles). `agents` are the job's agent cards
+ * (to name a row's agent and word a message's progress), `liveKeys` the keys of the cards still open on the page, so a card is never drawn twice.
+ */
+export function roomFeed(room, agentId, { agents = [], chipContext = {}, liveKeys = new Set() } = {}) {
+  if (!room) return null;
+  const agentOf = id => agents.find(item => item?.id === id) || { id, name: humanize(id) };
+  const rows = roomRowsFor(room, agentId, agents.find(item => item?.id === agentId)).filter(row => !(row.k === 'card' && row.key && liveKeys.has(row.key)));
+  const older = room.older > 0 ? `<div class="sys"><span>${esc(ROOM_OLDER_LINE)}</span></div>` : '';
+  return older + rows.map(row => roomRow(row, { agentOf, chipContext: { artifacts: [], ...chipContext }, named: agentId === 'producer', viewer: agentId })).join('');
 }
 
 const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', cut: 'clapper', finishing: 'sparkles', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
@@ -6654,9 +6778,12 @@ export function agentComposer(agent, { about = 'the job', ui = {}, signal = {} }
   const name = agentNameOf(agent);
   const attach = chatAttachment(ui.attach || {}, name);
   const draft = ui.draft || '';
-  const hint = isDirectorAgent(agent) ? 'The Director answers here.' : `Passed on at the ${name}'s next step.`;
+  const hint = agent.engineClosed === true ? `${ENGINE_CLOSED_WORD}.` : isDirectorAgent(agent) ? 'The Director answers here.' : 'Also shows in the Director thread as one line.';
   const send = ui.send || {};
-  return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}"><div class="cmp-row">${attach.button}<label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div>${attach.panel}<div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
+  // A message that started from a frame's or a file's "Ask for changes" carries what it is about, shown as a chip the person can take off.
+  const subject = agentAboutOf(ui.about);
+  const aboutChip = subject ? `<div class="cmp-about"><span class="ab-chip att">${esc(truncateText(subject.label, 40))}<small>About</small></span><button type="button" class="quiet sm" data-ab-about-clear aria-label="${esc(`Take off: about ${subject.label}`)}">Remove</button></div>` : '';
+  return `<form class="composer ab-compose" data-ab-form novalidate aria-label="${esc(`Message ${name}`)}"><input type="hidden" name="to" value="${esc(agent.id)}">${aboutChip}<div class="cmp-row">${attach.button}<label class="visually-hidden" for="ab-text">${esc(`Your message to ${name}`)}</label><textarea id="ab-text" name="text" rows="1" maxlength="${AGENT_MESSAGE_LIMIT}" placeholder="${esc(`Message ${name} about ${about}`)}"${ui.error ? ' aria-invalid="true"' : ''} aria-describedby="ab-hint ab-count${ui.error ? ' ab-error' : ''}">${esc(draft)}</textarea><button type="submit" class="send icon" aria-label="Send message" title="Send message" ${send.busy ? 'disabled' : ''}>${icon('send')}</button></div>${attach.panel}<div class="cmp-meta"><p class="ab-hint" id="ab-hint">${esc(hint)}</p><p class="field-count" id="ab-count">${draft.length} / ${AGENT_MESSAGE_LIMIT}</p></div>${ui.error ? `<p class="notice error inline-error" id="ab-error" role="alert">${esc(ui.error)}</p>` : ''}${inboxStatus(send, signal)}${inboxError(send)}</form>`;
 }
 
 // The agent's own tasks on this job, in plan order, at the top of its chat. A task that began (done, working or waiting) opens to its
@@ -6676,7 +6803,8 @@ function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = ''
     });
   if (!rows.length) return '';
   const items = rows.map((row, index) => {
-    const head = `<b>${esc(row.name)}</b><span class="pill st-${row.pill[0]}">${esc(row.pill[1])}</span>`;
+    // A step or run that reads running cannot be working while no session watches the board.
+    const head = `<b>${esc(row.name)}</b><span class="pill st-${row.pill[0]}">${esc(agent.engineClosed === true && row.status === 'running' ? ENGINE_CLOSED_WORD : row.pill[1])}</span>`;
     if (row.status === 'pending') return `<li class="task is-locked" aria-disabled="true"><div class="task-row">${head}</div></li>`;
     const key = `task:${jobId}:${agent.id}:${index}:${row.name}`;
     const trace = stepTrace(row.item, { agent, person, chipContext, withWho: false, withFiles: row.files });
@@ -6690,22 +6818,24 @@ function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = ''
  * `needs` (the Director's open questions and decisions, as they already render), `stuck`, `item` (when the agent's step is at a
  * gate), `status` (one plain line), and `compose` (the composer, when the person can message this agent). `asks` and `waiting` are
  * the Brand onboarding page's: the Director's messages, one per open item (each already drawn, with its own buttons), and how many of
- * them wait on the person, which the header says as "Waiting on you · 3".
+ * them wait on the person, which the header says as "Waiting on you · 3". `feed` is the room's lines for this thread (see roomFeed): given, it
+ * takes the place of the message bubbles, and of the step bubbles too once the room holds this agent's results (`feedWork`); left out (a job
+ * from before the room), the old bubbles are drawn.
  */
 export function agentChat(agent, ctx = {}) {
-  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '', asks = [], waiting = 0 } = ctx;
+  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '', asks = [], waiting = 0, feed = null, feedWork = false } = ctx;
   const view = agentView(agent);
   const name = agentNameOf(agent);
   const director = isDirectorAgent(agent);
   const role = agentPlain(agent.role) || (director ? DIRECTOR_ROLE : agentPlain(agent.task));
   const card = item ? `<div class="msg-r a"><div class="dc s-waiting"><div class="dc-h"><span class="node pic" aria-hidden="true"><img src="${gatePicture(item.gate)}" alt=""></span><div><b>${esc(item.title)}</b><span class="pill st-waiting">Waiting on you</span></div></div>${item.line ? `<p>${esc(item.line)}</p>` : ''}<div class="bub-act"><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('change')} Ask for changes</button><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('open')} Open details</button></div></div></div>` : '';
-  const typing = view.state === 'working' ? `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>` : '';
+  const typing = view.state === 'working' ? (view.asleep ? `<div class="msg-r a"><div class="bub"><p class="bub-note">${esc(ENGINE_CLOSED_WORD)}</p></div></div>` : `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>`) : '';
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
   const askBubbles = (Array.isArray(asks) ? asks : []).join('');
   const word = waiting > 0 ? `${view.word} · ${waiting}` : view.word;
-  return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost back" data-ab-back aria-label="Back to the team" title="Back to the team">${icon('back')}<span>Back</span></button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
+  return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost back" data-ab-back aria-label="Back to the team" title="Back to the team">${icon('back')}<span>Back</span></button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${feed !== null ? `${director || feedWork ? '' : workBubbles(agent, tasks, chipContext)}${feed}` : `${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}`}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
 }
 
 // What the agent did lately, in a small fold at the end of its chat: short plain lines, newest last.
@@ -6805,10 +6935,16 @@ function decidedGateTrace(gate, body) {
 
 // The Director's open questions on a job, as one card with their answer buttons. The job page draws it once: above the steps, or in the Director's chat while that is open.
 export function stageQuestions(items, { stateOf = () => ({}), signal = {} } = {}) {
-  const open = (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && item.questionId);
-  if (!open.length) return '';
-  const blocks = open.map((item, at) => `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionCard(item, stateOf(item) || {}, signal, at, { place: 'stage' })}</div>`).join('');
-  return `<div class="stage-ask" role="group" aria-label="The Director's questions for you"><p class="stage-ask-h">${esc(open.length === 1 ? 'The Director needs your answer' : `The Director needs ${open.length} answers`)}</p>${blocks}</div>`;
+  const all = (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && item.questionId);
+  if (!all.length) return '';
+  // A question answered here (or taken by a window that answered first) closes to its one line; only the ones still waiting are counted.
+  const closed = item => questionClosed(item, stateOf(item) || {});
+  const open = all.filter(item => !closed(item));
+  const blocks = all.map((item, at) => (closed(item)
+    ? `<div class="inbox-question is-closed" data-inbox-key="${esc(inboxKey(item))}">${closedQuestionLine(item, stateOf(item) || {})}</div>`
+    : `<div class="inbox-question" data-inbox-key="${esc(inboxKey(item))}"><p class="inbox-text">${esc(inboxItemText(item))}</p>${questionCard(item, stateOf(item) || {}, signal, at, { place: 'stage' })}</div>`)).join('');
+  const head = open.length ? `<p class="stage-ask-h">${esc(open.length === 1 ? 'The Director needs your answer' : `The Director needs ${open.length} answers`)}</p>` : '';
+  return `<div class="stage-ask${open.length ? '' : ' is-closed'}" role="group" aria-label="The Director's questions for you">${head}${blocks}</div>`;
 }
 
 // ---- The steps of a job, drawn as a fold of stops ----
@@ -6873,7 +7009,7 @@ function stopGate(item, { who, chipContext, bodies, placed, above }) {
  * the page draws above the list; `ask` is the Director's chat id and its draft is what "Ask for changes" starts. `who` gives the agent card
  * behind a step (`agent`, `called`), `chipContext` links its files. `done` and `total` count the stops, once.
  */
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer' } = {}) {
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer', closed = false } = {}) {
   const placed = new Set();
   const merged = mergeDecidedGates(model);
   for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
@@ -6891,7 +7027,8 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
     const line = stopLine(status, stage.items);
     const running = stage.items.filter(item => item.kind === 'step' && item.status === 'running');
     const starting = status === 'running' && running.length > 0 && running.every(item => who(item.agent)?.called === false);
-    const word = starting ? STEP_STARTING_WORD : STEP_STATUS_WORDS[status];
+    // `closed`: no session watches the board, so a stop that reads running is waiting for the studio to open.
+    const word = starting ? STEP_STARTING_WORD : closed && status === 'running' ? ENGINE_CLOSED_WORD : STEP_STATUS_WORDS[status];
     return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${isOpen(key, status !== 'done' || holds) ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body"><ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
   });
   return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length };
@@ -7880,7 +8017,6 @@ if (typeof document !== 'undefined') {
   const jobRequestReaders = new Map();
   const questionUi = new Map();
   const inboxQuestions = new Map();
-  const inboxDecisions = new Map();
   const inboxBriefs = new Map();
   const inboxDocWatches = new Map();
   let pendingJump = null;
@@ -8030,7 +8166,7 @@ if (typeof document !== 'undefined') {
     const { done, total } = stageProgress(project);
     // Opened, credits used and where it lives sit on the job page, under About this job.
     const lines = [['Steps', total ? `${done} of ${total} done` : ''], ['Now', trimmed(project.stageSummary?.current)]].filter(([, value]) => value);
-    const activity = agentLineOf(project) || `<p>${esc(project.nextAction || humanize(project.state))}</p>`;
+    const activity = agentLineOf(project, { closed: signalAvailability === 'no_session' }) || `<p>${esc(project.nextAction || humanize(project.state))}</p>`;
     // One link to the job, never a button around a heading: the whole card is the link, so Tab and Enter work like a click.
     return `<a class="project-card${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}" style="--h:${hueOf(project.jobId)}"><div class="pc-top card-art"><div class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</div></div><div class="pc-body card-body"><div class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</div>${pill(project.state, project.stateLabel)}</div><div class="pc-act">${activity}</div><div class="pc-dots" aria-hidden="true"></div></a>`;
   }
@@ -8061,7 +8197,6 @@ if (typeof document !== 'undefined') {
     }
     const view = project || (item.jobId ? viewOf(item.jobId) : null);
     if (!view) return {};
-    if (item.kind === 'decision') inboxDecisions.set(view.jobId, item);
     if (item.kind === 'brief') inboxBriefs.set(view.jobId, [...(inboxBriefs.get(view.jobId) || []), item]);
     const ui = uiFor(view);
     const watched = inboxDocWatches.has(view.jobId) || jobDocWatch.jobId === view.jobId;
@@ -8070,11 +8205,9 @@ if (typeof document !== 'undefined') {
   }
   function inboxAside(inbox, { project = null, workspace = false, starter = '', bare = false, strip = false } = {}) {
     inboxQuestions.clear();
-    inboxDecisions.clear();
     inboxBriefs.clear();
     return inboxPanel({ ...inbox, workspace, starter, bare, strip, signal: signalInfo(), context: item => inboxContext(item, project) });
   }
-  const answeredInPlace = item => item.kind === 'decision' && item.jobId && !inboxDecisionArgs(item).error;
   function syncInboxDocuments(jobIds = []) {
     const wanted = artifactMode() && typeof transport?.subscribeJobDocument === 'function' ? new Set(jobIds) : new Set();
     for (const [jobId, stop] of inboxDocWatches) {
@@ -8263,8 +8396,11 @@ if (typeof document !== 'undefined') {
       if (part === 'review' && ['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
         // A decision that failed can be made again: the card shows the reason and the buttons come back.
         stopJobRequestWatch(key);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, error: acknowledgement.message || receipt.message || 'Claude could not apply this. Try again.', submittedAt: null, lastReminderAt: null, reminding: false });
+        const said = acknowledgement.message || receipt.message || 'Claude could not apply this. Try again.';
+        const changed = changedRefusal(said);
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, error: changed ? CHANGED_LINE : said, submittedAt: null, lastReminderAt: null, reminding: false });
         render();
+        if (changed) { void resyncLive(); void refresh(); }
       } else if (status === 'received') {
         // Claude picked the request up: the card stays submitted and only its line changes.
         if (state.receivedFor !== requestId) { state.receivedFor = requestId; render(); }
@@ -8272,18 +8408,22 @@ if (typeof document !== 'undefined') {
         stopJobRequestWatch(key);
         // An applied decision keeps its card settled until the job document catches up and stops listing the review.
         const keep = part === 'review' && state.args ? { settled: true, args: state.args } : { args: null };
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, ...keep, ...(part === 'answer' ? { answered: true } : {}), ...(part === 'retry' ? { applied: true } : {}) });
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', message: '', submittedAt: null, lastReminderAt: null, reminding: false, operation: null, ...keep, ...(part === 'answer' ? { answered: true, closedNote: trimmed(acknowledgement.result?.message), savedAnswer: trimmed(acknowledgement.result?.answer) } : {}), ...(part === 'retry' ? { applied: true } : {}) });
         if (part === 'route' || part.startsWith('post:')) routeApplied(state);
-        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? NOTE_HAS_ANSWER : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'The Director is trying that step again.' : 'Claude applied your decision.');
+        notify(part.startsWith('post:') ? 'Claude saved this.' : part === 'intake' ? 'Claude saved your answers.' : part === 'workspace' ? 'Claude saved the workspace choice.' : part === 'route' ? 'Claude saved how these posts go out.' : part === 'answer' ? trimmed(acknowledgement.result?.message) || NOTE_HAS_ANSWER : part === 'agent-msg' ? 'Claude passed your message on.' : part === 'retry' ? 'The Director is trying that step again.' : 'Claude applied your decision.');
         void refresh();
       } else if (status === 'declined') {
         stopJobRequestWatch(key);
         // Declined because it repeats a decision already made: the card is settled, not re-armed.
         const handled = part === 'review' && state.args && Boolean(receipt.handled || acknowledgement.handled);
-        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: acknowledgement.message || receipt.message || NOTE_DECLINED, submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: handled ? state.args : null, ...(handled ? { settled: true } : {}) });
+        // Declined because the card was no longer the latest: say it in the plain line, then load the latest card.
+        const said = acknowledgement.message || receipt.message || NOTE_DECLINED;
+        const changed = part === 'review' && changedRefusal(said);
+        Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, error: '', declined: true, message: changed ? CHANGED_LINE : said, submittedAt: null, lastReminderAt: null, reminding: false, operation: null, args: handled ? state.args : null, ...(handled ? { settled: true } : {}) });
         if (part === 'route') routeEnded(jobId, state, 'notice', state.message);
         else if (part.startsWith('post:')) postEnded(jobId, part.slice(5), state, 'notice', state.message);
         render();
+        if (changed) { void resyncLive(); void refresh(); }
       } else if (['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: true, error: acknowledgement.message || receipt.message || 'Could not apply this. Claude must check first.', submittedAt: null, lastReminderAt: null, reminding: false });
         if (part === 'route') routeEnded(jobId, state, 'error', state.error);
@@ -8410,7 +8550,7 @@ if (typeof document !== 'undefined') {
     const omittedLine = omitted ? `<p class="muted">${esc(`${omitted} more ${omitted === 1 ? 'file is' : 'files are'} on your computer.`)}</p>` : '';
     // The Inbox and the chats replace the Inbox panel, the Director card and the agent rail. A job document with no agents
     // section still gets a Director to open, and keeps its files in the old Outputs list so nothing becomes unreachable.
-    const agentBox = agentBoxOf(doc);
+    const agentBox = agentBoxOf(doc, { closed: signalAvailability === 'no_session' });
     const boxUi = agentBoxState(project);
     const stub = { id: 'producer', name: 'Director', state: null };
     const box = agentBox || { all: [stub], director: stub, others: [], unassigned: {} };
@@ -8435,13 +8575,15 @@ if (typeof document !== 'undefined') {
     const stages = stageItems(project, { pendingGate });
     if (storyboard && storyboardKeptByStep(stages, who, doc)) storyboard = '';
     extra('storyboard', storyboard);
-    const openQuestions = needItems.filter(item => item.kind === 'question' && !item.closing && !questionState(item.questionId).answered);
-    const stageAsking = stageQuestions(openQuestions, { stateOf: item => questionState(item.questionId), signal: signalInfo() });
+    const openQuestions = needItems.filter(item => item.kind === 'question' && !item.closing);
+    // A card the Director raised for a person's thread is drawn in that thread while it is open, not above the steps as well.
+    const threadCards = chatAgent && !isDirectorAgent(chatAgent) ? cardsForThread(openQuestions, chatAgent) : [];
+    const stageAsking = stageQuestions(openQuestions.filter(item => !threadCards.includes(item)), { stateOf: item => questionState(item.questionId), signal: signalInfo() });
     // What the job waits on (its review, or the posts that went out) is drawn once, as the card above the steps; the steps only point up to it.
     const card = pendingGate ? bodies[pendingGate]?.html || '' : '';
     const flowBodies = { ...bodies };
     if (pendingGate) delete flowBodies[pendingGate];
-    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies: flowBodies, isOpen: gateOpen, chipContext, above: card ? pendingGate : '', ask: box.director?.id || 'producer' });
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies: flowBodies, isOpen: gateOpen, chipContext, above: card ? pendingGate : '', ask: box.director?.id || 'producer', closed: signalAvailability === 'no_session' });
     const left = (gate, html) => (gate === pendingGate || flow.placed.has(gate) ? '' : html);
     const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + recipeStandalone;
     const filesPanel = agentBox
@@ -8467,12 +8609,15 @@ if (typeof document !== 'undefined') {
       const todo = steps.find(step => step.status !== 'done') || steps.at(-1);
       // The decision the card above holds is not drawn a second time here: the chat has its one plain pointer to it (the waiting card below).
       const chatNeeds = needItems.filter(item => !(card && item.kind === 'decision' && item.gate === pendingGate));
-      const needs = director && chatNeeds.length ? inboxAside({ ...inboxView, items: chatNeeds }, { project, bare: true }) : '';
+      const shownNeeds = director ? chatNeeds : threadCards;
+      const needs = shownNeeds.length ? inboxAside({ ...inboxView, items: shownNeeds }, { project, bare: true }) : '';
       // One voice: the decision card is the Director's. The agent that wrote the work behind the gate shows a plain "handed over" line.
       const waiting = chatDecisionCard(chatAgent, decision, pendingGate);
       const handed = agentHandedLine(chatAgent);
       side = agentChat(chatAgent, {
         now, tasks: steps, chipContext, needs, openKeys, jobId: project.jobId,
+        feed: roomFeed(roomOf(doc), chatAgent.id, { agents: box.all, chipContext, liveKeys: new Set(needItems.filter(item => !item.closing).map(inboxKey)) }),
+        feedWork: roomRowsFor(roomOf(doc), chatAgent.id).some(row => row.k === 'msg' && !row.reply),
         status: director ? handoffStatusLine(project) : handed,
         stuck: director ? agentStuckBanner(agentBox?.director?.stuck, boxUi.retry, signalInfo(), project) : '',
         item: waiting ? { gate: pendingGate, jobId: project.jobId, title: GATE_TITLES[pendingGate] || humanize(pendingGate), line: trimmed(decision.summary) } : null,
@@ -8481,6 +8626,8 @@ if (typeof document !== 'undefined') {
     } else {
       side = agentInbox(box.all, { needText: railParts && top ? (top.kind === 'decision' && GATE_TITLES[top.gate]) || railParts.need : '', questions: openNeeds.filter(item => item.kind === 'question').length, waitingOnYou: openNeeds.length });
     }
+    // The thread's cards (inboxAside above) and a page opened straight from a link register only their own; every open question here answers.
+    for (const item of openQuestions) inboxQuestions.set(String(item.questionId), item);
     const lead = intakePanel + card + (inDirectorChat ? '' : stageAsking + (railParts ? inboxNeed(railParts, project.jobId, top, boxUi.handoff) : ''));
     // The steps fold away while something waits on the person, and stay open when nothing does.
     const waits = Boolean(pendingGate) || openNeeds.length > 0;
@@ -8572,7 +8719,6 @@ if (typeof document !== 'undefined') {
     // The Director asks the brand's open items in its own chat, so this page has no Needs you box of its own: each question keeps its
     // buttons (and its answer request) on the Director's message. The cards register here for the answer handlers.
     inboxQuestions.clear();
-    inboxDecisions.clear();
     inboxBriefs.clear();
     const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo(), notes: onboardBrand ? intelDirectorNotes(onboardBrand, intelState(onboardBrand.slug)) : null });
     if (!agentsPanel) onboardChat = undefined;
@@ -8596,14 +8742,14 @@ if (typeof document !== 'undefined') {
       return brandPage(`${needsHere}${onboarding}`);
     }
     if (inline?.kind === 'onboard') {
-      syncInboxDocuments(agentsPanel ? [] : inbox.items.filter(answeredInPlace).map(item => item.jobId));
+      syncInboxDocuments();
       return brandPage(`${needsHere}${overviewColumn({ jobs: jobsHtml(), onboarding, onboardFirst: true })}`);
     }
     // Home: "Needs you" comes first and holds every open item, the job ones included, with the same cards (pictures, Approve,
     // Ask for changes) as the Director's chat. Then the brief box, the one way to start a job, and the jobs under it, one row each
     // from brief to posted, newest first. The brands, with their intelligence and library, come last.
     const needsItems = inbox.items;
-    syncInboxDocuments(needsItems.filter(answeredInPlace).map(item => item.jobId));
+    syncInboxDocuments();
     const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
     // Newest first, like the In flight cards; finished jobs go to the bottom.
     const rank = project => (FINAL_JOB_STATES.includes(project?.state) ? 1 : 0);
@@ -8803,28 +8949,6 @@ if (typeof document !== 'undefined') {
         notify(result?.message || NOTE_HAS_ANSWER);
         await refresh();
       }
-    } catch (e) {
-      Object.assign(state, { busy: false, requestId: null, error: e.message });
-      render();
-    }
-  }
-  async function approveFromInbox(jobId) {
-    const item = inboxDecisions.get(jobId);
-    const project = viewOf(jobId);
-    if (!item || !project || !transport) return;
-    const state = uiFor(project).review;
-    if (state.busy || state.submitted || state.needsReconciliation) return;
-    const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = inboxDecisionArgs(item, { brand: project.brand, requestId });
-    if (error) { state.error = error; render(); return; }
-    Object.assign(state, { requestId, busy: true, verdict: 'approve', error: '', declined: false, operation: 'submit_decision', args });
-    render();
-    try {
-      const result = await transport.call('submit_decision', args);
-      Object.assign(state, { busy: false, submitted: true, submittedAt: state.submittedAt || Date.now(), message: result?.message || '', signal: result?.signal || null });
-      scheduleReminderWake(state);
-      if (artifactMode()) { rememberSentDecision(project.jobId, state.requestId); watchJobRequest(project.jobId, 'review', state); }
-      render();
     } catch (e) {
       Object.assign(state, { busy: false, requestId: null, error: e.message });
       render();
@@ -9662,8 +9786,16 @@ if (typeof document !== 'undefined') {
     if(target.dataset.inboxAnswer!==undefined){void answerQuestion(target.dataset.inboxAnswer,{choice:Number(target.dataset.choice)});return;}
     if(target.dataset.inboxType!==undefined){openAnswerBox(target.dataset.inboxType);return;}
     if(target.dataset.inboxCancel!==undefined){closeAnswerBox(target.dataset.inboxCancel);return;}
-    if(target.dataset.inboxApprove!==undefined){approveFromInbox(target.dataset.inboxApprove);return;}
-    if(target.dataset.abOpen!==undefined){openChat(target.dataset.abOpen,target.dataset.abDraft||'');return;}
+    if(target.dataset.abOpen!==undefined){
+      let about=null;
+      try{about=target.dataset.abAbout?JSON.parse(target.dataset.abAbout):null;}catch{about=null;}
+      // "@owner" opens the thread of whoever made the file the message is about.
+      const shown=current();
+      const who=target.dataset.abOpen==='@owner'?ownerOfFile(shown?agentBoxOf(docFor(shown))?.all:[],about?.path):target.dataset.abOpen;
+      openChat(who,target.dataset.abDraft||'',about);
+      return;
+    }
+    if(target.dataset.abAboutClear!==undefined){const shown=current();if(shown){agentBoxState(shown).about=null;render();focusQuietly('#ab-text');}return;}
     if(target.dataset.abBack!==undefined){closeChat();return;}
     if(target.dataset.abGate!==undefined){leaveChatForJump();jumpToGate(target.dataset.abGate);return;}
     if(target.dataset.inboxJump!==undefined){leaveChatForJump();jumpFromInbox(target.dataset.inboxJump, target.dataset.inboxTarget);return;}
@@ -10321,8 +10453,11 @@ if (typeof document !== 'undefined') {
       if (artifactMode()) { rememberSentDecision(project.jobId, state.requestId); watchJobRequest(project.jobId, 'review', state); }
       render();
     } catch (e) {
-      Object.assign(state, { busy: false, requestId: null, error: e.message });
+      // A refusal because the card is no longer the latest shows the plain line and loads the latest card.
+      const changed = changedRefusal(e.message);
+      Object.assign(state, { busy: false, requestId: null, error: changed ? CHANGED_LINE : e.message });
       render();
+      if (changed) { void resyncLive(); void refresh(); }
     }
   }
   async function submitRecipe(project, deliverableId) {
@@ -10425,12 +10560,14 @@ if (typeof document !== 'undefined') {
     });
   }
   // `draft` is a start for the message ("Change the idea: "); a message the person already began is kept.
-  function openChat(id, draft = '') {
+  // `about` is what the message will be about when it starts from a frame's or a file's "Ask for changes" ({ label, path?, revision?, panel? }); it shows as a chip in the composer.
+  function openChat(id, draft = '', about = null) {
     const project = current();
     if (!project) { onboardChat = id; render(); focusQuietly('#ab-chat-title'); return; }
     const box = agentBoxState(project);
     if (box.chat) box.drafts[box.chat] = box.draft;
-    Object.assign(box, { chat: id, to: id, draft: box.drafts[id] || draft, error: '' });
+    const subject = agentAboutOf(about);
+    Object.assign(box, { chat: id, to: id, draft: box.drafts[id] || draft, error: '', ...(subject ? { about: { revision: project.revision, ...subject } } : box.to === id ? {} : { about: null }) });
     render();
     focusQuietly('#ab-chat-title');
     // Narrow screens show the chat in the page, under the card: bring it into view.
@@ -10470,7 +10607,7 @@ if (typeof document !== 'undefined') {
     box.error = agentMessageProblem(box.draft, agent);
     if (box.error) { render(); focusQuietly('#ab-text'); return; }
     const requestId = randomId(globalThis);
-    const args = agentMessageArgs({ project, agent: agent.id, text: box.draft, requestId });
+    const args = agentMessageArgs({ project, agent: agent.id, text: box.draft, requestId, about: box.about });
     Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, error: '', message: 'Saved. Claude will pass it on.', operation: 'agent_message', args });
     render();
     focusQuietly('#ab-text');
@@ -10478,6 +10615,7 @@ if (typeof document !== 'undefined') {
       const result = await transport.call('agent_message', args);
       if (state.requestId !== requestId) return;
       box.draft = '';
+      box.about = null;
       state.busy = false;
       if (artifactMode()) {
         Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });

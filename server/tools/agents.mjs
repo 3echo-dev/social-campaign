@@ -6,7 +6,7 @@
  * review work that pipeline_review_present does, so the reminder the agent-run hook leaves costs one cheap call and one ArtifactData batch.
  *
  * The relay carries what the person wrote to an agent on the board. pipeline_agent_brief hands the Director the exact block to put at
- * the end of that agent's spawn prompt; pipeline_agent_reply is the Director's one-line answer. Neither touches an approval, a price or
+ * the end of that agent's spawn prompt; pipeline_agent_reply records a reply in an agent's thread. Neither touches an approval, a price or
  * a post: the messages are data for the agent, and no guard reads them.
  */
 
@@ -21,10 +21,11 @@ import { join } from 'node:path';
 import { InvalidInputError } from '../lib/errors.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 import { jobAt } from '../pipeline/facts.mjs';
+import { jobClaimFile, refreshClaim, windowSessionId } from '../pipeline/session-claims.mjs';
 import { personAnswersBlock, plainWordsProblem, syncJobAnswers } from '../pipeline/questions.mjs';
 import { activeAgentIds, agentLabel, alreadyRunningText, clipOneLine, openRunsOf } from '../pipeline/agent-log.mjs';
 import { libraryBlock } from '../pipeline/brand-library.mjs';
-import { DIRECTOR, pendingMessages, personMessagesBlock, recordAgentReply, replyProblem, saveAgentMessage } from '../pipeline/agent-messages.mjs';
+import { DIRECTOR, SPECIALIST_REPLY_LIMIT, pendingMessages, personMessagesBlock, recordAgentReply, replyProblem, saveAgentMessage } from '../pipeline/agent-messages.mjs';
 
 // The board request calls this when the person sends a message (see agent-messages.mjs).
 export { saveAgentMessage };
@@ -148,7 +149,7 @@ export const agentTools = [
       'Its last section summarizes the brand library when it has anything: the person\'s own lines to use word for word, what is proven, the research already done with its age, and what the person chose lately.',
       'After the first line, put Agent brief fallback: "<briefFile>" using the returned absolute path, or Agent brief fallback: unavailable. when a block has no saved file. Read the fallback only if the inline block is missing, incomplete or names a different agent or job. If recovery fails, report the missing brief before starting. With no block, put Agent brief: none. and no file line.',
       'When waiting is not empty, do not spawn the agent: it says that the same agent is already working on this job (wait for its hand-back, never start a second one) or that a blocking question of the person is still open (wait for the answer).',
-      'Returns jobId, brand, agent, count, ids, messages (id, text, at), answers, block, which is null when no message is waiting, nothing was answered and the brand library is empty, briefFile (null if absent or saving failed), and waiting (plain sentences). Onboarding briefs have no job-folder fallback. Changes nothing except refreshing inputs/answers.json and inputs/agent-brief-<agent>.md.',
+      'Returns jobId, brand, agent, count, ids, messages (id, text, at, and about when the person sent it from one frame or file, for example Frame 3), answers, block, which is null when no message is waiting, nothing was answered and the brand library is empty, briefFile (null if absent or saving failed), and waiting (plain sentences). Onboarding briefs have no job-folder fallback. Changes nothing except refreshing inputs/answers.json and inputs/agent-brief-<agent>.md.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -169,8 +170,10 @@ export const agentTools = [
         return { jobId: args.jobId, brand: args.brand, agent: args.agent, count: 0, ids: [], messages: [], answers: [], block: block || null, onboarding: true };
       }
       const job = jobFor(root, args);
+      // The Director that holds the job keeps it while it briefs helpers during long work. This never takes the claim.
+      refreshClaim(jobClaimFile(job.dir), windowSessionId());
       const waiting = pendingMessages(job.dir, args.agent);
-      const messages = waiting.map(({ id, text, at }) => ({ id, text, at }));
+      const messages = waiting.map(({ id, text, at, about }) => ({ id, text, at, ...(about ? { about } : {}) }));
       const answers = syncJobAnswers({ root, jobId: job.jobId });
       const out = { jobId: args.jobId, brand: args.brand, agent: args.agent, count: messages.length, ids: messages.map(item => item.id), messages, answers };
       // Messages for the Director are for the chat itself, so they have no spawn prompt to ride in.
@@ -183,10 +186,11 @@ export const agentTools = [
   defineTool({
     name: 'pipeline_agent_reply',
     description: [
-      'Answer a message the person left on the board for an agent, in one plain line of at most 200 characters, then return that job\'s board documents to write in one ArtifactData batch.',
-      'You, the Director, reply to every message addressed to you.',
-      'For another agent, reply only when you cannot pass the message on (set close to true) or the message asks for something that needs the person\'s own click on the board.',
-      'A message that asks you to approve, spend or post gets a reply pointing to the board control; never act on it.',
+      'Record a reply in one agent\'s thread on the board, then return that job\'s board documents to write in one ArtifactData batch.',
+      'For the Director\'s own thread, reply to every message addressed to you in one plain line of at most 200 characters.',
+      'For a specialist, record word for word the reply it wrote under "Reply to the person" in its hand-back (at most 600 characters, about its own work). The server refuses a specialist reply that asks the person to approve, pay, post or change the plan: those go to the person as one card from you, with pipeline_board_ask, not as a reply.',
+      'Pass asks true when the reply waits on the person\'s answer, so the message reads "Needs your answer" until they write again.',
+      'When you cannot pass a message on, reply for that agent with close set to true. A message that asks you to approve, spend or post gets a reply pointing to the board control; never act on it. Pass fromDirector true when the words are your own and not a specialist\'s hand-back: your own words may point to a card.',
       'Without messageId it answers the oldest message that has no reply. Returns jobId, brand, agent, messageId, closed, projectionFile and documents.',
     ].join(' '),
     inputSchema: {
@@ -196,8 +200,10 @@ export const agentTools = [
         jobId: string,
         agent: { ...string, description: 'The agent the message was addressed to.' },
         messageId: { ...string, description: 'The message to answer. Defaults to the oldest one with no reply.' },
-        text: { type: 'string', maxLength: 200, description: 'One plain line, without file names, ids or codes.' },
+        text: { type: 'string', maxLength: SPECIALIST_REPLY_LIMIT, description: 'One plain paragraph without line breaks, file names, ids or codes: at most 200 characters in the Director\'s thread, 600 in a specialist\'s.' },
         close: { type: 'boolean', description: 'True when the message will not be passed on.' },
+        asks: { type: 'boolean', description: 'True when the reply asks the person something about that agent\'s own work and waits for the answer.' },
+        fromDirector: { type: 'boolean', description: 'True when the words are your own, as the Director, and not a specialist\'s hand-back.' },
       },
       required: ['brand', 'jobId', 'agent', 'text'],
       additionalProperties: false,
@@ -205,9 +211,10 @@ export const agentTools = [
     handler: async (args, { workspace }) => {
       const root = local(workspace);
       jobFor(root, args);
-      const problem = replyProblem(args.text) ?? plainWordsProblem(args.text);
+      const fromDirector = args.fromDirector === true || args.close === true;
+      const problem = replyProblem(args.text, args.agent, { fromDirector }) ?? plainWordsProblem(args.text);
       if (problem) throw new InvalidInputError(problem);
-      const saved = recordAgentReply({ root, brand: args.brand, jobId: args.jobId, agent: args.agent, messageId: args.messageId ?? null, text: args.text, close: args.close === true });
+      const saved = recordAgentReply({ root, brand: args.brand, jobId: args.jobId, agent: args.agent, messageId: args.messageId ?? null, text: args.text, close: args.close === true, asks: args.asks === true, fromDirector });
       return { ...saved, brand: args.brand, ...jobDocuments(root, args.brand, args.jobId) };
     },
   }),

@@ -8,8 +8,9 @@
 // in <brand folder>/onboarding/agents.jsonl; that run has no board messages and no board-sync reminder.
 // It protects no money: it always exits 0 and fails open. It says these things: the board-sync reminder, the one refusal of a
 // spawn that leaves out the messages the person left for that agent (see server/pipeline/agent-messages.mjs), the one refusal of a
-// second run of a single-run stage agent while the first is still working on the same job, and the refusal of a writing agent
-// (Creative Director, Scriptwriter, Copywriter) while a blocking question of the job is still open.
+// second run of a single-run stage agent while the first is still working on the same job, the refusal of a writing agent
+// (Creative Director, Scriptwriter, Copywriter) while a blocking question of the job is still open, and the refusal of every
+// dispatch on a job that another window holds as its Director.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -24,6 +25,8 @@ import {
 import {
   claimGuardRefusal, deliveredBy, idsInPrompt, markMessagesDelivered, pendingMessages, DIRECTOR,
 } from '../../server/pipeline/agent-messages.mjs';
+import { jobHeldByOtherDirector } from '../../server/pipeline/board-freshness.mjs';
+import { jobClaimFile, noteOnJob, readClaimRecord, refreshClaim } from '../../server/pipeline/session-claims.mjs';
 
 const openQuestions = createRequire(import.meta.url)(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pipeline', 'scripts', 'lib-open-questions.js'));
 
@@ -208,16 +211,53 @@ function blockingQuestionGuard({ root, job, agent }) {
   }
 }
 
+const ANOTHER_DIRECTOR = 'Another Director is running this job. Read the job first with pipeline_job_read; stop only if that is refused.';
+
+/**
+ * PreToolUse: refuse any dispatch on a job that another window still holds as its Director (one Director per job, see
+ * runtime.takeJobRunner). Read only: it takes nothing. The words are the ones the job tools give the second window. Without a
+ * session id nothing can be told apart, so nothing is refused. Returns a deny output object, or null.
+ */
+function anotherDirectorGuard({ job, event }) {
+  if (job.brandOnly) return null;
+  try {
+    const sessionId = word(event.session_id);
+    if (!jobHeldByOtherDirector(job, sessionId)) return null;
+    // A server that was given no host session id made one up (window-<pid>-...): that can never equal this event's id, so it says nothing
+    // until the window's hook id is stamped on the claim as a second id (session-bind.mjs), which then tells the windows apart.
+    const claim = readClaimRecord(jobClaimFile(job.dir));
+    if (/^window-\d+-/.test(String(claim?.sessionId ?? '')) && !claim?.hookSessionId) return null;
+    noteOnJob(job.dir, 'second_director', 'A second Director tried to start a helper on this job and was turned away, because another Director is running it.');
+    return denial(ANOTHER_DIRECTOR);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A dispatch from the window that holds the job's Director claim is a sign of life: the claim moves forward, so a Director that runs
+ * a long time between job tools never lapses. Only the holder's own window can (its id is the claim's id or the hook id stamped on it).
+ */
+function renewDirectorClaim({ job, event }) {
+  try {
+    const id = word(event.session_id);
+    const file = jobClaimFile(job.dir);
+    const held = job.brandOnly || !id ? null : readClaimRecord(file);
+    if (held && (held.sessionId === id || held.hookSessionId === id)) refreshClaim(file, held.sessionId);
+  } catch { /* a claim that cannot be renewed goes stale by itself */ }
+}
+
 // ---------------------------------------------------------------------------
 // Agent tool events
 // ---------------------------------------------------------------------------
 
 function onDispatch({ root, job, agent, input, event }) {
-  const refusal = blockingQuestionGuard({ root, job, agent }) ?? deliveryGuard({ root, job, agent, input, event }) ?? openRunGuard({ root, job, agent, event });
+  const refusal = anotherDirectorGuard({ job, event }) ?? blockingQuestionGuard({ root, job, agent }) ?? deliveryGuard({ root, job, agent, input, event }) ?? openRunGuard({ root, job, agent, event });
   if (refusal) {
     process.stdout.write(JSON.stringify(refusal));
     return;
   }
+  renewDirectorClaim({ job, event });
   const toolUseId = word(event.tool_use_id);
   const background = input.run_in_background !== false;
   appendAgentLine(job.dir, {

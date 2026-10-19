@@ -71,6 +71,10 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/publish-post.mjs", "timeout": 30 }]
       },
       {
+        "matcher": "^mcp__.+__(create_image_job|create_video_job)$",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/studio-post.mjs" }]
+      },
+      {
         "matcher": "^(Agent|Task)$",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/forward.mjs\" hooks/agent-run.mjs", "timeout": 15 }]
       }

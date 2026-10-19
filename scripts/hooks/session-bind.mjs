@@ -1,4 +1,4 @@
-import { asObject, jobFromDir, parseToolResponse, resolveWorkspaceRoot, toolBase, writeSessionBinding } from '../../server/pipeline/facts.mjs';
+import { asObject, jobAt, jobFromDir, parseToolResponse, resolveWorkspaceRoot, toolBase, writeSessionBinding } from '../../server/pipeline/facts.mjs';
 
 const INPUT_LIMIT = 16 * 1024 * 1024;
 const BIND_TOOLS = new Set([
@@ -9,7 +9,22 @@ const BIND_TOOLS = new Set([
   'pipeline_music_add', 'pipeline_music_choose', 'pipeline_library_add', 'pipeline_combine_set', 'pipeline_combine_takes', 'pipeline_handoff_post_prepare', 'pipeline_handoff_post_return',
 ]);
 
+// The server takes a job's Director claim under its own session id when these two tools run, and this hook fires only when they succeeded.
+const CLAIM_TOOLS = new Set(['pipeline_job_read', 'pipeline_job_create']);
+
 const text = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+// After /clear, /resume or a fork the server keeps the id it started with while the hooks get a new one: put the hook's id on the claim too.
+async function stampClaim(root, ref, sessionId) {
+  try {
+    const job = jobAt(root, ref.brand, ref.jobId);
+    if (!job) return;
+    const { stampJobClaimSession } = await import('../../server/pipeline/board-freshness.mjs');
+    stampJobClaimSession(job, sessionId);
+  } catch {
+    // the claim stays as it was
+  }
+}
 
 async function readEvent() {
   let raw = '';
@@ -62,6 +77,7 @@ async function main() {
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root) return;
   writeSessionBinding({ root, sessionId: event.session_id, brand: ref.brand, jobId: ref.jobId });
+  if (CLAIM_TOOLS.has(toolBase(event.tool_name))) await stampClaim(root, ref, event.session_id);
 }
 
 main().catch(() => null).finally(() => {

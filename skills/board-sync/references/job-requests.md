@@ -14,7 +14,7 @@ Before landing a kind-less `create_job`:
    Right after the apply, ask the pipeline question on that job with `pipeline_board_ask` and its `jobId`, with the likeliest pipelines' plain names or answers as options and a typed answer, write the returned `documents`, and say the same question in chat, as new-job's Pick the pipeline from the person's words describes.
    Nothing is planned or started until the answer sets the pipeline with `pipeline_intake_update`.
 2. Put the pipeline's `kind` and, in `kindReason`, one short plain sentence of why into `args.job`, with every other field the words, the links and the brand profile state or clearly imply, so the job routes the moment it is created.
-3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand in Needs you and in chat together, with the ready brands as options.
+3. When `pipelines_list` says `Needs a brand: yes` and `args.brand` is empty, use the brand without asking when exactly one brand is ready; otherwise ask which brand with `pipeline_board_ask` (one card, no job yet) and in chat together, with the ready brands as options.
    Land the request with `args.brand` set to the brand's slug and `args.brandName` to its name, from the person's answer or the one ready brand, and nothing else.
    A pipeline that lists no brand needs none: land without one.
    A landing that fails with the brand line ("A post or campaign needs a brand") means this step was skipped: ask the brand question, then land again.
@@ -22,7 +22,7 @@ Before landing a kind-less `create_job`:
    Do not publish the board between landing and applying: the board must never show a question the brief already answers.
 
 An older request that does carry a `kind` is landed the same way, with `kindReason` added.
-For a `publish_post` request, the box takes no files: after the apply, ask for the files in chat if the person has not given them, and add them with `pipeline_post_files_add`, as new-job describes.
+For a `publish_post` request, the box takes no files: after the apply, if the person has not given them, ask for the files with `pipeline_board_ask` (that `jobId`, `wantsUpload` with `type` picture or video) and the same question in chat, and add them with `pipeline_post_files_add`, as new-job describes.
 A request never carries a file path from the person's computer.
 
 If the applied job's route blocks with "a photo of the product" among its blockers and the brief gave no photo, do not publish or ask for one yet.
@@ -70,7 +70,8 @@ After a successful apply, publish, then continue the job as for `continue_job`.
 A comment that says the job is not the kind the person meant, for example 'This is not the kind of job I meant for "Serum Reel". Please ask me what I want.', comes from the "Not right? Tell Claude" button under a job's title.
 The comment names the job and carries its id in brackets: find the job by that id.
 Hold that job: do no further work on it (no research, drafting, making, checking or posting) until the person decides, and answer any decision it is waiting on only if the person asks.
-Ask what they want in Needs you and in chat together, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
+Ask what they want with `pipeline_board_ask` for that job (`jobId` set) and in chat together, never only in chat, with the names of the likely pipelines from `pipelines_list` as the options and a typed answer, and name the job in the question.
+A chat answer is recorded with `pipeline_board_answer`, a board answer arrives as `answer_question`, and the first one wins.
 When the answer is a pipeline and the job has not been planned yet, call `pipeline_intake_update` with a patch of `kind` and a new `kindReason`, then let the job carry on.
 When it has been planned, its pipeline cannot change: only after the person has chosen another pipeline, create a new job from the same words with it, as new-job describes, and say in one plain line that the first job stays on the board as it was and is not being worked on.
 Never start a second job without that answer, and never cancel or edit the first.

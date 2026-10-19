@@ -35,6 +35,10 @@ The producer runs as a helper and has no chat with the person.
 It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's "Approve and post now", "Approve and schedule", "Approve and save as a draft" or "Approve and download" click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, and name the question in its hand-back.
 The main session (the Director's chat) says the same one line in chat and records a chat answer with `pipeline_board_answer`; a board answer arrives as an `answer_question` request.
 The main session never posts a second card for a question the producer already posted.
+The Director asks the person with `pipeline_board_ask`, never only in chat: one card, shown the same in Needs you, on the job page and in the Director's chat, and closed in all three when it is answered anywhere.
+Pass the `jobId` for any question about a job, and `about` (the file in the job and its revision, for example `drafts/D1/storyboard.md` at revision 3) when the question is about one file.
+The first answer wins.
+When the main session records a chat answer with `pipeline_board_answer` the moment it is given and it returns `alreadyAnswered`, say its message in one line ("Answered on the board at 3:42 pm"), act on the saved answer and do not ask again.
 
 ## Running the job
 
@@ -43,6 +47,11 @@ Read pipeline/agents/producer.md as the canonical role contract.
 Resolve CLAUDE_PLUGIN_ROOT to the installed plugin's pipeline directory when following that contract.
 
 Use the local runtime and pipeline tools as the entry boundary.
+
+Only one Director runs a job at a time.
+When a call is refused with "Another Director is running this job", another chat has it: dispatch nothing, change nothing on the job, say in your hand-back, in one plain line, that another Director is already running it, and stop.
+Do not retry the call or work round the refusal; a chat that has gone quiet loses the job by itself and the next call then goes through.
+During long waits call `pipeline_job_read` at least every 20 minutes so this chat keeps the job.
 
 Reuse the current job snapshot supplied by the caller before dispatching work.
 
@@ -76,7 +85,20 @@ The agent reads that file only if the inline block is missing, incomplete or nam
 If recovery fails, report the missing brief before starting.
 When the tool returns no block, put `Agent brief: none.` after the job line and give no file line.
 When it returns `waiting`, do not spawn: the same agent is already working on this job, or a question of the person's that its work depends on is still open. Wait, as "One run at a time" and "Questions before the ideas" say.
-Answer every message addressed to the Director with `pipeline_agent_reply`.
+Answer every message addressed to the Director with `pipeline_agent_reply`, in one line of at most 200 characters.
+
+The person can also talk to any employee in that employee's own thread.
+Their message reaches the employee in its brief block, as before, and an `about` ("Frame 3") says which frame or file it is about.
+When a message waits for an employee that is not running, and the job is not finished, spawn that employee now for the message alone (`pipeline_agent_brief`, then the spawn with its block), unless the brief returns `waiting`.
+Keep one voice for decisions: an employee answers about its own work and changes its own work, and nothing else is settled there.
+When its hand-back has `Reply to the person:`, record those words unchanged with `pipeline_agent_reply` for that employee (at most 600 characters), with `asks` true when the reply asks the person something about its own work.
+When its hand-back has `Pass to the Director:`, the change touches the plan, the price, the posting or another person's work, so it is yours: do not record it as that employee's reply.
+Raise one card for it with `pipeline_board_ask` and `about` set to the file and revision the person's message named, else the latest file that employee made, and word the card in plain words that name the thing ("Frame 3: calmer how?").
+Record one reply per message in that thread, never two: the employee's `Reply to the person:` words when there are any; otherwise one plain line in the employee's voice such as "I passed this on to the Director; the question is on the board.", with `asks` left false, since the card carries the wait.
+When you write your own words in an employee's thread, for example to point the person at a card, pass `fromDirector: true` so the reply is checked as yours, not the employee's.
+The same card shows in that thread, in your thread and in Needs you, and the first answer closes it everywhere.
+When a message has an `about`, name the thing by its label ("Frame 3") in your reply and on the card.
+A specialist reply that asks for an approval, credits, a price, posting or a change to the plan is refused by the server: raise the card instead of rewording it.
 
 After the concepts decision, read its note (the `comment` of the latest `approvals/concept-*.json`).
 When it has a `Strategy picks:` line or `Your own industry|funnel stage|ad style|format|CTA: "..."` lines, add those lines unchanged to the spawn prompt of every agent from the script on (scriptwriter, creative director, copywriter, videographer, editor).
@@ -114,6 +136,23 @@ Fix video problems yourself or through the videographer; the Director never goes
 
 After the finish, report what the video really has (captions, music or "no music", end card), never what was planned.
 
+## Handing work on
+
+Work never goes straight from one employee to the next.
+A video post's plan has two Editor check rows: "Editor check (script)", before the storyboard is shown, and "Editor check (post text)", once the final post is approved and before the posting plan is built.
+At each one, in this order:
+1. Confirm the file is on disk and is the current revision (`collect-artifacts.js`, then the snapshot's revision).
+2. Spawn the Editor for that row with the file, the brief and the idea the person picked. It writes `validation/handoff-script.md` or `validation/handoff-post-text.md` and answers GO or NEEDS REVISION, with one plain reason and what the fix would change.
+3. On GO, run `node "${CLAUDE_PLUGIN_ROOT}/pipeline/scripts/set-state.js" {brand} {job-id} handoff passed {author} {next} --by editor --note "Script"`. `{author}` is the employee who wrote it (the plan row's agent), `{next}` is `videographer` for the script and `publisher` for the post text, and the note is "Script" or "Post text".
+4. On NEEDS REVISION, run the same command with `handoff back {author} --by editor --note "{reason}"`. Give the reason in plain words under 100 characters ("too long for 22 seconds"). Send the work back to its author once with that reason, then check the new version the same way; the Editor rechecks only what changed.
+5. After either call, write the job's board documents as board-sync's Agent Box section says.
+
+The command adds the lines to the job's stage log and leaves its state alone.
+The room shows "Script checked by the Editor" and "Handed to the Videographer" for a pass, and "Back to the Scriptwriter: too long for 22 seconds" for a send-back.
+Each row of the log carries the plain line and a bracket the room reads (`handoff=checked`, `handoff=handed` or `handoff=back`, and `with=` the agents it is about), so never write one by hand.
+Raise a card only when the Editor says the fix changes the idea, the price or the posting.
+Any other fix goes back to its author without asking the person.
+
 ## Questions before the ideas
 
 Right after the strategist's brief is verified, read its `# Supply questions` and sort every one by what its answer changes.
@@ -131,6 +170,10 @@ After the concept pick and before the Creative Director writes the script and st
 For a video, ask the sound plan once with `pipeline_board_ask`, as one card, before the Creative Director writes the script and storyboard: "Voice-over: yes or no, and which voice?" (options Yes and No, with a text box for the voice), "Music: a track from your library, your own file, one made for you, or none?" and "Captions: from the voice-over, from the script, or none?". Pass the voice-over answer to the Creative Director so the script and clip lengths fit it. The storyboard is refused for a video until it carries the voice-over answer. Record the whole plan with `pipeline_finishing_choice` (`combine`) before presenting the storyboard; no other stop asks for it later.
 
 Do not repeat research, provider checks, media extraction, or generation when a current artifact already satisfies the active task.
+
+A picture or clip is never paid for twice.
+When a make call is refused because that item "has already been made" or "is still being made", nothing more was charged: use the one that exists (check on it with `wait_for_job`, or save it with `pipeline_generation_land`) and never make it again to get round the refusal.
+After an interrupted session, look for the item's existing record before making it again; only a redo the person asked for (a new version inside the redo allowance) or a try after a failure that made nothing is made again.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.
 
@@ -150,7 +193,7 @@ The media stage has these stops, and only the Director presents them (never a he
 Do not make a video clip before the pictures are approved, and make the test clip first: the rest wait for its approval. Once every clip is made and checked, call `pipeline_clips_signoff`; it refuses until every clip is made and the test clip is approved. The stitch script refuses before the clips are signed off, so stopping is not optional.
 After the sign-off, make the priced voice-over lines and music, join the clips, finish them with `finish-video.py` and present the finished video as the rough cut (`gate: "cut"`), then wait. The join is plain: no text is burned into it; the script's on-screen text is saved as `media/D{n}/onscreen.json` and drawn by `finish-video.py`. The rough cut card is the finished video with Approve and Ask for changes and a note; it has no combine rows. The sound plan was recorded before the storyboard; `finish-video.py` and the final post refuse without it, and when none is recorded the Director asks the one question with `pipeline_board_ask` and records it with `pipeline_finishing_choice`. A change note that only asks for captions or music records the new choice and the video is finished and shown again. Music and voice-over come from the one workspace library (`pipeline_library_list`), an upload (`pipeline_board_ask` with `wantsUpload` audio, then `pipeline_combine_set`) or ElevenLabs (priced with the clips on the storyboard card; music through `creative_generate_in_flow` with `node_type: "music"`, then `pipeline_combine_takes`, which shows several voice takes side by side on the board). Never make audio by hand.
 A change on a picture is free until the panel has had 3. A change on a clip is a redo: the Creative Director rewrites that one prompt, and the redo is made inside the allowance (two per clip, up to the extra credits the storyboard card shows) with no price tap. Beyond it, add it to the price with `pipeline_quote_save`, show the price, and make it only after the person approves it. After a redo, call `pipeline_clips_signoff` again, join, finish and show the rough cut again.
-Before pricing any clips, ask the editor for the creative rubric on the script and storyboard; a criterion under 7 goes back to the Creative Director with the editor's fix, once, before the storyboard and its price are shown. After finishing, ask for the rubric on the finished video and show its total, and the reference's when there is one, with the rough cut.
+Before pricing any clips, the Editor's script check (see Handing work on) includes the creative rubric on the script and storyboard; a criterion under 7 goes back to the Creative Director with the editor's fix, once, before the storyboard and its price are shown. After finishing, ask for the rubric on the finished video and show its total, and the reference's when there is one, with the rough cut.
 
 Verify the exact artifact paths and hashes before a decision is applied.
 

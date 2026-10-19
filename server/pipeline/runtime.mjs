@@ -32,6 +32,8 @@ import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
 
 import { BRAND_REFERENCE_KIND, saveBrandReferenceFiles } from './brand-references.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
+import { UserFacingError } from '../lib/errors.mjs';
+import { JOB_CLAIM_TTL_MS, jobClaimFile, liveClaim, noteOnJob, refreshClaim, releaseClaim, takeClaim, windowPid, windowSessionId } from './session-claims.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..', '..');
@@ -1309,6 +1311,53 @@ export function resolveJobDir(options = {}) {
   return { root, brand: brand.slug, jobId, dir };
 }
 
+// One Director per job (plan 0.19, B1.3). The window that starts running a job takes a claim kept in the job's own folder
+// (session-claims.mjs); a second window is refused in plain words and dispatches nothing. The claim follows the board window's
+// rule: it holds while its window keeps working on the job (every call here moves it forward) and lets go after
+// BOARD_OWNER_TTL_MS of silence, when the window ends, or at once when the window's process is gone (a crash never runs SessionEnd). What happened is written on the job in plain words.
+export const DIRECTOR_BUSY = 'Another Director is running this job';
+
+/**
+ * Take the job for this window, or keep it. Returns {claimed: true, takenOver} (takenOver: the earlier Director had gone quiet).
+ * Throws "Another Director is running this job" when another window holds it, and writes that on the job. Call it when a window
+ * starts running a job, before it dispatches anything or changes anything on it.
+ */
+export function takeJobRunner(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const { brand, jobId, dir } = resolveJobRef(root, options);
+  const me = options.sessionId ? String(options.sessionId) : windowSessionId();
+  const now = options.now ?? Date.now();
+  const file = jobClaimFile(dir);
+  const holder = { windowPid: windowPid() };
+  const taken = takeClaim(file, me, { ttlMs: JOB_CLAIM_TTL_MS, now, extra: { brand: brand.slug, jobId, ...holder } });
+  if (!taken.claimed) {
+    noteOnJob(dir, 'second_director', 'A second Director tried to take this job and was turned away, because another Director is running it.', { now });
+    throw new UserFacingError(DIRECTOR_BUSY, {
+      code: 'another_director',
+      fix: 'Do not dispatch any helper or change anything on this job from this chat. Tell the person once, in one plain line, that another Director is already running it, and stop.',
+    });
+  }
+  refreshClaim(file, me, { now, extra: holder });
+  if (taken.retaken) noteOnJob(dir, 'director_took_over', 'The Director that was running this job went quiet, so a new Director took it over.', { now });
+  return { claimed: true, takenOver: Boolean(taken.retaken), brand: brand.slug, jobId };
+}
+
+/** Give the job back (only the window that holds it can). */
+export function releaseJobRunner(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const { dir } = resolveJobRef(root, options);
+  return releaseClaim(jobClaimFile(dir), options.sessionId ? String(options.sessionId) : windowSessionId());
+}
+
+/** Read only: the claim of another window that still holds the job, else null. Takes nothing and writes nothing. */
+export function jobRunnerHeldByOther(options = {}) {
+  const { root } = assertLocalWorkspace(options.root);
+  const { dir } = resolveJobRef(root, options);
+  const me = options.sessionId ? String(options.sessionId) : windowSessionId();
+  const held = liveClaim(jobClaimFile(dir), { ttlMs: JOB_CLAIM_TTL_MS, now: options.now ?? Date.now() });
+  return held && held.sessionId !== me ? held : null;
+}
+
 function jobRecord(root, brand, dir) {
   const job = readJson(join(dir, 'job.json'), {});
   const jobId = job.jobId || basename(dir);
@@ -2512,7 +2561,8 @@ function loggedTimes(statusText) {
     if (cells.length < 5 || !/^\d{4}-\d{2}-\d{2}T/.test(cells[1])) continue;
     const state = cells[3].replace(/`/g, '');
     const at = isoTime(cells[1]);
-    if (state && at) out.push({ state, at });
+    // A handoff line is not a move of the job (lib-stages.js handoffRows).
+    if (state && at && !stagesRuntime.isHandoffTo(state)) out.push({ state, at });
   }
   return out;
 }
@@ -2670,6 +2720,8 @@ const STEP_INFO = Object.freeze({
   'qc and mechanical checks': ['Quality checks', 'Length, size and format checks.'],
   'qc and platform checks': ['Quality checks', 'Length, size and format checks.'],
   validate: ['Final checks', 'Facts, brand fit and platform rules.'],
+  'editor check (script)': ['Script check', 'The Editor checks the script against the brief before it moves on.'],
+  'editor check (post text)': ['Post text check', 'The Editor checks the post text before it goes to posting.'],
   'content gate': ['Final post', 'Your go-ahead on the finished post.'],
   'publish gate': ['Posting plan', 'Where and when it goes out.'],
   'hand-off': ['Getting it ready to post', 'The finished files, ready to go out.'],
@@ -2715,7 +2767,10 @@ function applyTaskStatuses(stages, planRows, state, reached, logged = []) {
   const seen = new Set((reached || []).map(planCell).filter((id) => !onFlow || (order.indexOf(id) >= 0 && order.indexOf(id) <= nowAt)));
   if (!OFF_FLOW_STATES.has(state) || state === 'COMPLETE') seen.add(state);
   let lastDone = -1;
-  const firstOfNow = onFlow || state === 'COMPLETE' ? after.indexOf(state) : -1;
+  let firstOfNow = onFlow || state === 'COMPLETE' ? after.indexOf(state) : -1;
+  // A gate's state is entered once every step that ends at it has run (the Editor's check follows the script it checks), so while
+  // the person decides, those steps are all done and none of them reads as waiting.
+  if (firstOfNow >= 0 && statesRuntime.gateOf(state)) after.forEach((id, index) => { if (id === state && planCell(planRows[index].Agent) !== 'human' && index > firstOfNow) firstOfNow = index; });
   if (firstOfNow >= 0) lastDone = firstOfNow;
   after.forEach((id, index) => { if (id && seen.has(id) && id !== state && index > lastDone) lastDone = index; });
   if (state === 'COMPLETE') lastDone = Math.max(lastDone, planRows.length - 1);
@@ -3109,7 +3164,7 @@ function listArtifacts(dir) {
   const output = [];
   const skip = new Set(['job.json', 'route.json', 'plan.md', 'task-contracts.json', 'status.md', 'events.jsonl']);
   const factFolders = new Set(['generation', 'pricing', 'messages']);
-  const factFiles = new Set(['agents.jsonl']);
+  const factFiles = new Set(['agents.jsonl', 'director-log.jsonl']);
   const visit = (current, prefix = '') => {
     let entries;
     try { entries = readdirSync(current, { withFileTypes: true }); }
