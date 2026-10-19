@@ -1,6 +1,6 @@
 ---
 name: make-image
-description: Generates the storyboard pictures through 3echo tools before the storyboard is approved, one sample first and then the rest, with no price click. Use for TO GENERATE panels or one-panel regeneration.
+description: Generates the storyboard pictures through 3echo tools before the storyboard is approved, with no price click. All at once on a video post, one sample first and then the rest on a picture-only post. Use for TO GENERATE panels or one-panel regeneration.
 metadata:
   version: 1.0.0
 user-invocable: false
@@ -9,7 +9,7 @@ user-invocable: false
 # Skill: Make image
 
 The Creative Director writes every picture prompt and the manifest items that hold them (Rules 1 to 4 and 9, and the Labelled references below, say how).
-The Director makes the sample, then the rest, lands and checks; the Director never writes or rewrites a prompt.
+The Director makes the pictures (the sample first on a picture-only post), lands and checks; the Director never writes or rewrites a prompt.
 
 ## Inputs
 
@@ -27,13 +27,13 @@ A `subject: character` job with no reference picture makes a small set of refere
 2. Find the 3Echo tools by their base name under any prefix. `list_workspaces` for the id and balance of every workspace the account can charge, then `pipeline_studio_workspaces_save` with that list. `pipeline_studio_workspace_get` for the job's current choice; pass its `workspaceId` on every call below. With no choice and more than one workspace, the person picks once on the board's price panel, or through an Inbox question asked in chat too, as board-sync's Questions in the Inbox describes; save whichever answer arrives first with `pipeline_studio_workspace_choose`.
 3. Upload the references with `import_asset_from_url` or the connector's own upload tool and record the ids in `manifest.referenceAssets` and each item's `assetIds`. Every picture attaches the same references: the brand's real photos under `brand/assets/references/` if there are any (attached to every picture by default; leave them off only when the person asks), the product photo, and any approved faces. A reference the manifest lists on only some items, such as a logo for the end card, goes only on those items.
 4. `preflight-media.js "<media-url>"` on an existing asset; exit 0 is the permission to generate.
-5. **Sample first.** Pick the one panel that best tests the style (the peak beat, or the one with the person, the place and the product together). `create_image_job` (`workspaceId`, `prompt`, `aspectRatio`, `assetIds`, `idempotencyKey` set to the job key `{job-id}-D{n}-P{id}-v1`), then `wait_for_job`. The hook lands the file and records the credit the moment a download link comes back; call `get_asset` yourself only when one did not. The first storyboard picture made is the sample: the guard holds every other panel until the person approves it.
+5. **Sample first.** On a video post skip this step: there is no sample picture, every panel's picture is made at once in step 6 and the test clip is the sample (`make-video`). On a picture-only post pick the one panel that best tests the style (the peak beat, or the one with the person, the place and the product together). `create_image_job` (`workspaceId`, `prompt`, `aspectRatio`, `assetIds`, `idempotencyKey` set to the job key `{job-id}-D{n}-P{id}-v1`), then `wait_for_job`. The hook lands the file and records the credit the moment a download link comes back; call `get_asset` yourself only when one did not. The first storyboard picture made is the sample: the guard holds every other panel until the person approves it.
 Write the documents (`pipeline_status`) so the board shows the sample, say what you saw, and ask for the style check on the board and in chat the same as every other decision (`waitingOn` is `sample image`).
 End the turn: wait for yes before making the rest, in chat or on the board.
 A yes typed in chat is recorded with `pipeline_chat_decision` (gate `sample`, the person's words as `confirmedBy`) after the sample was presented with `pipeline_review_present`; without it the guard keeps holding the rest.
 After a request for changes, redo the sample first (a new version of the same panel).
 6. **The rest.**
-   After the sample is approved, make a picture for every other panel that needs one, same job key pattern with `v1`, same preamble, continuity, references and negatives.
+   On a video post, make a picture for every panel that needs one now. On a picture-only post, after the sample is approved, make a picture for every other panel that needs one, same job key pattern with `v1`, same preamble, continuity, references and negatives.
    Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item.
    A picture whose 3Echo job failed or was cancelled made nothing and spent nothing.
    Never make it again under the same key (3Echo hands back the same failed job).
@@ -41,7 +41,7 @@ After a request for changes, redo the sample first (a new version of the same pa
    On "Try again", call `pipeline_generation_retry` with that item and the answer as `confirmedBy`.
    On "Leave it out", carry on without it and say what changes.
 7. `python "${CLAUDE_PLUGIN_ROOT}/scripts/contact-sheet.py" "media/D{n}" --cols 4`.
-8. Present the storyboard (`pipeline_review_present`, gate `storyboard`). It lists every panel with its picture, and is refused while a panel that needs a picture has none or the voice-over question is unanswered. Approving it approves those pictures as the start pictures for the clips, so there is no second pictures review.
+8. Present the storyboard (`pipeline_review_present`, gate `storyboard`). It lists every panel with its picture, and is refused while a panel that needs a picture has none or the voice-over question is unanswered. Approving it approves those pictures as the start pictures for the clips, so there is no second pictures review. On a video post the clips, voice and any music are priced first (`make-video` step 5), so the same card carries the price.
 
 A carousel is made the same way: one picture per slide, 1 credit each.
 The sample is the slide that best tests the style, and every slide repeats the same style preamble, continuity and ratio, so the set looks like one piece.
@@ -61,7 +61,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 6. Validate every landed file: opens with Pillow, short side 200 px or more.
 7. Look at every panel; say what you saw in one line each (unrequested brands, a redesigned product, a beat not shown) and land it anyway. The person judges, picks the panel and writes the note; nothing is redone on your own reading.
 8. Verify what a real place or landmark looks like first.
-9. UGC stills name camera physics, not quality: front phone camera, 26 mm lens, deep focus, unbalanced exposure, mild grain, awkward crop; no studio lighting, stock look, perfect skin, centred framing or grading.
+9. UGC stills name camera physics, not quality: front phone camera, 26 mm lens, deep focus, unbalanced exposure, awkward crop; no studio lighting, stock look, perfect skin, centred framing or grading. Unless the brand or brief sets another look, the default is an everyday phone photo in daylight with real, ordinary clutter in the scene.
 10. `assetIds` takes 16 references. `aspectRatio` is one of `1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9`.
 11. A redo is one panel: the Director spawns the Creative Director once with the person's note and that panel, which rewrites that one prompt in the manifest. The redo is a fresh job key with `v` increased and needs no price approval: it is the panel's second or third picture. Only the ids in `regenerate`, the note verbatim in its prompt (the Creative Director puts it there), then the storyboard again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A panel's fourth picture is refused until a price for it is saved (`pipeline_quote_save`, the new key) and approved on the board.
 12. Cutting a panel returns to the storyboard gate. Stills for a video job is a change of deliverable: `change-deliverable.js`, in their words.

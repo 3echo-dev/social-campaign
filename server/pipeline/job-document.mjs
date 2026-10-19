@@ -21,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords } from './facts.mjs';
+import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, clipRedoAllowance, finishingRecord, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords } from './facts.mjs';
 import { labelCheckStatus, readLabelCheck } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, readJobRecipes } from './recipe.mjs';
 import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, validZone, whenText } from './publish-preflight.mjs';
@@ -1467,6 +1467,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   if (gate === 'cut' && root) {
     try { const combine = combineSection({ root, brand: project.brand, jobId: project.jobId }); if (combine) document.combine = combine; } catch { /* the card falls back to the older buttons */ }
   }
+  // The sound is chosen before the storyboard: the storyboard card shows what was recorded, read only.
+  if (gate === 'storyboard') {
+    try { const chosen = finishingRecord({ dir })?.combine; if (chosen && typeof chosen === 'object') document.combine = { brand: project.brand, chosen }; } catch { /* the card shows no sound line */ }
+  }
   const recipes = recipesSection(root, project.brand, project.jobId);
   if (recipes) { document.recipes = recipes; document.recipeCatalog = RECIPE_CATALOG; }
 
@@ -1525,7 +1529,7 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const folder = posix.dirname(path);
     const stem = basename(path, extname(path));
     const prefix = folder === '.' ? '' : `${folder}/`;
-    const candidates = [stem, `${stem}-poster`, `${stem}.poster`, 'poster'].flatMap(name => ['.jpg', '.jpeg', '.png', '.webp'].map(ext => `${prefix}${name}${ext}`));
+    const candidates = [`${stem}-poster`, `${stem}.poster`].flatMap(name => ['.jpg', '.jpeg', '.png', '.webp'].map(ext => `${prefix}${name}${ext}`));
     return candidates.find(candidate => shaOf.has(candidate)) || null;
   };
 
@@ -1730,13 +1734,15 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
         }),
       };
     }
-    if (gate === 'price' && reviewPaths.has(FACT_FILES.quote)) {
+    // The price card, and the storyboard card when the price waits on it: the same price block, built here once.
+    if ((gate === 'price' || gate === 'storyboard') && reviewPaths.has(FACT_FILES.quote)) {
       const value = json(FACT_FILES.quote);
       if (value) {
         const job = { dir };
         const made = new Set(readRecords(job).filter(record => record.type === 'create').map(record => canonicalJobKey(record.key)).filter(Boolean));
         document.review.quote = { path: FACT_FILES.quote, sha256: registered.get(FACT_FILES.quote), changed: changedSince(FACT_FILES.quote), ...parseQuote(value, { made, estimates: readEstimates(job) }) };
         if (studioWorkspace) document.review.studioWorkspace = studioWorkspace;
+        document.review.redo = clipRedoAllowance(job, value);
       }
     }
     const posts = paths.filter(path => /(^|\/)post\.md$/i.test(path)).sort().slice(0, MAX_POSTS);

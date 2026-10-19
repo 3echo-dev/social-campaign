@@ -3,6 +3,7 @@
 Read by `skills/board-sync/SKILL.md`. Each section is applied exactly as written here.
 
 For brand creation, onboarding, new jobs, or local imports, apply immediately with `pipeline_board_request_apply` and the requestId and confirmedBy.
+Every request on this page comes from the board, so land it with `pipeline_board_request_land` and `from` set to `board`.
 Brand onboarding on the board is three requests, and research starts only on the third (the steps are in `skills/onboard-brand/SKILL.md`, "The three steps"):
 - `create_brand` (`name`) is the person naming a new brand. Apply it, publish the workspace projection and say in one line that the brand is created and its page is ready for details. Do not start research.
 - `save_brand_details` (`brand`, `profile`, optional `kit`) is the person saving what they typed on the brand's page, as often as they like. Apply it and publish the workspace projection. Do not start research, and say nothing about a save that worked. If the apply refuses it, decline it with the plain line.
@@ -34,4 +35,4 @@ Land it, then call `pipeline_folder_pick` with its `requestId` and `confirmedBy`
 When its `status` is `applied`, write its `artifactReceipt` to the request's board document, publish the workspace projection and follow section 4d of `skills/onboard-brand/SKILL.md`.
 When it is `cancelled`, `timeout`, `unavailable` or `refused`, the tool has already declined the request with a plain line (the person closed the dialog, left it open too long, no dialog can open on this computer, or the folder was refused): write the `artifactReceipt` it returns, publish the workspace projection and say in one line what happened.
 When it is `handledElsewhere`, another window has the request: say nothing.
-When the call was stopped (`stopped`), the request is still waiting: leave it and land it again on the next pass.
+When the call was stopped (`stopped`), the request is still waiting (marked `requested` or `received`): leave it and land it again on the next pass.

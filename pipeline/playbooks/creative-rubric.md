@@ -22,8 +22,8 @@ Score with evidence: the line, the timestamp, the measured number.
 ## When it runs
 
 1. Concepts: the creative director pre-scores each concept on criteria 1 to 6 and recommends the highest, not the closest copy of a reference.
-2. Storyboard: before the price, a reviewer who did not write it scores the script and storyboard on all 10 (sound and captions from the plan). Any criterion under 7 goes back to the creative director with the fix named; it never reaches the price.
-3. Finished video: after finishing, score the file with measured inputs (hard cuts per minute, the longest silence, whether the captions follow the speech) and show the score to the person at the finish review, next to the reference's score when there is a reference.
+2. Storyboard: before the price, a reviewer who did not write it scores the script and storyboard on all 10 (sound and captions from the plan). Any criterion under 7 goes back to the creative director with the fix named; it never reaches the price. The reviewer also checks variety: neighbouring panels differ in shot size, angle or place, and props or framing do not repeat across the set unless the story needs it.
+3. Finished video: after finishing, score the file with measured inputs (hard cuts per minute, the longest silence, whether the captions follow the speech) and show the score to the person with the rough cut, next to the reference's score when there is a reference.
 
 ## Rules
 

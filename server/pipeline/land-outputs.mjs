@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { FetchFailure, GENERATED_MEDIA_MAX_BYTES, boundedFetch } from '../social/backends/web.mjs';
 import { ELEVEN_LABS, appendLanded, finishMediaIfLanded, isFetchableUrl, isLanded, jobAt, parseJobKey, readLanded, readRecords, THREE_ECHO } from './facts.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
-import { checkGeneratedMedia, requestedFor } from './generated-media-check.mjs';
+import { checkGeneratedMedia, kindOfFile, manifestItemFor, requestedFor } from './generated-media-check.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const MIME_EXTENSIONS = Object.freeze({
@@ -71,14 +71,15 @@ function isHighestVersion(job, parsed) {
     entry.panel === parsed.item && Number(entry.version) > parsed.version);
 }
 
-function slotFiles(dir, item) {
+// Only files of the same kind (picture or clip) as `kind`, so promoting P1.mp4 never moves P1.png aside.
+function slotFiles(dir, item, kind) {
   let names = [];
   try {
     names = readdirSync(dir);
   } catch {
     return [];
   }
-  return names.filter(name => name.startsWith(`${item}.`) && /^[A-Za-z0-9]+$/.test(name.slice(item.length + 1)) && isFile(join(dir, name)));
+  return names.filter(name => name.startsWith(`${item}.`) && /^[A-Za-z0-9]+$/.test(name.slice(item.length + 1)) && kindOfFile(name) === kind && isFile(join(dir, name)));
 }
 
 function isFile(file) {
@@ -99,14 +100,8 @@ function failedCheckBefore(job, assetId) {
 
 const fileHash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 
-function manifestFileFor(job, parsed) {
-  try {
-    const manifest = JSON.parse(readFileSync(join(job.dir, 'drafts', parsed.deliverable, 'generation-manifest.json'), 'utf8'));
-    const hit = (Array.isArray(manifest?.items) ? manifest.items : []).find(entry => typeof entry?.file === 'string' && basename(entry.file, extname(entry.file)) === parsed.item);
-    return hit ? hit.file : null;
-  } catch {
-    return null;
-  }
+function manifestFileFor(job, parsed, fileKind) {
+  return manifestItemFor(job.dir, parsed.deliverable, parsed.item, fileKind).hit?.file ?? null;
 }
 
 const IMAGE_FORMATS = new Set(['png', 'jpg', 'jpeg', 'webp']);
@@ -128,7 +123,7 @@ function convertToTemp(job, dir, item, source, targetExt) {
 
 function promoteFile(job, parsed, key, source) {
   const extension = extname(source).slice(1).toLowerCase();
-  const manifestFile = manifestFileFor(job, parsed);
+  const manifestFile = manifestFileFor(job, parsed, kindOfFile(source));
   const wanted = manifestFile ? extname(manifestFile).slice(1).toLowerCase() : null;
   const dir = join(job.dir, 'media', parsed.deliverable);
   mkdirSync(dir, { recursive: true });
@@ -156,7 +151,7 @@ function promoteFile(job, parsed, key, source) {
     const promotedSha256 = fileHash(temp);
     const promotedBytes = statSync(temp).size;
     const moved = [];
-    for (const name of slotFiles(dir, parsed.item)) {
+    for (const name of slotFiles(dir, parsed.item, kindOfFile(`x.${targetExt}`))) {
       const own = name.slice(parsed.item.length + 1);
       if (own === targetExt && fileHash(join(dir, name)) === promotedSha256) continue;
       let k = 1;
@@ -232,7 +227,7 @@ export function repairPromotions(job) {
     const olderShas = new Set(older.flatMap(shas));
     const knownSizes = new Set([entry, ...older].flatMap(sizes));
     let due = true;
-    for (const name of slotFiles(dir, parsed.item)) {
+    for (const name of slotFiles(dir, parsed.item, kindOfFile(entry.file))) {
       let size;
       try {
         size = statSync(join(dir, name)).size;
@@ -391,7 +386,7 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
       renameReplacing(temp, target);
       const sha256 = createHash('sha256').update(got.bytes).digest('hex');
       // Is it the shape and length the job asked for? Only a clear mismatch stops it; a check that cannot run is noted and the file goes on.
-      const check = provider === THREE_ECHO && parsed ? checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item)) : { verdict: 'unverified', why: 'only 3Echo pictures and clips are checked' };
+      const check = provider === THREE_ECHO && parsed ? checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item, kindOfFile(target))) : { verdict: 'unverified', why: 'only 3Echo pictures and clips are checked' };
       if (check.verdict === 'mismatch') {
         // Kept on disk for the person to look at, but not copied into the media folder, so an earlier good file there stays as it is.
         // The record is a failure, so the report shows this item as failed with the reason, and nothing is made again by itself.

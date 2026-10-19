@@ -32,7 +32,7 @@ created: YYYY-MM-DD HH:MM {tz}
 **Panels:** 4 · **Runtime:** ~20s · **Revision:** 1 · **Ratio:** 9:16 (confirmed from the brief)
 
 Panel IDs are permanent. Cut P3 and the others keep their IDs; a new panel takes the next unused number. Order lives in the Sequence line.
-Every panel has a picture before this gate (one sample first, then the rest); approving the storyboard approves those pictures as the start pictures for the clips. Clips are made after.
+Every panel has a picture before this gate (all at once on a video post, where the test clip is the sample; the sample picture first, then the rest, on a picture-only post); approving the storyboard approves those pictures as the start pictures for the clips. Clips are made after.
 Spoken / on-screen cell: `Spoken: "line" / On-screen: text`, `On-screen: text` alone, or `(silent)`. With no script.md (a repurpose cut) plain text in the cell is burned as on-screen text and text in quotation marks is speech.
 
 | # | ID | Frame (TO GENERATE / ASSET: id / TO PRODUCE) | Duration (s) | Action and camera | Spoken / on-screen | Safe zone note | Your note | Keep / Edit / Cut |
@@ -54,7 +54,7 @@ Global constraints for every prompt: no readable text, no logos other than the b
 
 # Continuity
 
-Recurring subject attributes repeated verbatim in every prompt (3 to 6 disambiguating details), the setting, the light.
+Recurring subject attributes repeated verbatim in every prompt (3 to 6 disambiguating details), the setting, the light. Quote each person from the brief's Cast section.
 
 # Revision log
 

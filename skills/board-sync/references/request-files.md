@@ -6,7 +6,7 @@ If `args.kit.logo.action` is `suggested`, the person took one of the logo sugges
 If `args.kit.logo.action` is `asset`, the board already uploaded the downscaled logo (and its thumb) to the artifact's own asset store instead of inlining it, so the request carries only ids, never bytes.
 Call the Artifact tool's `read` action with `url` set to the board's artifact URL and `path` set to `args.kit.logo.assetId`; it saves the logo to a local file and returns that file's path.
 Call `read` again the same way with `path` set to `args.kit.logo.thumbAssetId` when present, for the thumbnail.
-Pass `args` to `pipeline_board_request_land` unchanged except for `kit.logo`, which becomes `{action: 'file', path: <saved logo path>, thumbPath: <saved thumb path>}`.
+Pass `args` to `pipeline_board_request_land` (`from` set to `board`) unchanged except for `kit.logo`, which becomes `{action: 'file', path: <saved logo path>, thumbPath: <saved thumb path>}`.
 Then call `pipeline_board_request_apply` with `confirmedBy` set to `board request <requestId>`, and publish the workspace projection.
 Once the apply has succeeded, delete both transit copies from the artifact's asset store with the Artifact tool's `delete` action: `url` set to the board's artifact URL and `path` set to `assetId`, then again with `path` set to `thumbAssetId`.
 This is the owner's standing instruction: the asset store is only a transit path from the board to this computer, and the logo must never remain stored on claude.ai.
@@ -14,7 +14,7 @@ If the host asks the person to confirm either delete, that is expected; do not s
 From here on the logo lives only in the local workspace, under `workspaces/<brand>/brand/assets/`, recorded in that brand's `brand-kit.json` and `profile.json` and nowhere else.
 
 Photos of the brand's world travel the same way, in `args.kit.references` (a list, optional, up to 5).
-For each item whose `action` is `asset`, call the Artifact tool's `read` action with `path` set to its `assetId`, and pass that item to `pipeline_board_request_land` as `{path: <saved path>, fileName}`.
+For each item whose `action` is `asset`, call the Artifact tool's `read` action with `path` set to its `assetId`, and pass that item to `pipeline_board_request_land` (`from` set to `board`) as `{path: <saved path>, fileName}`.
 An item whose `action` is `upload` already carries its bytes and goes through unchanged.
 After the apply has succeeded, delete each transit copy the same way as the logo's.
 A photo that cannot be saved never stops onboarding: the result says how many were saved, and the rest can be added later.
@@ -25,7 +25,7 @@ Once the tool call succeeds, delete the transit copy from the artifact's asset s
 The photo lives only under that brand's own `inputs/<brand>/`, recorded on the job as `productAsset`, and nowhere else.
 
 A reference the person added on the job page (`add_reference`, `args.reference`) travels the same way: a picture, video, audio file or add-on arrives as `action` `asset` (an `assetId` in the artifact's asset store), `upload` (`dataBase64`, only for small files) or `text` (the caption or notes text itself, nothing to download).
-For `asset`, call the Artifact tool's `read` action with `path` set to `args.reference.assetId` to save it to a local file, and pass `reference.path` as that saved path (dropping `assetId`) to `pipeline_board_request_land`.
+For `asset`, call the Artifact tool's `read` action with `path` set to `args.reference.assetId` to save it to a local file, and pass `reference.path` as that saved path (dropping `assetId`) to `pipeline_board_request_land` (`from` set to `board`).
 For `upload`, decode those bytes to a local file yourself first; never type or re-key them.
 Then apply with `pipeline_board_request_apply` like any other request, delete the transit copy from the artifact's asset store the same way as the logo's, and publish the workspace projection.
 A `create_job` request can carry `args.references`, a list of up to 8 references the person added in the new-job form, each shaped exactly like `add_reference`'s `reference`.

@@ -37,8 +37,8 @@ Follow the hand-off in `board-sync` under Decisions on the board and in chat at 
 Post one short chat summary of the same decision, naming the job's brand and title, with the same options, and say it can be answered here or on the board.
 When the person answers in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each waiting job's brand and title as an option, before landing anything.
 When only one job is waiting on a decision, apply the chat answer to that job.
-For the price, the sample image and the posting plan, a typed yes is not landed: tell the person to tap Approve on the card in the board.
-Apply whichever answer comes first with pipeline_board_request_land and pipeline_decision_apply, then write the documents again, name the job's brand and title in the result, and never ask the same decision twice.
+For the price (a storyboard approval that carries it too), the sample and the posting plan, a typed yes is not landed: tell the person to tap Approve on the card in the board.
+Apply whichever answer comes first with pipeline_board_request_land (`from` set to `board` for a record read from the board, `chat` for a typed answer) and pipeline_decision_apply, then write the documents it returns and do its `next`, name the job's brand and title in the result, and never ask the same decision twice.
 Reject stale revisions and changed files.
 Never apply an approval from agent context.
 

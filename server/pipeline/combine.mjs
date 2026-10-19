@@ -18,7 +18,7 @@ import * as facts from './facts.mjs';
 import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, listLibrary } from './library.mjs';
 import { chooseMusic, readChoice as readMusicChoice } from './music.mjs';
 import { askQuestion } from './questions.mjs';
-import { FINISHING_FILE, approvedCut, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
+import { FINISHING_FILE, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 export const COMBINE_ROWS = Object.freeze({
@@ -113,7 +113,7 @@ export function combineDefaults(job) {
   const music = readMusicChoice(job.dir);
   const hasMusic = music && music.source !== 'none' && music.source !== 'pending' && music.file;
   const voiceOn = Boolean(answer?.enabled);
-  const transcript = existsSync(join(job.root, 'imports', 'transcripts')) && facts.reviewSet(job, 'cut').panels.some(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)));
+  const transcript = existsSync(join(job.root, 'imports', 'transcripts')) && facts.cutSet(job).panels.some(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)));
   return {
     music: hasMusic ? { source: 'library', id: null, title: music.title || null } : { source: 'none' },
     voice: voiceOn ? { source: 'make' } : { source: 'none' },
@@ -309,7 +309,6 @@ export function recordCombine({ job, combine, by }) {
   const picks = normaliseCombine({ root: job.root, job, combine });
   const flags = combineFlags(picks);
   const choice = combineChoice(picks);
-  approvedCut(job);
   const stored = applyCombine({ root: job.root, job, combine: picks });
   writeFinishingRecord({ job, choice, parts: { captions: flags.captions, music: flags.music }, extra: { voice: flags.voice, combine: stored }, by });
   const noTrack = flags.music && !musicTrack(job.dir);
@@ -319,12 +318,12 @@ export function recordCombine({ job, combine, by }) {
     recorded: true, choice, captions: flags.captions, music: flags.music, musicTrack: flags.music ? !noTrack : null, transcript: flags.captions ? transcriptSaved(job) : null,
     voice: flags.voice, voiceTrack: flags.voice ? Boolean(voiceTrack(job.dir)) : null, combine: stored, waiting, next: steps,
   };
-  const finish = 'run finish-video.py (it mixes the music under the voice-over and draws the captions chosen) and present the finished video (pipeline_review_present with gate finish).';
+  const finish = 'run finish-video.py (it mixes the music under the voice-over and draws the captions chosen) and present the rough cut (pipeline_review_present with gate cut).';
   if (waiting.length) {
     return { ...base, message: `Saved. ${waiting.map(row => (row === 'voice' ? 'The voice-over' : 'The music')).join(' and ')} still need${waiting.length === 1 ? 's' : ''} to be uploaded or made before finishing. Never make music or voice any other way. ${steps.join(' ')} Then ${finish}` };
   }
   if (choice === 'skip') {
-    return { ...base, message: facts.onscreenPlanned(job) ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the finished video (pipeline_review_present with gate finish).' : 'Saved. The joined video is used as it is: do not run finish-video.py.' };
+    return { ...base, message: facts.onscreenPlanned(job) ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the rough cut (pipeline_review_present with gate cut).' : 'Saved. Nothing is added: the joined video is the rough cut as it is, so finish-video.py is not needed. Present the rough cut (pipeline_review_present with gate cut) once the clips are joined.' };
   }
   return { ...base, message: `Saved. ${steps.join(' ')} ${steps.length ? 'Then ' : 'Now '}${finish}`.replace(/\s+/g, ' ') };
 }

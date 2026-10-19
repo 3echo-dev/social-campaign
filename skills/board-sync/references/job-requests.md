@@ -1,6 +1,7 @@
 # Job requests
 
 Read by `skills/board-sync/SKILL.md`. Each section is applied exactly as written here.
+Every request on this page comes from the board, so land it with `pipeline_board_request_land` and `from` set to `board`.
 
 A `create_job` request from the board's "What do you want to get done?" box carries the person's own words as `brief`, a `title` made from the first line of them, and `brand` with `brandName` and `sourceRefs` only when the person chose a brand or gave links.
 It carries no `kind`: the person never picks a job type, so you diagnose it.

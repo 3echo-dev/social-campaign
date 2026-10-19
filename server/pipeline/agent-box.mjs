@@ -436,7 +436,8 @@ function directorActivity({ dir, decisions }) {
   }
   for (const record of Array.isArray(decisions) ? decisions : []) {
     if (!plain(record) || record.malformed || typeof record.gate !== 'string' || !text(record.decidedAt)) continue;
-    const words = DECISION_WORDS[record.gate];
+    // A sample that is a clip is the test clip.
+    const words = record.gate === 'sample' && /-S\d+-v\d+$/i.test(String(record.key || record.sample?.key || '')) ? 'test clip' : DECISION_WORDS[record.gate];
     if (!words) continue;
     const approved = /^approved?$/.test(String(record.decision));
     out.push({ at: record.decidedAt, text: approved ? `You approved the ${words}` : `You asked for changes to the ${words}` });

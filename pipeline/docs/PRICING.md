@@ -20,7 +20,7 @@ Every clip in a plan is estimated on its own, and the plan's price is the sum of
 | `creative_generate_in_flow` with `node_type: "music"`, an `eleven_music` model and `estimate_only: true` | a music track, for `generations_count` takes (unverified: the reply is read as `estimate.credits`, like the voice tool's) | `estimate.credits` |
 
 Voice and music are ElevenLabs credits, priced as a `voice` or `music` item in the quote (`pipeline_quote_save`, with the captured `estimateId` and `generationsCount`) and approved by the person's click on the price like everything else.
-Music and voice-over are made at the combine step after the joined video is approved, never before. The spend guard lets `creative_generate_in_flow` through only for `node_type: "music"` with an approved `music` item; any other use of that tool (pictures, video, sound effects) stays refused.
+Music and voice-over are priced with the clips on the storyboard card and made after that tap, never before. The spend guard lets `creative_generate_in_flow` through only for `node_type: "music"` with an approved `music` item; any other use of that tool (pictures, video, sound effects) stays refused.
 
 `referenceBudget.limits` on a video estimate is the reference cap the tool will honour: 9 image, 3 video, 3 audio.
 

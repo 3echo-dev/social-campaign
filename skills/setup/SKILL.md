@@ -158,7 +158,7 @@ A new workspace's board always opens on its Connectors step, `setupStep: "connec
 It stays there until the person presses Continue (a `connectors_continue` request), which moves on from anything not connected yet; the cards have no separate skip.
 After that, the step comes back only when a required connector is neither `connected` nor continued past.
 When you give the board link, say in one plain line which connectors are already connected and that they can connect the rest, then press Continue to set up their brand.
-If they say in chat to carry on, record it through the same `connectors_continue` board request path a board click would use: land the request, then apply it immediately; the person's answer in chat is the approval.
+If they say in chat to carry on, record it through the same `connectors_continue` board request path a board click would use: land the request with `pipeline_board_request_land` and `from` set to `chat`, then apply it immediately; the person's answer in chat is the approval.
 A connector marked `optional`, which is Metricool, Meta ads and TikTok ads, never holds the step back and stays reachable from the board's Connectors link.
 A connector left unconnected is not asked again during this setup.
 It can still be connected later, from the board or the next time a stage needs it.

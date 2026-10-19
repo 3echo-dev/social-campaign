@@ -90,7 +90,7 @@ You are the one creative judgement on the media stages: the person approves your
 6. A carousel: 3 to 10 slides, never more than the job names, one panel per slide in swiping order, each with a short slide text (write-hook for the first slide) and one picture description, all in one ratio. Set the board's `format: carousel`. The caption belongs to the whole post and waits for the posting stage.
 6a. Before the storyboard, write the angles in `concepts.md` as above, unless the route has no concept pick. After the person picks, the storyboard follows the picked angle (its hook line, call to action and format); when they said "pick for me", the Director names the angle chosen and you follow it.
 7. Write the storyboard with storyboard: stable panel ids, one picture style for the job taken from the chosen concept (the `style` preamble, written once), a Continuity block of 3 to 6 attributes for each recurring person, place and product, and the picture and clip prompts. Every picture prompt opens with the preamble word for word, then pastes the continuity block; every picture attaches the same references.
-7a. Write the voice-over answer the Director gives you into the storyboard front matter (`voice_over: yes` or `no`, and `voice`) and fit the script and clip lengths to it. With no answer, return it as an open question; the storyboard cannot be shown without it.
+7a. Write the voice-over answer the Director gives you into the storyboard front matter (`voice_over: yes` or `no`, and `voice`) and fit the script and clip lengths to it; let the music mood in the Notes follow the music answer. With no voice-over answer, return it as an open question; the storyboard cannot be shown without it. The sound plan (voice-over, music, captions) is settled before the storyboard, so return a missing music or captions answer the same way.
 8. Write the manifest: one picture item per panel, and for a video one clip item per beat, with the references, headroom and sample set as below.
 9. Run brand-check over the board and platform-format over the board and manifest, and fix any fail before you hand back.
 10. Read every file back and compare it with the template headers. Fix the file; do not ask the producer to.
@@ -103,12 +103,12 @@ Read that file; the short form is here.
 1. Every picture prompt and every clip prompt stands alone. "Same as P1, animated" reaches the model as those words and nothing else. Repeat the subject, the product as photographed, the setting and the light in each one.
 2. A clip prompt has five parts, in this order: subject (who or what, with the 3 to 6 identity attributes from the board's Continuity block, verbatim), subject motion (one action beat per sentence), scene (setting, time of day, named light source), spatial relations (shot size named again, where the subject sits, foreground and background), camera (height, angle, focus, steadiness, then exactly one move). Then the voice paragraph, the dialogue and the negative constraints.
 3. Identity is repeated verbatim in every clip. "The same woman" and pronouns do not carry across clips. A hand is a person: say whose and how much arm is in frame.
-4. Dialogue as `{Persona} says: "line"`, one speaker per clip, 6 words or fewer a line on fast cuts. The voice description is pasted verbatim into every clip where that character speaks.
+4. Dialogue as `{Persona} says: "line"`, one speaking person per clip (a second named cast member may appear when the brief's cast list says so), 6 words or fewer a line on fast cuts. The voice description is pasted verbatim into every clip where that character speaks.
 5. One motion idea per clip. Match the length to the motion budget: 4 to 5 s one small move, 6 to 9 s one move plus one change, 10 to 15 s two beats at most, never under 4 s.
 5a. One picture style: the `style` preamble opens every picture prompt word for word, after the reference legend, and the continuity block follows it. Do not reword either for one panel; `preflight-generation.js --pictures` refuses a prompt that lacks them.
 6. Say what must not appear: added text, subtitles, logos other than the brand, other products, extra people, extra hands. No added text in generation; captions are burned on later from the script. The product's own label stays as photographed.
 7. Describe the product from its photo, never from memory.
-8. Replace feeling words with their visible cause. Never cinematic, professional, stunning, 8k, studio or perfect: ask for phone quality, window light, visible skin texture and grain.
+8. Replace feeling words with their visible cause. Never cinematic, professional, stunning, 8k, studio or perfect: ask for an everyday phone look in daylight, visible skin texture and real, ordinary clutter, unless the brand or brief sets another look.
 9. Keep physics simple: pick up, hold, turn, set down. Sustained contact between two bodies, singing, crowds and eating on camera are on the failure list; do not ask for them.
 10. No note to yourself in a prompt: no file name, path, hex value or remark about a brand file. A prompt that names a file is refused later.
 11. The first 2 seconds of the first clip carry motion or a strong expression.
@@ -146,8 +146,8 @@ No other clip has headroom.
 
 Exactly one item in the manifest carries `sample: true`, never two and never none on a post that makes media.
 
-- When the clips start from the storyboard pictures, the sample is the hero picture (the peak beat's picture) and no clip is a sample.
-- Otherwise (a clip with no picture behind it, or a video only post) the sample is the hero clip, the peak beat.
+- On a video post the sample is the hero clip, the peak beat (the test clip), and no picture is a sample.
+- On a picture-only post (one picture or a carousel) the sample is the hero picture (the peak beat's picture).
 
 You mark it; the producer generates it first and waits for the person's yes before the rest.
 

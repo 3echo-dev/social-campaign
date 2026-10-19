@@ -1,7 +1,10 @@
-"""The person's review that must be approved before the clips are joined.
+"""The clips approval that must exist before the clips are joined, and the sound choice that must exist before the video is finished.
 
-Mirrors server/pipeline/facts.mjs (mediaSet, mediaSetApproved). The board writes approvals/clips.json; the stitch script reads it
-here and refuses to run (exit 6) until every clip is approved, so a skill cannot skip the review.
+Mirrors server/pipeline/facts.mjs (mediaSet, mediaSetApproved, finishingRecord). approvals/clips.json is written by the board when
+the person approves the clips, or by the plugin's own sign-off once its checks pass; both count. The stitch script reads it
+here and refuses to run (exit 6) until every clip is approved, so a skill cannot skip the check. The finishing script needs the
+same clips approval and a recorded sound choice; it does not wait for the joined video to be approved, because the finished
+video is the rough cut the person sees.
 
 A job with no 3Echo clips in its saved price (clips the person supplied) has no review to wait for, and nothing is refused.
 """
@@ -57,21 +60,65 @@ def _canon(key):
     return "%s-%s-v%d" % (str(key)[: str(key).rfind("-" + p["deliverable"] + "-")], p["deliverable"] + "-" + item, p["version"])
 
 
+RELEASED_STATUS = ("failed", "cancelled", "canceled")
+
+
+def _made_clips(jobdir, landed_keys):
+    """Clips made or being made, priced or not (a redo inside the redo allowance has no price line): [parsed key].
+
+    Mirrors facts.madeClips: a video create counts unless it ended failed or cancelled with no output and nothing landed for it.
+    """
+    records = _lines(os.path.join(jobdir, "generation", "records.jsonl"))
+    found = {}
+    for r in records:
+        if r.get("type") != "create" or r.get("provider") != "threeEcho":
+            continue
+        if not (r.get("kind") == "video" or r.get("tool") == "create_video_job"):
+            continue
+        key = _canon(r.get("key"))
+        p = _parse(key)
+        if not p or key in found or re.match(r"^(R|TR)\d+$", p["item"]):
+            continue
+        made = False
+        for c in records:
+            if c.get("type") != "create" or c.get("provider") != "threeEcho" or _canon(c.get("key")) != key:
+                continue
+            results = [x for x in records if x.get("type") == "result" and x.get("providerJobId") == c.get("providerJobId")]
+            result = results[-1] if results else None
+            status = str((result or {}).get("status") or "").lower()
+            outputs = (result or {}).get("outputAssetIds")
+            has_outputs = isinstance(outputs, list) and len(outputs) > 0
+            if result and status in RELEASED_STATUS and not has_outputs and key not in landed_keys:
+                continue
+            made = True
+            break
+        if made:
+            found[key] = p
+    return list(found.values())
+
+
 def clip_set(jobdir):
-    """The newest priced 3Echo clip of each slot and the file it landed as: [{key, deliverable, file, sha256}]."""
+    """The newest 3Echo clip of each slot (priced, or a redo made without a price line) and the file it landed as: [{key, deliverable, file, sha256}]."""
     quote = _json(os.path.join(jobdir, "pricing", "quote.json")) or {}
+    landed = [e for e in _lines(os.path.join(jobdir, "generation", "landed.jsonl"))
+              if e.get("type") == "landed" and e.get("file") and e.get("sha256")]
+    landed_keys = set(_canon(e.get("key")) for e in landed)
     newest = {}
+
+    def offer(p):
+        slot = (p["deliverable"], p["item"])
+        if slot not in newest or p["version"] > newest[slot]["version"]:
+            newest[slot] = p
+
     for item in quote.get("items") or []:
         if not isinstance(item, dict) or item.get("provider") != "threeEcho" or item.get("kind") != "video":
             continue
         p = _parse(item.get("key"))
         if not p or re.match(r"^(R|TR)\d+$", p["item"]):
             continue
-        slot = (p["deliverable"], p["item"])
-        if slot not in newest or p["version"] > newest[slot]["version"]:
-            newest[slot] = p
-    landed = [e for e in _lines(os.path.join(jobdir, "generation", "landed.jsonl"))
-              if e.get("type") == "landed" and e.get("file") and e.get("sha256")]
+        offer(p)
+    for p in _made_clips(jobdir, landed_keys):
+        offer(p)
     panels = []
     for slot, p in sorted(newest.items()):
         file = None
@@ -104,15 +151,16 @@ def stitch_problem(jobdir):
     """Why the clips cannot be joined yet, or None."""
     if not clip_set(jobdir) or clips_approved(jobdir):
         return None
-    return ("The video clips have not been approved yet. Present the clips review (pipeline_review_present with gate clips), "
-            "wait for the person to approve them all, then join them.")
+    return ("The video clips are not signed off yet. They need the plugin's checks to pass (pipeline_clips_signoff) "
+            "or the person's approval, then they can be joined.")
 
 
 # ---------------------------------------------------------------- the joined video and what to add to it
-# Mirrors server/pipeline/facts.mjs (cutSet, mediaSetApproved for gate "cut") and server/pipeline/finishing.mjs. The board writes
-# approvals/cut.json when the person approves the joined video (media/D<n>/final-raw.mp4); the Director records the answer to
-# "what should be added" in approvals/finishing.json. finish-video.py refuses (exit 6) until both match the files as they are now.
-# "combine" is the board's combine card (music, voice-over and captions rows): its flags are read from the record itself.
+# Mirrors server/pipeline/facts.mjs (cutSet, finishingRecord) and server/pipeline/finishing.mjs. The Director records the answer to
+# "what should be added" in approvals/finishing.json at any time before finishing; it is not tied to the joined video's files
+# (an older record that lists them is still accepted). finish-video.py refuses (exit 6) until the clips are approved and that
+# answer is recorded. The joined video (media/D<n>/final-raw.mp4) is not approved on its own: the finished video is the rough cut.
+# "combine" is the sound choice with music, voice-over and captions rows: its flags are read from the record itself.
 FINISHING_CHOICES = {"captions": (True, False), "music": (False, True), "both": (True, True), "skip": (False, False), "combine": None}
 
 
@@ -144,15 +192,15 @@ def cut_approved(jobdir):
 
 
 def finishing_record(jobdir):
-    """The whole record of what to add, as approved now, else None."""
+    """The whole record of what to add when it is a valid choice, else None. It is not bound to the cut's files."""
     d = _json(os.path.join(jobdir, "approvals", "finishing.json"))
-    if not d or d.get("choice") not in FINISHING_CHOICES or not cut_approved(jobdir) or not _covers(d.get("files"), cut_files(jobdir)):
+    if not d or d.get("choice") not in FINISHING_CHOICES:
         return None
     return d
 
 
 def finishing(jobdir):
-    """(captions, music, choice) recorded for the joined video as approved now, else None."""
+    """(captions, music, choice) recorded, else None."""
     d = finishing_record(jobdir)
     if d is None:
         return None
@@ -180,11 +228,11 @@ def combine_picks(jobdir):
 def finishing_problem(jobdir):
     """Why captions or music may not be added yet, or None."""
     if not cut_files(jobdir):
-        return "The clips are not joined yet. Join them with stitch-clips.py, show the joined video and wait for the person to approve it."
-    if not cut_approved(jobdir):
-        return ("The person has not approved the joined video yet. Present it (pipeline_review_present with gate cut), wait for the "
-                "approval, then ask what to add. Nothing is added before that.")
+        return "The clips are not joined yet. Join them with stitch-clips.py, then finish the video."
+    if clip_set(jobdir) and not clips_approved(jobdir):
+        return ("The video clips are not approved yet. Check every clip and sign them off (pipeline_clips_signoff), "
+                "or wait for the person to approve them, then finish the video.")
     if finishing(jobdir) is None:
-        return ("The person has not said what to add yet. It is the combine card on the board (music, voice-over and captions) and is "
-                "recorded with the approval; otherwise ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice.")
+        return ("The sound choice (music, voice-over and captions) is not recorded yet. Ask once with pipeline_board_ask "
+                "and record the answer with pipeline_finishing_choice.")
     return None

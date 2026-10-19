@@ -593,7 +593,7 @@ export const PRICE_GATE = 'price';
 const PRICE_STATES = new Set(['STORYBOARD_APPROVED', 'MEDIA_GENERATING', 'MEDIA_READY', 'CHANGES_REQUESTED']);
 const REFERENCE_ART_STATES = new Set(facts.REFERENCE_ART_STATES);
 const PRICE_TOO_EARLY = 'The price comes after the storyboard is approved and before or during media production. Before that, only pictures can be priced.';
-const REFERENCE_ART_ONLY = 'Before the storyboard is approved, only pictures can be priced. Price the video after the storyboard is approved.';
+const REFERENCE_ART_ONLY = 'This price is approved together with the storyboard. Present the storyboard, and the price shows with it.';
 const notTranscription = items => items.filter(item => !facts.isTranscriptionItem(item));
 const picturesOnly = items => items.length > 0 && items.every(item => item?.kind === 'image');
 const transcriptionOnly = items => items.length > 0 && items.every(facts.isTranscriptionItem);
@@ -606,8 +606,8 @@ function priceRefusal(job, items, { dropOnly = false } = {}) {
   const state = facts.readJobState(job.dir).state;
   if (transcriptionOnly(items)) return facts.isFinishedState(state) ? PRICE_TOO_EARLY : null;
   if (facts.referenceArtOnly(job)) {
-    if (!referenceArtSeat(state)) return PRICE_TOO_EARLY;
-    return dropOnly || picturesOnly(notTranscription(items)) ? null : REFERENCE_ART_ONLY;
+    // Any item can be priced before the storyboard: the price is approved together with the storyboard.
+    return referenceArtSeat(state) || state === 'AWAITING_STORYBOARD_APPROVAL' ? null : PRICE_TOO_EARLY;
   }
   return PRICE_STATES.has(state) ? null : PRICE_TOO_EARLY;
 }
@@ -622,7 +622,7 @@ function priceOpen(root, brand, jobId) {
 }
 export const FINDINGS_GATE = 'findings';
 const REVIEW_GATES = Object.freeze(['concept', 'storyboard', 'content', 'publish', 'campaign_proposal', 'campaign_activation', FINDINGS_GATE]);
-const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', cut: 'joined video', finish: 'finished video', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
+const GATE_WORDS = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', sample: 'sample image', pictures: 'storyboard pictures', clips: 'video clips', cut: 'rough cut', finish: 'finished video', content: 'final post', publish: 'posting plan', campaign_proposal: 'campaign plan', campaign_activation: 'going live', findings: 'report' });
 const REPORT_FILE = 'report/report.md';
 const REPORT_STILLS_DIR = 'report/stills';
 const STILL_TYPES = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
@@ -671,7 +671,12 @@ export function sampleReview(root, brand, jobId, snapshot) {
   if (!sample) return null;
   const slot = slotOf(sample.key);
   const rest = early ? panelsStillToMake(job, slot) : items.filter(item => item.provider === facts.THREE_ECHO && SAMPLE_KINDS.has(item.kind) && slotOf(item.key) !== slot);
-  if (!rest.length || studioCreates.some(record => slotOf(record.key) !== slot)) return null;
+  // Only creates of the sample's own kind count: a clip sample still gets its card when pictures already exist, and the other way round.
+  // The kind comes from the price line when there is one; a redo made without a price line is a clip when its number is S, a picture otherwise.
+  const pricedSample = items.find(item => facts.canonicalJobKey(item.key) === sample.key);
+  const sampleIsImage = early || (pricedSample ? pricedSample.kind !== 'video' : !/^S\d+$/i.test(sample.item));
+  const sameKind = studioCreates.filter(record => facts.isImageCreate(record) === sampleIsImage);
+  if (!rest.length || sameKind.some(record => slotOf(record.key) !== slot)) return null;
   let landed = null;
   for (const entry of facts.readLanded(job)) {
     if (entry.type === 'landed' && typeof entry.file === 'string' && facts.canonicalJobKey(entry.key) === sample.key && SAMPLE_MEDIA.has(extname(entry.file).toLowerCase())) landed = entry;
@@ -696,7 +701,9 @@ export const CLIPS_GATE = 'clips';
 export const CUT_GATE = 'cut';
 export const FINISH_GATE = 'finish';
 export const MEDIA_GATES = Object.freeze([PICTURES_GATE, CLIPS_GATE, CUT_GATE, FINISH_GATE]);
-const MEDIA_GATE_WORDS = Object.freeze({ pictures: 'pictures', clips: 'video clips', cut: 'joined video', finish: 'finished video' });
+const MEDIA_GATE_WORDS = Object.freeze({ pictures: 'pictures', clips: 'video clips', cut: 'rough cut', finish: 'finished video' });
+// What a job is waiting on, in plain words: a sample that is a clip is the test clip.
+const gateWord = (gate, review) => (gate === SAMPLE_GATE && /^S\d+$/i.test(String(review?.sample?.panel || '')) ? 'test clip' : GATE_WORDS[gate]);
 
 /**
  * The review of every storyboard picture (gate pictures) or every clip (gate clips), shown together once the whole set is made and
@@ -823,7 +830,7 @@ export function boardJobDocuments({ root, jobIds = null } = {}) {
     const snapshot = withOpenQuestions(runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId }), questionsByJob.get(job.jobId));
     const { gate, review } = pendingReview(root, job.brand, job.jobId, snapshot);
     const reviewUrl = ({ sha256 }) => reviewUrlFor(root, { brand: job.brand, jobId: job.jobId, sourceSha: sha256 });
-    const studioWorkspace = gate === PRICE_GATE || gate === 'publish' ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
+    const studioWorkspace = gate === PRICE_GATE || gate === 'storyboard' || gate === 'publish' ? studioWorkspaceInfo({ root, brandDir: brandDirBySlug.get(job.brand) || null, jobDir: job.path }) : null;
     const details = jobDetails({ root, job, snapshot, gate, review, profile: profileOf(job.brand), usage: jobUsage(root, job, snapshot) });
     const inbox = jobDocumentInbox(jobInbox({ root, snapshot, gate, review, intake: details.intake, questions: questionsByJob.get(job.jobId), dir: job.path, previews: true }));
     const brandDir = brandDirBySlug.get(job.brand) || null;
@@ -1167,11 +1174,17 @@ function decisionItem({ root, snapshot, gate, review, place, dir, previews = fal
     item.summary = words ? `Approving lets Claude make the other ${words}.` : 'Approving lets Claude make the rest.';
   } else if (MEDIA_GATES.includes(gate)) {
     const count = review.artifacts.length;
-    item.summary = gate === CUT_GATE ? 'The joined video to check. Approve it and pick what to add: music, voice-over and captions.'
+    item.summary = gate === CUT_GATE ? 'The rough cut to check. It already has its sound. Approving lets Claude write the post text.'
       : gate === FINISH_GATE ? 'The finished video to check. Approving lets Claude write the post text.'
       : `${plural(count, gate === PICTURES_GATE ? 'picture' : 'video clip')} to check. ${gate === PICTURES_GATE ? 'Approving lets Claude make the video clips.' : 'Approving lets Claude join them into one video.'}`;
   } else {
     item.summary = reviewSummary(dir, gate, review.artifacts.map(artifact => artifact.path));
+    // A storyboard that carries the price is also the price approval: say so, with the total.
+    if (gate === 'storyboard' && carriesPrice(review)) {
+      const job = facts.jobAt(root, snapshot.project.brand, snapshot.project.jobId);
+      const saved = job ? facts.readQuote(job) : null;
+      if (saved) item.summary += ` Approving also approves the price: ${facts.priceWords(facts.quoteTotals(saved.quote.items))}.`;
+    }
   }
   if (item.inline) item.artifacts = review.artifacts.map(({ path, sha256 }) => ({ path, sha256 }));
   if (previews) {
@@ -1685,7 +1698,7 @@ export function boardSnapshot({ root } = {}) {
       ...(research ? { research } : {}),
       stageSummary:stageSummary(snapshot.project.stages),
       references:referenceSummaries(job.path, 40, { preview: referencePreview(root), large: referenceLarge(root), copyUrl: sha => reviewUrlFor(root, { sourceSha: sha }) }),
-      waitingOn:gate ? GATE_WORDS[gate] || null : null,
+      waitingOn:gate ? gateWord(gate, review) || null : null,
       ownershipStatus:snapshot.project.ownershipStatus,
       usage:{
         tokens:usage.tokens,
@@ -1784,7 +1797,7 @@ const REQUESTER_ID = /^[\x21-\x7e]{1,200}$/;
 const requesterIdOf = by => (typeof by === 'string' && REQUESTER_ID.test(by) ? by : null);
 
 // Who made the request: 'board' when the board page wrote it, 'chat' when the Director landed what the person typed.
-// Nothing else is stored, so a request from older code has no origin and is treated as the board's.
+// The land tool requires it to be said. A request saved by older code has no origin and is treated as the board's.
 const ORIGINS = ['board', 'chat'];
 
 export function saveBoardRequest({ root,operation,args,source = 'artifact',by = null,origin,chatOnly = false }) {
@@ -3030,6 +3043,11 @@ function declineMessage(reason) {
   return reason ? `Declined in chat. Nothing was changed. ${reason}` : 'Declined in chat. Nothing was changed.';
 }
 
+// The first receipt a request gets: Claude has it and is working on it. The board shows "Claude has it" until the applied or declined receipt replaces it.
+export function receivedReceiptOf(record) {
+  return { status: 'received', requestId: record.requestId, receivedAt: new Date().toISOString() };
+}
+
 function artifactReceipt(record, { status, appliedAt, declinedAt, result, reason, handled } = {}) {
   if (record.source !== 'artifact') return undefined;
   const receipt = { status, requestId: record.requestId };
@@ -3168,11 +3186,11 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
   }
   if(panels!==undefined && reviewId!=='storyboard' && !MEDIA_GATES.includes(reviewId)) throw new Error('Only the storyboard takes a decision per panel.');
   if(finishing!==undefined) {
-    if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the joined video.');
+    if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the rough cut.');
     if(typeof finishing!=='string' || !Object.hasOwn(FINISHING_CHOICES,finishing)) throw new Error('Pick captions, music, both or as is.');
   }
   if(combine!==undefined) {
-    if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the joined video.');
+    if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the rough cut.');
     if(finishing!==undefined) throw new Error('Send the combine picks or the older choice, not both.');
     const job=facts.jobAt(root,snapshot.brand?.slug || brand,jobId);
     if(!job) throw new Error('Job not found in this workspace.');
@@ -3353,6 +3371,13 @@ function withStoryboardPictures({root,brand,jobId,paths}) {
   return [...paths,...new Set(files)].filter((path,index,all)=>all.indexOf(path)===index);
 }
 
+// A price waiting for approval rides on the storyboard: its file joins the review, so a change to the price after it was shown is caught like any other file.
+function withStoryboardPrice({root,brand,jobId,paths}) {
+  const job=facts.jobAt(root,brand,jobId);
+  if(!job || !facts.pricePending(job).media || paths.includes(facts.FACT_FILES.quote)) return paths;
+  return [...paths,facts.FACT_FILES.quote];
+}
+
 export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   root=rootOf(root);
   let snapshot=runtime.readJobSnapshot({root,brand,jobId});
@@ -3367,7 +3392,10 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
   if(MEDIA_GATES.includes(requested)) {
     const pending=pendingReview(root,brand,jobId,snapshot);
     if(pending.gate===requested) return markPresented(root,pending.review);
-    if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(`There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}${requested===CUT_GATE ? ' and joined, after the clips are approved' : ''}${requested===FINISH_GATE ? ' once finishing has run on the approved joined video (finish-video.py), and only when captions or music were chosen' : ''}.`);
+    if(!mediaReview(root,brand,jobId,snapshot,requested)) throw new Error(requested===CUT_GATE
+      ? 'There is no rough cut waiting for a decision. It shows once the clips are approved or signed off, joined (stitch-clips.py) and finished with their sound (finish-video.py).'
+      : requested===FINISH_GATE ? 'The finished video is no longer a separate review: finish the video with finish-video.py and present it as the rough cut (gate cut).'
+      : `There are no ${MEDIA_GATE_WORDS[requested]} waiting for a decision. They show once every one is made${requested===CLIPS_GATE ? ' and the pictures are approved' : ''}.`);
     throw new Error('Another decision on this job comes first.');
   }
   if(requested===PRICE_GATE) {
@@ -3377,6 +3405,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(!saved) throw new Error('Save the price with pipeline_quote_save before presenting it.');
     const refusal=priceRefusal(job,saved.quote.items);
     if(refusal) throw new Error(refusal);
+    if(facts.referenceArtOnly(job) && !picturesOnly(notTranscription(saved.quote.items))) throw new Error(REFERENCE_ART_ONLY);
     const pending=facts.pricePending(job);
     if(!pending.media && !pending.transcription) throw new Error('This price is already approved, so there is nothing new to present.');
     gate=PRICE_GATE;
@@ -3390,8 +3419,10 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     if(aimed==='content' || aimed==='publish') {
       const mediaJob=facts.jobAt(root,brand,jobId);
       const open=mediaJob ? facts.mediaReviewOutstanding(mediaJob) : null;
-      if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} ${/s$/.test(MEDIA_GATE_WORDS[open]) ? 'have' : 'has'} not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:open===FINISH_GATE ? `Run finish-video.py if the finished video is not made yet, present it with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.` : `Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
-      if(mediaJob && facts.reviewSet(mediaJob,CUT_GATE).panels.length && !finishingChoice(mediaJob) && !facts.madeBeforeReviews(mediaJob)) throw new UserFacingError(`What to add to the joined video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice (the combine card on the board normally does both), run finish-video.py, then carry on.'});
+      if(open) throw new UserFacingError(`The ${MEDIA_GATE_WORDS[open]} ${/s$/.test(MEDIA_GATE_WORDS[open]) ? 'have' : 'has'} not been approved yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'media_review_open',fix:`Present the ${open} review with pipeline_review_present and gate ${open}, wait for the person's decision, then carry on.`});
+      const blocker=mediaJob ? facts.mediaBlocker(mediaJob) : null;
+      if(blocker==='finishing') throw new UserFacingError(`The sound for the video has not been chosen yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'finishing_choice_missing',fix:'Ask once with pipeline_board_ask and record the answer with pipeline_finishing_choice, run finish-video.py, then carry on.'});
+      if(blocker==='cut') throw new UserFacingError(`The rough cut is not finished yet, so the ${GATE_WORDS[aimed]} cannot be shown.`,{code:'rough_cut_missing',fix:"Join the clips with stitch-clips.py, run finish-video.py, present the rough cut with pipeline_review_present and gate cut, wait for the person's decision, then carry on."});
     }
     assertNoHelperRunning(root,brand,jobId);
     assertNoQuestionOpen(root,jobId,aimed);
@@ -3412,7 +3443,7 @@ export function registerBoardReview({root,brand,jobId,paths,gate:requested}) {
     // the current drafts and schedule every time the decision is presented, and is always one of its files. It is
     // built before the job moves, so a plan that cannot be built leaves the job where it was.
     if(aimed==='publish') paths=withPublishIntent({root,brand,jobId,paths});
-    if(aimed==='storyboard' && (!current || current==='storyboard')) paths=withStoryboardPictures({root,brand,jobId,paths});
+    if(aimed==='storyboard' && (!current || current==='storyboard')) paths=withStoryboardPrice({root,brand,jobId,paths:withStoryboardPictures({root,brand,jobId,paths})});
     // The final approval of a post made from supplied files covers every file the person gave, whatever the caller listed, so the posting plan can always be built from it.
     if(aimed==='content' && kinds.suppliesMedia(snapshot.job?.kind)) paths=[...paths,...(Array.isArray(snapshot.job?.suppliedMedia) ? snapshot.job.suppliedMedia : []).map(item=>item?.path).filter(path=>typeof path==='string' && !paths.includes(path))];
     ({gate,snapshot,moved}=moveToReview(root,brand,jobId,snapshot,requested ?? null,paths));
@@ -3441,11 +3472,24 @@ const CHAT_DECISIONS = Object.freeze({approve:'approve',changes:'request_changes
 const CHAT_NEXT = Object.freeze({
   sample: {approve:'The sample is approved. Make the other pictures now, each under its approved price.',changes:'Make the sample again with the changes asked (a redo of the sample needs no price line), then present the sample again.'},
   pictures: {approve:'The pictures are approved. Make the clips now.',changes:'Make the pictures with changes again, then present the pictures again.'},
-  clips: {approve:'The clips are approved. Join them with stitch-clips.py, then present the joined video (gate cut).',changes:'Make the clips with changes again, then present the clips again.'},
-  cut: {approve:'The joined video is approved. Record what goes on it if that is not done yet, run finish-video.py, then carry on.',changes:'Change the joined video as asked, then present it again.'},
+  sampleClip: {approve:'The test clip is approved. Make the rest of the clips, sign them off, join them, add the sound, then show the rough cut.',changes:'Make the test clip again with the changes asked (a redo of the test clip needs no new price), then present it again.'},
+  storyboardPrice: {approve:'The storyboard and its price are approved. Make the test clip.',changes:'Change the storyboard as asked, then present it again.'},
+  clips: {approve:'The clips are approved. Join them with stitch-clips.py, add the sound with finish-video.py, then show the rough cut (gate cut).',changes:'Make the clips with changes again, then present the clips again.'},
+  cut: {approve:'The rough cut is approved. Write the post text and run the label check.',changes:'Make the changes asked on the rough cut (a sound change: record the new choice and finish again; a clip: redo it, sign off, join, finish), then show the rough cut again.'},
   finish: {approve:'The finished video is approved. Carry on to the final post.',changes:'Change the finished video as asked, then present it again.'},
   price: {approve:'The price is approved. Make the items in it now.',changes:'Change the price as asked with pipeline_quote_save, then present it again.'},
 });
+
+/** The next step in plain words after an applied decision, for a board tap and a chat answer alike. */
+export function nextAfterDecision(applied,fallbackApproved) {
+  const gate=applied?.args?.reviewId;
+  const word=GATE_WORDS[gate] || 'decision';
+  const approved=applied?.decision?.decision ? applied.decision.decision==='approve' : (fallbackApproved ?? applied?.args?.decision==='approve');
+  // A storyboard that carried the price, and a sample that is a clip, have their own next step.
+  const clipSample=gate===SAMPLE_GATE && /^S\d+$/i.test(String(facts.parseJobKey(applied?.decision?.sample?.key)?.item || ''));
+  const key=gate==='storyboard' && carriesPrice(applied?.args) ? 'storyboardPrice' : clipSample ? 'sampleClip' : gate;
+  return (CHAT_NEXT[key]?.[approved ? 'approve' : 'changes']) || (approved ? `The ${word} is approved. Carry on with the next step.` : `Changes are asked on the ${word}. Make them, then present it again.`);
+}
 
 /**
  * An answer the person gave in chat, recorded through the board's own validation and writers: the files under approvals/ and the
@@ -3464,8 +3508,8 @@ export function applyChatDecision({root,brand,jobId,gate,decision,note,panels,fi
   if(!job) throw new Error('Job not found in this workspace.');
   const chatOnly=readJsonFile(join(job.dir,'job.json'),{})?.chatOnly===true;
   const snapshot=runtime.readJobSnapshot({root,brand,jobId});
-  const word=GATE_WORDS[gate];
   const pending=pendingReview(root,brand,jobId,snapshot);
+  const word=gateWord(gate,pending.review);
   if(pending.gate!==gate) {
     throw new UserFacingError(pending.gate ? `This job is waiting on the ${GATE_WORDS[pending.gate]} decision, not the ${word} one.` : `Nothing is waiting on the ${word} decision. It was not presented yet, or it was already answered, on the board or in chat.`,{
       code:'not_waiting',
@@ -3498,7 +3542,8 @@ export function applyChatDecision({root,brand,jobId,gate,decision,note,panels,fi
     ...(acceptedFlagIds!==undefined ? {acceptedFlagIds} : {}),
   };
   // The board sends the total it showed; the person was shown the saved price, so that is the total the approval is checked against.
-  if(gate===PRICE_GATE) {
+  // A storyboard that carries the price is checked the same way.
+  if(gate===PRICE_GATE || (gate==='storyboard' && decision==='approve' && carriesPrice(args))) {
     const quote=facts.readQuote(job);
     if(!quote) throw new Error('This price is no longer saved. Save and present it again.');
     args.totals=facts.quoteTotals(quote.quote.items);
@@ -3506,9 +3551,7 @@ export function applyChatDecision({root,brand,jobId,gate,decision,note,panels,fi
   const saved=saveBoardRequest({root,operation:'submit_decision',source:'artifact',origin:'chat',chatOnly,args});
   try {
     const applied=applyBoardDecision({root,requestId:saved.requestId,confirmedBy:confirmedBy.trim(),...(maxCredits!==undefined ? {maxCredits} : {})});
-    const approved=applied.decision?.decision ? applied.decision.decision==='approve' : decision==='approve';
-    const board=chatOnly ? '' : ' The board shows the old state until it is written again (pipeline_status).';
-    return {...applied,next:`${(CHAT_NEXT[gate]?.[approved ? 'approve' : 'changes']) || (approved ? `The ${word} is approved. Carry on with the next step.` : `Changes are asked on the ${word}. Make them, then present it again.`)}${board}`};
+    return {...applied,next:nextAfterDecision(applied,decision==='approve')};
   } catch(error) {
     // A refused answer leaves nothing behind: a request nobody claimed would otherwise sit in the board's list as waiting.
     const file=requestFile(root,saved.requestId);
@@ -3579,7 +3622,8 @@ const CLICK_ONLY_REASON = 'Please tap Approve on the card in the board. Money an
 // request chatOnly after checking the job itself. A request landed from chat for a job on the board stays click-only.
 function refuseChatClick(record) {
   if(record.origin!=='chat' || record.chatOnly===true) return;
-  const gated = record.operation==='submit_decision' ? record.args?.decision==='approve' && CLICK_ONLY_GATES.includes(record.args?.reviewId) : CLICK_ONLY_OPERATIONS.includes(record.operation);
+  // A storyboard approval that carries the price is a money step too.
+  const gated = record.operation==='submit_decision' ? record.args?.decision==='approve' && (CLICK_ONLY_GATES.includes(record.args?.reviewId) || (record.args?.reviewId==='storyboard' && carriesPrice(record.args))) : CLICK_ONLY_OPERATIONS.includes(record.operation);
   if(gated) throw new UserFacingError(CLICK_ONLY_REASON,{code:'click_required',fix:'Tell the person to tap the button on the card in the board, then leave this request unapplied.'});
 }
 
@@ -3707,6 +3751,8 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   if(args.reviewId===PRICE_GATE) return applyPriceDecision({root,file,record,args,validated,confirmedBy});
   if(args.reviewId===SAMPLE_GATE) return applySampleDecision({file,record,args,validated,confirmedBy});
   if(MEDIA_GATES.includes(args.reviewId)) return libraryAfterDecision({root,args,brand:validated.snapshot.brand?.slug || args.brand,applied:applyMediaDecision({root,file,record,args,validated,confirmedBy})});
+  // A storyboard that carries the price is approved at the total the board showed, checked before anything is written.
+  const pricedStoryboard=args.reviewId==='storyboard' && args.decision==='approve' && carriesPrice(args) ? checkStoryboardPrice({root,args}) : null;
   if(args.reviewId==='concept' && args.decision==='approve' && (!Number.isInteger(maxCredits) || maxCredits<0)) throw new Error('Concept approval needs the spending limit the user selected.');
   // A board approval is at the amount the board showed, never another figure.
   if(args.reviewId==='concept' && args.decision==='approve' && Number.isInteger(args.credits) && maxCredits!==args.credits) throw new Error(`Approve this concept at the ${args.credits} credits the board showed.`);
@@ -3714,7 +3760,7 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   if((args.reviewId==='content' || args.reviewId==='publish') && args.decision==='approve' && !kinds.suppliesMedia(validated.snapshot.job?.kind)) {
     const mediaJob=facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
     const blocker=mediaJob ? facts.mediaBlocker(mediaJob) : null;
-    if(blocker) throw new UserFacingError(blocker==='finishing' ? 'What to add to the joined video has not been chosen yet, so this cannot be approved.' : `The ${MEDIA_GATE_WORDS[blocker]} have not been approved as they are now, so this cannot be approved.`,{code:'media_review_open',fix:'Check the video on the board first.'});
+    if(blocker) throw new UserFacingError(blocker==='finishing' ? 'The sound for the video has not been chosen yet, so this cannot be approved.' : blocker==='cut' ? 'The rough cut is not finished and approved yet, so this cannot be approved.' : `The ${MEDIA_GATE_WORDS[blocker]} have not been approved as they are now, so this cannot be approved.`,{code:'media_review_open',fix:'Check the video on the board first.'});
   }
   // The label and brand-mark check is skipped for a post made from the person's own finished files: they approve those as they are.
   const labelCheck = args.reviewId==='content' && args.decision==='approve' && !kinds.suppliesMedia(validated.snapshot.job?.kind)
@@ -3730,15 +3776,20 @@ function applyBoardDecisionNow({root,requestId,confirmedBy,maxCredits}) {
   }
   const comment = args.reviewId==='storyboard' ? storyboardComment(args) : args.note || '';
   const command = [join(runtime.runtimeConstants.pipelineRoot,'scripts','record-approval.js'),validated.snapshot.brand.slug,args.jobId,args.reviewId,args.decision==='approve'?'approve':'change','--by',confirmedBy,'--comment',comment,'--channel',record.origin==='chat' ? 'chat' : 'file','--root',root];
-  command.push('--expect-revision',String(args.revision),'--expected-artifacts',JSON.stringify(args.artifacts.map(({path,sha256})=>({path,sha256}))));
+  // The price file is checked when the storyboard is applied (checkStoryboardPrice) but is not part of the storyboard approval record,
+  // so a later price save does not make the approved storyboard look changed.
+  const recorded = args.reviewId==='storyboard' ? args.artifacts.filter(item=>item.path!==facts.FACT_FILES.quote) : args.artifacts;
+  command.push('--expect-revision',String(args.revision),'--expected-artifacts',JSON.stringify(recorded.map(({path,sha256})=>({path,sha256}))));
   if(Number.isInteger(maxCredits)) command.push('--max-credits',String(maxCredits));
   if(typeof args.chosen==='string' && CHOSEN_ID.test(args.chosen)) command.push('--chosen',args.chosen);
-  command.push(...args.artifacts.map(item=>'./'+item.path));
+  command.push(...recorded.map(item=>'./'+item.path));
   const result = spawnSync(process.execPath,command,{cwd:root,encoding:'utf8',windowsHide:true,shell:false,timeout:30000,env:{...process.env,SOCIAL_PIPELINE_ROOT:root}});
   const appliedAt = new Date().toISOString();
   const status = result.status===0?'applied':'needs_reconciliation';
   const reopened = result.status===0 && args.reviewId===FINDINGS_GATE && args.decision!=='approve' ? reopenReport(root,validated.snapshot.brand.slug,args.jobId) : null;
-  const next = {...record,status,confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt,detail:result.error?.message || result.stderr || result.stdout,...(labelCheck?.required ? {labelCheck:{checkedAt:labelCheck.checkedAt,accepted:labelCheck.accepted}} : {}),...(reopened ? {reopened} : {}),artifactReceipt:artifactReceipt(record,{status,appliedAt})};
+  // The price is approved right after the storyboard is, with the same writer the price card uses.
+  const price = result.status===0 && pricedStoryboard ? approveStoryboardPrice({pricedStoryboard,confirmedBy,decidedAt:appliedAt,requestId:record.requestId}) : null;
+  const next = {...record,status,confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt,detail:result.error?.message || result.stderr || result.stdout,...(labelCheck?.required ? {labelCheck:{checkedAt:labelCheck.checkedAt,accepted:labelCheck.accepted}} : {}),...(reopened ? {reopened} : {}),...(price ? {price} : {}),artifactReceipt:artifactReceipt(record,{status,appliedAt})};
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp,JSON.stringify(next,null,2));renameReplacing(temp,file);
   if(result.status!==0) throw new Error('The decision needs reconciliation. Inspect the request and local approval before retrying.');
@@ -3805,6 +3856,23 @@ function applySampleDecision({file,record,args,validated,confirmedBy}) {
 //   - a request for changes whose note only asks for finishing ("add captions and background music"), with no change asked on the
 //     cut itself. That is not a redo of the cut: the cut is approved as it is and the choice is recorded. A note that asks for a real
 //     edit (order, trims, a shot) reopens the cut as before.
+// A sound-only note on the rough cut changes only what it names. The saved plan (music, voice-over, captions) keeps everything else as it was.
+function recordNoteChange({job,fromNote,by}) {
+  const saved = facts.finishingRecord(job);
+  const touched = fromNote.touched || {captions:true,music:true};
+  if(saved?.combine) {
+    // A row that was uploaded or made is already in the library with its id; keep it as that pick so it is not reset to waiting.
+    const row = value => (value?.id && !['library','none'].includes(value.source) ? {source:'library',id:value.id} : {...value});
+    const combine = {music:row(saved.combine.music),voice:row(saved.combine.voice),captions:{...saved.combine.captions}};
+    if(touched.captions) combine.captions = {source:fromNote.captions ? (combine.captions.source && combine.captions.source!=='none' ? combine.captions.source : 'voice') : 'none'};
+    if(touched.music) combine.music = fromNote.music ? (combine.music.source && combine.music.source!=='none' ? combine.music : {source:'make'}) : {source:'none'};
+    return recordCombine({job,combine,by});
+  }
+  const captions = touched.captions ? fromNote.captions : Boolean(saved?.captions);
+  const music = touched.music ? fromNote.music : Boolean(saved?.music);
+  return recordFinishingChoice({job,choice:captions && music ? 'both' : captions ? 'captions' : music ? 'music' : 'skip',by});
+}
+
 function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const review = validated.registered;
   const gate = args.reviewId;
@@ -3813,7 +3881,7 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const fromNote = gate===CUT_GATE && args.decision==='request_changes' && noPanelChange ? finishingFromNote(askedNote) : null;
   const combinePicks = gate===CUT_GATE && args.decision==='approve' && args.combine && typeof args.combine==='object' ? args.combine : null;
   const finishingChoiceId = gate===CUT_GATE ? (combinePicks ? 'combine' : args.decision==='approve' && typeof args.finishing==='string' ? args.finishing : fromNote?.choice) || null : null;
-  const approve = args.decision==='approve' || Boolean(fromNote);
+  const approve = args.decision==='approve';
   const note = askedNote;
   const claimed = claimBoardRequest(file);
   if(claimed) return claimed;
@@ -3825,7 +3893,7 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const saved = {
     gate,decision:approve?'approve':'changes',decidedAt,by:confirmedBy,requestId:record.requestId,
     ...(note ? {note} : {}),
-    ...(fromNote ? {convertedFrom:'request_changes'} : {}),
+
     files:review.mediaSet.panels.map(item=>({key:item.key,deliverable:item.deliverable,panel:item.panel,file:item.path,sha256:item.sha256})),
     panels:said,
   };
@@ -3837,10 +3905,12 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   if(finishingChoiceId) {
     const job = facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
     const via = record.origin==='chat' ? 'in chat' : 'board';
-    finishingResult = (combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`}) : recordFinishingChoice({job,choice:finishingChoiceId,by:fromNote ? `the person, ${via} note "${note.slice(0,120)}" (request ${record.requestId})` : `the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`}));
+    finishingResult = fromNote ? recordNoteChange({job,fromNote,by:`the person, ${via} note "${note.slice(0,120)}" (request ${record.requestId})`})
+      : combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`})
+      : recordFinishingChoice({job,choice:finishingChoiceId,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`});
   }
   const finishingWords = finishingChoiceId ? ` and ${finishingResult?.choice==='skip' ? 'used as it is' : combinePicks ? `finishing set (music ${combinePicks.music?.source ?? 'default'}, voice-over ${combinePicks.voice?.source ?? 'default'}, captions ${combinePicks.captions?.source ?? 'default'})` : `finishing set to ${finishingChoiceId}`}${fromNote ? ' (read from the note, the cut is not redone)' : ''}` : '';
-  const summary = approve ? `All ${word} approved${finishingWords}` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}`;
+  const summary = approve ? `All ${word} approved${finishingWords}` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}${fromNote ? `. The sound is set (${finishingResult?.choice || finishingChoiceId}); the video will be finished again.` : ''}`;
   const decision = {decision:approve?'approve':args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,[gate]:saved,...(finishingResult ? {finishing:{choice:finishingResult.choice,captions:finishingResult.captions,music:finishingResult.music,musicTrack:finishingResult.musicTrack,...(finishingResult.combine ? {voice:finishingResult.voice,combine:finishingResult.combine,waiting:finishingResult.waiting} : {}),message:finishingResult.message,...(fromNote ? {fromNote:true} : {})}} : {})};
   const event = pipelineEvents.makeEvent(args.jobId,'decision.recorded',decidedAt,{type:'gate',id:gate},{gate,decision:approve?'approve':args.decision,note:summary,...(finishingChoiceId ? {finishing:finishingResult?.choice || finishingChoiceId} : {})},{jobId:args.jobId,brandId:validated.snapshot.brand?.id,requestId:record.requestId,source:'local'});
   appendFileSync(join(validated.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
@@ -3872,14 +3942,7 @@ function applyPriceDecision({root,file,record,args,validated,confirmedBy}) {
   if(claimed) return claimed;
   const decidedAt = new Date().toISOString();
   const note = typeof args.note==='string' ? args.note.trim().slice(0,4000) : '';
-  const pending = facts.pricePending(job);
-  const partOf = list => list.filter(item=>item && facts.isTranscriptionItem(item)===false);
-  const round = (scope,quoteSha,list) => facts.writePriceApproval(job,{...(scope?{scope}:{}),quoteSha,decision:approve?'approved':'changes_requested',totals:facts.quoteTotals(list),approvedAt:approve?decidedAt:null,by:confirmedBy,decidedAt,requestId:record.requestId,...(note?{note}:{})});
-  const written = [];
-  if(pending.media) written.push(round(null,current.sha256,partOf(current.quote.items)));
-  if(pending.transcription) written.push(round(facts.TRANSCRIPTION_SCOPE,current.transcriptionSha,current.quote.items.filter(item=>item && facts.isTranscriptionItem(item))));
-  if(!written.length) written.push(round(null,current.sha256,partOf(current.quote.items)));
-  const saved = written[0];
+  const saved = writePriceRound({job,current,approve,note,confirmedBy,decidedAt,requestId:record.requestId});
   const decision = {decision:args.decision,totals,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,approval:saved.n};
   const reviewPath = reviewFile(root,args.brand,args.jobId,PRICE_GATE);
   writeJsonAtomic(reviewPath,{...read(reviewPath),decision});
@@ -3889,6 +3952,80 @@ function applyPriceDecision({root,file,record,args,validated,confirmedBy}) {
   const next = {...record,status:'applied',confirmedBy,actorUserId:requesterIdOf(record.by),ownershipStatus:'unbound',appliedAt:decidedAt,decision,artifactReceipt:artifactReceipt(record,{status:'applied',appliedAt:decidedAt})};
   writeJsonAtomic(file,next);
   return next;
+}
+
+// The one writer of a price approval, used by the price card and by a storyboard that carries the price.
+function writePriceRound({job,current,approve,note,confirmedBy,decidedAt,requestId}) {
+  const pending = facts.pricePending(job);
+  const partOf = list => list.filter(item=>item && facts.isTranscriptionItem(item)===false);
+  const round = (scope,quoteSha,list) => facts.writePriceApproval(job,{...(scope?{scope}:{}),quoteSha,decision:approve?'approved':'changes_requested',totals:facts.quoteTotals(list),approvedAt:approve?decidedAt:null,by:confirmedBy,decidedAt,requestId,...(note?{note}:{})});
+  const written = [];
+  if(pending.media) written.push(round(null,current.sha256,partOf(current.quote.items)));
+  if(pending.transcription) written.push(round(facts.TRANSCRIPTION_SCOPE,current.transcriptionSha,current.quote.items.filter(item=>item && facts.isTranscriptionItem(item))));
+  if(!written.length) written.push(round(null,current.sha256,partOf(current.quote.items)));
+  return written[0];
+}
+
+// Whether a review (or a decision on it) lists the saved price among its files.
+function carriesPrice(value) {
+  return Array.isArray(value?.artifacts) && value.artifacts.some(item=>item?.path===facts.FACT_FILES.quote);
+}
+
+// The storyboard approval carries the price the board showed: the file must be unchanged and the total must be the one shown.
+function checkStoryboardPrice({root,args}) {
+  const job = facts.jobAt(root,args.brand,args.jobId);
+  const current = job ? facts.readQuote(job) : null;
+  if(!current) throw new Error('This price is no longer saved. Ask Claude to save and present it again.');
+  const shown = args.artifacts.find(item=>item.path===facts.FACT_FILES.quote);
+  if(!shown || shown.sha256!==current.fileSha256) throw new Error('The price changed after it was shown. Refresh and review it again.');
+  const totals = facts.quoteTotals(current.quote.items);
+  if(!facts.sameTotals(args.totals,totals)) throw new Error(`Approve this price at the total the board shows: ${facts.priceWords(totals)}.`);
+  return {job,current,totals};
+}
+
+function approveStoryboardPrice({pricedStoryboard,confirmedBy,decidedAt,requestId}) {
+  const {job,current,totals} = pricedStoryboard;
+  const saved = writePriceRound({job,current,approve:true,note:'',confirmedBy,decidedAt,requestId});
+  return {approval:saved.n,totals};
+}
+
+const CLIPS_SIGNED_OFF_NEXT = 'The clips are signed off. Join the clips, add the sound, then show the rough cut.';
+
+/**
+ * The plugin signs off the clips once its own checks pass: every priced clip is made and saved, and the test clip is approved.
+ * It writes the same approvals/clips.json a person's approval writes, marked as signed off by the plugin checks, so the joining
+ * script and the spend guard read it the same way. A person's own clips decision still works as before.
+ */
+export function signOffClips({root,brand,jobId}) {
+  root=rootOf(root);
+  jobDirectory(root,brand,jobId);
+  const job=facts.jobAt(root,brand,jobId);
+  if(!job) throw new Error('Job not found in this workspace.');
+  const set=facts.mediaSet(job,'video');
+  if(!set.panels.length) throw new UserFacingError('This job has no video clips to sign off.',{code:'no_clips',fix:'Make the clips first.'});
+  if(!set.complete) throw new UserFacingError('Not every clip is made and saved yet, so the clips cannot be signed off.',{code:'clips_not_ready',fix:'Wait for the clips that are still being made, save the finished ones (pipeline_generation_land), then sign off again.',details:{missing:set.panels.filter(item=>!item.file).map(item=>facts.itemLabel(item))}});
+  if(!facts.testClipApproved(job)) throw new UserFacingError('The test clip has not been approved yet, so the other clips cannot be signed off.',{code:'test_clip_not_approved',fix:'Show the test clip (pipeline_review_present, gate sample), wait for the person to approve it, then sign off.'});
+  const chatOnly=readJsonFile(join(job.dir,'job.json'),{})?.chatOnly===true;
+  const done=extra=>({status:'applied',confirmedBy:'plugin checks',args:{brand,jobId,reviewId:CLIPS_GATE,decision:'approve'},...(chatOnly ? {chatOnly:true} : {}),next:CLIPS_SIGNED_OFF_NEXT,...extra});
+  if(facts.mediaSetApproved(job,CLIPS_GATE)) return done({alreadyApproved:true,message:'These clips are already approved.'});
+  // Clips the person sent back for changes stay sent back until one of them is made again.
+  const earlier=readJsonFile(join(job.dir,...facts.MEDIA_REVIEWS[CLIPS_GATE].file.split('/')),null);
+  if(earlier?.decision==='changes' && Array.isArray(earlier.files) && earlier.files.length===set.panels.length && set.panels.every(item=>earlier.files.some(file=>facts.sameKey(file?.key,item.key) && file.sha256===item.sha256))) {
+    throw new UserFacingError('The person asked for changes on these clips, so they cannot be signed off until a clip is made again.',{code:'clips_sent_back',fix:'Make the clips with changes again, check them, then sign off.'});
+  }
+  const snapshot=runtime.readJobSnapshot({root,brand,jobId});
+  const decidedAt=new Date().toISOString();
+  const requestId=`signoff-${randomUUID()}`;
+  const saved={
+    gate:CLIPS_GATE,decision:'approve',decidedAt,by:'plugin checks',signedOff:true,requestId,
+    files:set.panels.map(item=>({key:item.key,deliverable:item.deliverable,panel:item.panel,file:item.file,sha256:item.sha256})),
+    panels:[],
+  };
+  mkdirSync(join(job.dir,'approvals'),{recursive:true});
+  writeJsonAtomic(join(job.dir,...facts.MEDIA_REVIEWS[CLIPS_GATE].file.split('/')),saved);
+  const event=pipelineEvents.makeEvent(jobId,'decision.recorded',decidedAt,{type:'gate',id:CLIPS_GATE},{gate:CLIPS_GATE,decision:'approve',note:'All video clips signed off by the plugin checks'},{jobId,brandId:snapshot.brand?.id,requestId,source:'local'});
+  appendFileSync(join(job.dir,'events.jsonl'),`${JSON.stringify(event)}\n`);
+  return done({requestId,appliedAt:decidedAt,decision:{decision:'approve',signedOff:true,decidedBy:'plugin checks',decidedAt,requestId,[CLIPS_GATE]:saved},message:'All video clips are signed off.'});
 }
 
 export function saveJobQuote({root,brand,jobId,items,drop}) {
@@ -3915,7 +4052,9 @@ export function saveJobQuote({root,brand,jobId,items,drop}) {
     approved,
     message:approved
       ? `This price is already approved: ${words}. Nothing new needs approval.`
-      : `Saved the price: ${words} for ${count} item${count===1?'':'s'}. Present it with pipeline_review_present and gate price, then wait for approval before making anything.`,
+      : facts.referenceArtOnly(job) && !picturesOnly(notTranscription(saved.quote.items))
+        ? `Saved the price: ${words} for ${count} item${count===1?'':'s'}. It is approved together with the storyboard: present the storyboard next.`
+        : `Saved the price: ${words} for ${count} item${count===1?'':'s'}. Present it with pipeline_review_present and gate price, then wait for approval before making anything.`,
   };
 }
 

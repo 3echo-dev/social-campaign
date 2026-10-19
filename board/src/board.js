@@ -2210,14 +2210,16 @@ export function connectorCard(connector, { busy = false, waiting = false } = {})
 export function notifyClaudeNotice(state = {}, signal = {}, now = Date.now()) {
   const { artifact = false, availability = null, busy = false } = signal;
   const helper = availability === 'writers_only' || availability === 'no_session' ? SIGNAL_OUTCOMES[availability] : '';
-  const text = esc(helper || state.message || 'Saved. If nothing happens, notify Claude.');
+  // Once the request carries the received status, Claude has it: say so and drop the nudge buttons.
+  const received = Boolean(state.requestId) && state.receivedFor === state.requestId;
+  const text = esc(received ? 'Claude has it.' : helper || state.message || 'Saved. If nothing happens, notify Claude.');
   const delivered = state.signal === 'sent';
-  const showButton = artifact && availability !== 'off' && !delivered;
+  const showButton = artifact && availability !== 'off' && !delivered && !received;
   const canNotify = availability === 'available';
   const button = showButton ? `<button type="button" data-action="signal" ${busy || !canNotify ? 'disabled' : ''}>${busy ? 'Notifying...' : 'Notify Claude'}</button>` : '';
   const waitSince = state.lastReminderAt || state.submittedAt;
   const dueForReminder = Number.isFinite(waitSince) && now - waitSince >= REMIND_DELAY_MS;
-  const showReminder = artifact && Boolean(state.requestId) && (dueForReminder || state.reminding);
+  const showReminder = artifact && Boolean(state.requestId) && !received && (dueForReminder || state.reminding);
   const remindButton = showReminder ? `<button type="button" class="quiet" data-action="remind" data-request-id="${esc(state.requestId)}" ${state.reminding ? 'disabled' : ''}>${state.reminding ? 'Reminding...' : 'Remind Claude'}</button>` : '';
   const actions = button || remindButton ? `<span class="notice-actions">${button}${remindButton}</span>` : '';
   return `<div class="notice pending" role="status"><span>${text}</span>${actions}</div>`;
@@ -2957,10 +2959,10 @@ const GATE_TITLES = Object.freeze({
   concept: 'Pick a concept',
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
-  sample: 'Approve the sample image',
+  sample: 'Approve the sample',
   pictures: 'Check the pictures',
   clips: 'Check the video clips',
-  cut: 'Check the joined video',
+  cut: 'Check the rough cut',
   finish: 'Check the finished video',
   content: 'Approve the final post',
   publish: 'Confirm where and when',
@@ -4193,6 +4195,17 @@ export function nextPanelKey(boards, state = {}, from = null) {
   return from;
 }
 
+// A saved panel or card change stays unsent until the decision carrying it reaches Claude (sent or already handled).
+export function hasUnsentReviewChanges(state) {
+  if (!state || state.submitted || state.settled) return false;
+  const changed = saved => Object.values(saved || {}).some(item => item?.verdict === 'changes');
+  return changed(state.panels) || changed(state.mediaPanels);
+}
+
+function notSentPill(state) {
+  return state?.submitted || state?.settled ? '' : ' <span class="pill pending">Not sent yet</span>';
+}
+
 export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const all = storyboardPanelsOf(boards);
   if (!all.length) return '';
@@ -4206,7 +4219,7 @@ export function storyboardSlot(boards, state = {}, { disabled = false } = {}) {
   const head = `<div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${boards.length > 1 ? refTag(boardRefOf(board)) : ''}${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span><span class="sb-slot-step">${at + 1} of ${all.length}</span></div>`;
   // A panel counts as approved until the person asks for a change on it.
   const verdict = saved.verdict === 'changes'
-    ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Change asked: ${saved.note}` : 'Change asked')}</span></p>`
+    ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(saved.note ? `Change asked: ${saved.note}` : 'Change asked')}</span>${notSentPill(state)}</p>`
     : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
   const error = editing && state.panelError ? `<p class="field-error" role="alert">${esc(state.panelError)}</p>` : '';
   const actions = editing
@@ -4276,14 +4289,14 @@ export function sampleView(doc) {
   return `<div class="sample-view" style="--sb-ratio:${frameRatio(found?.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${whyLine}${sets}${found ? panelFields(found.panel, found.board) : ''}</div></div>${rest}`;
 }
 
-// The pictures, the clips and the joined video are each reviewed as a grid: one card per panel with its picture or player and the
+// The pictures, the clips (older jobs) and the rough cut are each reviewed as a grid: one card per panel with its picture or player and the
 // storyboard's words for it, and a per-card "Ask for changes" with a note. Every card counts as approved until a change is asked on
 // it; "Approve all" sits under the grid. A change goes back to the named panels, and a redo of one is priced again first.
 const MEDIA_GATE_IDS = new Set(['pictures', 'clips', 'cut', 'finish']);
 const MEDIA_GATE_NOUNS = Object.freeze({ pictures: ['picture', 'pictures'], clips: ['clip', 'clips'], cut: ['video', 'videos'], finish: ['video', 'videos'] });
 const mediaPanelKey = panel => `${trimmed(panel?.deliverable)}|${trimmed(panel?.panel)}`;
 export const mediaPanelsOf = doc => (Array.isArray(doc?.review?.mediaSet?.panels) ? doc.review.mediaSet.panels : []);
-const mediaPanelTitle = panel => trimmed(panel?.text?.label) || (trimmed(panel?.panel) === 'Cut' ? 'Joined video' : trimmed(panel?.panel)) || 'Panel';
+const mediaPanelTitle = panel => trimmed(panel?.text?.label) || (trimmed(panel?.panel) === 'Cut' ? 'Rough cut' : trimmed(panel?.panel)) || 'Panel';
 
 export function mediaPanelStates(doc, saved = {}) {
   return Object.fromEntries(mediaPanelsOf(doc).map(panel => {
@@ -4307,7 +4320,7 @@ export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
     const version = Number(panel.version) > 1 ? `<span class="count">Version ${esc(Number(panel.version))}</span>` : '';
     const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(panel.deliverable))}${refTag(trimmed(panel.panel))}${version}</div>`;
     const verdict = mine.verdict === 'changes'
-      ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Change asked: ${mine.note}` : 'Change asked')}</span></p>`
+      ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Change asked: ${mine.note}` : 'Change asked')}</span>${notSentPill(state)}</p>`
       : `<p class="sb-verdict is-approved">${CHECK_ICON}<span>Approved</span></p>`;
     const error = editing && state.mediaError ? `<p class="field-error" role="alert">${esc(state.mediaError)}</p>` : '';
     const actions = editing
@@ -4401,6 +4414,44 @@ export function priceTable(quote, { used = null, withProvider = false } = {}) {
   const already = priceWords(spent);
   const facts = already ? `<dl class="price-facts"><div><dt>Already used on this job</dt><dd>${esc(already)}</dd></div></dl>` : '';
   return `<div class="price"><table class="price-table"><thead><tr><th>Item</th><th class="num">Credits</th></tr></thead><tbody>${rows || '<tr><td colspan="2" class="muted">Nothing is priced yet.</td></tr>'}</tbody><tfoot>${foot}</tfoot></table>${facts}</div>`;
+}
+
+// A storyboard that carries a price (review.quote, the same block the price card reads) is approved together with it.
+export const pricedStoryboard = doc => doc?.review?.gate === 'storyboard' && Boolean(doc.review.quote);
+const STORYBOARD_PRICED_LABEL = 'Approve and make the clips';
+
+function redoLine(redo) {
+  const perClip = creditNumber(redo?.perClip);
+  const ceiling = creditNumber(redo?.ceiling);
+  if (!perClip || perClip < 1 || !ceiling || ceiling < 1) return '';
+  return `Includes up to ${creditFigure(perClip)} ${perClip === 1 ? 'redo' : 'redos'} per clip, up to ${creditFigure(ceiling)} extra ${ceiling === 1 ? 'credit' : 'credits'}.`;
+}
+
+// The sound plan already recorded for the video (the same `chosen` picks the cut card used to edit), shown read-only.
+const SOUND_SOURCE_WORDS = Object.freeze({
+  music: { library: 'From your library', upload: 'Your own track', make: 'Made with ElevenLabs', none: 'None' },
+  voice: { library: 'From your library', upload: 'Your own recording', make: 'Made with ElevenLabs', none: 'None' },
+  captions: { voice: 'From the voice-over words', script: 'From the script words', none: 'None' },
+});
+function soundSection(doc) {
+  const chosen = doc?.combine?.chosen;
+  if (!chosen || typeof chosen !== 'object') return '';
+  const rows = [['voice', 'Voice-over'], ['music', 'Music'], ['captions', 'Captions']].map(([row, title]) => {
+    const pick = chosen[row];
+    const source = typeof pick === 'string' ? pick : pick?.source;
+    const words = SOUND_SOURCE_WORDS[row][source];
+    if (!words) return '';
+    const name = typeof pick === 'object' && trimmed(pick.title) ? ` (${trimmed(pick.title)})` : '';
+    return `<div><dt>${title}</dt><dd>${esc(words + name)}</dd></div>`;
+  }).join('');
+  return rows ? `<dl class="price-facts sound-plan">${rows}</dl>` : '';
+}
+
+// The price block under the storyboard panels: the price table, the redo line, the paying workspace, then the sound plan.
+function storyboardPrice(project, doc, workspaceState, { disabled = false } = {}) {
+  const review = doc.review;
+  const redo = redoLine(review.redo);
+  return `<section class="storyboard-price" aria-label="Price">${priceTable(review.quote, { used: project?.usage?.generation })}${redo ? `<p class="muted">${esc(redo)}</p>` : ''}${studioWorkspaceSection(doc, workspaceState, { disabled })}${soundSection(doc)}</section>`;
 }
 
 function studioWorkspaceBalanceWords(value) {
@@ -5128,12 +5179,12 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     const current = currentPanelKey(review.storyboards, state);
     parts.push(review.storyboards.map(board => storyboardStrip(board, { interactive: true, verdicts: panelStates(review.storyboards, state.panels), current })).join(''));
     parts.push(storyboardSlot(review.storyboards, state, { disabled: locked }));
+    if (pricedStoryboard(doc)) parts.push(storyboardPrice(project, doc, workspaceState, { disabled: locked }));
   } else if (review.storyboards?.length) {
     parts.push(review.storyboards.map(board => storyboardStrip(board)).join(''));
   }
   if (gate === 'sample') parts.push(sampleView(doc));
   if (MEDIA_GATE_IDS.has(gate)) parts.push(mediaSetView(doc, state, { disabled: locked }));
-  if (gate === 'cut' && doc.combine) parts.push(combineCard(doc, state, { disabled: locked }));
   if (gate === 'price' && review.quote) {
     parts.push(priceTable(review.quote, { used: project?.usage?.generation }));
     parts.push(studioWorkspaceSection(doc, workspaceState, { disabled: locked }));
@@ -5241,18 +5292,26 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
   }
   if (gate === 'storyboard') {
     const all = storyboardPanelsOf(doc?.review?.storyboards);
-    if (!all.length) return { label: 'Approve storyboard', line: '' };
+    const priced = pricedStoryboard(doc);
+    if (!all.length && !priced) return { label: 'Approve storyboard', line: '' };
     const word = all.every(item => item.board?.format === 'carousel') ? 'slide' : 'panel';
     const changes = Object.values(panelStates(doc?.review?.storyboards, state.panels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} ${word}${changes === 1 ? '' : 's'} to change, ${all.length - changes} approved.` };
-    return { label: 'Approve storyboard', line: all.length === 1 ? `The ${word} is approved.` : `All ${all.length} ${word}s approved.` };
+    const approved = !all.length ? '' : all.length === 1 ? `The ${word} is approved.` : `All ${all.length} ${word}s approved.`;
+    if (!priced) return { label: 'Approve storyboard', line: approved };
+    // The same totals and workspace rules as the price card: approving the storyboard approves the price shown under it.
+    const totals = priceTotals(doc.review.quote);
+    if (!totals) return { disabled: true, label: STORYBOARD_PRICED_LABEL, line: NOTE_NEEDS_PRICE };
+    if (studioWorkspaceRequired(doc)) return { disabled: true, label: STORYBOARD_PRICED_LABEL, line: 'Choose the paying workspace first.' };
+    const words = priceWords(totals);
+    return { label: STORYBOARD_PRICED_LABEL, line: [approved, words ? `Approving allows ${words} for this job.` : 'Approving allows no credits for this job.'].filter(Boolean).join(' ') };
   }
   if (MEDIA_GATE_IDS.has(gate)) {
     const all = mediaPanelsOf(doc);
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
-    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved. A redo is priced again.` };
-    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' ? (doc?.combine ? 'Pick the music, voice-over and subtitles, then approve.' : 'Approve, then pick subtitles, music, both or nothing.') : gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them into one video.';
+    if (changes) return { label: 'Send changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved.${gate === 'cut' || gate === 'finish' ? '' : ' A redo is priced again.'}` };
+    const next = gate === 'pictures' ? 'Approving lets Claude make the video clips.' : gate === 'cut' || gate === 'finish' ? 'Approving lets Claude write the post text.' : 'Approving lets Claude join them and add the sound.';
     return { label: gate === 'cut' || gate === 'finish' ? 'Approve' : 'Approve all', line: all.length > 1 ? `All ${all.length} ${many} approved. ${next}` : `${next}` };
   }
   if (gate === 'sample') {
@@ -5278,93 +5337,6 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
   if (gate === 'findings') return { label: 'Approve report', line: 'Approving finishes this job.' };
   return { label: 'Approve', line: '' };
 }
-// ---- The combine card: music, voice-over and captions, each row with its own choice (one card on the joined video).
-const COMBINE_ROW_TITLES = Object.freeze({ music: 'Music', voice: 'Voice-over', captions: 'Subtitles' });
-const COMBINE_NOTES = Object.freeze({
-  upload: { music: 'Claude asks for the track after approval.', voice: 'Claude asks for the recording after approval.' },
-  make: { music: 'Made with ElevenLabs. Costs credits.', voice: 'Made with ElevenLabs. Costs credits. Compare takes.' },
-});
-
-/** The picks the combine card shows now: the storyboard-driven defaults, then whatever the person changed (state.combine). */
-export function combinePicks(doc, state = {}) {
-  const card = doc?.combine;
-  if (!card || typeof card !== 'object') return null;
-  const mine = state?.combine && typeof state.combine === 'object' ? state.combine : {};
-  const picks = {};
-  for (const row of ['music', 'voice', 'captions']) {
-    const options = Array.isArray(card.rows?.[row]) ? card.rows[row] : [];
-    const wanted = mine[row] || card.defaults?.[row] || { source: 'none' };
-    const source = options.some(option => option.id === wanted.source) ? wanted.source : 'none';
-    const pick = { source };
-    if (source === 'library') {
-      const items = combineItems(card, row, mine.brand);
-      const id = trimmed(wanted.id);
-      pick.id = items.some(item => item.id === id) ? id : items[0]?.id || '';
-    }
-    picks[row] = pick;
-  }
-  return picks;
-}
-
-function combineItems(card, row, brand) {
-  const list = Array.isArray(card?.library?.[row === 'voice' ? 'voice' : 'music']) ? card.library[row === 'voice' ? 'voice' : 'music'] : [];
-  const wanted = trimmed(brand);
-  return list.filter(item => item && item.id && (!wanted || (Array.isArray(item.brands) ? item.brands : [item.brand]).includes(wanted)));
-}
-
-/** The combine arguments for the approval, or an error line when a library pick has no item. */
-export function combineArgs(doc, state = {}) {
-  const picks = combinePicks(doc, state);
-  if (!picks) return { error: 'Not ready yet.' };
-  const out = {};
-  for (const row of ['music', 'voice', 'captions']) {
-    const pick = picks[row];
-    if (pick.source === 'library' && !pick.id) return { error: `The ${row === 'voice' ? 'voice-over' : 'music'} library is empty. Pick another choice.` };
-    out[row] = pick.source === 'library' ? { source: 'library', id: pick.id } : { source: pick.source };
-  }
-  return { combine: out };
-}
-
-/** The one card with three rows for the joined video. Nothing here spends: making with ElevenLabs is priced and clicked later. */
-export function combineCard(doc, state = {}, { disabled = false } = {}) {
-  const card = doc?.combine;
-  const picks = combinePicks(doc, state);
-  if (!card || !picks) return '';
-  const brandNames = new Map((Array.isArray(card.brands) ? card.brands : []).map(item => [item.slug, item.name || item.slug]));
-  const brand = trimmed(state?.combine?.brand);
-  const brandFilter = brandNames.size > 1
-    ? `<label class="combine-filter">Library for <select data-combine-brand ${disabled ? 'disabled' : ''}><option value="">All brands</option>${[...brandNames].map(([slug, name]) => `<option value="${esc(slug)}"${brand === slug ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>`
-    : '';
-  const rows = ['music', 'voice', 'captions'].map(row => {
-    const pick = picks[row];
-    const options = (card.rows?.[row] || []).map(option => {
-      const id = `combine-${row}-${option.id}`;
-      return `<label class="combine-option${pick.source === option.id ? ' is-chosen' : ''}" for="${id}"><input type="radio" id="${id}" name="combine-${row}" value="${esc(option.id)}" data-combine-source="${row}"${pick.source === option.id ? ' checked' : ''}${disabled ? ' disabled' : ''}><span>${esc(option.label)}</span>${option.priced ? '<span class="combine-priced">priced</span>' : ''}</label>`;
-    }).join('');
-    let detail = '';
-    if (pick.source === 'library') {
-      const items = combineItems(card, row, brand);
-      detail = items.length
-        ? `<label class="combine-pick"><span class="visually-hidden">${esc(COMBINE_ROW_TITLES[row])} from your library</span><select data-combine-item="${row}" ${disabled ? 'disabled' : ''}>${items.map(item => `<option value="${esc(item.id)}"${item.id === pick.id ? ' selected' : ''}>${esc(`${item.title} (${[item.licence, item.brand ? brandNames.get(item.brand) || item.brand : ''].filter(Boolean).join(', ')})`)}</option>`).join('')}</select></label>`
-        : `<p class="muted combine-note">Nothing in the ${row === 'voice' ? 'voice' : 'music'} library${brand ? ' for this brand' : ''} yet. Pick another choice.</p>`;
-    } else if (COMBINE_NOTES[pick.source]?.[row]) {
-      detail = `<p class="muted combine-note">${esc(COMBINE_NOTES[pick.source][row])}</p>`;
-    } else if (row === 'voice' && pick.source === 'none' && card.voiceOver?.enabled) {
-      detail = '<p class="muted combine-note">The storyboard has a voice-over.</p>';
-    }
-    const asked = row === 'voice' && card.voiceOver ? `<p class="muted combine-note">${card.voiceOver.enabled ? `The storyboard wants a voice-over${card.voiceOver.voice ? ` (${esc(card.voiceOver.voice)})` : ''}.` : 'The storyboard has no voice-over.'}</p>` : '';
-    return `<fieldset class="combine-row" data-combine-row="${row}"><legend>${esc(COMBINE_ROW_TITLES[row])}</legend><div class="combine-options" role="radiogroup">${options}</div>${asked}${detail}</fieldset>`;
-  }).join('');
-  return `<section class="combine-card" aria-labelledby="combine-title"><div class="combine-head"><h3 id="combine-title">What goes on the joined video</h3>${brandFilter}</div>${rows}<p class="muted combine-foot">ElevenLabs audio costs credits. You see the price and click first.</p></section>`;
-}
-
-/** What the joined video's approve buttons add; the id is what the server records as the finishing choice. */
-export const FINISHING_PICKS = Object.freeze([
-  { id: 'captions', label: 'Approve + add subtitles' },
-  { id: 'music', label: 'Approve + add music' },
-  { id: 'both', label: 'Approve + both', primary: true },
-  { id: 'skip', label: 'Approve as is' },
-]);
 const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare prices too.' });
 
 /**
@@ -5376,7 +5348,7 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * (`strategyPicks`, `strategyOwn`), the "Strategy picks:" line and a "Your own ..." line per option added;
  * price approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, finishing = null, combine = null, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -5393,6 +5365,12 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: NOTE_SAY_CHANGE };
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
+    // A storyboard that carries a price approves it too, with the totals shown (the same as the price card sends).
+    if (verdict === 'approve' && pricedStoryboard(doc)) {
+      const totals = priceTotals(doc.review.quote);
+      if (!totals) return { error: NOTE_NEEDS_PRICE };
+      args.totals = totals;
+    }
     return { args };
   }
   if (MEDIA_GATE_IDS.has(gate)) {
@@ -5405,15 +5383,6 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: NOTE_SAY_CHANGE };
     if (decided.length) args.panels = decided;
     if (note && verdict === 'request_changes') args.note = note;
-    // The joined video is approved together with what to add to it: captions, music, both or as is (skip).
-    if (gate === 'cut' && verdict === 'approve' && finishing === 'combine') {
-      const picked = combineArgs(doc, { combine });
-      if (picked.error) return { error: picked.error };
-      args.combine = picked.combine;
-    } else if (gate === 'cut' && verdict === 'approve' && finishing !== null) {
-      if (!FINISHING_PICKS.some(pick => pick.id === finishing)) return { error: 'Pick subtitles, music, both or as is.' };
-      args.finishing = finishing;
-    }
     return { args };
   }
   if (verdict === 'request_changes' && !note) return { error: NOTE_SAY_CHANGE };
@@ -5573,17 +5542,11 @@ export function reviewPanel(project, doc, rawState = {}, { docState = 'loaded', 
       ? `<div class="notice" role="status"><span>${esc(state.message || NOTE_DECLINED)}</span></div>`
       : state.submitted || state.needsReconciliation ? notifyClaudeNotice(state, signal) : '';
   const error = state.error ? `<p class="notice error inline-error" role="alert">${esc(state.error)}</p>` : '';
-  // The joined video is approved with what to add to it, in one click. Once a choice is sent the buttons give way to the one that waits.
-  const pickFinishing = gate === 'cut' && ready && !decided && !plan.disabled && plan.action !== 'send-panels';
-  const primaryButtons = pickFinishing && doc?.combine
-    ? '<button type="button" class="primary" data-review-action="approve" data-finishing="combine">Approve + add these</button>'
-    : pickFinishing
-    ? FINISHING_PICKS.map(pick => `<button type="button"${pick.primary ? ' class="primary"' : ''} data-review-action="approve" data-finishing="${esc(pick.id)}">${esc(pick.label)}</button>`).join('')
-    : `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? TXT_WAITING_FOR_CLAUDE : state.settled ? 'Already handled' : approveLabel)}</button>`;
+  const primaryButtons = `<button type="button" class="primary" data-review-action="${esc(plan.action || 'approve')}" ${!ready || decided || plan.disabled ? 'disabled' : ''}>${esc(plan.action === 'send-panels' && state.busy ? 'Saving...' : plan.action === 'send-panels' && state.submitted ? TXT_WAITING_FOR_CLAUDE : state.settled ? 'Already handled' : approveLabel)}</button>`;
   const actions = state.commentOpen
     ? `<div class="review-comment"><label for="review-comment">What should change?</label><textarea id="review-comment" name="comment" maxlength="4000" placeholder="${esc(CHANGE_PLACEHOLDERS[gate] || 'For example: shorten the hook.')}">${esc(state.comment || '')}</textarea><div class="review-actions"><div class="review-buttons"><button type="button" class="quiet" data-review-action="cancel-changes">Cancel</button><button type="button" class="primary" data-review-action="send-changes" ${decided ? 'disabled' : ''}>${state.busy && state.verdict === 'request_changes' ? 'Saving...' : state.submitted && state.verdict === 'request_changes' ? TXT_WAITING_FOR_CLAUDE : 'Send changes'}</button></div></div></div>`
     : `<div class="review-actions">${plan.safety ? `<div class="review-notes">${plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<p class="review-line review-safety">${esc(plan.safety)}</p></div>` : plan.line ? `<p class="review-line">${esc(plan.line)}</p>` : ''}<div class="review-buttons"><button type="button" data-review-action="changes" ${!ready || decided ? 'disabled' : ''}>Ask for changes</button>${primaryButtons}</div></div>`;
-  const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : GATE_TITLES[gate] || humanize(gate);
+  const title = gate === 'sample' && doc?.review?.sample?.kind === 'video' ? 'Approve the sample clip' : ready && pricedStoryboard(doc) ? 'Approve the storyboard and price' : GATE_TITLES[gate] || humanize(gate);
   return `<section class="panel review-panel${gate === 'publish' ? ' review-panel-publish' : ''}" aria-labelledby="review-title"><div class="section-head${headExtra ? ' report-section-head' : ''}"><h2 id="review-title">${esc(title)}</h2>${headExtra}</div><div id="review-form" class="review-body">${body}${error}${actions}</div>${notice}</section>`;
 }
 
@@ -5594,7 +5557,7 @@ export const INBOX_EMPTY = 'Nothing needs you right now.';
 const INBOX_KINDS = new Set(['question', 'decision', 'brief', 'onboarding', 'post', 'stuck', 'handoff_offer', 'handoff_return']);
 export const INLINE_DECISIONS = new Set(['price', 'sample']);
 const BRIEF_MISSING = 'Some brief answers are missing.';
-const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'finished video': 'finish', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
+const WAITING_GATES = Object.freeze({ concept: 'concept', storyboard: 'storyboard', price: 'price', 'sample image': 'sample', 'test clip': 'sample', 'storyboard pictures': 'pictures', 'video clips': 'clips', 'joined video': 'cut', 'rough cut': 'cut', 'finished video': 'finish', 'final post': 'content', 'posting plan': 'publish', 'campaign plan': 'campaign_proposal', 'going live': 'campaign_activation', report: 'findings' });
 
 const hasQuestionId = item => item?.questionId !== undefined && item?.questionId !== null && String(item.questionId).trim() !== '';
 
@@ -6132,7 +6095,8 @@ export function stageApprovals(stage) {
   return (Array.isArray(stage?.approvals) ? stage.approvals : []).filter(entry => entry && GATE_COMMENT_NAMES[entry.gate]).map(entry => {
     const when = entry.at && Number.isFinite(Date.parse(entry.at)) ? ` ${time(entry.at)}` : '';
     const price = entry.gate === 'price' ? priceWords(entry.totals) : '';
-    return `<small class="stage-approved">${esc(`${GATE_COMMENT_NAMES[entry.gate]} approved${when}${price ? ` · ${price}` : ''}`)}</small>`;
+    const checked = entry.gate === 'clips' && entry.signedOff === true;
+    return `<small class="stage-approved">${esc(checked ? `${GATE_COMMENT_NAMES[entry.gate]} checked by the plugin${when}` : `${GATE_COMMENT_NAMES[entry.gate]} approved${when}${price ? ` · ${price}` : ''}`)}</small>`;
   }).join('');
 }
 
@@ -7559,7 +7523,7 @@ const GATE_COMMENT_NAMES = Object.freeze({
   sample: 'Sample',
   pictures: 'Pictures',
   clips: 'Video clips',
-  cut: 'Joined video',
+  cut: 'Rough cut',
   content: 'Final post',
   publish: 'Posting plan',
   campaign_proposal: 'Campaign plan',
@@ -8403,7 +8367,7 @@ if (typeof document !== 'undefined') {
       const request = mine.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
       const ui = uiFor(project);
       if (!request || ui.review.busy || ui.review.submitted) return;
-      Object.assign(ui.review, { requestId: request.requestId, busy: false, submitted: true, verdict: request.args.decision === 'request_changes' ? 'request_changes' : 'approve', submittedAt: Date.parse(request.createdAt || '') || Date.now(), operation: 'submit_decision', args: request.args, error: '', declined: false });
+      Object.assign(ui.review, { requestId: request.requestId, busy: false, submitted: true, verdict: request.args.decision === 'request_changes' ? 'request_changes' : 'approve', submittedAt: Date.parse(request.createdAt || '') || Date.now(), operation: 'submit_decision', args: request.args, error: '', declined: false, receivedFor: String(request.artifactReceipt?.status || request.status) === 'received' ? request.requestId : null });
       watchJobRequest(project.jobId, 'review', ui.review);
       render();
     }).catch(() => { /* Without the record the buttons simply show. */ });
@@ -8418,12 +8382,15 @@ if (typeof document !== 'undefined') {
       if (!receipt || state.requestId !== requestId) return;
       const acknowledgement = receipt.artifactReceipt || receipt;
       const status = String(acknowledgement.status || receipt.status || 'requested');
-      if (part === 'review' && status !== 'requested' && status !== 'sent') forgetSentDecision(jobId);
+      if (part === 'review' && status !== 'requested' && status !== 'sent' && status !== 'received') forgetSentDecision(jobId);
       if (part === 'review' && ['needs_reconciliation', 'error', 'failed', 'rejected'].includes(status)) {
         // A decision that failed can be made again: the card shows the reason and the buttons come back.
         stopJobRequestWatch(key);
         Object.assign(state, { busy: false, submitted: false, needsReconciliation: false, requestId: null, args: null, operation: null, error: acknowledgement.message || receipt.message || 'Claude could not apply this. Try again.', submittedAt: null, lastReminderAt: null, reminding: false });
         render();
+      } else if (status === 'received') {
+        // Claude picked the request up: the card stays submitted and only its line changes.
+        if (state.receivedFor !== requestId) { state.receivedFor = requestId; render(); }
       } else if (status === 'applied') {
         stopJobRequestWatch(key);
         // An applied decision keeps its card settled until the job document catches up and stops listing the review.
@@ -9840,7 +9807,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.pickSave!==undefined){savePickEdit();return;}
     if(target.dataset.pickCancel!==undefined){cancelPickEdit();return;}
     if(target.dataset.pickDrop!==undefined){dropPickOwn(target.dataset.pickDrop,target.dataset.pickId);return;}
-    if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref, target.dataset.finishing);return;}
+    if(target.dataset.reviewAction){void reviewAction(target.dataset.reviewAction, target.dataset.ref);return;}
     if(target.dataset.recipeSave){const project=current();if(project)void submitRecipe(project, target.dataset.recipeSave);return;}
     if(target.dataset.workspaceAction){workspaceAction(target.dataset.workspaceAction);return;}
     if(target.dataset.reportDownload){void saveReport(target.dataset.reportDownload);return;}
@@ -10432,7 +10399,7 @@ if (typeof document !== 'undefined') {
     render();
     focusHook(`input[name="pick_${CSS.escape(edit.row)}"][value="${CSS.escape(done.pick)}"]`);
   }
-  async function submitDecision(project, verdict, finishing = null) {
+  async function submitDecision(project, verdict) {
     const state = uiFor(project).review;
     if (!transport || state.busy || state.submitted || state.needsReconciliation || state.settled) return;
     const comment = app.querySelector('#review-comment')?.value ?? state.comment ?? '';
@@ -10441,7 +10408,7 @@ if (typeof document !== 'undefined') {
     if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel your opening line first.'; render(); return; }
     if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel your option first.'; render(); return; }
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, finishing, combine: state.combine || null, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -10906,23 +10873,7 @@ if (typeof document !== 'undefined') {
     const prefix = `${ref}: `;
     return text.trim() ? `${text}\n${prefix}` : prefix;
   }
-  // The combine card: a row's choice, the library item picked for a row, or the brand the library is filtered by.
-  app.addEventListener('change', event => {
-    const field = event.target;
-    const row = field?.dataset?.combineSource || field?.dataset?.combineItem;
-    if (!row && !field?.hasAttribute?.('data-combine-brand')) return;
-    const project = current();
-    if (!project) return;
-    const state = uiFor(project).review;
-    const doc = docFor(project);
-    const keep = state.combine && typeof state.combine === 'object' ? state.combine : {};
-    if (field.hasAttribute('data-combine-brand')) state.combine = { ...keep, brand: field.value };
-    else if (field.dataset.combineSource) state.combine = { ...keep, [row]: { source: field.value } };
-    else state.combine = { ...keep, [row]: { ...(combinePicks(doc, { combine: keep })?.[row] || {}), id: field.value } };
-    render();
-    focusQuietly(field.dataset.combineSource ? `#combine-${row}-${field.value}` : field.hasAttribute('data-combine-brand') ? '[data-combine-brand]' : `[data-combine-item="${row}"]`);
-  });
-  async function reviewAction(action, ref, finishing) {
+  async function reviewAction(action, ref) {
     const project = current();
     if (!project) return;
     const state = uiFor(project).review;
@@ -10944,7 +10895,7 @@ if (typeof document !== 'undefined') {
       return;
     }
     if (action === 'cancel-changes') { state.commentOpen = false; state.error = ''; render(); app.querySelector('[data-review-action="changes"]')?.focus(); return; }
-    if (action === 'approve') await submitDecision(project, 'approve', finishing || null);
+    if (action === 'approve') await submitDecision(project, 'approve');
     else if (action === 'send-changes' || action === 'send-panels') await submitDecision(project, 'request_changes');
   }
   function focusQuietly(selector) {
@@ -11692,5 +11643,11 @@ if (typeof document !== 'undefined') {
     image.remove();
   }, true);
   addEventListener('hashchange',()=>{drawer=null;viewer=null;connectorsView=false;render();});
+  // Leaving the page with a saved panel or card change nobody sent loses it: ask first.
+  addEventListener('beforeunload', event => {
+    if (![...jobUi.values()].some(ui => hasUnsentReviewChanges(ui.review))) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
   void refresh();
 }

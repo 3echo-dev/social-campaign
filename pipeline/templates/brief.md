@@ -97,6 +97,13 @@ These are the reasons to believe the message. Each with provenance to a research
 
 - {claim} - source: `research/{file}.md#{anchor}` - label: FACT | OBSERVATION | INFERENCE
 
+# Cast
+
+Who appears: for each person, their role, rough look and age, and the panels or beats they are in. Write "no one on screen" when nobody appears.
+The storyboard's Continuity block quotes this list.
+
+- {role or name} - {rough look and age} - {panels}
+
 # Deliverable map
 
 | ID | Platform | Count | Format | Role in the set | Stage | Visual format | Hook family | Mechanic | Why this differs from the others |

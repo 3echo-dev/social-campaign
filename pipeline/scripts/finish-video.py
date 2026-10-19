@@ -6,8 +6,8 @@
 
 Reads the stitched cut (stitch.output, else media/D<n>/final.mp4), keeps it as final-raw.mp4 next to it,
 and writes the finished final.mp4 (plus final-finished.sha256, which marks it as this script's own output, and
-finish-report.json, which says where the caption words came from). Run it right after the person approved the
-joined video and said what to add. The joined video is plain: it carries no text, so everything on screen is
+finish-report.json, which says where the caption words came from). Run it once the clips are approved and the sound
+choice is recorded; the finished video is the rough cut the person sees. The joined video is plain: it carries no text, so everything on screen is
 drawn here, once, in one style (bold white on a dark rounded box, inside the safe area above the bottom 500 px).
 
   * On-screen text: media/D<n>/onscreen.json, saved by stitch-clips.py from the script's on-screen text column
@@ -43,7 +43,7 @@ Pillow and ffmpeg only. ffmpeg and ffprobe are called with argument lists, never
 Exit 0 finished, or nothing to add (the cut is kept as it is).
 Exit 2 there is no stitched cut to finish.
 Exit 3 ffmpeg, ffprobe or Pillow is missing: the stitched cut stays as final.mp4.
-Exit 6 the joined video is not approved yet, or what to add is not recorded (approvals/cut.json, approvals/finishing.json): nothing is made.
+Exit 6 the clips are not approved yet, or what to add is not recorded (approvals/clips.json, approvals/finishing.json): nothing is made.
 Exit 7 music or a voice-over was chosen and none is saved: nothing is made. Say so, then price a track or pick another choice.
 Exit 5 finishing failed: final-raw.mp4 is put back as final.mp4 and the reason is printed
 (a failed variant just reports that it was not made).
@@ -613,7 +613,7 @@ def main():
     stamp = os.path.join(os.path.dirname(final), "final-finished.sha256")
     target = os.path.join(os.path.dirname(final), "final-%s.mp4" % a.variant) if a.variant else final
 
-    # Nothing is added before the person approved the joined video and said what to add (approvals/cut.json, finishing.json).
+    # Nothing is added before the clips are approved and what to add is recorded (approvals/clips.json, finishing.json).
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import review_gate
     why = review_gate.finishing_problem(jobdir)

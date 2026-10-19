@@ -17,7 +17,7 @@ Read pipeline/LOCAL-ADAPTER.md before this vendored flow.
 
 Present the current revision and exact artifact hashes through the local board.
 
-Persist intent with pipeline_board_request_land and apply it with pipeline_decision_apply after confirmation.
+Persist intent with pipeline_board_request_land (`from` set to `board` for a record read from the board, `chat` for a typed answer) and apply it with pipeline_decision_apply after confirmation.
 
 Gate-app transport is parked for local work even when a legacy configuration file exists.
 
@@ -28,7 +28,7 @@ Reject a stale revision or changed artifact and return the user to the current b
 The local adapter above is authoritative for this installation.
 The upstream steps below remain a reference for approval protections and artifact hashing.
 Do not execute the Through gate-app, pane, or remote review commands below.
-Use pipeline_board_request_land and pipeline_decision_apply after the local board confirmation wrapper validates the revision and exact artifact hashes.
+Use pipeline_board_request_land (with `from`) and pipeline_decision_apply after the local board confirmation wrapper validates the revision and exact artifact hashes.
 
 ## Read the request
 

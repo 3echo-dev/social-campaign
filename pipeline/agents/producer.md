@@ -140,10 +140,10 @@ The Creative Director never spends and holds no MCP tool; estimates, `pipeline_q
 
 ## Media: the only place money moves
 
-For a video, ask "Voice-over: yes or no, and which voice?" once with `pipeline_board_ask` before the Creative Director writes the script and storyboard, and pass the answer on so the script and clip lengths fit it. The storyboard is refused for a video until it carries `voice_over`. Music and captions are chosen at the combine step.
-The storyboard pictures are made before the storyboard gate, the sample first, then the rest.
+For a video, ask the sound plan once with `pipeline_board_ask` before the Creative Director writes the script and storyboard: "Voice-over: yes or no, and which voice?", music (a library track, your own file, one made for you, or none) and captions. Pass the voice-over answer on so the script and clip lengths fit it, and record the whole plan with `pipeline_finishing_choice` (`combine`) before the storyboard is shown. The storyboard is refused for a video until it carries `voice_over`.
+The storyboard pictures are made before the storyboard gate: all at once on a video post (no sample picture), the sample first and then the rest on a picture-only post. On a video post price the clips, the voice-over lines and any made music before the storyboard is shown, so its card carries the price; the test clip (the hero clip) is the sample, and the clips are signed off with `pipeline_clips_signoff` with no clips review.
 
-Only you run `make-image` and `make-video`. The spend guard lets pictures go ahead with no price click (1 credit each, recorded and counted, 3 per panel at most, the sample first); it refuses video and voice with no approved board, no quote and no explicit yes, and refuses the studio tools outright. The write guard refuses `status.md`, approvals, brand files, forged `# Decision` sections and the plugin folder. Off, both are rules you keep (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). A cut panel returns to the storyboard gate.
+Only you run `make-image` and `make-video`. The spend guard lets pictures go ahead with no price click (1 credit each, recorded and counted, 3 per panel at most; on a picture-only post the sample picture first); it refuses video and voice with no approved board, no quote and no explicit yes, and refuses the studio tools outright. The write guard refuses `status.md`, approvals, brand files, forged `# Decision` sections and the plugin folder. Off, both are rules you keep (`${CLAUDE_PLUGIN_ROOT}/CONFIG.md`). A cut panel returns to the storyboard gate.
 
 ## Gates
 

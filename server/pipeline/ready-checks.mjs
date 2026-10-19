@@ -15,9 +15,9 @@ const line = (label, ok, level = 'required') => ({ label, ok: Boolean(ok), level
 const BLOCKER_WORDS = Object.freeze({
   pictures: 'Storyboard pictures approved',
   clips: 'Video clips approved',
-  cut: 'Joined video approved',
+  cut: 'Rough cut approved',
   finish: 'Finished video approved',
-  finishing: 'Captions or music chosen',
+  finishing: 'Sound for the video chosen',
 });
 
 function hasVideo(job) {
@@ -105,7 +105,7 @@ export function readyChecks({ gate, job, review = null, gaps = null }) {
     case 'cut':
       return [...(facts.mediaReviewRequired(job, 'clips') ? [line('Video clips approved', facts.mediaSetApproved(job, 'clips'))] : [])];
     case 'finish':
-      return [line('Joined video approved', facts.mediaSetApproved(job, 'cut')), line('Captions or music chosen', Boolean(facts.finishingRecord(job)))];
+      return [line('Rough cut approved', facts.mediaSetApproved(job, 'cut')), line('Sound for the video chosen', Boolean(facts.finishingRecord(job)))];
     case 'content': {
       const out = [...videoApproved(job)];
       if (review?.checks) out.push(line('Every post passes its checks', review.checks.ready === true));

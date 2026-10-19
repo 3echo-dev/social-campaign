@@ -38,14 +38,17 @@ Write the storyboard, the generation manifest, and for a video the script, only 
 
 Write storyboard shot, on-screen text and voiceover fields in plain words for a person: no task numbers, stage codes, file names or production notes. Production notes belong in the generation manifest only.
 
-Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample. Write `sample_why` in the storyboard front matter: one plain line on why that panel tests the look best. The sample card shows it, with the Continuity block as the list of what the sample sets for every panel, so write each Continuity bullet as `- **Label:** what stays the same`.
+Every picture and clip prompt stands alone, every attached picture has a labelled reference, the hook clip has headroom, and exactly one item in the manifest is the sample: the hero clip on a video post (the test clip, never a picture), the peak-beat picture on a picture-only post. Write `sample_why` in the storyboard front matter: one plain line on why that item tests the look best. The sample card shows it, with the Continuity block as the list of what the sample sets for every panel, so write each Continuity bullet as `- **Label:** what stays the same`.
 
 Take the one picture style of the job from the chosen concept and write it once as the storyboard `style` preamble and the manifest `style`. Every image prompt opens with it word for word (after the reference legend), then the continuity block of 3 to 6 attributes for each recurring person, place and product that appears in it. Every picture attaches the same look references (brand photos, product, faces); a reference that appears in only some panels, such as a logo for the end card, is attached only to those panels.
+When the brand and the brief set no other look, the style is an everyday phone photo in daylight with real, ordinary clutter. Take who appears from the brief's Cast section and quote it in the Continuity block.
+
+Before any picture is made, check the whole set: neighbouring panels differ in shot size, angle or place, and props or framing do not repeat across the set unless the story needs it. Fix the storyboard prompts first when they do.
 
 Everything the generation and stitching scripts check is in the `_notes` of `templates/generation-manifest.json`, the storyboard skill and this file. Do not read `pipeline/scripts/` to work out the format: write from the template, and return anything it leaves unclear as an open question.
 
 Write the 9:16 safe zone into the `style` line from the start: the top tenth, the bottom quarter and a strip down each side (180 px of 1080) stay empty background.
-Write the voice-over answer the Director gives you in the storyboard front matter (`voice_over: yes` or `no`, and `voice`), and fit the script and clip lengths to it. If you were not given one, return it as an open question.
+Write the voice-over answer the Director gives you in the storyboard front matter (`voice_over: yes` or `no`, and `voice`), and fit the script and clip lengths to it; let the music mood in the storyboard Notes follow the music answer. If you were not given the sound plan (voice-over, music, captions), return it as an open question: the Director records it before the storyboard is shown.
 
 For a redo, rewrite only the one prompt you are given, and leave every other item as it is.
 

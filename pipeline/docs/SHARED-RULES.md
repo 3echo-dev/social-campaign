@@ -416,10 +416,9 @@ Run it in this order, and never any of it for a panel outside the list:
 One credit for an image.
 A fresh `estimate_video_job` or voice estimate for a clip or a line.
 Never re-quote the whole board.
-2. **Add it to the quote** with `pipeline_quote_save`.
-Send it back through the price gate with `pipeline_review_present` and `gate: "price"`.
-The person answers on the board or in chat.
-A redo costs money, so the first approval does not cover it.
+2. **Check the price.** A picture redo keeps its own free pass: no price tap, it is recorded and counted like the first picture.
+A clip redo inside the allowance (two per clip, up to the extra credits shown on the storyboard price) needs no new price tap: make it straight away.
+A clip redo beyond the allowance, or a voice line redo, is priced again: add it to the quote with `pipeline_quote_save`, send it back through the price gate with `pipeline_review_present` and `gate: "price"`, and wait for the person's answer on the board or in chat.
 3. **Regenerate only those panels.** When the new file lands, the landing step promotes it to `P{id}` and archives the old `P{id}.png` as `P{id}-r{k}.png`, `k` from 1; never archive or move media files by hand.
 4. **The note is the instruction, and it goes into the prompt.** The Director spawns the Creative Director once, with the person's note and that one panel or clip, and the Creative Director writes the new prompt: it appends the note verbatim as its own line under the item's existing prompt in the generation manifest and touches no other item. The Director never writes the prompt itself, and makes the redo only after the new prompt is written. The model is told what was wrong in the person's own words. A redo that drops the note reruns the same prompt and returns the same picture, and the person sends it back again.
 5. **Reopen the gate** with `open-review.js` once the new frames are on disk. It rebuilds every card from what is there now, approved panels included.

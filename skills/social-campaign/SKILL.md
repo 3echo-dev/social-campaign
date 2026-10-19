@@ -47,7 +47,7 @@ Read a branch file only when its condition holds; every other path stays on this
 - Read `branches/chat-only-jobs.md` (relative to this skill folder) when the person asks to work in chat without the board; it covers `chatOnly`, presenting in chat and `pipeline_chat_decision` and is done when the approvals are recorded through chat and the board is never opened for that job.
 - Read `branches/direction-and-angle.md` (relative to this skill folder) when a content job reaches its direction card or angle pick; it covers showing and taking the direction and the angles and is done when the direction is approved before research and the angle is picked.
 - Read `branches/reference-evidence.md` (relative to this skill folder) when N reference videos were asked for or style references are needed, and fewer than N are verified; it covers counting verified references and the one question about links that failed and is done when the brief is written with its `References: n of N verified` line and the one question is asked.
-- Read `branches/finish-video.md` (relative to this skill folder) when a joined video (`gate: "cut"`) is approved or finished, or music, voice-over or captions are added; it covers the combine card, the finishing choice, captions, ElevenLabs music and voice and the finished video and is done when the finished video from `finish-video.py` is approved.
+- Read `branches/finish-video.md` (relative to this skill folder) when the clips are signed off, or the rough cut (`gate: "cut"`) is finished, shown or changed, or music, voice-over or captions are added; it covers the sound plan, captions, ElevenLabs music and voice and the finished video shown as the rough cut and is done when the rough cut from `finish-video.py` is approved.
 - Read `branches/helpers-hand-backs.md` (relative to this skill folder) when a routed job goes to the producer or the producer or a helper hands back; it covers waiting for helpers, reading `agents.jsonl` and what to tell the person and is done when the hand-back is understood from the log and the files.
 
 ## Talking to the person
@@ -58,6 +58,8 @@ Read a branch file only when its condition holds; every other path stays on this
   This limit does not apply to research evidence, scripts, reports, creative deliverables, structured outputs or hand-backs.
 - Give one-sentence progress updates only for meaningful changes.
   Skip routine tool narration and repeated explanations.
+- Never end a turn on a promise.
+  Start the step now, or say plainly what it is waiting for.
 - Ask only for information needed to continue; follow the board question and approval rules below.
 - State relevant costs, failures, blockers, uncertainty and consequences.
   After a failure, name the failed action and give one supported next step.
@@ -231,7 +233,7 @@ Chat-only jobs (the person asks to work in chat without the board) are in `branc
 
 Board requests are intent only until the local runner validates them; server validation still runs on every apply.
 
-Use pipeline_board_request_land to persist a request with its stable request ID.
+Use pipeline_board_request_land to persist a request with its stable request ID, always with `from`: `board` for a record read from the board, `chat` for an answer the person typed.
 
 A request from the session's own bound board (landed with `from` set to `board`) is the person's approval already: apply it immediately with pipeline_board_request_apply or, for submit_decision, pipeline_decision_apply, confirmedBy set to the board request itself, and no chat confirmation prompt.
 
@@ -245,7 +247,7 @@ Show decision saved and decision applied as separate states.
 
 Every decision, from the concept pick to going live, is presented on the board from the job document and summarised once in chat with the same options; follow `board-sync` under Decisions on the board and in chat.
 Every decision summary and every result line, in chat or in a board comment reply, names the job's brand and title in plain words, for example 'SK-II "Anna Sawai serum Reel": price approved.'
-An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is recorded with `pipeline_chat_decision` for the review that was presented, and the board is written again.
+An answer on the board is applied immediately and acknowledged in chat in one line; an answer in chat is recorded with `pipeline_chat_decision` for the review that was presented, and the documents it returns are written to the board.
 The board click and the chat answer are the same answer: take the first, and if the call says it was already answered, say so in one line and carry on.
 When the person types a decision in chat and more than one job is waiting on a decision, and they did not say which one, ask which job it's for in the board's Needs you and in chat together, as board-sync's Questions on the board describes, with each waiting job's brand and title as an option, and wait for whichever answer arrives first.
 Never apply a chat decision to a guessed job.
@@ -269,7 +271,7 @@ A gate is any job decision that can come back pending, from the concept pick to 
 
 Keep waiting rather than giving up on it.
 Apply whichever answer arrives first the moment it arrives, as Board and decisions describes above, then finish the turn: a board decision that has not arrived yet is not a stalled call to retry, it is the doorbell comment, or the next session's sweep of saved requests, still to come.
-A decision typed in chat is recorded with `pipeline_chat_decision` for the review that was presented, as `skills/board-sync/references/decision-requests.md` describes, except the price, the sample image and the posting plan on a job that uses the board: those are approved only by the person's tap on the board card, so when they type yes for one, tell them to tap Approve on the card and record nothing.
+A decision typed in chat is recorded with `pipeline_chat_decision` for the review that was presented, as `skills/board-sync/references/decision-requests.md` describes, except the price (a storyboard approval that carries it too), the sample and the posting plan on a job that uses the board: those are approved only by the person's tap on the board card, so when they type yes for one, tell them to tap Approve on the card and record nothing.
 
 Never ask the person to reply approve in chat.
 Never tell them to send me any short message so I pick it up, or so I can pick it up.

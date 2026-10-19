@@ -3,8 +3,8 @@
 
     python stitch-clips.py <manifest.json> [--captions script.md] [--out media/D1/final.mp4]
 
-The joined video is plain: no on-screen text, no captions, no music. The person approves that
-cut (media/D<n>/final-raw.mp4), so all text can be added once, in one style, by finish-video.py.
+The joined video is plain: no on-screen text, no captions, no music. It is the base of the rough cut
+(media/D<n>/final-raw.mp4), so all text can be added once, in one style, by finish-video.py.
 The on-screen text of the script's beats (dare line, supers, call to action) is not burned in:
 it is saved next to the cut as media/D<n>/onscreen.json ({"items": [{"beat", "start", "end",
 "text"}]}) and finish-video.py draws it together with the captions. The text comes from the file
@@ -20,7 +20,7 @@ replaced or ducked. A clip with no audio track gets silence.
 Stdlib only. ffmpeg and ffprobe are called with argument lists, never a shell string.
 Exit 3 means ffmpeg is missing: the clips are listed so the hand-off can ship them
 separately rather than claiming a cut exists.
-Exit 6 means the person has not approved the video clips yet: nothing is joined.
+Exit 6 means the video clips are not approved yet (by the person or the plugin's own sign-off): nothing is joined.
 Exit 4 means on-screen text was requested and none could be saved to onscreen.json: the cut is
 written (it never carries text) and the reason is printed.
 """
@@ -228,7 +228,7 @@ def main():
             sys.exit("stitch.order names %s but no video item has that file name" % sid)
         clips.append((sid, resolve(item["file"]), item))
 
-    # The person approves every clip before they are joined (approvals/clips.json); a job with no made clips has nothing to wait for.
+    # Every clip is approved before they are joined, by the person or the plugin's sign-off (approvals/clips.json); a job with no made clips has nothing to wait for.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import review_gate
     why = review_gate.stitch_problem(jobdir)

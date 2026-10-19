@@ -9,5 +9,6 @@ Pass the gate you presented, approve or changes, and the person's own words as `
 It writes the same approval the board would, so the spend guard, the price and the later steps work as on the board.
 It refuses an answer to a review that was not presented, or whose files changed after the person saw them; present it again and ask again.
 On a job that uses the board, the price, the sample and the posting plan still need the person's tap on the board.
-Making the storyboard pictures (the sample first, up to 3 per panel) needs no question and no price: tell the producer to make the sample once the shot plan is written, and never write "no spend without approval" in a brief in a way that covers those pictures.
+Making the storyboard pictures (up to 3 per panel) needs no question and no price. On a video post make all the pictures at once, because the test clip is the sample; on a picture-only post make the sample picture first, then the rest. Tell the producer to start once the shot plan is written, and never write "no spend without approval" in a brief in a way that covers those pictures.
+When the storyboard you present in chat carries the price (a video post), say the price total in plain words in chat before you ask for the approval, and say how many redos of a clip are free (two per clip, up to the extra amount shown on the price) and that a redo past that is priced again. Do not rely on the files alone to show the price.
 Never open or publish the board for that job.

@@ -14,8 +14,8 @@ Reuse the current job snapshot, input revision, accepted artifact hashes, and ca
 Call pipeline_job_read only when no fresh snapshot is supplied or an external state change occurred.
 Write only the output paths named by the active plan.
 For the media spec rows the Creative Director writes the storyboard and the generation manifest; the Director never does.
-The storyboard carries one picture style for the job (a `style` preamble from the chosen concept, repeated word for word in every picture prompt), a continuity block of 3 to 6 attributes for each recurring person, place and product, and the voice-over answer (`voice_over: yes` or `no`, and `voice`). The Director asks "Voice-over: yes or no, and which voice?" before the storyboard is written, so the script and clip lengths fit it. Music and captions are chosen at the combine step.
-The storyboard is shown with a picture on every panel: the Director makes the sample first, then the rest, before presenting it.
+The storyboard carries one picture style for the job (a `style` preamble from the chosen concept, repeated word for word in every picture prompt), a continuity block of 3 to 6 attributes for each recurring person, place and product, and the voice-over answer (`voice_over: yes` or `no`, and `voice`). The Director asks "Voice-over: yes or no, and which voice?" before the storyboard is written, so the script and clip lengths fit it; music and captions are asked in the same place and recorded before the storyboard is shown.
+The storyboard is shown with a picture on every panel. On a video post the Director makes all the pictures at once, because the test clip is the sample; on a picture-only post it makes the sample picture first, then the rest, before presenting it.
 Do not repeat research, repeat provider probes, use gate-app transport, use Drive configuration, or create a second job authority.
 Preserve approval, revision, ownership, and state protections.
 <!-- BEGIN labelled references (0.14 task 3) -->

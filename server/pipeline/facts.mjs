@@ -995,7 +995,11 @@ export function sampleKeyFor(job, quote) {
   let base = null;
   if (marked) base = canonicalJobKey(marked.key);
   else {
-    const first = readRecords(job).find(record => record.type === 'create' && record.provider === THREE_ECHO && !isReferenceItem(record.key));
+    // The first thing made of the kind the open price covers: a clip when the price lists clips, else a picture.
+    const covers = items.some(entry => entry && entry.provider === THREE_ECHO && entry.kind === 'video' && !isReferenceItem(entry)) ? 'video'
+      : items.some(entry => entry && entry.provider === THREE_ECHO && entry.kind === 'image' && !isReferenceItem(entry)) ? 'image' : null;
+    const first = readRecords(job).find(record => record.type === 'create' && record.provider === THREE_ECHO && !isReferenceItem(record.key) &&
+      (!covers || (covers === 'image') === isImageCreate(record)));
     base = first ? canonicalJobKey(first.key) : null;
   }
   const baseParsed = base ? parseJobKey(base) : null;
@@ -1014,6 +1018,10 @@ export function sampleKeyFor(job, quote) {
   // A redo made without a price line (a free second or third picture) takes over the same way.
   for (const picture of madePictures(job)) {
     if (picture.deliverable === baseParsed.deliverable && picture.item === baseParsed.item && picture.version > newest.version) newest = picture;
+  }
+  // A clip redo made inside the redo allowance has no price line either, and takes over the same way.
+  for (const clip of madeClips(job)) {
+    if (clip.deliverable === baseParsed.deliverable && clip.item === baseParsed.item && clip.version > newest.version) newest = clip;
   }
   return newest.key;
 }
@@ -1039,6 +1047,8 @@ export const MEDIA_REVIEWS = Object.freeze({
   // something was added: a "skip" finishing choice uses the approved joined video as it is.
   finish: Object.freeze({ kind: 'video', file: 'approvals/finish.json' }),
 });
+// The rough cut (gate "cut") is the finished video with its sound already on it. The separate finished-video review (gate "finish")
+// is no longer asked; its file and set stay so a job that already has that approval keeps working.
 
 const slotOfKey = key => {
   const parsed = parseJobKey(key);
@@ -1065,6 +1075,8 @@ export function mediaSet(job, kind) {
   }
   // Storyboard pictures made with no price approval are in the set too, so the pictures the person sees are all of them.
   if (kind === 'image') for (const picture of madePictures(job)) if (!isReferenceItem(picture.key)) offer(picture);
+  // A clip redo made inside the redo allowance has no price line; the clips the person sees are the newest of each slot.
+  if (kind === 'video') for (const clip of madeClips(job)) if (!isReferenceItem(clip.key)) offer(clip);
   const landed = readLanded(job).filter(entry => entry.type === 'landed' && typeof entry.file === 'string' && entry.file && typeof entry.sha256 === 'string');
   const panels = [...newest.values()].map(slot => {
     const entry = [...landed].reverse().find(item => canonicalJobKey(item.key) === slot.key && existsSync(join(job.dir, ...item.file.split('/'))));
@@ -1074,7 +1086,7 @@ export function mediaSet(job, kind) {
 }
 
 /** The set a review gate covers. A new panel-grid review adds its entry to MEDIA_REVIEWS and a case here. */
-export const reviewSet = (job, gate) => (gate === 'cut' ? cutSet(job) : gate === 'finish' ? finishedSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
+export const reviewSet = (job, gate) => (gate === 'cut' || gate === 'finish' ? finishedSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
 
 /**
  * The finished video of each post, media/D<n>/final.mp4, only while it is finish-video.py's own output: media/D<n>/final-finished.sha256
@@ -1082,15 +1094,21 @@ export const reviewSet = (job, gate) => (gate === 'cut' ? cutSet(job) : gate ===
  */
 export function finishedSet(job) {
   const panels = [];
+  // Nothing to add (a skip choice and no on-screen text): the plain joined video is the finished video, final.mp4 being a copy of final-raw.mp4.
+  const record = finishingRecord(job);
+  const nothingToAdd = Boolean(record) && record.choice === 'skip' && !onscreenPlanned(job);
   let names = [];
   try { names = readdirSync(join(job.dir, 'media'), { withFileTypes: true }).filter(entry => entry.isDirectory() && /^D\d+$/.test(entry.name)).map(entry => entry.name); } catch { /* no media yet */ }
   for (const deliverable of names.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) {
     const file = `media/${deliverable}/final.mp4`;
     let bytes;
     let stamp = '';
-    try { bytes = readFileSync(join(job.dir, ...file.split('/'))); stamp = String(readFileSync(join(job.dir, 'media', deliverable, 'final-finished.sha256'), 'utf8')).trim(); } catch { continue; }
+    try { bytes = readFileSync(join(job.dir, ...file.split('/'))); } catch { continue; }
+    try { stamp = String(readFileSync(join(job.dir, 'media', deliverable, 'final-finished.sha256'), 'utf8')).trim(); } catch { /* no stamp: only a plain copy of the joined video can stand */ }
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    if (bytes.length && stamp === sha256) panels.push({ slot: `${deliverable}|Finished`, key: `${deliverable}-finished`, deliverable, panel: 'Finished', version: 1, file, sha256 });
+    let plain = false;
+    if (nothingToAdd && stamp !== sha256) { try { plain = createHash('sha256').update(readFileSync(join(job.dir, 'media', deliverable, 'final-raw.mp4'))).digest('hex') === sha256; } catch { /* no joined video to match */ } }
+    if (bytes.length && (stamp === sha256 || plain)) panels.push({ slot: `${deliverable}|Finished`, key: `${deliverable}-finished`, deliverable, panel: 'Finished', version: 1, file, sha256 });
   }
   return { kind: 'video', panels, complete: panels.length > 0 };
 }
@@ -1110,12 +1128,14 @@ export function finishingNeeded(job) {
 
 const FINISHING_CHOICE_IDS = Object.freeze(['captions', 'music', 'both', 'skip', 'combine']);
 
-/** The finishing choice recorded for the joined video(s) as approved now (approvals/finishing.json), else null. */
+/**
+ * The sound choice recorded for the video (approvals/finishing.json) whenever it is a valid choice, else null. It can be recorded any
+ * time before finishing and is not tied to the joined video's files (an older record that lists them is still accepted).
+ * pipeline/scripts/review_gate.py finishing_record means exactly the same.
+ */
 export function finishingRecord(job) {
   const saved = readJson(join(job.dir, 'approvals', 'finishing.json'));
-  if (!saved || !FINISHING_CHOICE_IDS.includes(saved.choice) || !mediaSetApproved(job, 'cut') || !Array.isArray(saved.files)) return null;
-  const panels = reviewSet(job, 'cut').panels;
-  return saved.files.length === panels.length && panels.every(panel => saved.files.some(file => file?.file === panel.file && file.sha256 === panel.sha256)) ? saved : null;
+  return saved && typeof saved === 'object' && FINISHING_CHOICE_IDS.includes(saved.choice) ? saved : null;
 }
 
 /** The joined (plain) video of each post, media/D<n>/final-raw.mp4: one panel per post. Join the clips with stitch-clips.py to make it. */
@@ -1148,28 +1168,34 @@ export function storyboardApprovalCoversPictures(job) {
   return set.panels.every(panel => record.artifacts.some(item => item?.path === panel.file && item.sha256 === panel.sha256));
 }
 
-/** Whether the person approved the current pictures or clips, exactly as they are now. */
+/** Whether the person approved the current pictures or clips, or the plugin signed the clips off, exactly as they are now. */
 export function mediaSetApproved(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
   if (!spec) return false;
-  // A finished video is approved only for the cut and the choice it was made from: a new cut, or a changed choice, voids it.
-  if (gate === 'finish' && !finishingRecord(job)) return false;
   const decision = readJson(join(job.dir, ...spec.file.split('/')));
   // The storyboard review already showed every picture. Its approval covers them as they were shown, so the pictures are not
   // reviewed a second time; a redo (a new file) or a decision saved on the pictures themselves is judged on its own.
   if (!decision && gate === 'pictures') return storyboardApprovalCoversPictures(job);
-  if (!decision || typeof decision !== 'object' || decision.decision !== 'approve' || !Array.isArray(decision.files)) return false;
   const set = reviewSet(job, gate);
-  if (!set.complete || decision.files.length !== set.panels.length) return false;
-  return set.panels.every(panel => decision.files.some(file => sameKey(file?.key, panel.key) && file.sha256 === panel.sha256));
+  if (!set.complete) return false;
+  const covers = (value, against = set) => Boolean(value && typeof value === 'object' && value.decision === 'approve' && Array.isArray(value.files) && value.files.length === against.panels.length
+    && against.panels.every(panel => value.files.some(file => sameKey(file?.key, panel.key) && file.sha256 === panel.sha256)));
+  if (covers(decision)) return true;
+  if (gate !== 'cut' && gate !== 'finish') return false;
+  // The rough cut and the finished video are the same video now: an approval saved on either one stands for both.
+  if (covers(readJson(join(job.dir, ...MEDIA_REVIEWS[gate === 'cut' ? 'finish' : 'cut'].file.split('/'))))) return true;
+  // An older joined-video approval (approvals/cut.json listing final-raw.mp4) stands when the finished video is that same plain video.
+  const joined = cutSet(job);
+  const plain = set.panels.every(panel => joined.panels.some(cut => cut.deliverable === panel.deliverable && cut.sha256 === panel.sha256));
+  return plain && covers(readJson(join(job.dir, ...MEDIA_REVIEWS.cut.file.split('/'))), joined);
 }
 
 /** Pictures are reviewed only when clips follow; a quote of clips alone goes straight to the clips review. */
 export function mediaReviewRequired(job, gate) {
   const spec = MEDIA_REVIEWS[gate];
   if (!spec) return false;
-  // The finished video is reviewed once something was chosen to add, whether or not it has been made yet.
-  if (gate === 'finish') return finishingNeeded(job);
+  // The finished video is the rough cut now, so it has no review of its own.
+  if (gate === 'finish') return false;
   if (!reviewSet(job, gate).panels.length) return false;
   return gate === 'pictures' ? mediaSet(job, 'video').panels.length > 0 : true;
 }
@@ -1217,19 +1243,35 @@ export function madeBeforeReviews(job) {
 /** The first of the reviews that is required and not approved, or null. */
 export function mediaReviewOutstanding(job) {
   if (madeBeforeReviews(job)) return null;
-  return ['pictures', 'clips', 'cut', 'finish'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
+  return ['pictures', 'clips', 'cut'].find(gate => mediaReviewRequired(job, gate) && !mediaSetApproved(job, gate)) || null;
 }
 
 /**
  * What still stands between a made video and the post text / posting plan: the first media review not approved as the files are now
- * (pictures, clips, joined video, finished video), else 'finishing' when the joined video is there but what to add was never recorded
- * for it. null when nothing is in the way. A redo of finishing (a new final.mp4, a new hash) or of the cut voids its approval, so it shows here again.
+ * (pictures, clips, rough cut), else 'finishing' when a video is there but the sound was never chosen, else 'cut' when the clips are
+ * joined and the video was not finished yet. null when nothing is in the way. A redo of finishing (a new final.mp4, a new hash) voids
+ * the rough cut's approval, so it shows here again.
  */
 export function mediaBlocker(job) {
   const open = mediaReviewOutstanding(job);
   if (open) return open;
-  if (reviewSet(job, 'cut').panels.length && !finishingRecord(job) && !madeBeforeReviews(job)) return 'finishing';
-  return null;
+  if (madeBeforeReviews(job)) return null;
+  const joined = cutSet(job).panels.length > 0;
+  const finished = reviewSet(job, 'cut').panels.length > 0;
+  if ((joined || finished) && !finishingRecord(job)) return 'finishing';
+  return joined && !finished ? 'cut' : null;
+}
+
+/**
+ * Whether the test clip is approved, so the other clips may be signed off: the sample clip's approval (approvals/sample.json, kept
+ * as the file the person saw), or no other clip waiting behind it (a price with one clip has nothing to hold back).
+ */
+export function testClipApproved(job) {
+  const quote = readQuote(job)?.quote;
+  const slots = new Set((Array.isArray(quote?.items) ? quote.items : []).filter(item => item && item.provider === THREE_ECHO && item.kind === 'video' && !isReferenceItem(item)).map(item => slotOfKey(item.key)));
+  if (slots.size <= 1) return true;
+  const key = sampleKeyFor(job, quote);
+  return Boolean(key) && sampleApproved(job, key);
 }
 
 // Nothing shows that 3Echo returns the saved job for a repeated idempotencyKey, so a second create on a key
@@ -1261,17 +1303,26 @@ export function isImageCreate(record) {
   return Boolean(record) && record.type === 'create' && record.provider === THREE_ECHO && (record.kind === 'image' || record.tool === 'create_image_job');
 }
 
-/** The pictures made or being made (a create that failed or was cancelled made nothing), the oldest first, each as its parsed job key. */
-export function madePictures(job) {
+function isVideoCreate(record) {
+  return Boolean(record) && record.type === 'create' && record.provider === THREE_ECHO && (record.kind === 'video' || record.tool === 'create_video_job');
+}
+
+function madeCreates(job, test) {
   const found = new Map();
   for (const record of readRecords(job)) {
-    if (!isImageCreate(record)) continue;
+    if (!test(record)) continue;
     const key = canonicalJobKey(record.key);
     if (!key || found.has(key) || !earlierCreateState(job, key)) continue;
     found.set(key, parseJobKey(key));
   }
   return [...found.values()];
 }
+
+/** The pictures made or being made (a create that failed or was cancelled made nothing), the oldest first, each as its parsed job key. */
+export const madePictures = job => madeCreates(job, isImageCreate);
+
+/** The clips made or being made, the oldest first, each as its parsed job key. */
+export const madeClips = job => madeCreates(job, isVideoCreate);
 
 /** How many pictures a job has made without a price approval covering them, and what they cost. They are in the job's credit total all the same. */
 export function pictureSpend(job) {
@@ -1308,8 +1359,64 @@ function freePictureDecision(job, price) {
   if (readRecords(job).some(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key)) return { allow: false, reason: SPEND_DENY.failedBefore, key, provider: THREE_ECHO, repeat: true };
   const made = madePictures(job);
   if (made.filter(picture => slotOfKey(picture.key) === slotOfKey(key)).length >= FREE_PICTURES_PER_PANEL) return deny(SPEND_DENY.pictureCap);
-  if (pictureSampleLocked(job, key, made)) return deny(SPEND_DENY.sampleLock);
+  // On a video job the storyboard review is the picture review and the test clip is the sample, so there is no picture sample lock.
+  if (!plansVideo(job) && pictureSampleLocked(job, key, made)) return deny(SPEND_DENY.sampleLock);
   return { allow: true, cost: IMAGE_CREDITS_EACH, key, provider: THREE_ECHO, free: true };
+}
+
+function plansVideo(job) {
+  try {
+    return Boolean(lib('lib-deliverable.js').plansVideo(readJson(join(job.dir, 'job.json'))));
+  } catch {
+    return false;
+  }
+}
+
+// Clip redos. A clip keyed S<k> at version 2 or more that the approved price does not list goes ahead without a new price
+// approval when the price lists a clip for the same post and slot, the slot has made fewer than CLIP_VERSIONS_PER_SLOT versions,
+// the new estimate has the same shape and costs no more than the priced clip, and the redos so far stay within the redo ceiling.
+export const CLIP_REDOS_PER_CLIP = 2;
+const CLIP_VERSIONS_PER_SLOT = CLIP_REDOS_PER_CLIP + 1;
+const CLIP_ITEM = /^S\d+$/;
+export const REDO_DENY = Object.freeze({
+  tooMany: `This clip has had its first version and ${CLIP_REDOS_PER_CLIP} redos. Another one needs a new price approved first. Show the price and wait for approval.`,
+  ceiling: 'The extra credits set aside for redos are used up. Another redo needs a new price approved first. Show the price and wait for approval.',
+});
+
+// The newest priced clip of the same post and slot as a redo key, or null when the key is not a redo of a priced clip.
+function pricedClipFor(quote, key) {
+  const parsed = parseJobKey(key);
+  if (!parsed || parsed.version < 2 || !CLIP_ITEM.test(parsed.item)) return null;
+  let found = null;
+  let foundVersion = 0;
+  for (const entry of Array.isArray(quote?.items) ? quote.items : []) {
+    if (!entry || entry.provider !== THREE_ECHO || entry.kind !== 'video') continue;
+    const other = parseJobKey(entry.key);
+    if (other && other.deliverable === parsed.deliverable && other.item === parsed.item && other.version > foundVersion) {
+      found = entry;
+      foundVersion = other.version;
+    }
+  }
+  return found;
+}
+
+// A call already made (see creditsCommitted) that was a clip redo: a video create at version 2 or more that the price does not list.
+function isClipRedoCall(quote, call) {
+  if (call.provider !== THREE_ECHO || call.image || call.spoken || !call.key) return false;
+  const parsed = parseJobKey(call.key);
+  return Boolean(parsed) && parsed.version >= 2 && CLIP_ITEM.test(parsed.item) && !quoteItem(quote, call.key);
+}
+
+/**
+ * What a job's price sets aside for clip redos: { perClip: 2, ceiling, used }. The ceiling is half of the video credits in the price,
+ * rounded up to a whole credit; used is what redos outside the price have cost so far. quote defaults to the approved price, else the open one.
+ */
+export function clipRedoAllowance(job, quote = null) {
+  const source = quote || currentPriceApproval(job)?.quote || readQuote(job)?.quote || null;
+  const clips = (Array.isArray(source?.items) ? source.items : []).filter(item => item && item.provider === THREE_ECHO && item.kind === 'video' && !isReferenceItem(item));
+  const total = roundCredits(clips.reduce((sum, item) => sum + (finite(item.credits) || 0), 0));
+  const used = source ? roundCredits(creditsCommitted(job, 'media', call => !isClipRedoCall(source, call))[THREE_ECHO] || 0) : 0;
+  return { perClip: CLIP_REDOS_PER_CLIP, ceiling: Math.max(0, Math.ceil(total / 2 - EPSILON)), used };
 }
 
 // The settings that change what a clip is and what it costs. Reference assetIds are left out on purpose: a clip seeded from its
@@ -1346,7 +1453,14 @@ export function spendDecision(job, toolName, toolInput) {
   if (!price) return deny(SPEND_DENY.noApproval);
   const key = itemKeyFor(job);
   if (!key) return deny(SPEND_DENY.noItem);
-  const item = quoteItem(price.quote, key);
+  let item = quoteItem(price.quote, key);
+  // A clip redo the price does not list is judged against the priced clip of the same slot, and against the redo ceiling.
+  let redo = false;
+  if (!item && base === 'create_video_job' && !transcription) {
+    item = pricedClipFor(price.quote, key);
+    redo = Boolean(item);
+    if (redo && isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
+  }
   if (!item) return deny(SPEND_DENY.notInQuote);
   if (transcription !== isTranscriptionItem(item)) return deny(SPEND_DENY.mismatch);
   // A music call needs a music price item, and a voice call a voice one: one kind of price never pays for another.
@@ -1359,7 +1473,8 @@ export function spendDecision(job, toolName, toolInput) {
     const slots = new Set((price.quote.items || []).filter(entry => entry && entry.provider === THREE_ECHO && !isReferenceItem(entry)).map(entry => `${entry.deliverable}/${entry.panel}`));
     if (slots.size > 1) {
       const sample = sampleKeyFor(job, price.quote);
-      if (sample && key !== sample && !sampleApproved(job, sample)) return deny(SPEND_DENY.sampleLock);
+      // A redo of the sample clip itself is the same slot, so it is never held by the sample lock.
+      if (sample && key !== sample && !(redo && slotOfKey(key) === slotOfKey(sample)) && !sampleApproved(job, sample)) return deny(SPEND_DENY.sampleLock);
     }
   }
   // Every storyboard picture is shown to the person, together, before any clip is made from them.
@@ -1370,6 +1485,8 @@ export function spendDecision(job, toolName, toolInput) {
     const earlier = earlierCreateState(job, key);
     if (earlier) return { allow: false, reason: earlier === 'making' ? SPEND_DENY.stillMaking : SPEND_DENY.alreadyMade, key, provider, repeat: true };
   }
+  // The first version and two redos: a slot with that many versions made or being made takes no more without a new price.
+  if (redo && madeClips(job).filter(clip => slotOfKey(clip.key) === slotOfKey(key)).length >= CLIP_VERSIONS_PER_SLOT) return deny(REDO_DENY.tooMany);
   let cost = null;
   if (base === 'create_image_job') cost = IMAGE_CREDITS_EACH;
   else if (base === 'create_video_job') {
@@ -1377,7 +1494,8 @@ export function spendDecision(job, toolName, toolInput) {
     if (!estimate) return deny(SPEND_DENY.videoNoEstimate);
     // An item priced from a saved estimate is approved for that clip's shape, length, resolution and sound, not just its price.
     const approved = item.estimateId ? readEstimates(job).find(entry => entry.estimateId === item.estimateId) : null;
-    if (approved && clipShape(approved.inputs) !== clipShape(input)) return deny(SPEND_DENY.shapeChanged);
+    // A redo must have the priced clip's estimate to compare against; without it the redo is refused.
+    if ((approved || redo) && (!approved || clipShape(approved.inputs) !== clipShape(input))) return deny(SPEND_DENY.shapeChanged);
     cost = finite(estimate.credits);
   } else {
     const generations = voiceGenerations(base, input);
@@ -1392,8 +1510,13 @@ export function spendDecision(job, toolName, toolInput) {
   }
   const itemCredits = finite(item.credits);
   if (itemCredits !== null && cost > itemCredits + EPSILON) return deny(SPEND_DENY.itemOver);
-  // Pictures made with no price approval are not part of the approved total: they have their own free pass and cap.
-  const committed = creditsCommitted(job, transcription ? TRANSCRIPTION_SCOPE : 'media', call => call.image && call.key && !quoteItem(price.quote, call.key))[provider] || 0;
+  if (redo) {
+    const { ceiling, used } = clipRedoAllowance(job, price.quote);
+    if (used + cost > ceiling + EPSILON) return deny(REDO_DENY.ceiling);
+    return { allow: true, cost, key, provider, redo: true };
+  }
+  // Pictures made with no price approval, and clip redos, are not part of the approved total: pictures have their own free pass and cap, redos their ceiling.
+  const committed = creditsCommitted(job, transcription ? TRANSCRIPTION_SCOPE : 'media', call => (call.image && call.key && !quoteItem(price.quote, call.key)) || isClipRedoCall(price.quote, call))[provider] || 0;
   if (committed + cost > approvedTotal(price, provider) + EPSILON) return deny(SPEND_DENY.overBudget);
   return { allow: true, cost, key, provider };
 }
@@ -1471,6 +1594,11 @@ function resolutionPrices(estimates, estimate, own) {
   return RESOLUTION_CHOICES.every(choice => prices[choice] !== undefined) ? { '720p': prices['720p'], '1080p': prices['1080p'] } : null;
 }
 
+// A job priced before clips had their own S numbers may already hold a video keyed P: that slot stays as it is.
+function pricedAsClip(job, parsed) {
+  return (Array.isArray(readQuote(job)?.quote?.items) ? readQuote(job).quote.items : []).some(entry => entry && entry.kind === 'video' && slotOfKey(entry.key) === slotOfKey(parsed.key));
+}
+
 function quoteItemFrom(job, raw, index, estimates) {
   const at = `Item ${index + 1}`;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(`${at} is not a price item.`);
@@ -1486,6 +1614,8 @@ function quoteItemFrom(job, raw, index, estimates) {
   }
   if ((raw.kind === 'transcription') !== isTranscriptionItem(parsed.key)) throw new Error(`${label}: a transcription is keyed TR, such as ${job.jobId}-D1-TR1-v1, and only a transcription is.`);
   if (isReferenceItem(parsed.key) && raw.kind !== 'image') throw new Error(`${label}: the prefix R is for reference pictures only, so a ${raw.kind === 'video' ? 'video clip' : 'voice line'} needs another key, such as S1.`);
+  if (raw.kind === 'video' && /^P\d+$/.test(parsed.item) && !pricedAsClip(job, parsed)) throw new Error(`${label}: clips are numbered S1, S2 and so on. P is for pictures (P1, P2). Key this clip with S, such as ${job.jobId}-${parsed.deliverable}-S${parsed.item.slice(1)}.`);
+  if (raw.kind === 'image' && /^S\d+$/.test(parsed.item)) throw new Error(`${label}: pictures are numbered P1, P2 and so on. S is for clips (S1, S2). Key this picture with P, such as ${job.jobId}-${parsed.deliverable}-P${parsed.item.slice(1)}.`);
   const credits = finite(raw.credits);
   if (credits === null || credits < 0) throw new Error(`${label}: the credits must be a number of zero or more.`);
   if (raw.sample !== undefined && raw.sample !== true && raw.sample !== false) throw new Error(`${label}: sample must be true or false.`);

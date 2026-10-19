@@ -41,13 +41,15 @@ export function finishingFromNote(note) {
   let captions = false;
   let music = false;
   text = text.replace(CAPTION_WORD, () => { captions = true; return ' '; }).replace(MUSIC_WORD, () => { music = true; return ' '; });
+  const touched = { captions: captions || off.has('captions'), music: music || off.has('music') };
   if (off.has('captions')) captions = false;
   if (off.has('music')) music = false;
   if (!captions && !music && !off.size) return null;
   const left = text.split(' ').filter(word => word && !FILLER.has(word));
   if (left.length) return null;
   const choice = captions && music ? 'both' : captions ? 'captions' : music ? 'music' : 'skip';
-  return { choice, ...FINISHING_CHOICES[choice] };
+  // touched: which of the two the note spoke about, so a saved plan keeps what the note did not mention.
+  return { choice, ...FINISHING_CHOICES[choice], touched };
 }
 
 /** The music track named by media/music/choice.json, or null (the same rule finish-video.py uses). */
@@ -59,24 +61,15 @@ export function musicTrack(jobDir) {
 
 /** Whether a transcript of the approved cut is saved where finish-video.py looks (the workspace's imports/transcripts/<sha256>.json), for the captions. */
 export function transcriptSaved(job) {
-  const panels = facts.reviewSet(job, 'cut').panels;
+  const panels = facts.cutSet(job).panels;
   if (!panels.length || !job.root) return null;
   return panels.every(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)) || existsSync(join(job.dir, 'media', panel.deliverable, 'transcript.json')));
 }
 
-/** The cut as approved now, or a plain refusal: nothing about what to add is recorded before the person approved the joined video. */
-export function approvedCut(job) {
-  const set = facts.reviewSet(job, 'cut');
-  if (!set.panels.length) throw new Error('The clips are not joined yet. Join them with stitch-clips.py, show the joined video (pipeline_review_present with gate cut) and wait for the approval first.');
-  if (!facts.mediaSetApproved(job, 'cut')) throw new Error('The person has not approved the joined video yet, so what to add cannot be recorded. Show it (pipeline_review_present with gate cut) and wait for the approval first.');
-  return set;
-}
-
-/** Write approvals/finishing.json for the cut as approved. `extra` carries the combine card's picks (combine.mjs). */
+/** Write approvals/finishing.json. The sound can be chosen any time before finishing (before the clips are joined too), so it is not tied to the joined video's files. `extra` carries the combine picks (combine.mjs). */
 export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
-  const set = approvedCut(job);
   mkdirSync(join(job.dir, 'approvals'), { recursive: true });
-  const saved = { choice, ...parts, ...extra, decidedAt: new Date().toISOString(), by: by || 'director', files: set.panels.map(panel => ({ file: panel.file, sha256: panel.sha256 })) };
+  const saved = { choice, ...parts, ...extra, decidedAt: new Date().toISOString(), by: by || 'director' };
   const file = join(job.dir, ...FINISHING_FILE.split('/'));
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, JSON.stringify(saved, null, 2));
@@ -87,7 +80,6 @@ export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
 export function recordFinishingChoice({ job, choice, by }) {
   const parts = FINISHING_CHOICES[choice];
   if (!parts) throw new Error('Choose captions, music, both or skip.');
-  approvedCut(job);
   writeFinishingRecord({ job, choice, parts, by });
   const noTrack = parts.music && !musicTrack(job.dir);
   const transcript = parts.captions ? transcriptSaved(job) : null;
@@ -95,8 +87,8 @@ export function recordFinishingChoice({ job, choice, by }) {
     recorded: true, choice, captions: parts.captions, music: parts.music, musicTrack: parts.music ? !noTrack : null, transcript,
     message: noTrack
       ? 'Saved. No music track is saved for this job, so finishing will not add music yet. Say so plainly: check the library with pipeline_library_list; if it is empty, offer to make music with ElevenLabs (priced, the person clicks the price) or ask for a track (a file), add it with pipeline_music_add, then run finish-video.py. Or offer captions only. Never say the video has music until one is added, and never make audio by hand.'
-      : choice === 'skip' && !facts.onscreenPlanned(job) ? 'Saved. The joined video is used as it is: do not run finish-video.py.'
-        : choice === 'skip' ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the finished video (pipeline_review_present with gate finish).'
-        : 'Saved. Run finish-video.py now; it adds only what was chosen and draws the post\'s on-screen text. Captions are built from a transcript of the approved cut when one is saved (media_transcribe on media/D1/final-raw.mp4; transcript_save when the words come from elsewhere), else from the script wording, which you must say is not checked against the speech. Then present the finished video (pipeline_review_present with gate finish).',
+      : choice === 'skip' && !facts.onscreenPlanned(job) ? 'Saved. Nothing is added: the joined video is the rough cut as it is, so finish-video.py is not needed. Present the rough cut (pipeline_review_present with gate cut) once the clips are joined.'
+        : choice === 'skip' ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the rough cut (pipeline_review_present with gate cut).'
+        : 'Saved. Run finish-video.py now; it adds only what was chosen and draws the post\'s on-screen text. Captions are built from a transcript of the joined video when one is saved (media_transcribe on media/D1/final-raw.mp4; transcript_save when the words come from elsewhere), else from the script wording, which you must say is not checked against the speech. Then present the rough cut (pipeline_review_present with gate cut).',
   };
 }

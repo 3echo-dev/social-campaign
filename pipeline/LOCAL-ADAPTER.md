@@ -38,7 +38,7 @@ Old `brand_*` tools are refused.
 
 Use pipeline_job_create for a new draft, pipeline_intake_update to answer blockers on that same draft, pipeline_job_read when a fresh snapshot is absent or stale, and pipeline_inputs_import for local inputs.
 
-Use pipeline_board_requests, pipeline_board_request_land, and pipeline_decision_apply for board intent and decisions.
+Use pipeline_board_requests, pipeline_board_request_land (always with `from`: `board` for a record read from the board, `chat` for a typed answer), and pipeline_decision_apply for board intent and decisions.
 
 Every answer the person gave to a board question on the job is in `inputs/answers.json`, with the job-relative path of any file they attached, and the files themselves are listed in `inputs/references/manifest.json`.
 Read both with the brief before writing, and follow them in every step: an answer is never asked again or dropped.

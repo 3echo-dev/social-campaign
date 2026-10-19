@@ -29,7 +29,7 @@ user-invocable: false
 6. On-screen text first, 3 to 7 words, sound-off story; spoken lines to budget: first person, contractions, fragments, one filler or self-correction. One beat `(silent)` with an action.
 7. Product named once or twice, never a pivot. Search keyword in beat 1 spoken/on-screen and the caption's first sentence.
 8. New visual every 4 to 6 s; on-ramp extends the hook; close recontextualises frame one. Last beat = CTA line, ask on screen too.
-9. `# Voice notes` once, reused verbatim; on a `talkingCharacter` deliverable, one voice description per character (accent, age, tempo, manner), and each beat's spoken line is that clip's dialogue, one speaker per beat. `# Claims in this script`: every claim and anchor; `disclosure`: exact text, AI creators always disclosed. Read aloud; cut words rather than speed up if it does not fit. Write `Total:`.
+9. `# Voice notes` once, reused verbatim; on a `talkingCharacter` deliverable, one voice description per character (accent, age, tempo, manner), and each beat's spoken line is that clip's dialogue, one speaking person per beat (a second named cast member may appear when the brief's cast list says so). `# Claims in this script`: every claim and anchor; `disclosure`: exact text, AI creators always disclosed. Read aloud; cut words rather than speed up if it does not fit. Write `Total:`.
 
 ## Rules
 

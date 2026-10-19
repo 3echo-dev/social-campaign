@@ -405,7 +405,7 @@ function composePost({ jobDir, realJob, job, deliverable, route, zones, flags, a
   }
   // A video job's posting plan waits for the person to approve the finished video (and every review before it), exactly as it is now.
   const blocked = Array.isArray(job.suppliedMedia) && job.suppliedMedia.length ? null : mediaBlocker({ dir: jobDir });
-  if (blocked) problems.push(blocked === 'finishing' ? 'What to add to the joined video has not been chosen yet.' : blocked === 'finish' ? 'The finished video has not been approved yet. Check it on the board first.' : `The ${blocked === 'cut' ? 'joined video' : blocked === 'clips' ? 'video clips' : 'pictures'} have not been approved yet.`);
+  if (blocked) problems.push(blocked === 'finishing' ? 'The sound for the video has not been chosen yet.' : blocked === 'cut' ? 'The rough cut has not been finished and approved yet. Check it on the board first.' : `The ${blocked === 'clips' ? 'video clips' : 'pictures'} have not been approved yet.`);
   if (!approved) problems.push(NOT_APPROVED);
   else if (changed) problems.push(CHANGED_AFTER_APPROVAL);
 

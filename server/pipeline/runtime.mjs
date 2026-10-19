@@ -29,7 +29,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, relative, reso
 import { fileURLToPath } from 'node:url';
 import * as facts from './facts.mjs';
 import { addSuppliedMedia, writeSuppliedPosts } from './supplied-media.mjs';
-import { finishingChoice } from './finishing.mjs';
+
 import { BRAND_REFERENCE_KIND, saveBrandReferenceFiles } from './brand-references.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -2490,7 +2490,7 @@ function stageLabel(stageId, workflowId = null) {
 }
 
 const GATE_NAMES = Object.freeze({
-  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Check the joined video', finishing: 'Finishing choice', finish: 'Check the finished video', content: 'Final post', publish: 'Posting plan',
+  concept: 'Concept', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Check the rough cut', finishing: 'Finishing choice', finish: 'Check the finished video', content: 'Final post', publish: 'Posting plan',
   campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report',
 });
 const OFF_FLOW_STATES = new Set(['CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'COMPLETE', 'CANCELLED']);
@@ -2592,20 +2592,15 @@ function mediaReviewFacts(dir) {
   for (const gate of required) {
     if (!facts.mediaSetApproved(job, gate)) continue;
     const decision = readJson(join(dir, ...facts.MEDIA_REVIEWS[gate].file.split('/')));
-    approved.set(gate, { gate, at: isoTime(decision?.decidedAt) });
+    approved.set(gate, { gate, at: isoTime(decision?.decidedAt), signedOff: decision?.signedOff === true });
   }
-  // What to add to the joined video is asked after it is approved; it shows as a step of its own.
-  if (required.includes('cut')) {
-    required.push('finishing');
-    const choice = finishingChoice(job);
-    if (choice) approved.set('finishing', { gate: 'finishing', at: isoTime(choice.decidedAt) });
-    // The finished video is checked once finishing ran, when something was added to it.
-    if (choice && facts.finishingNeeded(job)) {
-      required.push('finish');
-      if (facts.mediaSetApproved(job, 'finish')) approved.set('finish', { gate: 'finish', at: isoTime(readJson(join(dir, ...facts.MEDIA_REVIEWS.finish.file.split('/')))?.decidedAt) });
-    }
-  }
+  // The sound is chosen before the storyboard and the finished video is the rough cut, so the steps are the pictures, the clips and the rough cut.
   return { required, approved };
+}
+
+// Whether the sample of this job is a clip (the test clip) and not a picture.
+function clipSampleOf(dir) {
+  try { return (facts.readQuote({ dir })?.quote?.items || []).some((item) => item && item.sample === true && item.kind === 'video'); } catch { return false; }
 }
 
 function decidedGates(state, decisions, price, sample, media = { approved: new Map() }) {
@@ -2848,7 +2843,7 @@ function deriveStages(stages, state, planRows, { dir = null, decisions = [], wor
       const history = gateHistory(decisions, gate);
       return {
         gate,
-        name: GATE_NAMES[gate] || stageLabel(gate),
+        name: gate === 'sample' && clipSampleOf(dir) ? 'Test clip' : GATE_NAMES[gate] || stageLabel(gate),
         status: decided.has(gate) ? 'done'
           : gate === 'finishing' || gate === 'finish' ? 'waiting'
           : statesRuntime.gateOf(state) === gate || (gate === 'price' && stage.status === 'waiting') ? 'waiting'

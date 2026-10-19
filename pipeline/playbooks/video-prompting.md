@@ -69,12 +69,12 @@ Name exactly one move per clip. Silence lets the model choose, and it chooses to
 
 1. One motion idea per clip. A rotate plus a push plus a light change produces mush.
 2. Repeat identity verbatim in every clip: the same 3 to 6 attributes, the same outfit, the same room. "The same woman" and pronouns do not carry across clips.
-3. Dialogue as `{Persona} says: "line"`. On fast cuts each line is 6 words or fewer. One speaker per clip.
+3. Dialogue as `{Persona} says: "line"`. On fast cuts each line is 6 words or fewer. One speaking person per clip; a second named cast member may appear when the brief's cast list says so.
 4. Voice described once (the manifest's `characters[].voice`, from the script's Voice notes: accent, tempo, manner, pacing cue) and pasted verbatim into every clip where that character speaks. Rewording it changes the voice.
 5. End every clip prompt with the line "No on-screen text, no captions, no subtitles, no watermark." Text the model draws is burned into the picture and cannot be removed, so the finished video would show it twice. Also say what must not appear: added text, subtitles, logos other than the brand, other products, extra people, extra hands. Negative constraints matter more than adjectives.
 6. No added text in generation. Captions and on-screen text are drawn once by `finish-video.py` from the script and the transcript, where they are sharp and correct. The product's own label is not added text: it comes from the product photo and stays as photographed. Asking for it "angled away" or "not legible" returns a blank white sticker and a brand nobody can name.
 7. Replace emotional adjectives with their visible cause: not "excited" but "eyebrows up, leans toward the lens, half laugh".
-8. Never cinematic, professional, stunning, 8k, studio, perfect. Ask for phone quality, window light, visible skin texture, grain.
+8. Never cinematic, professional, stunning, 8k, studio, perfect. Ask for an everyday phone video in daylight with visible skin texture and real, ordinary clutter, unless the brand or brief sets another look.
 9. Keep physics simple: pick up, hold, turn, set down. Anchor hands to an object.
 10. First 2 seconds of the first clip carry motion or a strong expression; a scene-setting first clip is already too slow.
 11. Every clip prompt stands alone. "Same as the P1 image prompt above, animated" reaches the model as those words and nothing else. Repeat the subject, the product as photographed, the setting and the light in every clip.
@@ -97,7 +97,7 @@ No panel is shorter than 4 s, because the tool will not render a shorter clip. `
 |---|---|---|
 | Sustained physical contact, two bodies touching throughout | limbs merge and drift | hold and show, a single touch, or cut around it |
 | Singing | mouth and audio desync | spoken lines only |
-| Crowds, several faces | faces drift generic by the third cut | one persona per clip; extras out of focus or out of frame |
+| Crowds, several faces | faces drift generic by the third cut | one speaking person per clip, a second only if the brief's cast list names them; extras out of focus or out of frame |
 | Eating or drinking on camera | hallucinated food and hands | hold and smile, or cut before the sip |
 | Small product label in a busy room | garbled label | product large and close, 30 to 40 percent of frame |
 | Label "soft-focus so no text is legible" | a blank white sticker; the brand vanishes | keep the label as photographed, ban added text only |

@@ -11,11 +11,11 @@ The board is a browser page and cannot read a path on this computer, so a pick a
 The person can also open "Or paste a path" and type the full path of a folder, which arrives as a `brand_folder_add` request with `{ brand, folder, rights, label? }`.
 They can add as many folders as they like.
 The rights are the person's own answer from the board: never change them and never ask again.
-For a `brand_folder_pick`, land it with `pipeline_board_request_land`, then call `pipeline_folder_pick` with its `requestId` and `confirmedBy` set to `board request <requestId>`.
+For a `brand_folder_pick`, land it with `pipeline_board_request_land` (`from` set to `board`), then call `pipeline_folder_pick` with its `requestId` and `confirmedBy` set to `board request <requestId>`.
 The tool opens the operating system's folder dialog on the person's computer, waits up to 3 minutes and imports the folder they choose exactly as `brand_folder_add` does (the same checks, the person's rights, the same receipt), so do not also call `pipeline_board_request_apply` or `brand_footage_import` for it.
 Say once, in plain words, that a folder picker has opened on their computer and may be behind other windows; the board already says so.
 Its `status` tells what happened: `applied` carries on below (it names the folder in `name`); `cancelled`, `timeout`, `unavailable` and `refused` mean it has already declined the request with a plain line the board shows, so say in one line what happened (for `unavailable`, that a picker could not open here and "Or paste a path" works instead), write its `artifactReceipt` to the board, publish the workspace projection and ask nothing more; `handledElsewhere` means another window has it, so say nothing.
-For a typed path (`brand_folder_add`), land it with `pipeline_board_request_land` and apply it at once with `pipeline_board_request_apply`, `confirmedBy` set to the board request: the click is the approval, so there is no chat confirmation.
+For a typed path (`brand_folder_add`), land it with `pipeline_board_request_land` (`from` set to `board`) and apply it at once with `pipeline_board_request_apply`, `confirmedBy` set to the board request: the click is the approval, so there is no chat confirmation.
 The apply imports the folder exactly as `brand_footage_import` does and starts reading it in the background, which is free; nothing is copied, moved or changed.
 Do not call `brand_footage_import` for it as well.
 If the apply refuses (the folder is not there, it is too broad, or it was already added with other rights), say the refusal's plain line in chat, decline the request with `pipeline_board_request_decline` and that line as the reason, and publish the workspace projection.
