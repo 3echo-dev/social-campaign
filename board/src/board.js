@@ -1653,7 +1653,11 @@ export function inlineOnboardingForm(brand, state = {}, signal = {}, metricool =
   const details = step === 'details';
   const kit = kitSection(brand, state.kit || {}, state.kitErrors || null, false);
   // Every field is editable; a value research filled in carries the "Suggested, please check" pill until it is changed.
-  const fields = `<div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, {}, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div>${metricoolOnboardField(brand, values, metricool)}${kit}${problem}`;
+  // The details in the mockup's order, each part under a thin line: the links and the market, the brand identity, the look (the kit: logo,
+  // colours, fonts, photos, folders) and where posts go out. Nothing here is a new field; only the grouping is new.
+  const links = `<div class="ob-sec ob-links"><div class="channel-grid">${CHANNEL_NAMES.map(name => channelField(name, values, fieldErrors)).join('')}</div><div class="channel-grid context-grid">${targetMarketField(values, fieldErrors)}</div></div>`;
+  const identity = `<div class="ob-sec ob-identity"><h3>Brand identity</h3><div class="channel-grid context-grid">${CONTEXT_FIELDS.map(field => contextField(field, values, prefilled, {}, fieldErrors, researchSuggested(brand, field.name, values, prefilled))).join('')}</div></div>`;
+  const fields = `${links}${identity}${kit}${metricoolOnboardField(brand, values, metricool)}${problem}`;
   if (details) {
     const doing = state.action;
     const saveLabel = state.busy && doing === 'details' ? 'Saving...' : state.submitted && doing === 'details' ? TXT_WAITING_FOR_CLAUDE : state.needsReconciliation && doing === 'details' ? TXT_NEEDS_CLAUDE_ATTENTION : 'Save details';
@@ -1678,7 +1682,7 @@ export function metricoolOnboardField(brand, values = {}, metricool = {}) {
   const saved = brand?.publishing?.optedOut ? NO_METRICOOL : brand?.publishing && brand.publishing.found !== false && typeof brand.publishing.blogId === 'string' ? brand.publishing.blogId : '';
   const chosen = typeof values.metricoolBlogId === 'string' ? values.metricoolBlogId : saved;
   const options = [`<option value="" ${chosen ? '' : 'selected'}>Choose later</option>`, ...brands.map(item => `<option value="${esc(item.id)}" ${item.id === chosen ? 'selected' : ''}>${esc(item.option || item.label)}</option>`), `<option value="${NO_METRICOOL}" ${chosen === NO_METRICOOL ? 'selected' : ''}>Not through Metricool</option>`].join('');
-  return `<div class="channel-grid context-grid metricool-onboard"><label class="field-wide">Metricool brand for this brand's posts<select name="metricoolBlogId" data-saved="${esc(saved)}">${options}</select></label></div>`;
+  return `<div class="ob-sec ob-posting"><h3>Posting</h3><div class="channel-grid context-grid metricool-onboard"><label class="field-wide">Metricool brand for this brand's posts<select name="metricoolBlogId" data-saved="${esc(saved)}">${options}</select></label></div></div>`;
 }
 
 const COMPOSER_TITLE_LIMIT = 80;
@@ -5535,9 +5539,25 @@ function legacySummaryInbox(project) {
   return Number(project?.blockerCount) > 0 ? [{ ...base, kind: 'brief', text: BRIEF_MISSING }] : [];
 }
 
+// The six subtopics the research found, as one question card: "Do these six subtopics look right?" with Looks right and Edit. It is
+// derived from the brand's intelligence, so it is the same card in Needs you, on the brand page in the Director's thread and on the
+// intelligence panel, and it is gone from every one of them when the subtopics are confirmed (from this board or in chat).
+export function subtopicsQuestion(brand) {
+  const intel = intelOf(brand);
+  if (!brand?.slug || !intel || intelObject(intel.subtopics).status === 'confirmed') return null;
+  const names = intelSubtopics(intel).map(item => item.name);
+  if (!names.length) return null;
+  const exact = names.length === INTEL_SUBTOPIC_COUNT;
+  return {
+    kind: 'onboarding', brand: brand.slug, brandName: trimmed(brand.name) || null, state: 'subtopics', needsYou: true, subtopics: names, exact,
+    text: exact ? `Do these ${INTEL_SUBTOPIC_COUNT} subtopics look right?` : `I found ${names.length} subtopics and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Please adjust them.`,
+  };
+}
+
 export function onboardingInboxItems(brands = [], drafts = []) {
-  const open = (Array.isArray(brands) ? brands : []).filter(brand => brand?.slug && !brandReady(brand));
-  return open.flatMap(brand => {
+  const all = (Array.isArray(brands) ? brands : []).filter(brand => brand?.slug);
+  const open = all.filter(brand => !brandReady(brand));
+  return [...open.flatMap(brand => {
     const draft = (Array.isArray(drafts) ? drafts : []).find(item => item?.kind === 'onboard' && item.brand === brand.slug) || null;
     const phase = brandResearchPhase(brand, draft);
     const name = trimmed(brand.name) || 'This brand';
@@ -5552,7 +5572,7 @@ export function onboardingInboxItems(brands = [], drafts = []) {
       return [{ ...base, state: 'failed', needsYou: true, text: `${name} research could not finish${why ? `: ${why}` : ''}. Fill in the brand profile by hand, then click Save and continue.` }];
     }
     return [];
-  });
+  }), ...all.map(subtopicsQuestion).filter(Boolean)];
 }
 
 // Whether an Inbox item waits on the person, for every count of "waiting". The research-done item (state 'review') is news with a
@@ -5820,7 +5840,7 @@ export function newestJobsFirst(list) {
 const INBOX_TEXT_FALLBACK = Object.freeze({ decision: "A decision is waiting for you.", brief: BRIEF_MISSING, question: '' });
 
 export function inboxKey(item) {
-  if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}`;
+  if (item?.kind === 'onboarding') return `onboarding-${item.brand || ''}${item.state === 'subtopics' ? '-subtopics' : ''}`;
   if (item?.kind === 'post') return `post-${item.jobId || ''}-${item.target || ''}`;
   return item?.kind === 'question' ? `question-${item.questionId}` : [item?.kind || 'item', item?.jobId || '', item?.field || ''].filter(Boolean).join('-');
 }
@@ -5830,9 +5850,22 @@ export function inboxItemText(item) {
 }
 
 // The button opens the brand's page, so on that page itself (`onPage`) the card is only the note: it never points at where the person already is.
-function onboardingCard(item) {
+function onboardingCard(item, state = {}) {
+  if (item.state === 'subtopics' && item.brand) return subtopicsCard(item, state.subtopics || {});
   if (!item.needsYou || !item.brand || item.onPage) return '';
   return `<div class="inbox-actions"><button type="button" class="primary" data-onboard="${esc(item.brand)}">Open brand profile</button></div>`;
+}
+
+// The six subtopics as a question card: their names, then Looks right and Edit. The buttons carry the same data-intel-act as the brand's
+// intelligence panel, so they confirm or edit the six wherever the card is drawn. After a tap the card says so and the buttons go, until
+// the studio has saved them and the card leaves every list.
+function subtopicsCard(item, state = {}) {
+  const names = Array.isArray(item.subtopics) ? item.subtopics : [];
+  const list = names.length ? `<ol class="sub-six">${names.map(name => `<li>${esc(name)}</li>`).join('')}</ol>` : '';
+  const on = `data-intel-brand="${esc(item.brand)}"`;
+  if (state.sent) return `<div class="sub-card" ${on}>${list}<p class="inbox-note" role="status">Sent. Waiting for your studio.</p></div>`;
+  const confirm = item.exact ? '<button type="button" class="primary" data-intel-act="note-confirm">Looks right</button>' : '';
+  return `<div class="sub-card" ${on}>${list}<p class="muted">Every post takes its topic from one of these.</p><div class="inbox-options" role="group" aria-label="Answers">${confirm}<button type="button" data-intel-act="note-edit">Edit</button></div></div>`;
 }
 
 // A post that needs the person: what it is, and a button that scrolls to the row or the kit on the job page.
@@ -5900,7 +5933,7 @@ export function inboxCard(item, ctx = {}) {
   if (item.kind === 'question' && questionClosed(item, ctx.question)) return `<li class="inbox-item is-closed" data-inbox-key="${esc(inboxKey(item))}">${closedQuestionLine(item, ctx.question)}</li>`;
   const text = inboxItemText(item);
   const onboarding = item.kind === 'onboarding';
-  const body = onboarding ? onboardingCard(item)
+  const body = onboarding ? onboardingCard(item, ctx)
     : item.kind === 'post' ? postCard(item)
     : item.kind === 'stuck' ? stuckCard(item)
     : isHandoffItem(item) ? handoffButtons(item, ctx.handoff || {})
@@ -5909,7 +5942,7 @@ export function inboxCard(item, ctx = {}) {
         : briefCard(item, ctx, index);
   const more = Number.isInteger(ctx.more) && ctx.more > 0 ? `<p class="inbox-more">${esc(`${ctx.more} more ${ctx.more === 1 ? 'thing waits' : 'things wait'} in this job.`)}</p>` : '';
   const opens = ctx.opensJob && item.jobId ? ` data-card-job="${esc(item.jobId)}"` : '';
-  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && !onboarding ? inboxJobLine(item) : ''}${inboxFromLine(item)}${item.kind === 'decision' ? decisionAbout(item) : ''}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${more}${body}</li>`;
+  return `<li class="inbox-item${onboarding && !item.needsYou ? ' is-info' : ''}${opens ? ' opens-job' : ''}" data-inbox-key="${esc(inboxKey(item))}"${opens}>${ctx.workspace && (!onboarding || item.state === 'subtopics') ? inboxJobLine(item) : ''}${inboxFromLine(item)}${item.kind === 'decision' ? decisionAbout(item) : ''}${text ? `<p class="inbox-text">${esc(text)}</p>` : ''}${more}${body}</li>`;
 }
 
 // Several questions from one job on one card: the job line once, then each question with its own answers.
@@ -6065,8 +6098,115 @@ export function stepRailParts(project, doc = null) {
   return { here, next, need, jump: railJump(item) };
 }
 
+/**
+ * The job page's top bar: the stops as thin segments across the page, with the current stop named above them ("Step 2 of 6: Storyboard
+ * and price, waiting on you"). Every stop done reads "All 6 steps are done". A job with no stops yet draws nothing.
+ */
+export function jobStopsBar(project, { waiting = false, closed = false } = {}) {
+  const { done, total } = stageProgress(project);
+  if (!total) return '';
+  const stages = (Array.isArray(project?.stages) ? project.stages : []).filter(stage => stage && typeof stage === 'object');
+  const status = index => (stages.length === total ? String(stages[index].status || 'pending') : index < done ? 'complete' : 'pending').toLowerCase().replace(/[^a-z]/g, '');
+  const at = stages.length === total ? stages.findIndex(stage => !RAIL_SETTLED.has(String(stage.status || 'pending'))) : -1;
+  const here = at >= 0 ? stages[at] : null;
+  const word = !here ? '' : waiting || status(at) === 'waiting' || status(at) === 'awaiting' ? TXT_WAITING_ON_YOU.toLowerCase() : status(at) === 'running' ? (closed ? ENGINE_CLOSED_WORD.toLowerCase() : 'the team is working') : '';
+  const now = here ? `Step ${at + 1} of ${total}: ${trimmed(here.label || here.name) || humanize(here.id)}` : done >= total ? `All ${total} ${total === 1 ? 'step is' : 'steps are'} done` : `${done} of ${total} ${total === 1 ? 'step' : 'steps'} done`;
+  const text = `${done} of ${total} ${total === 1 ? 'step' : 'steps'} done`;
+  return `<div class="job-stops"><p class="job-now"><b>${esc(now)}</b>${word ? `<span>${esc(word)}</span>` : ''}</p><span class="minimap" role="img" aria-label="${esc(text)}">${Array.from({ length: total }, (_, index) => `<i class="s-${status(index)}"></i>`).join('')}</span></div>`;
+}
+
 export function overviewColumn({ strip = '', jobs = '', onboarding = '', onboardFirst = false } = {}) {
   return onboardFirst ? `${strip}${onboarding}${jobs}` : `${strip}${jobs}${onboarding}`;
+}
+
+// ---- Home on the new layout: the faces on a job row, its stop bar, the team across the running jobs, and what goes out this week ----
+// Home reads these from the job documents it watches (the newest few jobs), so a row without its document yet shows no faces.
+export const HOME_WATCHED_JOBS = 10;
+const TEAM_RANK = Object.freeze({ needs_you: 0, working: 1, waiting: 2, done: 3 });
+/** The people on one job, the Director first: the agents its document says have been called, each with how it looks now. */
+export function jobPeople(doc, { closed = false } = {}) {
+  return (agentBoxOf(doc, { closed })?.all || []).map(agent => ({ agent, view: agentView(agent) })).filter(person => person.view.called);
+}
+/** The row's faces: one small character per person on the job, with the names for a screen reader. */
+export function jobFaces(people, max = 5) {
+  if (!people.length) return '';
+  const more = people.length - max;
+  return `<span class="jr-who" role="img" aria-label="${esc(`On this job: ${people.map(person => agentNameOf(person.agent)).join(', ')}`)}">${people.slice(0, max).map(person => blob(person.agent.id, person.view.mood, 26)).join('')}${more > 0 ? `<span class="jr-more">+${more}</span>` : ''}</span>`;
+}
+/** The job's six stops as one thin bar: done green, the one in hand gold when it waits on the person and blue when the team has it. */
+export function jobStopBar(project, waiting = false) {
+  const { done, total } = stageProgress(project);
+  if (!total) return { text: '', html: '' };
+  const stages = (Array.isArray(project?.stages) ? project.stages : []).filter(stage => stage && typeof stage === 'object');
+  const open = done < total && !FINAL_JOB_STATES.includes(project?.state);
+  const status = index => (stages.length === total ? String(stages[index].status || 'pending') : index < done ? 'complete' : open && index === done ? (waiting ? 'waiting' : 'running') : 'pending').toLowerCase().replace(/[^a-z]/g, '');
+  const now = trimmed(project?.stageSummary?.current);
+  const text = open ? `Step ${done + 1} of ${total}${now ? `: ${now}` : ''}` : done >= total ? 'All steps done' : `${done} of ${total} steps done`;
+  return { text, html: `<span class="minimap" role="img" aria-label="${esc(text)}">${Array.from({ length: total }, (_, index) => `<i class="s-${status(index)}"></i>`).join('')}</span>` };
+}
+/** Everyone on a running job, once: each person with the job they are most needed on (a question for you first, then work in hand), and how many jobs they are on. */
+export function homeTeam(entries) {
+  const byId = new Map();
+  for (const { project, doc, closed } of entries) {
+    for (const person of jobPeople(doc, { closed })) {
+      const jobs = byId.get(person.agent.id) || [];
+      jobs.push({ project, ...person });
+      byId.set(person.agent.id, jobs);
+    }
+  }
+  const rank = person => TEAM_RANK[person.view.state] ?? 4;
+  return [...byId.values()].map(jobs => ({ ...jobs.slice().sort((a, b) => rank(a) - rank(b))[0], count: jobs.length }))
+    .sort((a, b) => Number(isDirectorAgent(b.agent)) - Number(isDirectorAgent(a.agent)) || rank(a) - rank(b));
+}
+/** The Team on home. A row is a link to the job the person is on; the page opens their thread there (data-team-open). */
+export function homeTeamList(people) {
+  if (!people.length) return '<p class="muted">Nobody is on a job right now. The team gathers when you start one.</p>';
+  const row = ({ agent, view, project, count }) => {
+    const name = agentNameOf(agent);
+    const title = trimmed(project.title) || 'Untitled job';
+    const note = agentPlain(agent.note);
+    const director = isDirectorAgent(agent);
+    const line = director ? (view.state === 'needs_you' ? agentPlain(project.nextAction) || agentPlain(agent.task) : count > 1 ? `Running ${count} jobs` : agentPlain(agent.task))
+      : view.state === 'waiting' && note ? note : agentPlain(agent.task);
+    return `<li><a class="ag team-row st-${view.tone}" href="#/project/${esc(encodeURIComponent(project.jobId))}" data-team-open="${esc(agent.id)}" data-team-job="${esc(project.jobId)}" title="${esc(`Talk to ${name} in ${title}`)}"><span class="ag-f">${blob(agent.id, view.mood, 36)}<i class="ag-d" aria-hidden="true"></i></span><span class="ag-b"><span class="ag-n"><b>${esc(name)}</b><small class="team-job">${esc(title)}</small></span><span class="ag-l"><span class="ag-w">${esc(view.word)}</span>${line ? ` · ${esc(capWords(line, 12))}` : ''}</span></span></a></li>`;
+  };
+  return `<ul class="team-list">${people.map(row).join('')}</ul>`;
+}
+const WHEN_WORDS = /^([A-Za-z]{3}) (\d{1,2}) ([A-Za-z]{3}), (\d{1,2}):(\d{2}) ([ap])m/;
+const MONTH_WORDS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** "Sat 3 Oct, 9:00 am, Singapore time" read as a day and a clock in the plan's own words, plus a moment to sort and filter by (the zone is not converted). Null for any other text. */
+export function postTimeParts(text, now = Date.now()) {
+  const hit = WHEN_WORDS.exec(String(text || ''));
+  const month = hit ? MONTH_WORDS.indexOf(hit[3].toLowerCase()) : -1;
+  if (month < 0) return null;
+  const [, weekday, day, , hours, minutes, half] = hit;
+  const hour = (Number(hours) % 12) + (half === 'p' ? 12 : 0);
+  // The words carry no year: take the one (last, this or next) where the day of the week fits, nearest to now.
+  const years = [-1, 0, 1].map(step => new Date(new Date(now).getFullYear() + step, month, Number(day), hour, Number(minutes))).filter(at => at.getDate() === Number(day) && at.toLocaleDateString('en-US', { weekday: 'short' }) === weekday);
+  const best = years.sort((a, b) => Math.abs(a - now) - Math.abs(b - now))[0];
+  return best ? { at: best.getTime(), day: weekday, clock: `${Number(hours)}${minutes === '00' ? '' : `:${minutes}`} ${half}m` } : null;
+}
+const GOING_OUT = new Set(['scheduled', 'draft', 'waiting_in_app', 'handed_over', 'not_sent', 'unconfirmed', 'late']);
+/** The posts of the approved posting plans that go out from today for a week, soonest first: the Metricool ones by their status, and the ones the person posts themselves until they mark them posted. */
+export function goingOutThisWeek(entries, now = Date.now()) {
+  const today = new Date(now);
+  const from = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const to = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7).getTime();
+  const rows = [];
+  for (const { project, doc } of entries) {
+    const sent = Array.isArray(doc?.publishStatus?.posts) ? doc.publishStatus.posts : [];
+    const kit = (Array.isArray(doc?.postingKit?.posts) ? doc.postingKit.posts : []).filter(post => post && !post.marked && !sent.some(item => item?.id === post.id));
+    for (const [post, status] of [...sent.map(post => [post, post?.status]), ...kit.map(post => [post, 'handed_over'])]) {
+      const when = GOING_OUT.has(status) ? postTimeParts(post?.when, now) : null;
+      if (when && when.at >= from && when.at < to) rows.push({ ...when, jobId: project.jobId, title: trimmed(project.title) || 'Untitled job', post: trimmed(post.label) || 'Post', word: POST_STATUS_WORDS[status] });
+    }
+  }
+  return rows.sort((a, b) => a.at - b.at).slice(0, 8);
+}
+/** "Going out this week": a day and a clock, the job and the post with where it stands. */
+export function goingOutList(rows) {
+  if (!rows.length) return '<p class="muted">Nothing scheduled yet.</p>';
+  return `<ul class="week">${rows.map(row => `<li><a href="#/project/${esc(encodeURIComponent(row.jobId))}"><span class="d">${esc(row.day)} <br>${esc(row.clock)}</span><span class="wk"><b>${esc(row.title)}</b><small>${esc(`${row.post}, ${row.word.toLowerCase()}`)}</small></span></a></li>`).join('')}</ul>`;
 }
 
 export function jobFlowStage(stage, index) {
@@ -6820,21 +6960,22 @@ function chatTasks(agent, tasks, { chipContext = {}, openKeys = null, jobId = ''
  * the Brand onboarding page's: the Director's messages, one per open item (each already drawn, with its own buttons), and how many of
  * them wait on the person, which the header says as "Waiting on you · 3". `feed` is the room's lines for this thread (see roomFeed): given, it
  * takes the place of the message bubbles, and of the step bubbles too once the room holds this agent's results (`feedWork`); left out (a job
- * from before the room), the old bubbles are drawn.
+ * from before the room), the old bubbles are drawn. `word` says the state word in place of the agent's own, and `quiet` leaves out the
+ * typing dots (the Brand onboarding page shows the Director's work as its research checklist).
  */
 export function agentChat(agent, ctx = {}) {
-  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '', asks = [], waiting = 0, feed = null, feedWork = false } = ctx;
+  const { tasks = [], chipContext = {}, needs = '', stuck = '', item = null, status = '', compose = '', openKeys = null, jobId = '', asks = [], waiting = 0, feed = null, feedWork = false, word: saidWord = '', quiet = false } = ctx;
   const view = agentView(agent);
   const name = agentNameOf(agent);
   const director = isDirectorAgent(agent);
   const role = agentPlain(agent.role) || (director ? DIRECTOR_ROLE : agentPlain(agent.task));
   const card = item ? `<div class="msg-r a"><div class="dc s-waiting"><div class="dc-h"><span class="node pic" aria-hidden="true"><img src="${gatePicture(item.gate)}" alt=""></span><div><b>${esc(item.title)}</b><span class="pill st-waiting">Waiting on you</span></div></div>${item.line ? `<p>${esc(item.line)}</p>` : ''}<div class="bub-act"><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('change')} Ask for changes</button><button type="button" class="sm" data-ab-gate="${esc(item.gate)}">${icon('open')} Open details</button></div></div></div>` : '';
-  const typing = view.state === 'working' ? (view.asleep ? `<div class="msg-r a"><div class="bub"><p class="bub-note">${esc(ENGINE_CLOSED_WORD)}</p></div></div>` : `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>`) : '';
+  const typing = view.state === 'working' && !quiet ? (view.asleep ? `<div class="msg-r a"><div class="bub"><p class="bub-note">${esc(ENGINE_CLOSED_WORD)}</p></div></div>` : `<div class="msg-r a"><div class="bub"><span class="typing" role="img" aria-label="Working"><i></i><i></i><i></i></span><p class="bub-note">${esc(director ? TXT_WORKING_ON_IT : agentPlain(agent.task, TXT_WORKING_ON_IT))}</p></div></div>`) : '';
   const state = status ? `<div class="msg-r a"><div class="bub"><p>${esc(status)}</p></div></div>` : '';
   const needsBubble = needs ? `<div class="msg-r a bub-wide"><div class="bub bub-need">${needs}</div></div>` : '';
   const stuckBubble = stuck ? `<div class="msg-r a bub-wide"><div class="bub bub-stuck">${stuck}</div></div>` : '';
   const askBubbles = (Array.isArray(asks) ? asks : []).join('');
-  const word = waiting > 0 ? `${view.word} · ${waiting}` : view.word;
+  const word = saidWord || (waiting > 0 ? `${view.word} · ${waiting}` : view.word);
   return `<aside class="thread chat${askBubbles ? ' has-asks' : ''}" aria-labelledby="ab-chat-title" data-chat="${esc(agent.id)}"><div class="th-h"><button type="button" class="ghost back" data-ab-back aria-label="Back to the team" title="Back to the team">${icon('back')}<span>Back</span></button><span class="ag-f">${blob(agent.id, view.mood, 32)}</span><div class="ch-who"><h2 id="ab-chat-title" tabindex="-1">${esc(name)}</h2><span class="ag-w st-${view.tone}">${esc(word)}</span></div></div><div class="chat-l" data-scroll="chat-${esc(agent.id)}"><div class="chat-intro">${blob(agent.id, view.mood, 52)}<b>${esc(name)}</b>${role ? `<p>${esc(role)}</p>` : ''}</div>${stuckBubble}${chatTasks(agent, tasks, { chipContext, openKeys, jobId })}${feed !== null ? `${director || feedWork ? '' : workBubbles(agent, tasks, chipContext)}${feed}` : `${director ? '' : workBubbles(agent, tasks, chipContext)}${messageBubbles(agent)}`}${needsBubble}${askBubbles}${state}${card}${typing}${chatDetails(agent, { openKeys, jobId })}</div>${compose}</aside>`;
 }
 
@@ -6994,6 +7135,7 @@ function stopGate(item, { who, chipContext, bodies, placed, above }) {
   const said = status === 'waiting' ? TXT_WAITING_ON_YOU : status === 'done' ? gateReceipt(item) || 'Done' : TXT_NOT_STARTED_YET;
   const mark = status === 'done' ? icon('check') : status === 'waiting' ? icon('q') : '';
   const link = status === 'waiting' && above === item.gate ? `<button type="button" class="sm" data-ab-gate="${esc(item.gate)}">Show it above</button>` : '';
+  // The card the person decides on is drawn here, in the stop it belongs to, with no step row of its own above it.
   let work = '';
   if (status !== 'pending') {
     if (own?.html) { placed.add(item.gate); work += `<div class="stg-panels">${own.html}</div>`; }
@@ -7003,35 +7145,58 @@ function stopGate(item, { who, chipContext, bodies, placed, above }) {
   return `<li class="sub sub-gate s-${status}" data-gate="${esc(item.gate)}"><span class="sub-m" aria-hidden="true">${mark}</span><div class="sub-b"><span class="sub-t"><b>${esc(item.name)}</b><span class="sub-s">${esc(said)}</span>${link}</span>${work ? `<div class="stg-work">${work}</div>` : ''}</div></li>`;
 }
 
+// The width under which the job page is one column: the Team becomes a row of faces above the steps.
+const narrowWidth = () => Boolean(globalThis.matchMedia?.('(max-width: 900px)')?.matches);
+// The width under which the brand page's two columns (the form and the Director) are one.
+const narrowBrandPage = () => Boolean(globalThis.matchMedia?.('(max-width: 950px)')?.matches);
+
 /**
  * The stops, drawn: an ordered list with one card for each stop (see above). `bodies` maps a gate to what opens inside it ({ html, open });
- * the gates that got a body are returned in `placed`, so the page can show anything left over after the stops. `above` is the gate whose card
- * the page draws above the list; `ask` is the Director's chat id and its draft is what "Ask for changes" starts. `who` gives the agent card
+ * the gates that got a body are returned in `placed`, so the page can show anything left over after the stops. The card a stop waits on is
+ * drawn inside that stop; `lift` (a phone) lifts it out, into `lifted`, when its stop is folded, and `above` names a gate whose card the page
+ * draws above the list. `asking` is the open questions' card, drawn inside the stop waiting on the person (`asked` says it found one).
+ * `ask` is the Director's chat id and its draft is what "Ask for changes" starts. `who` gives the agent card
  * behind a step (`agent`, `called`), `chipContext` links its files. `done` and `total` count the stops, once.
  */
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer', closed = false } = {}) {
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer', closed = false, asking = '', lift = false } = {}) {
   const placed = new Set();
+  const lifted = [];
   const merged = mergeDecidedGates(model);
   for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
   let done = 0;
+  // Where an open question sits: in the stop waiting on the person, else the one being worked on, else the last that began.
+  const states = merged.stages.map(stopStatus);
+  const askAt = asking ? [states.indexOf('waiting'), states.indexOf('running'), states.lastIndexOf('done')].find(index => index >= 0) ?? -1 : -1;
   const stops = merged.stages.map((stage, at) => {
-    const status = stopStatus(stage);
+    const status = states[at];
     const name = esc(stage.label);
     if (status === 'done') done += 1;
     if (status === 'pending') return `<li class="stg s-pending"><div class="stg-row"><span class="n">${at + 1}</span><span class="stg-t"><h3>${name}</h3></span></div></li>`;
     const key = `stop:${jobId}:${stage.id ?? at}:${status}`;
     // A stop that holds a panel the person should see (the posts that went out, the report) opens by itself even when done.
     const holds = stage.items.some(item => { const gate = item.kind === 'gate' ? item : item.decided; return Boolean(gate && bodies[gate.gate]?.html && bodies[gate.gate].open); });
-    const rows = stage.items.map(item => (item.kind === 'step' ? stopStep(item, { who, chipContext, bodies }) : stopGate(item, { who, chipContext, bodies, placed, above })));
+    // A stop with an open question stays open, so the question is never folded away.
+    const asks = at === askAt ? asking : '';
+    const open = isOpen(key, status !== 'done' || holds) || Boolean(asks);
+    // The card a stop waits on lives inside that stop. Folded on a phone, it is lifted out above the steps so it stays in reach.
+    const own = new Map();
+    if (lift && !open) {
+      for (const item of stage.items) if (item.kind === 'gate' && item.status === 'waiting' && bodies[item.gate]?.html) { lifted.push(bodies[item.gate].html); placed.add(item.gate); own.set(item.gate, item.gate); }
+    }
+    const stopBodies = own.size ? Object.fromEntries(Object.entries(bodies).filter(([gate]) => !own.has(gate))) : bodies;
+    // The card the person decides on comes first in its stop; the work behind it follows.
+    const decides = item => item.kind === 'gate' && item.status === 'waiting' && Boolean(stopBodies[item.gate]?.html);
+    const ordered = [...stage.items.filter(decides), ...stage.items.filter(item => !decides(item))];
+    const rows = ordered.map(item => (item.kind === 'step' ? stopStep(item, { who, chipContext, bodies: stopBodies }) : stopGate(item, { who, chipContext, bodies: stopBodies, placed, above: own.has(item.gate) ? item.gate : above })));
     const foot = status === 'done' ? `<div class="stg-foot"><button type="button" class="sm" data-ab-open="${esc(ask)}" data-ab-draft="${esc(`Change the ${String(stage.label).toLowerCase()}: `)}">Ask for changes</button></div>` : '';
     const line = stopLine(status, stage.items);
     const running = stage.items.filter(item => item.kind === 'step' && item.status === 'running');
     const starting = status === 'running' && running.length > 0 && running.every(item => who(item.agent)?.called === false);
     // `closed`: no session watches the board, so a stop that reads running is waiting for the studio to open.
     const word = starting ? STEP_STARTING_WORD : closed && status === 'running' ? ENGINE_CLOSED_WORD : STEP_STATUS_WORDS[status];
-    return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${isOpen(key, status !== 'done' || holds) ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body"><ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
+    return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body">${asks}<ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
   });
-  return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length };
+  return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length, lifted: lifted.join(''), asked: askAt >= 0 };
 }
 
 /**
@@ -7059,33 +7224,55 @@ export function brandAsks(items, brandSlug) {
 export function directorAsks(items, { context = () => ({}), signal = {} } = {}) {
   const list = Array.isArray(items) ? items : [];
   const contexts = list.map(item => context(item) || {});
-  const answered = at => list[at].kind === 'question' && Boolean(contexts[at].question?.submitted || contexts[at].question?.answered);
+  const answered = at => (list[at].kind === 'question' && Boolean(contexts[at].question?.submitted || contexts[at].question?.answered)) || (list[at].state === 'subtopics' && Boolean(contexts[at].subtopics?.sent));
   const waits = list.map((item, at) => waitsOnPerson(item) && !answered(at));
   const messages = list.map((item, at) => `<div class="msg-r a bub-wide" data-ask="${esc(inboxKey(item))}"><div class="bub bub-need"><ol class="inbox-list">${inboxCard(item, { signal, ...contexts[at], index: at })}</ol></div></div>`);
   const first = list.find((item, at) => waits[at]);
   return { messages, waiting: waits.filter(Boolean).length, first: first ? inboxItemText(first) : '' };
 }
 
-// The Brand onboarding page's own Inbox and chat: the Director and the Researcher (and anyone else who ran), from brand.agents.
-// The Director is the only one who asks: its chat holds the brand's open items as messages (`brandAsks`), with "Waiting on you · N"
-// on its header and in the Inbox, and a chat opens on it at once when it has something to say (chatId undefined; null is the
-// Inbox the person went back to). Nobody can be messaged here, so any other chat shows who the agent is and what it is doing.
-// The page knows research was just requested before the server does, so the Director is Working at once.
-// `notes` ({messages, waiting, first}, from intelDirectorNotes) are the Director's messages about the brand's intelligence; they follow its other asks.
+// The Director's panel beside the brand's form: its thread, the same one the job room opens. The Director is the only one who asks, so
+// its thread holds what it has to say: a line while the person fills the form in, the research checklist (seven rows, each helper's part with
+// its state) once research is asked for, then the brand's open items as messages (`brandAsks`, each with its own buttons, the six
+// subtopics as one card among them), and the closed line when an item is answered. A brand the server sent no team for still gets the
+// Director alone. A chat opens on it at once (chatId undefined; null is the team list the person went back to). Nobody can be messaged
+// here, so any other chat shows who the agent is and what it is doing. The page knows research was just requested before the server does,
+// so the Director is Working at once. `notes` ({messages, waiting, first}, from intelDirectorNotes) follow its other asks.
+const ONBOARD_DIRECTOR_ROLE = 'Helps you set up the brand';
+export const ONBOARD_INTRO_LINE = 'Add a website or one social account, then press Start research.';
 export function onboardAgentsPanel(brand, draft = null, now = Date.now(), chatId, { items = [], context, signal, notes = null } = {}) {
-  const list = (Array.isArray(brand?.agents?.list) ? brand.agents.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
-  if (!list.length) return '';
-  const running = brandResearchPhase(brand, draft, now) === 'running';
-  const asks = intelAsks(directorAsks(brandAsks(items, brand?.slug), { context, signal }), notes);
-  const agents = list.map(agent => {
-    if (!isDirectorAgent(agent)) return agent;
-    if (asks.waiting > 0) return { ...agent, state: 'needs_you', task: asks.first || agent.task };
-    return running && agent.state === 'needs_you' ? { ...agent, state: 'working', task: 'Getting your brand ready' } : agent;
-  });
-  const director = agents.find(isDirectorAgent) || null;
-  const open = (chatId === undefined ? (asks.messages.length ? director?.id : null) : chatId) || null;
+  if (!brand?.slug) return '';
+  const given = (Array.isArray(brand.agents?.list) ? brand.agents.list : []).filter(agent => agent && typeof agent === 'object' && trimmed(agent.id));
+  const phase = brandResearchPhase(brand, draft, now);
+  const running = phase === 'running';
+  // The research-done note and the failure note say what to do on this page; they never point at it.
+  const onPage = item => (item.kind === 'onboarding' && item.state !== 'subtopics'
+    ? { ...item, onPage: true, ...(item.state === 'review' ? { text: `${item.brandName ? `${item.brandName}: research done` : 'Research done'}. Check the details in the form, then press Save and continue.` } : {}) }
+    : item);
+  const asks = intelAsks(directorAsks(brandAsks(items, brand.slug).map(onPage), { context, signal }), notes);
+  const sent = given.find(isDirectorAgent) || {
+    id: 'producer', name: 'Director', state: running ? 'working' : brandReady(brand) ? 'done' : phase === 'new' ? 'waiting' : 'needs_you', files: [], activity: [], runs: [], messages: [],
+    task: running ? 'Getting your brand ready' : brandReady(brand) ? 'Your brand is ready for jobs' : phase === 'failed' ? 'Research could not finish. Fill in the profile by hand' : phase === 'complete' ? 'Waiting for you to check the brand profile' : '',
+  };
+  // Start research was pressed and the studio has not picked it up yet: the list shows at once, every part waiting.
+  const starting = !running && draft?.action === 'start' && !draft.declined && !draft.error && Boolean(draft.busy || draft.submitted || draft.needsReconciliation);
+  const idle = phase === 'new' && !starting && asks.waiting === 0 && !brandReady(brand);
+  const base = { ...sent, role: ONBOARD_DIRECTOR_ROLE };
+  const director = asks.waiting > 0 ? { ...base, state: 'needs_you', task: asks.first || base.task }
+    : idle ? { ...base, state: 'waiting', task: '', note: 'Here to help' }
+      : starting ? { ...base, state: 'waiting', task: '', note: 'Starting the research' }
+      : running && base.state === 'needs_you' ? { ...base, state: 'working', task: 'Getting your brand ready' } : base;
+  const intel = intelOf(brand);
+  const before = [];
+  if (idle && !asks.messages.length) before.push(`<div class="msg-r a"><div class="bub"><p>${esc(ONBOARD_INTRO_LINE)}</p></div></div>`);
+  if (starting) before.push(researchChecklist(researchRows(null, { asleep: true }), { starting: true }));
+  else if (running || (!brandReady(brand) && intelSteps(intel).length)) before.push(researchChecklist(researchRows(intel, { asleep: agentView(director).asleep === true })));
+  const agents = [director, ...given.filter(agent => !isDirectorAgent(agent))];
+  const open = (chatId === undefined ? director.id : chatId) || null;
   const chat = open ? agents.find(agent => agent.id === open) : null;
-  if (chat) return agentChat(chat, isDirectorAgent(chat) && asks.messages.length ? { asks: asks.messages, waiting: asks.waiting } : { status: agentPlain(chat.task) });
+  // A brand that is ready and has nothing to say has no panel: the page is the form alone.
+  if (chat && isDirectorAgent(chat) && chatId === undefined && !before.length && !asks.messages.length) return '';
+  if (chat) return agentChat(chat, isDirectorAgent(chat) ? { asks: [...before, ...asks.messages], waiting: asks.waiting, word: idle ? 'Here to help' : starting ? 'Starting' : '', quiet: true } : { status: agentPlain(chat.task) });
   return `<div class="onboard-agents">${agentInbox(agents, { now, needText: asks.first, questions: asks.waiting, waitingOnYou: asks.waiting })}</div>`;
 }
 
@@ -7193,7 +7380,43 @@ function intelPlan(intel) {
 }
 // The steps of the research checklist: {label, detail, state: done|running|todo}.
 export function intelSteps(intel) {
-  return intelRecords(intel?.steps).filter(step => trimmed(step.label)).map(step => ({ label: trimmed(step.label), detail: trimmed(step.detail), state: step.state === 'done' || step.state === 'running' ? step.state : 'todo' }));
+  return intelRecords(intel?.steps).filter(step => trimmed(step.label)).map(step => ({ id: trimmed(step.id), label: trimmed(step.label), detail: trimmed(step.detail), state: step.state === 'done' || step.state === 'running' ? step.state : 'todo' }));
+}
+
+// The checklist the Director shows beside the brand's form: seven rows, each the part of the research one helper does, with its face, the
+// helper's name and where it stands. The server keeps eleven finer steps (see brand-intelligence.mjs); each row is the group of them it
+// stands for, done when all are done and working while any has started. With no checklist yet (research was only just asked for) the five
+// parts that start together show as working, or as waiting when no studio is open, and the Director's own two later.
+export const RESEARCH_ROWS = Object.freeze([
+  { id: 'website', label: 'Your website and accounts', who: 'Researcher', agent: 'researcher', steps: ['website', 'accounts'] },
+  { id: 'own', label: 'Your best posts, taken apart', who: 'Researcher', agent: 'researcher', steps: ['own_top', 'own_teardown'] },
+  { id: 'rivals', label: 'Competitors and their best posts', who: 'Researcher', agent: 'researcher', steps: ['competitors', 'rivals_teardown'] },
+  { id: 'viral', label: 'What is viral in your niche', who: 'Trend Scout', agent: 'trend-scout', steps: ['viral'] },
+  { id: 'pains', label: 'Customer pain points', who: 'Researcher', agent: 'researcher', steps: ['pains'] },
+  { id: 'subtopics', label: 'Six subtopics', who: 'Director', agent: 'producer', steps: ['subtopics'] },
+  { id: 'plan', label: 'A plan of 30 post ideas', who: 'Strategist', agent: 'strategist', steps: ['plan', 'files'] },
+]);
+export const RESEARCH_ROW_WORDS = Object.freeze({ done: 'Done', working: 'Working', waiting: 'Waiting', later: 'Later' });
+export function researchRows(intel, { asleep = false } = {}) {
+  const steps = intelSteps(intel);
+  const known = new Set(RESEARCH_ROWS.flatMap(row => row.steps));
+  if (!steps.length) return RESEARCH_ROWS.map((row, at) => ({ ...row, state: at < 5 ? (asleep ? 'waiting' : 'working') : 'later', detail: '' }));
+  // A checklist of steps this board does not know (the Director may write its own) is shown as it is, one row each.
+  if (!steps.some(step => known.has(step.id))) return steps.map(step => ({ id: step.id, label: step.label, who: '', agent: 'producer', state: step.state === 'done' ? 'done' : step.state === 'running' ? 'working' : 'later', detail: step.detail }));
+  return RESEARCH_ROWS.map(row => {
+    const mine = row.steps.map(id => steps.find(step => step.id === id)).filter(Boolean);
+    const state = !mine.length || mine.every(step => step.state === 'todo') ? 'later' : mine.every(step => step.state === 'done') ? 'done' : 'working';
+    const detail = (mine.find(step => step.state === 'running' && step.detail) || [...mine].reverse().find(step => step.detail))?.detail || '';
+    return { ...row, state, detail: state === 'later' ? '' : detail };
+  });
+}
+// The Director's message with the seven rows. `lead` says in one line where the research stands.
+export function researchChecklist(rows, { starting = false } = {}) {
+  const done = rows.filter(row => row.state === 'done').length;
+  const lead = starting ? 'Research starts as soon as your studio picks it up.' : done === rows.length ? 'Research is done.' : 'Research is running. You can keep working.';
+  const face = row => blob(row.agent, row.state === 'done' ? 'happy' : row.state === 'working' ? 'thinking' : 'sleepy', 28);
+  const list = rows.map(row => `<li class="is-${row.state}">${face(row)}<span class="ob-research-text">${esc(row.label)}<small>${esc([row.who, row.detail].filter(Boolean).join(' · '))}</small></span><span class="pill ${row.state === 'later' || row.state === 'waiting' ? '' : row.state}">${esc(RESEARCH_ROW_WORDS[row.state])}</span></li>`).join('');
+  return `<div class="msg-r a bub-wide ob-research-msg" data-ob-research><div class="bub"><p>${esc(lead)}</p><ol class="ob-research" aria-label="Research, step by step">${list}</ol></div></div>`;
 }
 
 // Why the subtopics cannot be saved as they stand, or '' when they can. A confirmed list has exactly 6 distinct names; while editing the
@@ -7359,11 +7582,16 @@ function intelTabs(slug, name, current) {
   return `<div class="intel-tabs" role="tablist" aria-label="${esc(`Brand intelligence for ${name}`)}">${buttons}</div>`;
 }
 function intelRunningBody(intel) {
-  const steps = intelSteps(intel);
-  if (!steps.length) return '<p class="muted">The Director is starting the research.</p>';
+  if (!intelSteps(intel).length) return '<p class="muted">The Director is starting the research.</p>';
+  // The same seven rows as the Director's list beside the brand's form.
+  const steps = researchRows(intel);
   const done = steps.filter(step => step.state === 'done').length;
   const percent = Math.round((done / steps.length) * 100);
-  const rows = steps.map(step => `<li class="is-${step.state}"><span class="intel-dot" aria-hidden="true"></span><span class="intel-step-text">${esc(step.label)}<span class="visually-hidden">${esc(` (${INTEL_STEP_WORDS[step.state]})`)}</span>${step.detail ? `<span class="intel-step-detail">${esc(step.detail)}</span>` : ''}</span></li>`).join('');
+  const rows = steps.map(step => {
+    const state = step.state === 'done' ? 'done' : step.state === 'later' ? 'todo' : 'running';
+    const detail = [step.who, step.detail].filter(Boolean).join(' · ');
+    return `<li class="is-${state}"><span class="intel-dot" aria-hidden="true"></span><span class="intel-step-text">${esc(step.label)}<span class="visually-hidden">${esc(` (${INTEL_STEP_WORDS[state]})`)}</span>${detail ? `<span class="intel-step-detail">${esc(detail)}</span>` : ''}</span></li>`;
+  }).join('');
   return `<div class="intel-progress"><span class="intel-progress-line">${esc(`${done} of ${steps.length} steps done`)}</span><div class="intel-bar" role="progressbar" aria-label="Research progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="--intel-pct:${percent}%"></i></div></div><ol class="intel-steps">${rows}</ol><p class="muted intel-foot">You can keep working.</p>`;
 }
 
@@ -7382,7 +7610,7 @@ export function brandIntelligence(brand, ui = freshIntelState(), { open = false,
   const steps = intelSteps(intel);
   const updated = intelDay(intel.updatedAt, now);
   const line = running
-    ? [name, steps.length ? `${steps.filter(step => step.state === 'done').length} of ${steps.length} steps done` : 'Starting'].join(' · ')
+    ? [name, steps.length ? `${researchRows(intel).filter(row => row.state === 'done').length} of ${researchRows(intel).length} steps done` : 'Starting'].join(' · ')
     : [name, updated ? `Updated ${updated}` : ''].filter(Boolean).join(' · ');
   const summary = `<summary><span class="library-head"><span class="doc-summary-title">Brand intelligence</span><span class="library-counts">${esc(line)}</span></span><span class="pill ${running ? 'running' : 'ready'}">${running ? 'Research running' : 'Ready'}</span></summary>`;
   const ctx = { hint, now, bad: badPictures, thumbs: brand.thumbs, libraryKinds: libraryKinds instanceof Set ? libraryKinds : new Set() };
@@ -7404,8 +7632,8 @@ export function brandIntelligence(brand, ui = freshIntelState(), { open = false,
 
 /**
  * What the Director says on the brand page about this brand's intelligence, as chat messages for `onboardAgentsPanel`: the best post found
- * so far while the research runs, and, once it is ready, the question whether the 6 subtopics look right (with the buttons that answer it).
- * Returns {messages, waiting, first}; nothing to say is an empty list.
+ * so far while the research runs, and, once the six subtopics are confirmed, that card as one closed line. While they wait for the person they
+ * are a question card (see subtopicsQuestion), so they are not repeated here. Returns {messages, waiting, first}; nothing to say is an empty list.
  */
 export function intelDirectorNotes(brand, ui = freshIntelState(), now = Date.now()) {
   const none = { messages: [], waiting: 0, first: '' };
@@ -7413,23 +7641,21 @@ export function intelDirectorNotes(brand, ui = freshIntelState(), now = Date.now
   const slug = trimmed(brand?.slug);
   if (!intel || !slug) return none;
   const say = (key, inner) => `<div class="msg-r a" data-intel-note="${key}"><div class="bub">${inner}</div></div>`;
+  const messages = [];
   if (intelIsRunning(intel)) {
     const best = intelRecords(intel.own).filter(post => trimmed(post.title)).sort((a, b) => (intelCountOf(b.views) ?? intelCountOf(b.likes) ?? -1) - (intelCountOf(a.views) ?? intelCountOf(a.likes) ?? -1))[0];
-    if (!best) return none;
-    const numbers = intelCountOf(best.views) !== null ? `, ${intelCount(best.views)} views` : intelCountOf(best.likes) !== null ? `, ${intelCount(best.likes)} likes` : '';
-    return { messages: [say('best', `<p>Your best post so far: &ldquo;${esc(trimmed(best.title))}&rdquo;${esc(numbers)}.</p>`)], waiting: 0, first: '' };
+    if (best) {
+      const numbers = intelCountOf(best.views) !== null ? `, ${intelCount(best.views)} views` : intelCountOf(best.likes) !== null ? `, ${intelCount(best.likes)} likes` : '';
+      messages.push(say('best', `<p>Your best post so far: &ldquo;${esc(trimmed(best.title))}&rdquo;${esc(numbers)}.</p>`));
+    }
   }
-  const items = intelSubtopics(intel);
-  if (intelObject(intel.subtopics).status === 'confirmed' || !items.length) return none;
-  const sent = intelSentPending(intel, ui?.sent, now);
-  const opener = intel.newBrand ? 'Built from your competitors and niche.' : 'Your brand intelligence is ready.';
-  const names = `<ul class="intel-note-list">${items.map(item => `<li>${esc(item.name)}</li>`).join('')}</ul>`;
-  const on = `data-intel-brand="${esc(slug)}"`;
-  if (sent) return { messages: [say('subtopics-sent', `<p>${esc(opener)} Subtopics sent.</p>`)], waiting: 0, first: '' };
-  const exact = items.length === INTEL_SUBTOPIC_COUNT;
-  const question = exact ? `Do these ${INTEL_SUBTOPIC_COUNT} subtopics look right?` : `I found ${items.length} subtopics and every job needs exactly ${INTEL_SUBTOPIC_COUNT}. Please adjust them.`;
-  const buttons = `<div class="bub-act">${exact ? `<button type="button" class="sm primary" data-intel-act="note-confirm" ${on}>Looks right</button>` : ''}<button type="button" class="sm" data-intel-act="note-edit" ${on}>Edit</button></div>`;
-  return { messages: [say('subtopics', `<p>${esc(opener)} ${esc(question)}</p>${names}${buttons}`)], waiting: 1, first: question };
+  const subtopics = intelObject(intel.subtopics);
+  if (subtopics.status === 'confirmed' && intelList(subtopics.items).length) {
+    const at = agentTime(subtopics.confirmedAt);
+    const note = [at, 'Every post takes its topic from them.'].filter(Boolean).join(' · ');
+    messages.push(`<div class="msg-r a bub-wide room-card" data-intel-note="subtopics-closed"><div class="bub"><div class="q-closed" role="status"><span class="q-tick">${CHECK_ICON}</span><span class="q-closed-title">Six subtopics</span><b class="q-closed-answer">Confirmed</b></div></div><span class="msg-t">${esc(note)}</span></div>`);
+  }
+  return { messages, waiting: 0, first: '' };
 }
 // The Director's own messages with the intelligence notes after them.
 export function intelAsks(asks, notes) {
@@ -8170,12 +8396,13 @@ if (typeof document !== 'undefined') {
     // One link to the job, never a button around a heading: the whole card is the link, so Tab and Enter work like a click.
     return `<a class="project-card${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}" style="--h:${hueOf(project.jobId)}"><div class="pc-top card-art"><div class="pc-glass"><span class="pc-kind">${esc(kindLabelOf(project))}</span><h3>${esc(project.title || 'Untitled job')}</h3>${brand ? `<span class="pc-sub">${esc(brand)}</span>` : ''}</div></div><div class="pc-body card-body"><div class="pc-kv">${lines.map(([label, value]) => `<span>${esc(label)}</span><b class="num">${esc(value)}</b>`).join('')}</div>${pill(project.state, project.stateLabel)}</div><div class="pc-act">${activity}</div><div class="pc-dots" aria-hidden="true"></div></a>`;
   }
-  // The home page's row for one job: what it is, its steps from brief to posted, and where it is now. Gold when it waits on the person.
+  // The home page's row for one job: its title and where it is, its state, the faces of the people on it and its six stops as a thin bar. Gold when it waits on the person.
   function jobRow(project, waiting = false) {
     const brand = project.brand === NO_BRAND ? '' : project.brandName || '';
-    const sub = [kindLabelOf(project), brand].filter(Boolean).join(' · ');
-    const progress = jobProgress(project) || '<div class="job-progress"><span class="job-progress-text">No steps yet</span></div>';
-    return `<a class="job-row${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}"><div class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div><div class="jr-steps">${progress}</div><div class="jr-state">${pill(project.state, project.stateLabel)}</div></a>`;
+    const bar = jobStopBar(project, waiting);
+    const sub = [kindLabelOf(project), brand, bar.text].filter(Boolean).join(' · ');
+    const faces = FINAL_JOB_STATES.includes(project.state) ? '' : jobFaces(jobPeople(docFor(project), { closed: signalAvailability === 'no_session' }));
+    return `<a class="job-row${waiting ? ' is-waiting' : ''}" href="#/project/${esc(encodeURIComponent(project.jobId))}"><div class="jr-top"><div class="jr-main"><b>${esc(project.title || 'Untitled job')}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div><div class="jr-state">${pill(project.state, project.stateLabel)}</div>${faces}</div><div class="jr-bar">${bar.html || '<span class="job-progress-text">No steps yet</span>'}</div></a>`;
   }
   const projectById = jobId => (data.projects || []).find(project => project.jobId === jobId) || null;
   function viewOf(jobId) {
@@ -8195,6 +8422,8 @@ if (typeof document !== 'undefined') {
       inboxQuestions.set(String(item.questionId), item);
       return { question: questionUi.get(String(item.questionId)) || {} };
     }
+    // The six subtopics: after a tap the card reads "Sent" in every place it is drawn, from the one record of the brand's intelligence page.
+    if (item.kind === 'onboarding' && item.state === 'subtopics') return { subtopics: { sent: intelSentPending(intelOf(intelBrand(item.brand)), intelState(item.brand).sent, Date.now()) } };
     const view = project || (item.jobId ? viewOf(item.jobId) : null);
     if (!view) return {};
     if (item.kind === 'brief') inboxBriefs.set(view.jobId, [...(inboxBriefs.get(view.jobId) || []), item]);
@@ -8509,7 +8738,9 @@ if (typeof document !== 'undefined') {
     const nextLine = project.nextAction || humanize(project.state);
     const railParts = stepRailParts(project, doc);
     const subtitle = [brandLabel, railParts?.here || trimmed(project.stageSummary?.current)].filter(Boolean).join(' · ');
-    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<div class="job-line">${shortLine(line)}</div>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobProgress(project)}</div>`;
+    const closedNow = signalAvailability === 'no_session';
+    let waitsNow = false;
+    const headOf = line => `<div class="page-head" style="--h:${hueOf(project.jobId)}"><div class="job-head-main"><span class="job-mark" aria-hidden="true"></span><div class="job-head-copy"><h1>${esc(project.title || 'Untitled job')}</h1><p class="job-sub">${esc(subtitle)}</p>${plannedAsLine(project, { sent: planNoteSent(project) })}${line ? `<div class="job-line">${shortLine(line)}</div>` : ''}</div></div><div class="job-head-chips"><span class="kind-chip">${esc(kindLabelOf(project))}</span>${pill(project.state, project.stateLabel)}${handoffStatusLine(project) ? `<span class="kind-chip handoff-chip">${esc(handoffStatusLine(project))}</span>` : ''}</div>${jobStopsBar(project, { waiting: waitsNow, closed: closedNow })}</div>`;
     const head = headOf(nextLine);
     if (project.detailsLoaded === false) return `${head}<div class="layout"><div><section class="panel intake">${jobLoadingLine(docState)}</section></div></div>`;
     const intakePanel = project.intake !== undefined ? intakeForm(project, ui.intake, signalInfo()) : legacyBlockers(project);
@@ -8579,11 +8810,13 @@ if (typeof document !== 'undefined') {
     // A card the Director raised for a person's thread is drawn in that thread while it is open, not above the steps as well.
     const threadCards = chatAgent && !isDirectorAgent(chatAgent) ? cardsForThread(openQuestions, chatAgent) : [];
     const stageAsking = stageQuestions(openQuestions.filter(item => !threadCards.includes(item)), { stateOf: item => questionState(item.questionId), signal: signalInfo() });
-    // What the job waits on (its review, or the posts that went out) is drawn once, as the card above the steps; the steps only point up to it.
+    // What the job waits on (its review, or the posts that went out) is drawn inside the step it belongs to, and the Director's open questions
+    // inside the step waiting on the person; the Director's chat holds a pointer to the card and the questions themselves while it is open.
+    const inDirectorChat = Boolean(chatAgent && isDirectorAgent(chatAgent));
     const card = pendingGate ? bodies[pendingGate]?.html || '' : '';
-    const flowBodies = { ...bodies };
-    if (pendingGate) delete flowBodies[pendingGate];
-    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies: flowBodies, isOpen: gateOpen, chipContext, above: card ? pendingGate : '', ask: box.director?.id || 'producer', closed: signalAvailability === 'no_session' });
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext, ask: box.director?.id || 'producer', closed: closedNow, asking: inDirectorChat ? '' : stageAsking, lift: narrowWidth() });
+    // A card no step could hold (the job has no steps yet) and a card lifted out of a folded step on a phone come first.
+    const cardAbove = flow.lifted || (card && !flow.placed.has(pendingGate) ? card : '');
     const left = (gate, html) => (gate === pendingGate || flow.placed.has(gate) ? '' : html);
     const standalone = left('publish', sentPanel + kitPanel) + left('findings', report) + left('storyboard', storyboard) + recipeStandalone;
     const filesPanel = agentBox
@@ -8600,8 +8833,6 @@ if (typeof document !== 'undefined') {
     const decision = pendingGate ? needItems.find(item => item.kind === 'decision' && item.gate === pendingGate) : null;
     let side;
     const top = needItems[0] || null;
-    // A question, or the offer to send the video on, is drawn once: above the steps, or in the Director's chat while that is open.
-    const inDirectorChat = Boolean(chatAgent && isDirectorAgent(chatAgent));
     if (chatAgent) {
       markRepliesSeen(chatAgent);
       const director = isDirectorAgent(chatAgent);
@@ -8628,12 +8859,11 @@ if (typeof document !== 'undefined') {
     }
     // The thread's cards (inboxAside above) and a page opened straight from a link register only their own; every open question here answers.
     for (const item of openQuestions) inboxQuestions.set(String(item.questionId), item);
-    const lead = intakePanel + card + (inDirectorChat ? '' : stageAsking + (railParts ? inboxNeed(railParts, project.jobId, top, boxUi.handoff) : ''));
-    // The steps fold away while something waits on the person, and stay open when nothing does.
-    const waits = Boolean(pendingGate) || openNeeds.length > 0;
-    const foldKey = `fold:${project.jobId}:${waits ? 'waiting' : 'clear'}`;
-    const fold = flow.html ? `<details class="fold" data-open-key="${esc(foldKey)}"${gateOpen(foldKey, !waits) ? ' open' : ''}><summary class="fold-h"><h2>Steps, ${flow.done} of ${flow.total} done</h2><span class="chev" aria-hidden="true">${icon('chev')}</span></summary>${flow.html}</details>` : '';
-    return `${railParts?.need === nextLine ? headOf('') : head}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}"><div class="studio-main">${lead ? `<div class="studio-now"${card ? ` data-gate="${esc(pendingGate)}"` : ''}>${lead}</div>` : ''}${fold}${referencesBox}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    // Above the steps: the brief form, a card no step could hold, questions no step could hold, and the offer to send the video on. The steps
+    // are the page's middle column, always drawn; what waits on the person sits inside them.
+    const lead = intakePanel + cardAbove + (inDirectorChat ? '' : (flow.asked ? '' : stageAsking) + (railParts ? inboxNeed(railParts, project.jobId, top, boxUi.handoff) : ''));
+    waitsNow = Boolean(pendingGate) || openNeeds.length > 0;
+    return `${headOf(railParts?.need === nextLine ? '' : nextLine)}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}"><div class="studio-main">${lead ? `<div class="studio-now"${cardAbove ? ` data-gate="${esc(pendingGate)}"` : ''}>${lead}</div>` : ''}${flow.done ? '<div class="flow-tools" role="group" aria-label="Done steps"><button type="button" class="sm" data-stops="all">Show all</button><button type="button" class="sm" data-stops="min">Minimal</button></div>' : ''}${flow.html}${referencesBox}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   // The picker state for the posting plan card: the same brand-level pick and state the brand card uses.
   function planMetricool(project) {
@@ -8668,7 +8898,7 @@ if (typeof document !== 'undefined') {
   }
   function brandStrip() {
     const brands = data.brands || [];
-    if (!brands.length) return '';
+    if (!brands.length) return { brands: '', intel: '', library: '' };
     // A removal that went through is done once the library stops listing the item.
     for (const key of [...libraryUi.removing]) {
       const at = key.indexOf(':');
@@ -8678,7 +8908,12 @@ if (typeof document !== 'undefined') {
     }
     const libraries = brands.map(brand => brandLibrarySection(brand, { open: openKeys.has(`brand-library:${brand.slug}`), removing: libraryUi.removing, errors: libraryUi.errors, openKeys, copy: libraryUi.copy })).join('');
     const intelligence = brands.map(brand => intelPanelFor(brand)).join('');
-    return `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div>${intelligence ? `<div class="brand-intels">${intelligence}</div>` : ''}${libraries ? `<div class="brand-libraries">${libraries}</div>` : ''}</section>`;
+    // Three parts, because home puts them in two columns: the brands, their intelligence, and their library.
+    return {
+      brands: `<section class="brand-strip"><div class="section-head"><div><span class="eyebrow">Brand context</span><h2>Your brands</h2></div><span class="count">${brands.length}</span></div><div class="brand-list">${brands.map(brand=>brandChip(brand, metricoolFor(brand))).join('')}</div></section>`,
+      intel: intelligence ? `<div class="brand-intels">${intelligence}</div>` : '',
+      library: libraries ? `<div class="brand-libraries">${libraries}</div>` : '',
+    };
   }
   // Remove one of the person's own items from a brand's library: a board request (`bank_remove`) that Claude lands with brand_bank_save.
   async function submitBankRemove(slug, id) {
@@ -8720,9 +8955,10 @@ if (typeof document !== 'undefined') {
     // buttons (and its answer request) on the Director's message. The cards register here for the answer handlers.
     inboxQuestions.clear();
     inboxBriefs.clear();
-    const agentsPanel = onboardAgentsPanel(onboardBrand, inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo(), notes: onboardBrand ? intelDirectorNotes(onboardBrand, intelState(onboardBrand.slug)) : null });
+    // The name step has no brand yet; a nameless stand-in gives the Director column ("Here to help") from the start.
+    const agentsPanel = onboardAgentsPanel(onboardBrand || (inline?.kind === 'onboard' ? { slug: 'new-brand', name: '' } : null), inline, Date.now(), onboardChat, { items: workspaceItems.items, context: item => inboxContext(item, null), signal: signalInfo(), notes: onboardBrand ? intelDirectorNotes(onboardBrand, intelState(onboardBrand.slug)) : null });
     if (!agentsPanel) onboardChat = undefined;
-    const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand.slug)) } : workspaceItems;
+    const inbox = agentsPanel ?{ ...workspaceItems, items: workspaceItems.items.filter(item => !(item.kind === 'onboarding' && item.state === 'running' && item.brand === onboardBrand?.slug)) } : workspaceItems;
     const waitingJobs = jobsWaitingOn(workspaceItems.items);
     const jobsHtml = () => firstRun ? '' : `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="project-grid">${newestJobsFirst(projects).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
     // The brand page: Needs you first (a strip above the form, so a phone sees it before the form), then the form. With the Director's chat on
@@ -8736,7 +8972,14 @@ if (typeof document !== 'undefined') {
     // A note that says nothing is needed ("researching") is not a reason for a gold strip; the progress above the form already says it.
     const needsList = inbox.items.filter(item => !(item.kind === 'onboarding' && item.needsYou === false)).map(here);
     const needsHere = !agentsPanel && needsList.length ? inboxAside({ ...inbox, items: needsList }, { workspace: true, strip: true }) : '';
-    const brandPage = column => (agentsPanel ? `${head}<div class="layout"><div>${column}</div><div class="onboard-side">${agentsPanel}</div></div>` : `${head}<div class="overview-main">${column}</div>`);
+    // Under 950px the page is one column and the Director's column sits under the form, unless it holds a card that waits for the person or the
+    // research list: then it comes first in the markup too, so the keyboard and a screen reader reach it before the form.
+    const sideFirst = Boolean(agentsPanel) && narrowBrandPage() && /bub-need|data-ob-research/.test(agentsPanel);
+    const brandPage = column => {
+      if (!agentsPanel) return `${head}<div class="overview-main">${column}</div>`;
+      const side = `<div class="onboard-side">${agentsPanel}</div>`;
+      return `${head}<div class="layout">${sideFirst ? `${side}<div>${column}</div>` : `<div>${column}</div>${side}`}</div>`;
+    };
     if (firstRun) {
       syncInboxDocuments();
       return brandPage(`${needsHere}${onboarding}`);
@@ -8747,15 +8990,30 @@ if (typeof document !== 'undefined') {
     }
     // Home: "Needs you" comes first and holds every open item, the job ones included, with the same cards (pictures, Approve,
     // Ask for changes) as the Director's chat. Then the brief box, the one way to start a job, and the jobs under it, one row each
-    // from brief to posted, newest first. The brands, with their intelligence and library, come last.
+    // from brief to posted, newest first, each with the faces of the people on it. Then the brands with their intelligence. The second
+    // column (under the first on a phone) is the Team, what goes out this week, and the brand library.
     const needsItems = inbox.items;
-    syncInboxDocuments();
-    const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
     // Newest first, like the In flight cards; finished jobs go to the bottom.
     const rank = project => (FINAL_JOB_STATES.includes(project?.state) ? 1 : 0);
     const ordered = newestJobsFirst(projects).map((project, at) => ({ project, at })).sort((a, b) => rank(a.project) - rank(b.project) || a.at - b.at).map(entry => entry.project);
+    // The faces, the team and the week's posts come from the job documents of the newest jobs, so home watches those.
+    const watched = ordered.slice(0, HOME_WATCHED_JOBS);
+    syncInboxDocuments(watched.map(project => project.jobId));
+    const closed = signalAvailability === 'no_session';
+    const entries = watched.map(project => ({ project, doc: docFor(project), closed }));
+    const team = homeTeam(entries.filter(entry => !FINAL_JOB_STATES.includes(entry.project.state)));
+    const needs = needsItems.length ? inboxAside({ items: needsItems }, { workspace: true, strip: true }) : '';
     const rows = `<section class="jobs-section"><div class="section-head"><h2>Jobs, from brief to posted</h2><span class="count">${projects.length}</span></div>${projects.length ? `<div class="job-rows">${ordered.map(project => jobRow(project, cardWaiting(project, waitingJobs))).join('')}</div>` : `<p class="muted empty-jobs">${readyBrands().length ? TXT_NO_JOBS_YET_DESCRIBE : TXT_NO_JOBS_YET_FINISH}</p>`}</section>`;
-    return `${head}<div class="overview-main">${needs}${onboarding}${rows}${strip}</div>`;
+    const panel = (id, title, body) => `<section class="panel home-panel" aria-labelledby="${id}"><div class="section-head"><h2 id="${id}">${title}</h2></div>${body}</section>`;
+    return `${head}<div class="ov-grid"><div class="ov-col">${needs}${onboarding}${rows}${strip.brands}${strip.intel}</div><div class="ov-col">${panel('home-team-h', 'Team', homeTeamList(team))}${panel('home-week-h', 'Going out this week', goingOutList(goingOutThisWeek(entries)))}${strip.library}</div></div>`;
+  }
+  // A Team row on home: the job's chat state says whose thread is open, so set it before the link takes the person to the job.
+  function openTeamThread(jobId, agentId) {
+    const project = projectById(jobId);
+    if (!project || !agentId) return;
+    const box = agentBoxState(project);
+    if (box.chat) box.drafts[box.chat] = box.draft;
+    Object.assign(box, { chat: agentId, to: agentId, draft: box.drafts[agentId] || '', error: '', ...(box.to === agentId ? {} : { about: null }) });
   }
   // One pipeline group's page: its title, the jobs in it, then the brief box to start another.
   function pipelinePage(group) {
@@ -9677,6 +9935,9 @@ if (typeof document !== 'undefined') {
   });
   function openInline(value) { captureInlineValues(); if(inline && value && inline !== value) inlineDrafts.set(draftKey(inline), inline); const requested=value || defaultInline(); inline=inlineDrafts.get(draftKey(requested)) || requested; render(); const field=app.querySelector('#inline-form input:not([type="hidden"]),#inline-form select,#inline-form textarea'); if(inline?.kind==='onboard'){jumpTo(ONBOARDING_SECTION);field?.focus({preventScroll:true});}else field?.focus(); }
   app.addEventListener('click', async event=>{
+    // A Team row on home is a link to the job the person is on; the thread is set open first, then the link goes there.
+    const teamRow=event.target.closest('[data-team-open]');
+    if(teamRow){openTeamThread(teamRow.dataset.teamJob,teamRow.dataset.teamOpen);return;}
     // A Needs-you card opens its job when the click lands on the card itself, not on a button, link or answer box inside it.
     const card=event.target.closest('[data-card-job]');
     if(card&&!event.target.closest('a,button,input,textarea,select,label,form,video,[data-view-media]')){location.hash='#/project/'+encodeURIComponent(card.dataset.cardJob);return;}
@@ -9798,6 +10059,8 @@ if (typeof document !== 'undefined') {
     if(target.dataset.abAboutClear!==undefined){const shown=current();if(shown){agentBoxState(shown).about=null;render();focusQuietly('#ab-text');}return;}
     if(target.dataset.abBack!==undefined){closeChat();return;}
     if(target.dataset.abGate!==undefined){leaveChatForJump();jumpToGate(target.dataset.abGate);return;}
+    // Show all / Minimal above the steps: every done card opens or folds at once; the waiting step and the quiet rows stay as they are.
+    if(target.dataset.stops!==undefined){const open=target.dataset.stops==='all';for(const card of app.querySelectorAll('.stg.s-done details.stg-d')){card.open=open;const key=card.dataset.openKey;if(key){if(open)openKeys.add(key);else openKeys.delete(key);}}return;}
     if(target.dataset.inboxJump!==undefined){leaveChatForJump();jumpFromInbox(target.dataset.inboxJump, target.dataset.inboxTarget);return;}
     if(target.dataset.metricoolChange!==undefined){metricoolUi.open.add(target.dataset.metricoolChange);metricoolUi.errors.delete(target.dataset.metricoolChange);render();app.querySelector(`[data-metricool-brand="${CSS.escape(target.dataset.metricoolChange)}"]`)?.focus();return;}
     if(target.dataset.metricoolCancel!==undefined){metricoolUi.open.delete(target.dataset.metricoolCancel);metricoolUi.picks.delete(target.dataset.metricoolCancel);metricoolUi.errors.delete(target.dataset.metricoolCancel);render();return;}
@@ -10544,7 +10807,7 @@ if (typeof document !== 'undefined') {
   // ---- the Inbox and the chats: opening and closing a chat, a draft for each agent, and keeping each list where it was scrolled ----
   // undefined: the Brand onboarding page opens the Director's chat by itself when it has something to say; null: the person went back to the Inbox.
   let onboardChat;
-  const narrowScreen = () => Boolean(globalThis.matchMedia?.('(max-width: 960px)')?.matches);
+  const narrowScreen = narrowWidth;
   function capturePaneScroll() {
     const saved = new Map();
     app.querySelectorAll('[data-scroll]').forEach(pane => saved.set(pane.dataset.scroll, { top: pane.scrollTop, end: pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40 }));
@@ -11409,7 +11672,10 @@ if (typeof document !== 'undefined') {
   app.addEventListener('toggle', event => {
     const key = event.target?.dataset?.openKey;
     if (!key) return;
+    const changed = openKeys.has(key) !== event.target.open;
     if (event.target.open) openKeys.add(key); else openKeys.delete(key);
+    // On a phone the card a step waits on is lifted out of that step when it is folded, and goes back in when it opens again.
+    if (changed && event.target.matches('.stg-d') && narrowWidth() && event.target.closest('.stg.s-waiting')) render();
   }, true);
   // Brand intelligence: the intel module draws the panel, this is its page state and its requests. One record per brand survives every redraw
   // (the open tab, the subtopic edit, the cell being confirmed, which post card shows Copied). Each control of the panel carries data-intel-act.

@@ -479,6 +479,62 @@ button.kit-choose:disabled{border-color:var(--line2);background:none;color:var(-
 .kit-owner-card:has(input:focus-visible){outline:2px solid var(--tape);outline-offset:2px}
 @media (hover:hover){.kit-owner-card:hover{border-color:var(--dim)}.kit-owner-card:has(input:checked):hover{border-color:var(--tape)}}
 .kit-owner:disabled .kit-owner-card,.kit-fieldset:disabled .kit-owner-card{cursor:not-allowed;opacity:.6}
+/* ---- brand setup: the parts of the page, the compact look rows and the Director's research list ---- */
+/* The details come in parts under a thin line, each with its own small heading: links and market, brand identity, the look, posting. */
+.ob-sec{display:flex;flex-direction:column;gap:var(--gap);min-width:0;padding-top:var(--gap);border-top:1px solid var(--line)}
+.ob-sec>h3{font-size:var(--t4)}
+/* Colours and fonts are one row each, as in the mockup: the swatch (or Aa), the value and its role, then a remove button. --row is the height of
+   those controls (a phone gives every control 44px). A narrow form puts the role on a second line under the value. */
+.start-card .kit-fieldset{--row:var(--ctl)}
+@media(pointer:coarse),(max-width:640px){.onboarding .kit-fieldset{--row:44px}}
+.onboarding .kit-fieldset .kit-swatches{display:flex;flex-direction:column;gap:8px}
+.onboarding .kit-fieldset .kit-color-row{display:grid;grid-template-columns:var(--row) minmax(0,1fr) minmax(0,1.3fr) var(--row);align-items:center;gap:6px 8px;padding:0;background:none;border:0}
+.onboarding .kit-fieldset .kit-color-row .kit-swatch-block{grid-column:1;grid-row:1;width:var(--row);height:var(--row);border-radius:var(--r1)}
+.onboarding .kit-fieldset .kit-color-row .kit-swatch-edit{display:none}
+.onboarding .kit-fieldset .kit-color-row .kit-hex{grid-column:2;grid-row:1}
+.onboarding .kit-fieldset .kit-color-row select{grid-column:3;grid-row:1}
+.onboarding .kit-fieldset .kit-color-row .kit-icon-button{position:static;grid-column:4;grid-row:1;width:var(--row);height:var(--row);border:1px solid transparent;border-radius:var(--r2);background:none;color:var(--dim)}
+@media (hover:hover){.onboarding .kit-fieldset .kit-color-row .kit-icon-button:hover{border-color:var(--line2);background:var(--tint);color:var(--paper)}}
+.onboarding .kit-fieldset .kit-swatches>.kit-add-swatch{align-self:flex-start;flex-direction:row;min-height:var(--row);padding-inline:12px}
+.onboarding .kit-fieldset .kit-font-row{grid-template-columns:var(--row) minmax(0,1.2fr) minmax(0,1fr) var(--row);gap:4px 8px;padding:0;background:none;border:0}
+.onboarding .kit-fieldset .kit-font-sample{grid-column:1;grid-row:1;width:var(--row);height:var(--row);border-radius:var(--r1);font-size:15px}
+.onboarding .kit-fieldset .kit-font-name{grid-column:2;grid-row:1;padding:2px 8px;border-color:var(--line2);background:var(--ink);font-size:var(--t3);font-weight:500}
+.onboarding .kit-fieldset .kit-font-row select{grid-column:3;grid-row:1}
+.onboarding .kit-fieldset .kit-font-row .kit-icon-button{grid-column:4;grid-row:1;width:var(--row);height:var(--row);border:1px solid transparent;background:none;color:var(--dim)}
+.onboarding .kit-fieldset .kit-font-note{grid-column:2 / -1;grid-row:2}
+@container (max-width:520px){
+  .kit-grid{grid-template-columns:minmax(0,1fr)}
+  .onboarding .kit-fieldset .kit-color-row{grid-template-columns:var(--row) minmax(0,1fr) var(--row)}
+  .onboarding .kit-fieldset .kit-color-row .kit-icon-button{grid-column:3}
+  .onboarding .kit-fieldset .kit-color-row select{grid-column:2 / -1;grid-row:2}
+  .onboarding .kit-fieldset .kit-font-row{grid-template-columns:var(--row) minmax(0,1fr) var(--row)}
+  .onboarding .kit-fieldset .kit-font-row select{grid-column:2 / -1;grid-row:2}
+  .onboarding .kit-fieldset .kit-font-row .kit-icon-button{grid-column:3}
+  .onboarding .kit-fieldset .kit-font-note{grid-row:3}
+}
+@container (min-width:961px){
+  .kit-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kit-fonts-block{grid-column:auto}
+  .onboarding .kit-fieldset .kit-font-row{grid-template-columns:var(--row) minmax(0,1fr) var(--row)}
+  .onboarding .kit-fieldset .kit-font-row select{grid-column:2 / -1;grid-row:2}
+  .onboarding .kit-fieldset .kit-font-row .kit-icon-button{grid-column:3}
+  .onboarding .kit-fieldset .kit-font-note{grid-row:3}
+}
+/* The Director's research list: a face, the part with its helper's name, and where it stands. */
+.ob-research{display:flex;flex-direction:column;gap:var(--s2);margin:var(--s1) 0 0;padding:0;list-style:none}
+.ob-research li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:var(--s2)}
+.ob-research-text{display:flex;flex-direction:column;min-width:0;color:var(--paper);font-size:var(--t2);line-height:1.35;overflow-wrap:anywhere}
+.ob-research-text small{color:var(--faint);font-size:var(--t1)}
+.ob-research-text small:empty{display:none}
+.ob-research li.is-later .ob-research-text{color:var(--dim)}
+.ob-research-msg .bub{width:100%}
+/* On this page the thread's header already shows the face and the name, so the intro keeps only the role line. */
+.onboard-side .chat-intro{padding-block:0}
+.onboard-side .chat-intro :is(.av,b){display:none}
+/* The six subtopics as a card: the names, a quiet line and the two answers. */
+.sub-card{display:flex;flex-direction:column;gap:var(--s2);min-width:0}
+.sub-six{display:flex;flex-direction:column;gap:2px;margin:0;padding-left:20px;color:var(--dim);font-size:var(--t2)}
+.sub-card .muted{font-size:var(--t1)}
 .kit-paste{display:flex;flex-direction:column}
 .kit-paste>summary{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;min-height:var(--ctl);padding:4px 0;color:var(--dim);font-size:12.5px;font-weight:600;list-style:none;cursor:pointer}
 .kit-paste>summary::-webkit-details-marker{display:none}
@@ -1105,7 +1161,8 @@ button.sb-cell-body:active{transform:none}
 .publish-destination .publish-destination-warn{color:var(--tape)}
 .publish-destination-change{margin:6px 0 0;font-size:13px}
 .publish-destination-change .muted{font-size:12px}
-.metricool-onboard select{max-width:100%}
+.metricool-onboard select{max-width:100%;font-size:14px;font-weight:400}
+.metricool-onboard label{display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:12px;font-weight:700}
 .metricool-onboard .muted{display:block;font-size:12px;margin-top:4px}
 .publish-posts{display:flex;flex-direction:column;gap:calc(var(--gap) / 1.5)}
 .publish-post{display:grid;grid-template-columns:minmax(0,1fr);gap:calc(var(--gap) * .75) var(--gap);min-width:0;padding:var(--pad-in);background:var(--ink);border:1px solid var(--line2);border-radius:var(--radius-lg)}
@@ -1342,21 +1399,30 @@ a.kit-download{font-size:13px}
 .minimap i.s-running{background:var(--wait)}
 .minimap i.s-waiting,.minimap i.s-awaiting{background:var(--tape)}
 .job-progress-text{flex:none;font-size:var(--t1);color:var(--dim);font-variant-numeric:tabular-nums}
+/* The job page's stops: thin segments across the page, the current stop named above them. */
+.job-stops{grid-column:1/-1;display:grid;gap:var(--s2)}
+.job-now{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--s2);min-width:0}
+.job-now b{font-size:var(--t3);font-weight:700;overflow-wrap:anywhere}
+.job-now span{font-size:var(--t1);color:var(--faint)}
+.job-stops .minimap{height:4px;gap:4px}
+.job-stops .minimap i{border-radius:2px}
 .handoff-chip{max-width:100%;white-space:normal;text-align:left}
 .music-line{margin:8px 0 0}
 @media (max-width:720px){.page-head{grid-template-columns:minmax(0,1fr);align-items:start}.job-head-chips{justify-content:flex-start;max-width:100%}.job-progress{flex-wrap:wrap;gap:8px}.minimap{flex-basis:100%}}
 /* A pipeline page: its title, its jobs, then the brief box. */
 .pipeline-composer{max-width:880px;scroll-margin-top:var(--gap)}
 /* ---- stages (phase 2) ---- */
-/* The job page: the card and the steps in the centre, the Team or a chat in a sticky column on the right. */
-.studio{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:var(--gap);align-items:start}
+/* The job page: the steps in the centre (the card a step waits on sits inside it), the Team or a chat in a sticky column on the right.
+   The right column narrows under 1,240 px; under 900 px the page is one column with the Team as a row of faces above the steps. */
+.studio{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:var(--gap);align-items:start}
+@media (max-width:1240px){.studio{grid-template-columns:minmax(0,1fr) 304px}}
 .studio-main{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
 .studio-now{display:flex;flex-direction:column;gap:var(--gap);min-width:0;scroll-margin-top:var(--gap)}
 .need-card{display:flex;flex-direction:column;align-items:flex-start;gap:var(--s2);padding:var(--pad-in)}
 .need-card p{margin:0;color:var(--paper);font-size:var(--t3);line-height:1.45;overflow-wrap:anywhere}
 .studio-side{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;min-height:0;min-width:0}
-/* Below 960 px the order is the head, the card, the Team (a row of faces, or the open chat in its place), then the steps. */
-@media (max-width:960px){
+/* Below 900 px the order is the head, anything lifted above the steps, the Team (a row of faces, or the open chat in its place), then the steps. */
+@media (max-width:900px){
   .studio,.studio.open{display:flex;flex-direction:column;align-items:stretch;gap:var(--gap)}
   .studio-main{display:contents}
   .studio-now{order:1}
@@ -1379,18 +1445,14 @@ a.kit-download{font-size:13px}
 svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-2px}
 /* The steps of a job: a fold holding one card for each stop. A stop that began is a card that opens and closes; one not reached yet is a quiet row. */
 .flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
-.fold{display:block}
-.fold-h,.stg-row{display:grid;align-items:center;gap:var(--s3)}
-.fold-h{grid-template-columns:minmax(0,1fr) 24px;min-height:var(--ctl-lg);padding:0 var(--s1);margin-bottom:var(--s2)}
-.fold>summary,.stg-d>summary{list-style:none;cursor:pointer}
-.fold>summary::-webkit-details-marker,.stg-d>summary::-webkit-details-marker{display:none}
-.fold-h h2{font-size:var(--t4)}
-.fold:not([open])>.fold-h{margin-bottom:0}
+.stg-row{display:grid;align-items:center;gap:var(--s3)}
+.stg-d>summary{list-style:none;cursor:pointer}
+.stg-d>summary::-webkit-details-marker{display:none}
 /* The collapse chevron: a drawn mark, centred, with no box of its own. */
-.fold-h .chev,.stg-row .chev{display:grid;place-items:center;width:24px;height:24px;color:var(--faint);transition:transform 200ms var(--ease-out)}
-.fold-h .chev svg,.stg-row .chev svg{width:16px;height:16px;stroke-width:2}
-.fold[open]>.fold-h .chev,.stg-d[open]>.stg-row .chev{transform:rotate(180deg)}
-.fold-h:hover .chev,.stg-d>summary:hover .chev{color:var(--paper)}
+.stg-row .chev{display:grid;place-items:center;width:24px;height:24px;color:var(--faint);transition:transform 200ms var(--ease-out)}
+.stg-row .chev svg{width:16px;height:16px;stroke-width:2}
+.stg-d[open]>.stg-row .chev{transform:rotate(180deg)}
+.stg-d>summary:hover .chev{color:var(--paper)}
 .stg{border:1px solid transparent;border-radius:var(--r3);background:var(--surface);box-shadow:inset 0 -1px 1px rgb(255 255 255/.05)}
 .stg.s-waiting{border-color:rgba(245,200,75,.5)}
 .stg-row{grid-template-columns:28px minmax(0,1fr) auto;min-height:var(--ctl-lg);padding:var(--s3) var(--s4)}
@@ -1425,11 +1487,21 @@ summary.stg-row:hover{background:rgb(255 255 255/.03)}
 .sub.s-pending .sub-t b,.sub.s-pending .sub-s{color:var(--faint)}
 .sub.s-waiting .sub-s{color:var(--tape)}
 .stg button.sm{padding:4px var(--s3);font-size:var(--t2)}
+/* Show all / Minimal above the steps: two small ghost buttons that open or fold every done card at once. */
+.flow-tools{display:flex;justify-content:flex-end;gap:var(--s2);margin-bottom:var(--s2)}
+.flow-tools button{padding:4px var(--s3);font-size:var(--t2);color:var(--dim)}
+@media (hover:hover){.flow-tools button:hover{border-color:var(--dim);color:var(--paper)}}
 .stg-work{display:flex;flex-direction:column;gap:var(--s3);min-width:0;font-size:var(--t2);color:var(--dim)}
 .stg-work .trace-sec h4{font-size:var(--t1)}
 .stg-panels{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
 .stg-panels>.panel{padding:0;background:none;border:0;box-shadow:none;border-radius:0}
 .stg-panels>.panel+.panel{padding-top:var(--gap);border-top:1px solid var(--line)}
+/* The card a stop waits on takes the stop's whole width: no mark column and no row of its own above it (the card names itself). */
+.sub-gate.s-waiting:has(.stg-panels){display:block}
+.sub-gate.s-waiting:has(.stg-panels):not(:last-child){padding-bottom:var(--s3);border-bottom:1px solid var(--line)}
+.sub-gate.s-waiting:has(.stg-panels)>.sub-m,.sub-gate.s-waiting:has(.stg-panels)>.sub-b>.sub-t{display:none}
+/* A question the Director asked sits at the top of the stop it is about. */
+.stg-body>.stage-ask{margin:0}
 .stg-foot{display:flex;flex-wrap:wrap;gap:var(--s2)}
 .node{position:relative;display:grid;place-items:center;width:46px;height:46px;border-radius:var(--r3);color:rgb(var(--c));border:1px solid rgb(var(--c)/.3);background-color:rgb(255 255 255/.06);background-image:radial-gradient(60% 60% at 50% 40%,rgb(var(--c)/.35),rgb(var(--c)/0));padding:5px;box-shadow:inset 0 -2px 2px rgb(255 255 255/.06),inset 0 2px 2px rgb(255 255 255/.08);z-index:1}
 .node img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 2px 3px rgb(0 0 0/.55))}
@@ -1460,7 +1532,7 @@ summary.stg-row:hover{background:rgb(255 255 255/.03)}
 .trace .ab-chips{margin:0}
 .task-row .chev{display:grid;place-items:center;color:var(--faint);transition:transform 200ms var(--ease-out)}
 .task details[open]>summary .chev{transform:rotate(180deg)}
-@media (prefers-reduced-motion:reduce){.fold-h .chev,.stg-row .chev,.task-row .chev{transition:none}}
+@media (prefers-reduced-motion:reduce){.stg-row .chev,.task-row .chev{transition:none}}
 /* What goes below the stages: research, strategy, files and details, each folded away, like Studio's house rules. */
 .studio-more{display:flex;flex-direction:column;margin-top:var(--gap);border-top:1px solid var(--line)}
 .studio-more>.panel{padding:12px 0;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none}
@@ -1612,8 +1684,8 @@ summary.stg-row:hover{background:rgb(255 255 255/.03)}
   .cmp-row button.send{width:44px;min-height:44px}
   .onboard-side .chat{height:min(560px,calc(100dvh - 24px))}
 }
-/* On the job page below 960 px the Team is a row of faces, 40 px each; the name and the line stay for a screen reader. */
-@media (max-width:960px){
+/* On the job page below 900 px the Team is a row of faces, 40 px each; the name and the line stay for a screen reader. */
+@media (max-width:900px){
   .studio-side .in-h{padding-bottom:var(--s1);border-bottom:0}
   .studio-side .in-sep{display:none}
   .studio-side .in-l{flex-direction:row;flex-wrap:wrap;gap:var(--s1);padding:var(--s1) var(--s3) var(--s3);overflow:visible}
@@ -1744,20 +1816,45 @@ summary.stg-row:hover{background:rgb(255 255 255/.03)}
 .inbox-upload{margin-top:8px}
 .ab-chip.att{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line2);margin-top:6px}
 
-/* Home page job rows: one line per job, its steps from brief to posted, and its state. Gold rim when it waits on the person. */
+/* Home page job rows: the job and where it is, its state, the faces of the people on it, and its six stops as a thin bar. Gold rim when it waits on the person. */
 .job-rows{display:flex;flex-direction:column;gap:8px}
-.job-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.6fr) 200px;align-items:center;gap:var(--s4);width:100%;padding:var(--s3);text-align:left;text-decoration:none;color:var(--paper);font:inherit;border:1px solid transparent;border-radius:var(--r3);background:var(--surface);cursor:pointer}
+.job-row{display:flex;flex-direction:column;gap:var(--s2);width:100%;padding:var(--s3);text-align:left;text-decoration:none;color:var(--paper);font:inherit;border:1px solid transparent;border-radius:var(--r3);background:var(--surface);cursor:pointer}
 .job-row:hover{background:var(--surface-hi)}
 .job-row:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
 .job-row.is-waiting{border-color:var(--tape);background:linear-gradient(180deg,var(--panel2),var(--panel)) padding-box,linear-gradient(var(--tape),var(--tape)) border-box}
-.jr-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.jr-top{display:flex;align-items:center;gap:var(--s2) var(--s4);min-width:0}
+.jr-main{display:flex;flex:1 1 auto;flex-direction:column;gap:2px;min-width:0}
 .jr-main b{font-weight:600;overflow-wrap:break-word}
 .jr-main small{font-size:var(--t1);color:var(--faint)}
-.jr-steps{min-width:0}
-.jr-steps .job-progress{gap:10px}
-.jr-state{justify-self:end}
+.jr-bar{min-width:0}
+.jr-bar .minimap{height:4px;gap:4px}
+.jr-bar .minimap i{border-radius:2px}
+.jr-state{flex:none;max-width:200px}
 .jr-state .pill{white-space:normal;text-align:left;line-height:1.25}
-@media (max-width:720px){.job-row{grid-template-columns:minmax(0,1fr);gap:8px}.jr-state{justify-self:start}}
+.jr-who{display:flex;flex:none;align-items:center}
+.jr-who .av{outline:2px solid var(--panel2)}
+.jr-who .av+.av,.jr-who .av+.jr-more{margin-left:-6px}
+.jr-more{display:grid;place-items:center;min-width:26px;height:26px;margin-left:-6px;padding:0 6px;border-radius:999px;outline:2px solid var(--panel2);background:var(--panel3);color:var(--dim);font-size:var(--t1);font-weight:700}
+@media (max-width:720px){.jr-top{flex-wrap:wrap}.jr-main{flex-basis:100%}}
+/* Home in two columns: Needs you, the jobs and the brands' intelligence, then the Team, what goes out this week and the library. One column under 1,000px, in that same order. */
+.ov-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);gap:var(--gap);align-items:start;min-width:0}
+.ov-col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.ov-col>.brand-strip{padding-bottom:0;border-bottom:0}
+@media (max-width:1000px){.ov-grid{grid-template-columns:minmax(0,1fr)}}
+.team-list,.week{list-style:none;margin:0;padding:0;display:grid}
+.team-list{gap:2px}
+.team-row{display:grid;grid-template-columns:36px minmax(0,1fr);gap:0 var(--s3);align-items:center;min-height:48px;padding:6px var(--s2);border:1px solid transparent;border-radius:var(--r2);color:var(--paper);text-decoration:none;line-height:1.4}
+.team-row:hover{background:var(--panel3);border-color:var(--line2)}
+.team-row:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.team-job{min-width:0;max-width:55%;overflow:hidden;color:var(--faint);font-size:var(--t1);font-weight:500;white-space:nowrap;text-overflow:ellipsis}
+.week{gap:var(--s3)}
+.week a{display:grid;grid-template-columns:56px minmax(0,1fr);gap:var(--s3);align-items:center;min-height:48px;color:var(--paper);text-decoration:none;border-radius:var(--r2)}
+.week a:focus-visible{outline:2px solid var(--tape);outline-offset:2px}
+.week .d{display:grid;place-items:center;height:48px;border:1px solid var(--line2);border-radius:var(--r2);color:var(--dim);font-size:var(--t1);font-weight:800;line-height:1.25;text-align:center}
+.week a:hover .d{border-color:var(--dim)}
+.week .wk{display:grid;gap:1px;min-width:0}
+.week .wk b{font-size:var(--t3);overflow-wrap:break-word}
+.week .wk small{color:var(--faint);font-size:var(--t1)}
 /* Ready check: a short list above the review buttons. */
 .ready-checks{margin:var(--gap) 0 0;padding:10px 12px;border:1px solid var(--line2);border-radius:var(--radius)}
 .ready-checks h3{margin:0 0 6px;color:var(--dim);font-size:var(--t1);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
