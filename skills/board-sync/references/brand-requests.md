@@ -5,12 +5,21 @@ Read by `skills/board-sync/SKILL.md`. Each section is applied exactly as written
 For brand creation, onboarding, new jobs, or local imports, apply immediately with `pipeline_board_request_apply` and the requestId and confirmedBy.
 Every request on this page comes from the board, so land it with `pipeline_board_request_land` and `from` set to `board`.
 Brand onboarding on the board is three requests, and research starts only on the third (the steps are in `skills/onboard-brand/SKILL.md`, "The three steps"):
-- `create_brand` (`name`) is the person naming a new brand. Apply it, publish the workspace projection and say in one line that the brand is created and its page is ready for details. Do not start research.
-- `save_brand_details` (`brand`, `profile`, optional `kit`) is the person saving what they typed on the brand's page, as often as they like. Apply it and publish the workspace projection. Do not start research, and say nothing about a save that worked. If the apply refuses it, decline it with the plain line.
-- `start_research` (`brand`, `profile`, optional `kit` and `metricoolBlogId`) is the person pressing Start research. Apply it, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields. If the apply refuses it (it needs a website or at least one social account), decline it with the plain line.
-- `brand_rename` (`brand`, `name`) changes the brand's display name only. Apply it, publish the workspace projection and say in one line what the result says: the name changed and the brand's folder keeps its original name. If the apply refuses it (the name is empty or another brand has it), decline it with the plain line.
+- `create_brand` (`name`) is the person naming a new brand.
+  Apply it, publish the workspace projection and say in one line that the brand is created and its page is ready for details.
+  Do not start research.
+- `save_brand_details` (`brand`, `profile`, optional `kit`) is the person saving what they typed on the brand's page, as often as they like.
+  Apply it and publish the workspace projection.
+  Do not start research, and say nothing about a save that worked.
+  If the apply refuses it, decline it with the plain line.
+- `start_research` (`brand`, `profile`, optional `kit` and `metricoolBlogId`) is the person pressing Start research.
+  Apply it, publish the workspace projection, then start the brand research pass from `skills/onboard-brand/SKILL.md` right away, then publish the projection again so the board reflects any research-filled fields.
+  If the apply refuses it (it needs a website or at least one social account), decline it with the plain line.
+- `brand_rename` (`brand`, `name`) changes the brand's display name only.
+  Apply it, publish the workspace projection and say in one line what the result says: the name changed and the brand's folder keeps its original name.
+  If the apply refuses it (the name is empty or another brand has it), decline it with the plain line.
 
-A `kit.logo` or `kit.references` on a `save_brand_details` or `start_research` request travels exactly as the procedure above describes for `onboard_brand`: read each asset, pass the saved paths when landing the request, and delete the transit copies after the apply.
+A `kit.logo` or `kit.references` on a `save_brand_details` or `start_research` request travels exactly as `references/request-files.md` describes for `onboard_brand`: read each asset, pass the saved paths when landing the request, and delete the transit copies after the apply.
 The stable request ID of each request makes a retry return the same receipt, so a retry never creates a second brand or starts research twice.
 
 The old single-form operation `onboard_brand` carries the name plus all four channel answers in one profile and still works, as create, details and start in one request.

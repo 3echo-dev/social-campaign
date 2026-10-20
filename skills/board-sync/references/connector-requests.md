@@ -28,3 +28,10 @@ Apply the request only when the probe was `ok: true`; when the connector is miss
 Never call an ad tool that creates, updates, activates, pauses or deletes anything while handling a connection request.
 When a person answers the "Which Meta ad account belongs to ..." or "Which TikTok ad account belongs to ..." question in chat, call `pipeline_ad_account_choose` with the account id, or with `none` when they have no ad account yet or `later` when they are not sure; a board answer (its last two buttons are "No Meta ad account yet" and "Not sure, decide later") is applied for you.
 A single connection check can also use `integration_probes_save` with one entry, the same as setup does for all of them at once.
+
+### Native connectors
+
+Use Claude's authenticated native connectors from the running session for supported generation and asset tools.
+Keep their actual workspace and generation job IDs with the local execution record.
+Do not infer a pipeline ingestion API from the presence of generation tools.
+Owner binding for future Studio ingestion must be refreshed from authenticated membership.

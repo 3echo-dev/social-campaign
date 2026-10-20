@@ -56,7 +56,7 @@ With no block, include `Agent brief: none.` instead.
 6. Ask the person to confirm on the board.
    The brand's page shows the six with Looks right and Edit by itself.
    Say it once in chat in one line, for example "Your 6 subtopics are on the brand page. Please check them, because every post will take its topic from them."
-   The answer arrives as a `subtopics_confirm` request (section "Brand intelligence" of `skills/board-sync/SKILL.md`).
+   The answer arrives as a `subtopics_confirm` request (`skills/board-sync/references/brand-intelligence.md`).
    Do not wait for it: carry on with the plan from the draft.
 7. The plan (step `plan`): spawn the strategist with `brand:<slug>` on the first line and the plan task (the brand, no job), the brief from the rule above, and the file `workspaces/<slug>/library/intelligence/plan-draft.json` to write.
    Then call `brand_intelligence_save` with action `plan`.

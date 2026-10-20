@@ -35,3 +35,5 @@ supabase/.temp/
 /\[object Object\]/
 __pycache__/
 *.pyc
+.board/
+.creative-studio-pipeline/

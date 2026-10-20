@@ -40,6 +40,8 @@ An `add_reference` request can also carry `to` (the agent chat the person sent i
 The server checks the type, the extension and the file's own bytes, and saves it under that job's `inputs/references/<type>/<id>/`, recorded in `inputs/references/manifest.json`; nothing is saved outside the job folder.
 If the apply refuses it (wrong kind of file, too big), tell the person the server's plain line and decline the request with that reason.
 A reference can carry an optional `role` (`logo`, `product`, `person`, `style`, `motion` or `sound`); the server ignores any other value and stores a valid one on the manifest entry.
-When the person picks a file already saved on the brand (the job page's "From this brand"), the `add_reference` request's `reference` is `{ action: 'brand', brandAssetId, note? }` with no file to download: land and apply it as is, and the server copies the brand's own saved logo (as a picture with role `logo`) or reference photo into the job. Never add a path to it.
+When the person picks a file already saved on the brand (the job page's "From this brand"), the `add_reference` request's `reference` is `{ action: 'brand', brandAssetId, note? }` with no file to download: land and apply it as is, and the server copies the brand's own saved logo (as a picture with role `logo`) or reference photo into the job.
+Never add a path to it.
 A `remove_reference` request (`args.referenceId`) is the person taking a saved reference off the job page; it carries no file, so land and apply it like any other non-decision request, then publish the workspace projection.
-The server takes the entry out of the manifest and moves its files to `inputs/references/.removed/<id>/` inside the job folder (nothing is deleted); an id that is no longer on the job is refused with a plain line, so decline the request with it. Do not use a removed reference afterwards.
+The server takes the entry out of the manifest and moves its files to `inputs/references/.removed/<id>/` inside the job folder (nothing is deleted); an id that is no longer on the job is refused with a plain line, so decline the request with it.
+Do not use a removed reference afterwards.

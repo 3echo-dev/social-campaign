@@ -62,7 +62,7 @@ If the apply refuses because the job changed or an answer is invalid, nothing wa
 After a successful apply, publish, then continue the job as for `continue_job`.
 An intake answer given in chat instead is applied with `pipeline_intake_update` and then published the same way.
 
-For an `attach_product_photo` request, the person added a photo on the board's own Finish the brief field because the router was blocked on one: `args` carries `brand`, `jobId`, `expectedRevision` and `photo`, transited as described above under Handling a board request.
+For an `attach_product_photo` request, the person added a photo on the board's own Finish the brief field because the router was blocked on one: `args` carries `brand`, `jobId`, `expectedRevision` and `photo`, transited as `references/request-files.md` describes.
 Land it with the saved local path in `photo.path`, then apply it immediately with `pipeline_board_request_apply`; the click is the approval, same as `update_intake`.
 If the apply refuses because the job changed or the file is not a usable image, nothing was written: decline the request with `pipeline_board_request_decline` and the refusal as the reason, then publish.
 After a successful apply, publish, then continue the job as for `continue_job`.
