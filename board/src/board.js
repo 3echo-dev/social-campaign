@@ -6882,7 +6882,15 @@ export function cardsForThread(items, agent) {
   const paths = threadPaths(agent);
   return (Array.isArray(items) ? items : []).filter(item => item?.kind === 'question' && typeof item.about?.path === 'string' && paths.has(item.about.path));
 }
-function roomRow(row, { agentOf, chipContext, named, viewer = '' }) {
+// Who made a closed card, as the row says it: the person (by first name when the page knows it, else "You") or the Director.
+let roomPerson = '';
+export function setRoomPerson(name) { roomPerson = typeof name === 'string' ? name.trim().slice(0, 40) : ''; }
+export function roomBy(row, person = roomPerson) {
+  if (row?.by === 'you') return trimmed(person) || 'You';
+  if (row?.by === 'director') return 'The Director';
+  return '';
+}
+function roomRow(row, { agentOf, chipContext, named, viewer = '', person = roomPerson }) {
   const time = agentTime(row.at);
   // In the Director's thread, a message to an employee is one line: who it was for, the start of it, and how far it got. The talk itself stays in that person's thread.
   if (viewer === 'producer' && row.k === 'you' && row.to !== 'producer') {
@@ -6898,7 +6906,7 @@ function roomRow(row, { agentOf, chipContext, named, viewer = '' }) {
   if (row.k === 'card') {
     const title = trimmed(row.title);
     const answer = trimmed(row.answer);
-    const note = [trimmed(row.note), time].filter(Boolean).join(' · ');
+    const note = [roomBy(row, person), trimmed(row.note), time].filter(Boolean).join(' · ');
     return title ? `<div class="msg-r a bub-wide room-card"><div class="bub"><div class="q-closed" role="status"><span class="q-tick">${CHECK_ICON}</span><span class="q-closed-title">${esc(title)}</span>${answer ? `<b class="q-closed-answer">${esc(truncateText(answer, 120))}</b>` : ''}</div></div>${note ? `<span class="msg-t">${esc(note)}</span>` : ''}</div>` : '';
   }
   if (row.k === 'you') {
@@ -6922,12 +6930,12 @@ function roomRow(row, { agentOf, chipContext, named, viewer = '' }) {
  * The feed one thread shows, as HTML, or null when the job has no room (the caller draws the older bubbles). `agents` are the job's agent cards
  * (to name a row's agent and word a message's progress), `liveKeys` the keys of the cards still open on the page, so a card is never drawn twice.
  */
-export function roomFeed(room, agentId, { agents = [], chipContext = {}, liveKeys = new Set() } = {}) {
+export function roomFeed(room, agentId, { agents = [], chipContext = {}, liveKeys = new Set(), person = roomPerson } = {}) {
   if (!room) return null;
   const agentOf = id => agents.find(item => item?.id === id) || { id, name: humanize(id) };
   const rows = roomRowsFor(room, agentId, agents.find(item => item?.id === agentId)).filter(row => !(row.k === 'card' && row.key && liveKeys.has(row.key)));
   const older = room.older > 0 ? `<div class="sys"><span>${esc(ROOM_OLDER_LINE)}</span></div>` : '';
-  return older + rows.map(row => roomRow(row, { agentOf, chipContext: { artifacts: [], ...chipContext }, named: agentId === 'producer', viewer: agentId })).join('');
+  return older + rows.map(row => roomRow(row, { agentOf, chipContext: { artifacts: [], ...chipContext }, named: agentId === 'producer', viewer: agentId, person })).join('');
 }
 
 const GATE_PICTURES = Object.freeze({ concept: 'sparkles', storyboard: 'picture', price: 'money', sample: 'picture', pictures: 'picture', clips: 'clapper', cut: 'clapper', finishing: 'sparkles', content: 'eyes', publish: 'calendar', findings: 'memo', campaign_proposal: 'memo', campaign_activation: 'package' });
@@ -7934,6 +7942,16 @@ export async function askBoardConsent(host = globalThis) {
     const answer = await perms.request(['comments']);
     return answer?.comments ?? null;
   } catch { return null; }
+}
+
+// The first name of the person looking at the board, from the user capability, for the room's closed cards. The page may know no name
+// (the capability then gives none), and the cards say "You".
+export async function resolveRoomPerson(host = globalThis) {
+  try {
+    const user = await host.claude?.use?.('user');
+    const me = typeof user?.me === 'function' ? await user.me() : null;
+    setRoomPerson(typeof me?.name === 'string' ? me.name.trim().split(/\s+/)[0] : '');
+  } catch { setRoomPerson(''); }
 }
 
 export async function createTransport(config = {}, host = globalThis) {
@@ -9227,6 +9245,7 @@ if (typeof document !== 'undefined') {
     try {
       transport ||= await createTransport(config);
       void askBoardConsent();
+      void resolveRoomPerson();
       if (!unsubscribe) {
         unsubscribe = watchWorkspace(transport, {
           onSnapshot: next => { captureInlineValues(); data = next; error = ''; render(); void resyncLive(); },

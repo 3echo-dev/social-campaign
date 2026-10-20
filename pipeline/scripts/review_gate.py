@@ -192,9 +192,9 @@ def cut_approved(jobdir):
 
 
 def finishing_record(jobdir):
-    """The whole record of what to add when it is a valid choice, else None. It is not bound to the cut's files."""
+    """The whole record of what to add when it is a valid choice, else None. It is not bound to the cut's files. A plan saved as a suggestion (before the person answered) is not a choice."""
     d = _json(os.path.join(jobdir, "approvals", "finishing.json"))
-    if not d or d.get("choice") not in FINISHING_CHOICES:
+    if not d or d.get("choice") not in FINISHING_CHOICES or d.get("suggested") is True:
         return None
     return d
 

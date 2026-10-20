@@ -91,6 +91,8 @@ export function readyChecks({ gate, job, review = null, gaps = null }) {
     case 'storyboard': {
       const out = [];
       if (gaps?.asked) out.push(line('Voice-over answered', !gaps.unanswered.length));
+      // The price on the card follows the answer to the sound plan question, so an open one holds the Approve button.
+      if (gaps?.soundOpen?.length) out.push(line('Sound plan answered', false));
       if (gaps?.panels) out.push(line('Every panel has a picture', !gaps.lacking.length));
       return out;
     }

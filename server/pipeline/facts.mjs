@@ -1132,10 +1132,17 @@ const FINISHING_CHOICE_IDS = Object.freeze(['captions', 'music', 'both', 'skip',
  * The sound choice recorded for the video (approvals/finishing.json) whenever it is a valid choice, else null. It can be recorded any
  * time before finishing and is not tied to the joined video's files (an older record that lists them is still accepted).
  * pipeline/scripts/review_gate.py finishing_record means exactly the same.
+ * A plan the Director saved while the person's sound plan question was still open (`suggested: true`) is only a suggestion and is not a choice yet: the person's answer, recorded the same way, replaces it.
  */
 export function finishingRecord(job) {
   const saved = readJson(join(job.dir, 'approvals', 'finishing.json'));
-  return saved && typeof saved === 'object' && FINISHING_CHOICE_IDS.includes(saved.choice) ? saved : null;
+  return saved && typeof saved === 'object' && saved.suggested !== true && FINISHING_CHOICE_IDS.includes(saved.choice) ? saved : null;
+}
+
+/** The sound plan the Director saved before the person answered (approvals/finishing.json with `suggested: true`), or null. */
+export function suggestedFinishing(job) {
+  const saved = readJson(join(job.dir, 'approvals', 'finishing.json'));
+  return saved && typeof saved === 'object' && saved.suggested === true && FINISHING_CHOICE_IDS.includes(saved.choice) ? saved : null;
 }
 
 /** The joined (plain) video of each post, media/D<n>/final-raw.mp4: one panel per post. Join the clips with stitch-clips.py to make it. */

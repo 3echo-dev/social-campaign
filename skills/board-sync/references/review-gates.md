@@ -30,6 +30,7 @@ On a video post with a saved price, the storyboard card also shows the price (th
 Its one tap approves the pictures and the price together, and the approval carries `args.totals` equal to the saved totals; there is no separate price card.
 The price is a money step: on a board job a typed yes in chat is not landed (see Money and posting need a click in `skills/board-sync/SKILL.md`).
 A price that changed after the card was shown is refused: present the storyboard again.
+The storyboard card waits while the sound plan question is open (the card's Ready check says "Sound plan answered"), because its price follows that answer; the Director's steps are in the sound plan paragraph of the Director agent.
 A later price (a redo beyond the allowance, a new shot) is its own card, `pipeline_review_present` with `gate: "price"`.
 
 ### Sample image

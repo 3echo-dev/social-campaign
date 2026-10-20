@@ -23,7 +23,8 @@
 //   msg   one agent's result (a finished run of agents.jsonl): { who, text, files, filesMore }; a failed run is { failed: true }. A reply the
 //         Director wrote for another agent's thread is { who, reply: true, text, asks? } and belongs to that thread only
 //   hand  a handoff line, a stage-log row whose note ends in [handoff=checked|handed|back]: { text, kind, with? } with the agents it names
-//   card  a card that is closed, as one line: an answered question or a decision made: { title, answer?, note?, key?, about? } (about: the file it was about)
+//   card  a card that is closed, as one line: an answered question, a decision made or the sound plan: { by, title, answer?, note?, key?, about? } (about: the file it
+//         was about; by: who made it, 'you' for the person, 'director' for what the Director did on its own: a suggested sound plan, clips the plugin signed off)
 // Nothing between agents enters it (no brief, worker prompt or return), only what the person wrote and what the employees made.
 // An open card is the live card of the page and is not a row. Held to ROOM_BUDGET_BYTES, newest kept; `older` counts the rows left out.
 
@@ -34,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 
 import { STALE_RUN_MS, clipOneLine, readAgentLines } from './agent-log.mjs';
 import { aboutOf, attachmentOf, messageProgress } from './agent-messages.mjs';
-import { plainWordsProblem } from './questions.mjs';
+import { isSoundQuestion, plainWordsProblem } from './questions.mjs';
 import { handoffSent } from './handoff.mjs';
 
 const require = createRequire(import.meta.url);
@@ -530,7 +531,7 @@ function answerWords(answer) {
  * The cards that are closed, as one line each: a decision the person made (approved, or changes asked for) and a question that was answered
  * on the board or in chat. `answered` is the job's answered question records. Open cards are the page's live cards and are not here.
  */
-function closedCards({ decisions, answered }) {
+function closedCards({ decisions, answered, dir = null, open = [] }) {
   const out = [];
   for (const record of Array.isArray(decisions) ? decisions : []) {
     if (!plain(record) || record.malformed || typeof record.gate !== 'string') continue;
@@ -540,16 +541,55 @@ function closedCards({ decisions, answered }) {
     if (at === null || !words) continue;
     const approved = /^approved?$/.test(String(record.decision));
     const asked = approved ? null : clipOneLine(record.comment, ROOM_CARD_LIMIT);
-    out.push({ k: 'card', id: `decision:${text(record.path) ?? `${record.gate}-${record.round ?? ''}-${at}`}`, at: isoAt(at), title: approved ? `${words.charAt(0).toUpperCase()}${words.slice(1)} approved` : `Changes asked for the ${words}`, ...(asked ? { answer: asked } : {}), ...aboutRow(Array.isArray(record.artifacts) ? record.artifacts.find(item => plain(item) && text(item.path)) : null) });
+    // The plugin signs the clips off itself: that is the Director's work, not the person's tap.
+    const own = approved && record.signedOff === true;
+    const picked = approved && record.gate === 'concept' && /^[A-Za-z0-9]{1,6}$/.test(String(record.chosen ?? '')) ? `Idea ${record.chosen} picked` : null;
+    const cap = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    out.push({ k: 'card', id: `decision:${text(record.path) ?? `${record.gate}-${record.round ?? ''}-${at}`}`, by: own ? 'director' : 'you', at: isoAt(at), title: picked ?? (approved ? `${cap} ${own ? 'signed off' : 'approved'}` : `Changes asked for the ${words}`), ...(asked ? { answer: asked } : {}), ...aboutRow(Array.isArray(record.artifacts) ? record.artifacts.find(item => plain(item) && text(item.path)) : null) });
   }
   for (const question of Array.isArray(answered) ? answered : []) {
     const at = timeOf(question?.answeredAt);
     const title = plainLine(question?.text, ROOM_CARD_LIMIT);
     if (!plain(question) || question.status !== 'answered' || at === null || !title || typeof question.questionId !== 'string') continue;
     const answer = clipOneLine(answerWords(question.answer), ROOM_CARD_LIMIT);
-    out.push({ k: 'card', id: `question:${question.questionId}`, key: `question-${question.questionId}`, at: isoAt(at), title, ...(answer ? { answer } : {}), note: `Answered ${question.answeredVia === 'chat' ? 'in chat' : 'on the board'}`, ...aboutRow(question.about) });
+    out.push({ k: 'card', id: `question:${question.questionId}`, key: `question-${question.questionId}`, by: 'you', at: isoAt(at), title, ...(answer ? { answer } : {}), note: `Answered ${question.answeredVia === 'chat' ? 'in chat' : 'on the board'}`, ...aboutRow(question.about) });
   }
+  const sound = soundCard({ dir, answered, open });
+  if (sound) out.push(sound);
   return out;
+}
+
+const SOUND_WORDS = Object.freeze({
+  voice: Object.freeze({ library: 'voice-over from your library', upload: 'your own voice-over', make: 'voice-over made for you', none: 'no voice-over' }),
+  music: Object.freeze({ library: 'music from your library', upload: 'your own music', make: 'music made for you', none: 'no music' }),
+  captions: Object.freeze({ voice: 'captions from the voice-over', script: 'captions from the script', none: 'no captions' }),
+});
+const FINISHING_CHOICE_WORDS = Object.freeze({ captions: 'Captions only', music: 'Music only', both: 'Captions and music', skip: 'Nothing added' });
+
+/** The recorded sound plan (approvals/finishing.json) in plain words, or null when there is nothing to read. */
+function soundWords(record) {
+  const combine = plain(record.combine) ? record.combine : null;
+  if (!combine) return FINISHING_CHOICE_WORDS[record.choice] ?? null;
+  const line = ['voice', 'music', 'captions'].map(row => SOUND_WORDS[row][typeof combine[row] === 'string' ? combine[row] : combine[row]?.source]).filter(Boolean).join(', ');
+  return line ? `${line.charAt(0).toUpperCase()}${line.slice(1)}` : null;
+}
+
+/**
+ * The sound plan as one closed card. The Director's suggestion (saved while the sound plan question was open, or before the person answered it)
+ * is its own line, "Sound plan suggested"; the plan recorded from the person's answer, or by their own tap, is "Sound plan chosen" and is theirs.
+ * Null when no plan is recorded. `open` are the inbox items, to see that the sound plan question is still waiting.
+ */
+function soundCard({ dir, answered, open }) {
+  const record = dir ? readJson(join(dir, 'approvals', 'finishing.json')) : undefined;
+  const at = plain(record) ? timeOf(record.decidedAt) : null;
+  const words = at === null ? null : soundWords(record);
+  if (!words) return null;
+  const answers = (Array.isArray(answered) ? answered : []).filter(question => plain(question) && question.status === 'answered' && isSoundQuestion(question)).map(question => timeOf(question.answeredAt)).filter(time => time !== null);
+  const waiting = (Array.isArray(open) ? open : []).some(item => plain(item) && item.kind === 'question' && isSoundQuestion(item));
+  const byPerson = /^the person\b/i.test(String(record.by ?? ''));
+  const early = record.suggested === true || waiting || (!byPerson && answers.length > 0 && at < Math.max(...answers));
+  const chosen = !early && (byPerson || answers.length > 0);
+  return { k: 'card', id: `sound:${record.decidedAt}`, by: chosen ? 'you' : 'director', at: isoAt(at), title: early ? 'Sound plan suggested' : chosen ? 'Sound plan chosen' : 'Sound plan set', answer: clipOneLine(words, ROOM_CARD_LIMIT) };
 }
 
 /** The line for one agent's result: what it made ("Brief ready"), else that it finished. */
@@ -590,7 +630,7 @@ export function trimRoom(section, keep) {
  * progress, all its runs, all its files); `answered` the job's answered questions. Nothing between agents is read: not a run's description,
  * its summary or its error, only that it finished, failed or made files.
  */
-function roomOf({ parts, dir, snapshot, answered, files = ROOM_FILES_SHOWN }) {
+function roomOf({ parts, dir, snapshot, answered, open = [], files = ROOM_FILES_SHOWN }) {
   const rows = [];
   const brief = text(snapshot?.job?.request);
   const briefAt = timeOf(snapshot?.job?.requestedAt ?? snapshot?.job?.createdAt);
@@ -630,7 +670,7 @@ function roomOf({ parts, dir, snapshot, answered, files = ROOM_FILES_SHOWN }) {
     const at = timeOf(line.at);
     if (at !== null) rows.push({ k: 'hand', id: `hand:${line.at}`, ...line, at: isoAt(at) });
   }
-  rows.push(...closedCards({ decisions: snapshot?.project?.decisions, answered }));
+  rows.push(...closedCards({ decisions: snapshot?.project?.decisions, answered, dir, open }));
   // Oldest first; the same moment keeps the order the rows were found in. Past ROOM_ROWS_MAX the oldest are left out and counted.
   const ordered = rows.map((row, index) => ({ row, index, time: Date.parse(row.at) })).sort((a, b) => a.time - b.time || a.index - b.index).map(item => item.row);
   const over = Math.max(0, ordered.length - ROOM_ROWS_MAX);
@@ -994,6 +1034,8 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
   const stuck = stuckFor({ dir: folder, snapshot, inboxItems, requests, retriedAt: retriedAt ?? null, blockedLine, now: clock, lines: allLines });
   const pendingPaths = new Set((Array.isArray(details?.pendingReviews) ? details.pendingReviews : []).flatMap(review => (Array.isArray(review?.artifacts) ? review.artifacts : [])).map(item => item?.path).filter(path => typeof path === 'string'));
   const waits = personNeeded({ inbox: { items: inboxItems }, state });
+  // When the job last moved to the state it is in (status.md's last update), to tell the runs of this step from the runs before it.
+  const movedAt = timeOf(snapshot?.status?.updatedAt);
   const oldestNeed = inboxItems.map(item => timeOf(item?.at)).filter(time => time !== null).sort((a, b) => a - b)[0];
   const iso = ms => (Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 
@@ -1009,6 +1051,9 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
     const rowsDone = stageRows.length > 0 && (stageRows.every(index => DONE_STAGE.has(stages[index].status)) || (myTasks.length > 0 && myTasks.every(task => DONE_STAGE.has(task?.status))));
     // An agent no plan row or route names (the Trend Scout, a Researcher sent for a gap) is done once a run of it has ended, as long as nothing above held it.
     const offPlan = !planned.has(agent);
+    // An agent whose last run ended after the job last moved has done its part of this step, whatever rows it still has ahead (the Editor's
+    // script checks, which the plan row only marks done when the storyboard is shown): "Up next" would say it has not started.
+    const ranSinceMove = movedAt !== null && ['finished', 'stopped'].includes(lastRun?.ended) && (timeOf(lastRun.endedAt) ?? -1) > movedAt;
     const sent = messages ? (Array.isArray(messages[agent]) ? messages[agent] : []) : readMessages(folder, agent);
     const isDirector = agent === DIRECTOR;
     let at = null;
@@ -1033,7 +1078,7 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
       agentState = 'waiting';
       note = lastRun.ended === 'failed' ? 'The last run did not finish' : 'The last run stopped responding';
       at = lastRun.ended === 'failed' ? lastRun.endedAt : text(lastRun.startedAt) ?? text(lastRun.dispatchedAt);
-    } else if (finished || isDirector || rowsDone || (offPlan && lastRun)) {
+    } else if (finished || isDirector || rowsDone || (offPlan && lastRun) || ranSinceMove) {
       agentState = 'done';
       const ends = runs.map(run => timeOf(run.endedAt)).filter(time => time !== null);
       at = ends.length ? iso(Math.max(...ends)) : null;
@@ -1099,7 +1144,7 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
     unassigned: { ...cap(unassigned.yours, 'yours'), ...cap(unassigned.records, 'records'), ...cap(unassigned.other, 'other') },
     truncated: false,
   });
-  return { agents, room: roomOf({ parts, dir: folder, snapshot, answered }) };
+  return { agents, room: roomOf({ parts, dir: folder, snapshot, answered, open: inboxItems }) };
 }
 
 /**

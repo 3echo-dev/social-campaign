@@ -18,7 +18,7 @@ import * as facts from './facts.mjs';
 import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, listLibrary } from './library.mjs';
 import { chooseMusic, readChoice as readMusicChoice } from './music.mjs';
 import { askQuestion } from './questions.mjs';
-import { FINISHING_FILE, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
+import { FINISHING_FILE, SUGGESTED_MESSAGE, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 export const COMBINE_ROWS = Object.freeze({
@@ -303,6 +303,28 @@ export async function registerTakes({ root, job, kind, files, text }) {
   };
 }
 
+/**
+ * What a saved price has to change to follow these picks: the voice-over or music lines it holds that the plan no longer makes ("drop"),
+ * and the rows the plan makes that it does not price yet ("missing"). Both empty when there is no saved price yet.
+ */
+export function soundPriceGaps(job, combine) {
+  const saved = facts.readQuote(job);
+  const out = { drop: [], missing: [] };
+  if (!saved) return out;
+  for (const kind of ['music', 'voice']) {
+    const lines = saved.quote.items.filter(item => item && item.provider === facts.ELEVEN_LABS && item.kind === kind);
+    if (combine[kind]?.source === 'make') { if (!lines.length) out.missing.push(kind); } else out.drop.push(...lines.map(item => item.key));
+  }
+  return out;
+}
+
+function repriceWords({ drop, missing }) {
+  const parts = [];
+  if (drop.length) parts.push(`take ${drop.join(', ')} out of the saved price (pipeline_quote_save with drop)`);
+  if (missing.length) parts.push(`price the ${missing.map(kind => (kind === 'voice' ? 'voice-over' : 'music')).join(' and ')} (pipeline_quote_save)`);
+  return parts.length ? `The saved price does not follow this plan yet: ${parts.join(', and ')}. Then present the storyboard again.` : '';
+}
+
 // ---------------------------------------------------------------- recording the card's picks with the cut approval
 /** Record the combine card's picks (from the board approval, or pipeline_finishing_choice with combine). */
 export function recordCombine({ job, combine, by }) {
@@ -310,20 +332,24 @@ export function recordCombine({ job, combine, by }) {
   const flags = combineFlags(picks);
   const choice = combineChoice(picks);
   const stored = applyCombine({ root: job.root, job, combine: picks });
-  writeFinishingRecord({ job, choice, parts: { captions: flags.captions, music: flags.music }, extra: { voice: flags.voice, combine: stored }, by });
+  const { suggested } = writeFinishingRecord({ job, choice, parts: { captions: flags.captions, music: flags.music }, extra: { voice: flags.voice, combine: stored }, by });
   const noTrack = flags.music && !musicTrack(job.dir);
   const waiting = ['music', 'voice'].filter(row => ['upload', 'make'].includes(stored[row].source));
   const steps = combineNextSteps(job, stored);
   const base = {
     recorded: true, choice, captions: flags.captions, music: flags.music, musicTrack: flags.music ? !noTrack : null, transcript: flags.captions ? transcriptSaved(job) : null,
     voice: flags.voice, voiceTrack: flags.voice ? Boolean(voiceTrack(job.dir)) : null, combine: stored, waiting, next: steps,
+    ...(suggested ? { suggested: true } : {}),
   };
-  const finish = 'run finish-video.py (it mixes the music under the voice-over and draws the captions chosen) and present the rough cut (pipeline_review_present with gate cut).';
+  if (suggested) return { ...base, message: SUGGESTED_MESSAGE };
+  const reprice = repriceWords(soundPriceGaps(job, stored));
+  const finish ='run finish-video.py (it mixes the music under the voice-over and draws the captions chosen) and present the rough cut (pipeline_review_present with gate cut).';
   if (waiting.length) {
-    return { ...base, message: `Saved. ${waiting.map(row => (row === 'voice' ? 'The voice-over' : 'The music')).join(' and ')} still need${waiting.length === 1 ? 's' : ''} to be uploaded or made before finishing. Never make music or voice any other way. ${steps.join(' ')} Then ${finish}` };
+    return { ...base, message: `Saved. ${waiting.map(row => (row === 'voice' ? 'The voice-over' : 'The music')).join(' and ')} still need${waiting.length === 1 ? 's' : ''} to be uploaded or made before finishing. Never make music or voice any other way. ${steps.join(' ')} ${reprice} Then ${finish}`.replace(/\s+/g, ' ') };
   }
   if (choice === 'skip') {
-    return { ...base, message: facts.onscreenPlanned(job) ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the rough cut (pipeline_review_present with gate cut).' : 'Saved. Nothing is added: the joined video is the rough cut as it is, so finish-video.py is not needed. Present the rough cut (pipeline_review_present with gate cut) once the clips are joined.' };
+    const nothing = facts.onscreenPlanned(job) ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the rough cut (pipeline_review_present with gate cut).' : 'Saved. Nothing is added: the joined video is the rough cut as it is, so finish-video.py is not needed. Present the rough cut (pipeline_review_present with gate cut) once the clips are joined.';
+    return { ...base, message: `${nothing} ${reprice}`.trim() };
   }
-  return { ...base, message: `Saved. ${steps.join(' ')} ${steps.length ? 'Then ' : 'Now '}${finish}`.replace(/\s+/g, ' ') };
+  return { ...base, message: `Saved. ${steps.join(' ')} ${reprice} ${steps.length || reprice ? 'Then ' : 'Now '}${finish}`.replace(/\s+/g, ' ') };
 }

@@ -104,6 +104,21 @@ export function listQuestions({ root, jobId = null, status = null, readOnly = fa
   return questions.sort((a, b) => String(b.askedAt || '').localeCompare(String(a.askedAt || '')) || a.questionId.localeCompare(b.questionId));
 }
 
+/**
+ * The sound plan card of a video: one question that settles the voice-over, the music and the captions. It opens "Sound plan ..." (the
+ * wording agents/producer.md asks for); a question that names all three is taken for it too. The storyboard price depends on its answer.
+ */
+export function isSoundQuestion(question) {
+  const text = String(question?.text ?? '');
+  return /^\s*sound\b|\bsound plan\b/i.test(text) || (/\bvoice/i.test(text) && /\bmusic\b/i.test(text) && /\bcaptions?\b/i.test(text));
+}
+
+/** The sound plan questions of one job that nobody has answered yet. Empty when the questions cannot be read. */
+export function openSoundQuestions({ root, jobId }) {
+  if (!root || !jobId) return [];
+  try { return listQuestions({ root, jobId, status: 'open', readOnly: true }).filter(isSoundQuestion); } catch { return []; }
+}
+
 function plainLine(value, { label, limit }) {
   if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${label} cannot be empty.`);
   const text = value.trim().replace(/\s+/g, ' ');

@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as facts from './facts.mjs';
+import { openSoundQuestions } from './questions.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 export const FINISHING_FILE = 'approvals/finishing.json';
@@ -66,10 +67,17 @@ export function transcriptSaved(job) {
   return panels.every(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)) || existsSync(join(job.dir, 'media', panel.deliverable, 'transcript.json')));
 }
 
-/** Write approvals/finishing.json. The sound can be chosen any time before finishing (before the clips are joined too), so it is not tied to the joined video's files. `extra` carries the combine picks (combine.mjs). */
+/** What a recorded plan reads when the person has not answered the sound plan question yet. */
+export const SUGGESTED_MESSAGE = 'Saved as a suggestion only: the sound plan question is still open, so this plan does not count yet. When the person answers, record the plan from their answer the same way; that replaces this one. Price the clips, voice-over and music only after that, so the price follows the answer.';
+
+/**
+ * Write approvals/finishing.json. The sound can be chosen any time before finishing (before the clips are joined too), so it is not tied to the joined video's files. `extra` carries the combine picks (combine.mjs).
+ * A plan written while the sound plan question is still open is the Director's suggestion (`suggested: true`): facts.finishingRecord does not count it, and the person's answer replaces it.
+ */
 export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
   mkdirSync(join(job.dir, 'approvals'), { recursive: true });
-  const saved = { choice, ...parts, ...extra, decidedAt: new Date().toISOString(), by: by || 'director' };
+  const suggested = !/^the person\b/i.test(String(by ?? '')) && openSoundQuestions({ root: job.root, jobId: job.jobId }).length > 0;
+  const saved = { choice, ...parts, ...extra, ...(suggested ? { suggested: true } : {}), decidedAt: new Date().toISOString(), by: by || 'director' };
   const file = join(job.dir, ...FINISHING_FILE.split('/'));
   const temp = `${file}.${randomUUID()}.tmp`;
   writeFileSync(temp, JSON.stringify(saved, null, 2));
@@ -80,12 +88,13 @@ export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
 export function recordFinishingChoice({ job, choice, by }) {
   const parts = FINISHING_CHOICES[choice];
   if (!parts) throw new Error('Choose captions, music, both or skip.');
-  writeFinishingRecord({ job, choice, parts, by });
+  const { suggested } = writeFinishingRecord({ job, choice, parts, by });
   const noTrack = parts.music && !musicTrack(job.dir);
   const transcript = parts.captions ? transcriptSaved(job) : null;
   return {
     recorded: true, choice, captions: parts.captions, music: parts.music, musicTrack: parts.music ? !noTrack : null, transcript,
-    message: noTrack
+    ...(suggested ? { suggested: true } : {}),
+    message: suggested ? SUGGESTED_MESSAGE : noTrack
       ? 'Saved. No music track is saved for this job, so finishing will not add music yet. Say so plainly: check the library with pipeline_library_list; if it is empty, offer to make music with ElevenLabs (priced, the person clicks the price) or ask for a track (a file), add it with pipeline_music_add, then run finish-video.py. Or offer captions only. Never say the video has music until one is added, and never make audio by hand.'
       : choice === 'skip' && !facts.onscreenPlanned(job) ? 'Saved. Nothing is added: the joined video is the rough cut as it is, so finish-video.py is not needed. Present the rough cut (pipeline_review_present with gate cut) once the clips are joined.'
         : choice === 'skip' ? 'Saved. Nothing else is added, but the joined video is plain and the post has on-screen text: run finish-video.py now; it draws only that text. Then present the rough cut (pipeline_review_present with gate cut).'

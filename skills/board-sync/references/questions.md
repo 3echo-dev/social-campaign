@@ -9,6 +9,8 @@ A question about anything on the video itself (the captions on the video, on-scr
 Take 2 to 4 frames of the finished video at those moments with `media_extract_frames` into the job folder, pass them as `stills` on `pipeline_board_ask`, with `about` set to that video file and its revision, then run `pipeline_review_copies_prepare` so the board shows them.
 Call the words posted under the video "the post text", never "captions", so the two are never confused.
 
+The sound plan question of a video opens with "Sound plan" and is answered before the price is saved; its answer replaces any plan recorded earlier (see the sound plan paragraph of the Director agent).
+
 Making the storyboard pictures is not spending to ask about: up to 3 pictures per panel are made with no question and counted in the job total (make-image), so never ask "may I make the sample".
 On a picture-only post the first picture is the sample, approved on its own card; on a video post the test clip is the sample.
 

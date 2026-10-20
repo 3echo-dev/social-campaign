@@ -319,7 +319,9 @@ try {
     ceilings.push([GATE_WORDS[latest.gate] || 'what you agreed when you approved this', m]);
   }
 } catch {}
-for (const [label, limit] of ceilings)
+// The storyboard pictures need no price (1 credit each, up to 3 a panel, made before the storyboard card), so before the storyboard
+// the figure agreed at the idea, even 0 credits, is not held against the plan: the price is shown with the storyboard.
+for (const [label, limit] of picturesOnly ? [] : ceilings)
   if (totalCredits > limit) note('this quote is ' + totalCredits + ' credits, more than ' + label + ', which was ' + limit + '. Say so when you put the price to them; their yes decides.');
 
 const result = {

@@ -15,7 +15,7 @@ import { referenceFromUrl } from './url-reference.mjs';
 import { isPrivateAddress } from '../social/backends/web.mjs';
 import { researchCoverage } from './research-coverage.mjs';
 import { referenceAssets } from './brand-references.mjs';
-import { answerQuestion, closeUploadQuestion, listQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
+import { answerQuestion, closeUploadQuestion, isSoundQuestion, listQuestions, openSoundQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
 import { assertContentQc } from './label-qc.mjs';
@@ -603,9 +603,16 @@ const transcriptionOnly = items => items.length > 0 && items.every(facts.isTrans
 
 const referenceArtSeat = state => REFERENCE_ART_STATES.has(state) || state === 'CHANGES_REQUESTED';
 
+// The clips, the voice-over and the music are priced from the sound plan, and the voice-over decides how long the clips run, so the person's
+// answer to the sound plan question comes first. Pictures and transcriptions do not depend on it.
+const SOUND_OPEN = 'The sound plan question is still open, so the storyboard and its price are not ready to show. The price follows the answer: wait for it, record the plan from it, then price the clips, voice-over and music.';
+const SOUND_OPEN_FIX = 'Wait for the answer (it arrives by itself). Then record the plan from it with pipeline_finishing_choice, save the price with pipeline_quote_save and present the storyboard.';
+const dependsOnSound = items => items.some(item => item && item.kind !== 'image' && !facts.isTranscriptionItem(item));
+
 // dropOnly: the call adds nothing and only takes items out of the price. That cannot start any spending, so what is left in the
 // price is not judged (an emptied price, or one that still lists a clip, is no reason to keep a picture in it).
 function priceRefusal(job, items, { dropOnly = false } = {}) {
+  if (!dropOnly && dependsOnSound(items) && openSoundQuestions({ root: job.root, jobId: job.jobId }).length) return SOUND_OPEN;
   const state = facts.readJobState(job.dir).state;
   if (transcriptionOnly(items)) return facts.isFinishedState(state) ? PRICE_TOO_EARLY : null;
   if (facts.referenceArtOnly(job)) {
@@ -3240,6 +3247,8 @@ export function validateDecision({root,brand,jobId,revision,reviewId,artifacts,d
     const verdict=suppliedChecks({root,brand:snapshot.brand?.slug || brand,jobId});
     if(!verdict.ready) throw new Error(`Fix these first: ${Object.values(verdict.posts).flat().find(item=>!item.ok)?.text || 'a check on the final post has not passed.'}`);
   }
+  // The price on the storyboard card follows the answer to the sound plan question: one opened after the card was shown holds the approval.
+  if(reviewId==='storyboard' && decision==='approve' && openSoundQuestions({root,jobId}).length) throw new UserFacingError(SOUND_OPEN,{code:'sound_question_open',fix:SOUND_OPEN_FIX});
   if(panels!==undefined && reviewId!=='storyboard' && !MEDIA_GATES.includes(reviewId)) throw new Error('Only the storyboard takes a decision per panel.');
   if(finishing!==undefined) {
     if(reviewId!==CUT_GATE || decision!=='approve') throw new Error('What to add is picked only when approving the rough cut.');
@@ -3370,6 +3379,8 @@ function assertNoQuestionOpen(root,jobId,gate=null) {
   try { open=openQuestionsByJob(root,{readOnly:true}).get(jobId); } catch { return; }
   if(gate==='concept') open=open?.filter(question=>question.blocking===true);
   if(!open?.length) return;
+  const sound=gate==='storyboard' ? open.filter(isSoundQuestion) : [];
+  if(sound.length) throw new UserFacingError(SOUND_OPEN,{code:'sound_question_open',fix:SOUND_OPEN_FIX,details:{questions:sound.map(question=>question.questionId)}});
   const kind=gate==='concept' ? 'blocking question' : 'question';
   throw new UserFacingError(`You asked the person ${open.length===1 ? `a ${kind}` : `${open.length} ${kind}s`} on this job that ${open.length===1 ? 'is' : 'are'} still waiting for an answer, so this review is not ready to show. Wait for the answer, then present this review again.`,{
     code:'question_open',
@@ -3386,10 +3397,12 @@ function assertNoQuestionOpen(root,jobId,gate=null) {
  * footage needs none.
  */
 export function storyboardGaps({root,brand,jobId,paths}) {
-  const gaps = {asked:0,panels:0,unanswered:[],lacking:[],files:[]};
+  const gaps = {asked:0,panels:0,unanswered:[],lacking:[],files:[],soundOpen:[]};
   const boards = (Array.isArray(paths) ? paths : []).filter(path=>/(^|\/)storyboard\.md$/i.test(String(path)));
   const job = facts.jobAt(root,brand,jobId);
   if(!boards.length || !job) return gaps;
+  // The price on this card follows the person's answer to the sound plan question, so it is not ready while that question is open.
+  gaps.soundOpen = openSoundQuestions({root,jobId}).map(question=>question.questionId);
   const dir = jobDirectory(root,brand,jobId);
   const pictures = new Map(facts.mediaSet(job,'image').panels.map(panel=>[`${panel.deliverable}|${panel.panel}`,panel]));
   for(const path of boards) {
@@ -3413,7 +3426,8 @@ export function storyboardGaps({root,brand,jobId,paths}) {
 }
 
 function withStoryboardPictures({root,brand,jobId,paths}) {
-  const {unanswered,lacking,files} = storyboardGaps({root,brand,jobId,paths});
+  const {unanswered,lacking,files,soundOpen} = storyboardGaps({root,brand,jobId,paths});
+  if(soundOpen.length) throw new UserFacingError(SOUND_OPEN,{code:'sound_question_open',fix:SOUND_OPEN_FIX,details:{questions:soundOpen}});
   if(unanswered.length) throw new UserFacingError(`The voice-over question has not been answered for ${unanswered.join(', ')}, so the storyboard is not ready to show.`,{
     code:'storyboard_voiceover_missing',
     fix:'Ask the person once, with pipeline_board_ask: "Voice-over: yes or no, and which voice?" (options Yes and No, and a text box for the voice). Then have the Creative Director fit the script and clip lengths to it and write it in the storyboard front matter as voice_over: yes or no and voice: the voice. Then present again.',
