@@ -102,8 +102,6 @@ export function routeOf(hash) {
   const read = value => { try { return decodeURIComponent(value); } catch { return value; } };
   const job = /^#\/project\/(.+)$/.exec(text);
   if (job) return { page: 'job', id: read(job[1]) };
-  const group = /^#\/pipeline\/([^/?#]+)\/?$/.exec(text);
-  if (group) return { page: 'pipeline', group: read(group[1]) };
   return { page: 'home' };
 }
 // A hue (0 to 359) taken from a job's id, so a job keeps one colour on its card and on its page.
@@ -112,22 +110,8 @@ export function hueOf(value) {
   for (const ch of String(value || '')) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
   return hue;
 }
-// The title of each pipeline group's own page, the one a job's back link goes to. The groups themselves (and which job kind is
-// in which) come from the catalogue; a group this table does not know is titled from its id.
-const GROUP_TITLES = Object.freeze({ post: 'Posts and campaigns', publish_post: 'Post from your files', research: 'Research', creative_analysis: 'Analysis', video_breakdown: 'Video breakdown' });
-export function pipelineGroups() {
-  const groups = [];
-  for (const words of Object.values(PIPELINE_KINDS)) if (words.group && !groups.includes(words.group)) groups.push(words.group);
-  return groups;
-}
-export const groupOfKind = kind => PIPELINE_KINDS[kind]?.group || 'post';
 // Waiting on the person: a decision is open, or the job has something in the Inbox (a question, a brief, a stuck note).
 const jobWaiting = (project, inboxJobs) => Boolean(project?.waitingOn) || inboxJobs.has(project?.jobId);
-// One entry per pipeline group: its title and the jobs in it.
-export function pipelineGroupPages(projects = []) {
-  const list = Array.isArray(projects) ? projects : [];
-  return pipelineGroups().map(group => ({ group, title: GROUP_TITLES[group] || humanize(group), jobs: list.filter(project => groupOfKind(project?.kind) === group) }));
-}
 // The job page's progress bar: one segment per step, coloured by the step's own status, and "x of y steps done".
 export function jobProgress(project) {
   const { done, total } = stageProgress(project);
@@ -8215,7 +8199,7 @@ if (typeof document !== 'undefined') {
   const logoSrc = logoData.startsWith('data:image/') ? logoData : '';
   const app = document.getElementById('app');
   let boardUpdatePending = false;
-  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map(), starterValues = {}, starterRefs = freshNewJobRefs();
+  let transport, data = {projects:[],brands:[]}, error = '', loading = false, drawer = null, drawerTab = 'output', returnFocus = null, unsubscribe = null, inline = null, inlineDrafts = new Map();
   let signalAvailability = null, signalAvailabilityPending = false;
   let connectorsView = false;
   // Continue was pressed on the setup Connectors step: move on at once, before Claude records it.
@@ -8379,12 +8363,9 @@ if (typeof document !== 'undefined') {
     const detail = ready ? boardSyncDetail(data.updatedAt) : '';
     const connectorsLink = Array.isArray(data.connectors) && data.connectors.length && data.setupStep && data.setupStep !== 'connectors'
       ? '<button class="quiet" data-action="connectors">Connectors</button>' : '';
-    const route = routeOf(location.hash);
-    const groupId = project ? PIPELINE_KINDS[project.kind]?.group || '' : route.page === 'pipeline' ? route.group : '';
-    const door = groupId ? pipelineGroupPages(data.projects || []).find(item => item.group === groupId) : null;
-    // Back goes up one level: a job to its group's page, a group's page to home. The title names where this page is.
-    const back = project ? (door ? { href: `#/pipeline/${encodeURIComponent(door.group)}`, label: door.title } : { href: '#/', label: 'Social Campaign' }) : route.page === 'pipeline' ? { href: '#/', label: 'Social Campaign' } : null;
-    const title = project ? trimmed(project.title) || kindNameOf(project.kind) || kindLabelOf(project) : route.page === 'pipeline' ? door?.title || 'Social Campaign' : 'Social Campaign';
+    // Back from a job goes to the overview, the one page that lists the jobs and starts a new one. The title names where this page is.
+    const back = project ? { href: '#/', label: 'Overview' } : null;
+    const title = project ? trimmed(project.title) || kindNameOf(project.kind) || kindLabelOf(project) : 'Social Campaign';
     const backLink = back ? `<a class="back" href="${esc(back.href)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>${esc(back.label)}</a>` : '';
     return `<header class="top"><div class="brand">${backLink}<a href="#/" class="brand-logo" aria-label="Social Campaign home">${logo}</a><span class="sep" aria-hidden="true"></span><span class="brand-copy"><strong>${esc(title)}</strong></span></div><div class="header-tools"><span class="connection"><i class="dot ${ready ? 'ready' : ''}"></i><b>${esc(status)}</b>${detail ? `<small>${esc(detail)}</small>` : ''}</span><span class="header-actions">${connectorsLink}${boardUpdateAvailable() ? `<button class="header-refresh" data-action="update-board" title="A newer version of the board is installed. Claude will republish it." ${loading || boardUpdatePending || boardUpdateWaiting() ? 'disabled aria-busy="true"' : ''}>${boardUpdatePending || boardUpdateWaiting() ? 'Updating board…' : loading ? 'Refreshing...' : 'Update board'}</button>` : `<button class="header-refresh" data-action="refresh" ${loading ? 'disabled' : ''}>${loading ? 'Refreshing...' : 'Refresh'}</button>`}</span></div></header>`;
   }
@@ -9050,17 +9031,6 @@ if (typeof document !== 'undefined') {
     if (box.chat) box.drafts[box.chat] = box.draft;
     Object.assign(box, { chat: agentId, to: agentId, draft: box.drafts[agentId] || '', error: '', ...(box.to === agentId ? {} : { about: null }) });
   }
-  // One pipeline group's page: its title, the jobs in it, then the brief box to start another.
-  function pipelinePage(group) {
-    const waitingJobs = jobsWaitingOn(workspaceInbox(data).items);
-    const page = pipelineGroupPages(data.projects || []).find(item => item.group === group);
-    if (!page) return '<div class="slate-head"><h1>Nothing here</h1></div><p class="muted"><a href="#/">Back to all jobs</a></p>';
-    const jobs = page.jobs.length
-      ? `<section class="jobs-section"><div class="section-head"><h2>In flight</h2><span class="count">${page.jobs.length}</span></div><div class="project-grid">${newestJobsFirst(page.jobs).map(project => projectCard(project, cardWaiting(project, waitingJobs))).join('')}</div></section>`
-      : '<p class="muted empty-jobs">No jobs of this kind yet. Start one below.</p>';
-    const composer = inline ? inlineStart() : `<section class="panel">${composerForm({ values: starterValues, refs: starterRefs }, { brands: data.brands || [], variant: 'inbox' })}</section>`;
-    return `<div class="slate-head"><h1>${esc(page.title)}</h1></div>${jobs}<div class="pipeline-composer" id="pipeline-composer">${composer}</div>`;
-  }
 
   function drawerOutput(a) {
     const doc = docFor(current());
@@ -9115,11 +9085,6 @@ if (typeof document !== 'undefined') {
     const at = nextPendingExpiry(data.brands, Date.now());
     if (at !== null) researchWake = setTimeout(() => { researchWake = null; render(); }, Math.max(50, at - Date.now() + 50));
   }
-  // What was typed in the Inbox starter survives a redraw; it is cleared once it is sent.
-  function captureStarter() {
-    const form = app.querySelector('#starter-form');
-    if (form) starterValues = Object.fromEntries(new FormData(form));
-  }
   setPickPreviewReady(() => render());
   // A text box on the brand page is about four lines tall and grows with what is typed. Browsers that know field-sizing do it in CSS; for the
   // others the height follows the text here.
@@ -9132,12 +9097,11 @@ if (typeof document !== 'undefined') {
   function render() {
     const project = current();
     rememberBrandMarkets(data.brands);
-    captureStarter();
     const jobFocus = captureJobFocus();
     const jumped = Object.values(JUMP_TARGETS).find(selector => document.activeElement?.matches?.(`${selector}[tabindex="-1"]`)) || null;
     const stripScroll = [...app.querySelectorAll('.sb-strip')].map(strip => strip.scrollLeft);
     const paneScroll = capturePaneScroll();
-    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):routeOf(location.hash).page === 'pipeline' ? pipelinePage(routeOf(location.hash).group) : overview())+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
+    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):overview())+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
     const inlineForm = app.querySelector('#inline-form');
     restoreForm(inlineForm, inline?.values);
     inlineForm?.querySelectorAll('.context-textarea').forEach(fitBox);
@@ -9770,7 +9734,7 @@ if (typeof document !== 'undefined') {
     }
   }
   // --- References in the new-job form (before the job exists) ----------------------------------
-  function newRefsOf() { return inline && inline.kind === 'new' ? (inline.refs ||= freshNewJobRefs()) : starterRefs; }
+  function newRefsOf() { return inline && inline.kind === 'new' ? (inline.refs ||= freshNewJobRefs()) : freshNewJobRefs(); }
   function captureNewRefInputs(state) {
     const note = app.querySelector('[name="nref_note"]');
     const text = app.querySelector('[name="nref_text"]');
@@ -10493,7 +10457,6 @@ if (typeof document !== 'undefined') {
         return;
       }
       stopRequestWatch(active);
-      if (active.refs === starterRefs) starterRefs = freshNewJobRefs();
       inline = null;
       notify(result?.message || 'Saved to your workspace.');
       await refresh();
@@ -11601,13 +11564,13 @@ if (typeof document !== 'undefined') {
   });
   function captureJobFocus() {
     const element = document.activeElement;
-    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit,#starter-form,.ab-compose') : null;
+    const scope = element?.name ? element.closest?.('#intake-form,#review-form,.recipe-panel,.inbox-item,.posting-kit,.ab-compose') : null;
     if (!scope) return null;
     const box = element.type === 'checkbox' || element.type === 'radio';
     let start = null;
     let end = null;
     try { start = typeof element.selectionStart === 'number' ? element.selectionStart : null; end = typeof element.selectionEnd === 'number' ? element.selectionEnd : null; } catch { start = end = null; }
-    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name], #starter-form [name], .ab-compose [name]';
+    const within = scope.classList.contains('inbox-item') ? `.inbox-item[data-inbox-key="${CSS.escape(scope.dataset.inboxKey || '')}"] [name]` : '#intake-form [name], #review-form [name], .recipe-panel [name], .posting-kit [name], .ab-compose [name]';
     return { within, name: element.name, value: box ? element.value : null, start, end };
   }
   function restoreJobFocus(focus) {
@@ -11690,9 +11653,6 @@ if (typeof document !== 'undefined') {
   });
   app.addEventListener('submit', async event=>{
     if (event.target.id === 'inline-form') { void submitInline(event); return; }
-    // The Inbox starter hands what was typed to the same composer the home page shows: it becomes the open draft, sends from
-    // there, and shows its progress or any problem in that card.
-    if (event.target.id === 'starter-form') { starterValues = {}; inline = newJobDraft(); inline.refs = starterRefs; void submitInline(event); return; }
     if (event.target.id === 'intake-form') { event.preventDefault(); void submitIntake(event.target); return; }
     if (event.target.dataset?.inboxForm !== undefined) {
       event.preventDefault();

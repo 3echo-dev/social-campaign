@@ -1409,8 +1409,6 @@ a.kit-download{font-size:13px}
 .handoff-chip{max-width:100%;white-space:normal;text-align:left}
 .music-line{margin:8px 0 0}
 @media (max-width:720px){.page-head{grid-template-columns:minmax(0,1fr);align-items:start}.job-head-chips{justify-content:flex-start;max-width:100%}.job-progress{flex-wrap:wrap;gap:8px}.minimap{flex-basis:100%}}
-/* A pipeline page: its title, its jobs, then the brief box. */
-.pipeline-composer{max-width:880px;scroll-margin-top:var(--gap)}
 /* ---- stages (phase 2) ---- */
 /* The job page: the steps in the centre (the card a step waits on sits inside it), the Team or a chat in a sticky column on the right.
    The right column narrows under 1,240 px; under 900 px the page is one column with the Team as a row of faces above the steps. */

@@ -25,7 +25,7 @@ import { brandAdAccountsInfo, isAdAccountQuestion, reconcileAdAccountChoices, re
 import { brandPublishingInfo, chooseMetricoolBrand, readBrandOptedOut, unlinkMetricoolBrand, isMetricoolQuestion, metricoolBrandReady, metricoolConnected, metricoolQuestionOptions, readMetricoolBrands, reconcileMetricoolChoices, reconcileMetricoolChoicesQuietly } from './metricool.mjs';
 import { hasPublishApproval, latestPublishApproval, readApprovedIntent } from './media-host.mjs';
 import { attemptState, deliveryReference, projectPublishStatus, readAttempts, resolveAmbiguous, withCloseLock, withSendLock } from './publish-attempts.mjs';
-import { agentName, gateAuthor, jobAgentLine, lastChangeAt, onboardingAgents, openHelpers, rosterOf, stuckFor } from './agent-box.mjs';
+import { agentName, gateAuthor, jobAgentLine, jobRoster, lastChangeAt, onboardingAgents, openHelpers, stuckFor } from './agent-box.mjs';
 import { agentLabel, readAgentLines } from './agent-log.mjs';
 import { MESSAGE_TEXT_LIMIT, PENDING_LIMIT, checkedAbout, isPending, messageId, messageTextProblem, readAgentMessages, saveAgentMessage } from './agent-messages.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
@@ -1308,17 +1308,27 @@ function jobInbox({ root, snapshot, gate, review, intake, questions, dir, previe
   const priceApproved = Boolean(pricedJob && facts.currentPriceApproval(pricedJob));
   const held = state === 'INTAKE_PENDING' && snapshot.job?.pipelineUnsure === true;
   const withPost = handoff?.status === 'sent' && handoff.line ? handoff.line : null;
-  const announcement = blockedReason(snapshot) || posting.line || withPost || (held ? 'Waiting for one answer from you.' : null) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
+  // A brief form or a question open on the job is never followed by "Nothing needed from you yet": the state wording is for a job nobody waits on.
+  const announcement = blockedReason(snapshot) || posting.line || withPost || (held ? 'Waiting for one answer from you.' : null) || askingLine(items) || wording.announcement(state, { workflowId: snapshot.route?.workflowId || null, priceApproved });
   return { items, announcement };
+}
+
+/**
+ * What the person is asked for by a brief form or a question, as one plain line, or null when neither is open. A review is worded by the job's
+ * state ("The ideas are ready for you to pick from."), but a brief form and a question have no state of their own, so the line comes from the
+ * open items: the one place the job's line, its Inbox announcement and the Director's open cards all read from.
+ */
+function askingLine(items) {
+  const brief = items.filter(item => item.kind === 'brief');
+  if (brief.length) return brief.length === 1 ? brief[0].text : wording.FINISH_BRIEF;
+  const questions = items.filter(item => item.kind === 'question').length;
+  return questions ? wording.questionWaiting(questions) : null;
 }
 
 function jobLine(inbox) {
   const decision = inbox.items.find(item => item.kind === 'decision');
   if (decision) return decision.text;
-  const brief = inbox.items.filter(item => item.kind === 'brief');
-  if (brief.length) return brief.length === 1 ? brief[0].text : wording.FINISH_BRIEF;
-  if (inbox.items.some(item => item.kind === 'question')) return wording.QUESTION_WAITING;
-  return inbox.announcement;
+  return askingLine(inbox.items) || inbox.announcement;
 }
 
 function jobDocumentInbox(inbox) {
@@ -1912,7 +1922,7 @@ function validateAddReference(root, args) {
   if (args.to !== undefined) {
     if (typeof args.to !== 'string') throw new Error('Choose who the file is for.');
     const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
-    const roster = rosterOf({ rows: snapshot.plan?.rows, route: snapshot.route });
+    const roster = jobRoster({ dir: job.dir, snapshot });
     if (!roster.includes(args.to)) throw new Error('That agent is not part of this job.');
   }
   if (args.questionId !== undefined) {
@@ -2021,7 +2031,7 @@ function checkAgentMessage(root, args) {
   if (typeof args.agent !== 'string' || typeof args.text !== 'string' || typeof args.requestId !== 'string') throw new Error('Choose who the message is for and write it first.');
   if (facts.isFinishedState(job.state)) throw new Error('This job is finished, so it can no longer take messages.');
   const snapshot = runtime.readJobSnapshot({ root, brand: job.brand, jobId: job.jobId });
-  const roster = rosterOf({ rows: snapshot.plan?.rows, route: snapshot.route });
+  const roster = jobRoster({ dir: job.dir, snapshot });
   if (!roster.includes(args.agent)) throw new Error('That agent is not part of this job.');
   const problem = messageTextProblem(args.text);
   if (problem) throw new Error(problem);

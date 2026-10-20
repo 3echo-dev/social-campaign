@@ -45,7 +45,11 @@ const statesLib = require(join(SCRIPTS, 'lib-states.js'));
 const { canonicalArtifactRef } = require(join(SCRIPTS, 'lib-revision-targets.js'));
 
 export const AGENT_STATES = Object.freeze(['needs_you', 'working', 'waiting', 'up_next', 'done']);
-/** Agents the Director spawns beside the plan rows: no row names them, so each gets a card once it has a run on the job. */
+/**
+ * Agents that name their own file exactly and run beside the plan rows (the Trend Scout writes research/trends.md). Any active agent
+ * with a run on the job and no plan row gets a card (see rosterOf); these are asked first who owns a file, before an agent whose
+ * agents.json pattern also covers it (the Researcher's research/*.md).
+ */
 export const OFF_PLAN_AGENTS = Object.freeze(['trend-scout']);
 export const DIRECTOR = 'producer';
 export const DIRECTOR_NAME = 'Director';
@@ -170,8 +174,9 @@ function minutes(ms) {
 
 /**
  * The agents to show, as ids, the Director first: each distinct `Agent` of the plan rows in order of first appearance, active agents
- * only (a script, a human or an unknown name never counts). Before a plan, the route's owner and its support. An off-plan agent (the Trend
- * Scout) follows once `ran` lists it, the agents that have a run on the job.
+ * only (a script, a human or an unknown name never counts). Before a plan, the route's owner and its support. An off-plan agent follows, in
+ * the order it first ran, once `ran` lists it: the agents that have a run on the job, whether or not a plan row names them (the Trend
+ * Scout, or a Researcher the Director sent to fill an evidence gap).
  */
 export function rosterOf({ rows = [], route = null, ran = [] } = {}) {
   const active = agentRegistry();
@@ -184,8 +189,17 @@ export function rosterOf({ rows = [], route = null, ran = [] } = {}) {
     add(route?.owner);
     for (const id of Array.isArray(route?.support) ? route.support : []) add(id);
   }
-  for (const id of OFF_PLAN_AGENTS) if ((Array.isArray(ran) ? ran : []).includes(id)) add(id);
+  for (const id of Array.isArray(ran) ? ran : []) add(id);
   return out;
+}
+
+/**
+ * The roster of a job as the board shows it: rosterOf with the agents that have a run on the job, read from its agents.jsonl in `dir`
+ * unless `lines` is given. The one list the Team, the home line and the message check all use, so an agent that ran is never refused or hidden.
+ */
+export function jobRoster({ dir, snapshot, lines } = {}) {
+  const all = lines ?? (dir ? readAgentLines(dir) : []);
+  return rosterOf({ rows: snapshot?.plan?.rows, route: snapshot?.route, ran: runsFrom(all).map(run => run.agent) });
 }
 
 /**
@@ -925,19 +939,24 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
   const finished = statesLib.isTerminal(state);
   const rows = Array.isArray(snapshot?.plan?.rows) ? snapshot.plan.rows : [];
   const inboxItems = Array.isArray(inbox?.items) ? inbox.items : [];
-  // The runs are read first: an off-plan agent (the Trend Scout) is on the roster once it has one.
+  // The runs are read first: an agent with a run on the job is on the roster even when no plan row names it (the Trend Scout, a
+  // Researcher sent for an evidence gap), so a recorded run always shows as a person on the Team.
   const allLines = lines ?? (folder ? readAgentLines(folder) : []);
   const allRuns = runsFrom(allLines);
   const roster = rosterOf({ rows, route: snapshot?.route, ran: allRuns.map(run => run.agent) });
+  const planned = new Set(rosterOf({ rows, route: snapshot?.route }));
   const registry = agentRegistry();
 
-  // Where each agent's rows sit in the stage list, and which stages are current and next.
+  // Where each agent's rows sit in the stage list, and which stages are current and next. A stop holds several agents' rows, so
+  // each row's own status is kept too: the agent whose rows are all done is done even while another agent's row keeps the stop open.
   const stages = (Array.isArray(project.stages) ? project.stages : []).filter(stage => plain(stage) && !stage.skipped);
   const rowStages = new Map(roster.map(agent => [agent, []]));
+  const rowTasks = new Map(roster.map(agent => [agent, []]));
   stages.forEach((stage, index) => {
     for (const task of Array.isArray(stage.tasks) ? stage.tasks : []) {
       const agent = cleanCell(task?.agent);
       if (rowStages.has(agent) && !rowStages.get(agent).includes(index)) rowStages.get(agent).push(index);
+      if (rowTasks.has(agent)) rowTasks.get(agent).push(task);
     }
   });
   const open = stages.findIndex(stage => !DONE_STAGE.has(stage.status));
@@ -985,7 +1004,11 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
     const lastRun = runs[runs.length - 1] ?? null;
     const files = owned.get(agent);
     const stageRows = rowStages.get(agent);
-    const rowsDone = stageRows.length > 0 && stageRows.every(index => DONE_STAGE.has(stages[index].status));
+    const myTasks = rowTasks.get(agent);
+    // Every stop with this agent's rows is complete, or every one of its own rows is done (the stop may wait on someone else's row).
+    const rowsDone = stageRows.length > 0 && (stageRows.every(index => DONE_STAGE.has(stages[index].status)) || (myTasks.length > 0 && myTasks.every(task => DONE_STAGE.has(task?.status))));
+    // An agent no plan row or route names (the Trend Scout, a Researcher sent for a gap) is done once a run of it has ended, as long as nothing above held it.
+    const offPlan = !planned.has(agent);
     const sent = messages ? (Array.isArray(messages[agent]) ? messages[agent] : []) : readMessages(folder, agent);
     const isDirector = agent === DIRECTOR;
     let at = null;
@@ -1010,7 +1033,7 @@ export function agentBoxAndRoom({ root, brand, jobId, snapshot, details, inbox, 
       agentState = 'waiting';
       note = lastRun.ended === 'failed' ? 'The last run did not finish' : 'The last run stopped responding';
       at = lastRun.ended === 'failed' ? lastRun.endedAt : text(lastRun.startedAt) ?? text(lastRun.dispatchedAt);
-    } else if (finished || isDirector || rowsDone || (OFF_PLAN_AGENTS.includes(agent) && lastRun)) {
+    } else if (finished || isDirector || rowsDone || (offPlan && lastRun)) {
       agentState = 'done';
       const ends = runs.map(run => timeOf(run.endedAt)).filter(time => time !== null);
       at = ends.length ? iso(Math.max(...ends)) : null;
@@ -1115,8 +1138,9 @@ export function jobAgentLine({ dir, snapshot, lines, now } = {}) {
   const state = text(snapshot?.project?.state) ?? text(snapshot?.status?.state);
   if (!state || statesLib.isTerminal(state)) return null;
   const clock = clockOf(now);
-  const runs = runsFrom(lines ?? (dir ? readAgentLines(dir) : []));
-  const list = rosterOf({ rows: snapshot?.plan?.rows, route: snapshot?.route })
+  const all = lines ?? (dir ? readAgentLines(dir) : []);
+  const runs = runsFrom(all);
+  const list = jobRoster({ snapshot, lines: all })
     .filter(id => id !== DIRECTOR && runs.some(run => run.agent === id && isOpen(run) && isFresh(run, clock)))
     .map(id => ({ id, name: nameOf(id), state: 'working' }));
   return agentLine({ list });
