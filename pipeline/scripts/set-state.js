@@ -3,11 +3,12 @@
 //
 //   node set-state.js <brand> <job-id> <STATE> --by <who> [--note "<text>"]
 //        [--notes-file <path>] [--next "<one line>"] [--blocked "<who or what>"] [--json]
-//   node set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>" [--json]
+//   node set-state.js <brand> <job-id> handoff passed <author> [<to>] --by <checked by> --note "<piece>" [--json]
 //   node set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>" [--json]
 //
 // The handoff forms add lines to the stage log and do not move the job: work that passes from one employee to the next after a check,
-// or goes back to its author (pipeline/docs/STAGES.md, "Handoff lines in the stage log"). The words of each line are made here.
+// or goes back to its author (pipeline/docs/STAGES.md, "Handoff lines in the stage log"). The words of each line are made here, and
+// for a piece the log knows ("Script", "Post text") so is who gets it next, whatever <to> says (lib-stages.js handoffNext).
 //
 // Status used to be edited by hand: rewrite the state, rewrite the timestamp, append a log
 // row, rewrite the notes. Six string replacements in one run, and list-jobs.js then scraped
@@ -47,7 +48,7 @@ const compatibility = argv.includes('--compatibility') || argv.includes('--migra
 
 if (!brand || !jobId || !target || !by) {
   console.error('usage: set-state.js <brand> <job-id> <STATE> --by <who> [--note "<text>"] [--notes-file <path>] [--next "<line>"] [--blocked "<text>"]');
-  console.error('   or: set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>"');
+  console.error('   or: set-state.js <brand> <job-id> handoff passed <author> [<to>] --by <checked by> --note "<piece>"');
   console.error('   or: set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>"');
   console.error('states: ' + states.ids().join(' '));
   process.exit(2);
@@ -56,7 +57,7 @@ if (!brand || !jobId || !target || !by) {
 const handoffArgs = { kind: resolved.rest[1], author: resolved.rest[2], to: resolved.rest[3], by, note: flag('note', '') };
 const isHandoff = target === 'handoff';
 if (isHandoff && !stages.handoffRows(handoffArgs)) {
-  console.error('usage: set-state.js <brand> <job-id> handoff passed <author> <to> --by <checked by> --note "<piece>"');
+  console.error('usage: set-state.js <brand> <job-id> handoff passed <author> [<to>] --by <checked by> --note "<piece>"');
   console.error('   or: set-state.js <brand> <job-id> handoff back <author> --by <checked by> --note "<reason>"');
   process.exit(2);
 }

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync,
 import { extname, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import * as runtime from './runtime.mjs';
+import * as facts from './facts.mjs';
 import { REFERENCE_TYPES } from './references.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
@@ -128,6 +129,28 @@ function plainLine(value, { label, limit }) {
   return text;
 }
 
+// Studio credits (pictures and clips) and Voice credits (voice-over and music) are separate balances, so a price is always said as each on
+// its own. A line on a job whose saved price has both that states their sum ("about 1,340 credits") is refused with the words to use.
+const CREDIT_WORD = /\bcredits?\b/i;
+const FIGURE = /\d[\d,]*(?:\.\d+)?/g;
+const creditFigure = value => Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+function addedCreditsProblem(root, place, lines) {
+  if (!place.jobId || !place.brand) return null;
+  let studio = 0;
+  let voice = 0;
+  try {
+    const job = facts.jobAt(root, place.brand, place.jobId);
+    const totals = job ? facts.quoteTotals(facts.readQuote(job)?.quote?.items) : null;
+    studio = totals?.[facts.THREE_ECHO] || 0;
+    voice = totals?.[facts.ELEVEN_LABS] || 0;
+  } catch { return null; }
+  if (!(studio > 0 && voice > 0)) return null;
+  const sum = studio + voice;
+  const added = lines.some(line => CREDIT_WORD.test(line) && (line.match(FIGURE) || []).some(figure => Math.abs(Number(figure.replace(/,/g, '')) - sum) < 0.005));
+  return added ? `Studio credits and Voice credits are separate balances, so never add them into one number. Say "about ${creditFigure(studio)} Studio credits and about ${creditFigure(voice)} Voice credits" instead.` : null;
+}
+
 function questionOptions(options) {
   if (options === undefined || options === null) return [];
   if (!Array.isArray(options) || options.length > QUESTION_OPTION_LIMIT) throw new TypeError(`Give at most ${QUESTION_OPTION_LIMIT} options.`);
@@ -216,6 +239,8 @@ export function askQuestion({ root, brand = null, jobId = null, text, options, a
   if (picks.length && options !== undefined && options !== null && !(Array.isArray(options) && !options.length)) throw new TypeError('A question with takes uses the takes as its options.');
   if (new Set(picks.map(take => take.label.toLowerCase())).size !== picks.length) throw new TypeError('Each take label must be different.');
   const choices = picks.length ? picks.map(take => take.label) : questionOptions(options);
+  const added = addedCreditsProblem(root, place, [question, ...choices]);
+  if (added) throw new TypeError(added);
   if (allowText !== undefined && allowText !== null && typeof allowText !== 'boolean') throw new TypeError('allowText must be true or false.');
   if (inChat !== undefined && inChat !== null && typeof inChat !== 'boolean') throw new TypeError('inChat must be true or false.');
   if (blocking !== undefined && blocking !== null && typeof blocking !== 'boolean') throw new TypeError('blocking must be true or false.');

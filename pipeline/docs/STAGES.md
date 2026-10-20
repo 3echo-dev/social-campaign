@@ -104,8 +104,11 @@ The Note cell is the plain line the person reads, then a bracket: `handoff=check
 
 ```
 | 2026-10-20T01:05:00.000Z | - | handoff | editor | Script checked by the Editor [revision=4; handoff=checked; with=scriptwriter,editor] |
-| 2026-10-20T01:05:00.001Z | - | handoff | producer | Handed to the Videographer [revision=4; handoff=handed; with=videographer] |
+| 2026-10-20T01:05:00.001Z | - | handoff | producer | Handed to the Creative Director [revision=4; handoff=handed; with=creative-director] |
 ```
+
+A checked script goes to the Creative Director, who draws the storyboard pictures; the Videographer is handed the work only after the person has approved the storyboard.
+For the two pieces the log knows, "Script" and "Post text" (to the Publisher), the command picks who gets the work next, so `{to}` may be left out and a wrong one is replaced.
 
 `set-state.js {brand} {job-id} handoff back {author} --by {checker} --note "{reason}"` writes one row:
 

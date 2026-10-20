@@ -313,15 +313,23 @@ function handoffWords(id) {
 }
 const handoffText = (value, limit) => String(value || '').replace(/[[\]|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit).trim();
 
+// Who really works next on a checked piece. A checked script is not the Videographer's yet: the Creative Director draws the storyboard
+// pictures from it, and the Videographer is handed the work only after the person has approved the storyboard. A piece named here decides
+// who gets it whatever `to` was given, so a plan frozen with another name, or a slip in the call, still writes the true line.
+const HANDOFF_NEXT = [[/^script\b/i, 'creative-director'], [/^post text\b/i, 'publisher']];
+const handoffNext = piece => (HANDOFF_NEXT.find(([pattern]) => pattern.test(String(piece || '').trim())) || [])[1] || null;
+
 /**
  * The stage log rows for a handoff, each { row, text, kind, with } (row has no line break), oldest first. Null when an agent is missing.
  *   kind 'passed': work of `author` that `by` checked and that now goes to `to`: two rows, "<note> checked by the <by>" (checked) and
- *                  "Handed to the <to>" (handed). `note` names the piece ("Script", "Post text").
+ *                  "Handed to the <to>" (handed). `note` names the piece ("Script", "Post text"); a piece handoffNext knows goes to the
+ *                  employee whose step is really next, so `to` may be left out for it.
  *   kind 'back':   work of `author` that `by` sent back: "Back to the <author>: <note>" (back). `note` is the reason in plain words.
  * `revision` is the job's revision, which a handoff does not change. The second row of a pair is a millisecond later, so no two share a time.
  */
 function handoffRows({ kind, author, to, by, note, revision = 0, now = Date.now() }) {
-  const [writer, next, checker] = [handoffId(author), handoffId(to), handoffId(by)];
+  const [writer, checker] = [handoffId(author), handoffId(by)];
+  const next = kind === 'passed' ? handoffNext(note) || handoffId(to) : handoffId(to);
   if (!writer || !checker || (kind === 'passed' && !next) || !['passed', 'back'].includes(kind)) return null;
   const piece = handoffText(note, 60);
   const reason = handoffText(note, 100);
@@ -352,6 +360,6 @@ function loggedStates(statusText) {
 
 module.exports = {
   STAGE_OF, STAGE_IDS, REPORT_STAGE_IDS, APPROVAL_STAGE_IDS, CREDIT_SKILLS, nextRunning, walkedStages, pricesMedia, reachedMaking, loggedStates,
-  isHandoffTo, handoffRows,
+  isHandoffTo, handoffRows, handoffNext,
   BRAND_STAGE_IDS, SHORT_OF, ACCEPTED_STAGE_IDS, forState, resolveStage, isReportWorkflow,
 };

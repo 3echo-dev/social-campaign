@@ -23,6 +23,7 @@ user-invocable: false
   Start the step now, or say plainly what it is waiting for.
 - Ask only for information needed to continue; follow the board question and approval rules below.
 - State relevant costs, failures, blockers, uncertainty and consequences.
+  Name each credit balance on its own, as board-sync's Plain words says, never one added-up number.
   After a failure, name the failed action and give one supported next step.
   Claim success, saved diagnostics or team notification only when tool results confirm that specific outcome.
 - Keep implementation details out of routine messages.
@@ -143,12 +144,14 @@ A video post's plan has two Editor check rows: "Editor check (script)", before t
 At each one, in this order:
 1. Confirm the file is on disk and is the current revision (`collect-artifacts.js`, then the snapshot's revision).
 2. Spawn the Editor for that row with the file, the brief and the idea the person picked. It writes `validation/handoff-script.md` or `validation/handoff-post-text.md` and answers GO or NEEDS REVISION, with one plain reason and what the fix would change.
-3. On GO, run `node "${CLAUDE_PLUGIN_ROOT}/pipeline/scripts/set-state.js" {brand} {job-id} handoff passed {author} {next} --by editor --note "Script"`. `{author}` is the employee who wrote it (the plan row's agent), `{next}` is `videographer` for the script and `publisher` for the post text, and the note is "Script" or "Post text".
+3. On GO, run `node "${CLAUDE_PLUGIN_ROOT}/pipeline/scripts/set-state.js" {brand} {job-id} handoff passed {author} {next} --by editor --note "Script"`. `{author}` is the employee who wrote it (the plan row's agent), `{next}` is the employee whose step is really next, and the note is "Script" or "Post text".
+   After the script check the next step is the storyboard and its pictures, so `{next}` is `creative-director`; the Videographer gets the work only after the person has approved the storyboard, so never name `videographer` at the script check. After the post text check `{next}` is `publisher`.
+   The command writes the right employee for these two notes even when `{next}` is left out or wrong.
 4. On NEEDS REVISION, run the same command with `handoff back {author} --by editor --note "{reason}"`. Give the reason in plain words under 100 characters ("too long for 22 seconds"). Send the work back to its author once with that reason, then check the new version the same way; the Editor rechecks only what changed.
 5. After either call, write the job's board documents as board-sync's Agent Box section says.
 
 The command adds the lines to the job's stage log and leaves its state alone.
-The room shows "Script checked by the Editor" and "Handed to the Videographer" for a pass, and "Back to the Scriptwriter: too long for 22 seconds" for a send-back.
+The room shows "Script checked by the Editor" and "Handed to the Creative Director" for a script pass, and "Back to the Scriptwriter: too long for 22 seconds" for a send-back.
 Each row of the log carries the plain line and a bracket the room reads (`handoff=checked`, `handoff=handed` or `handoff=back`, and `with=` the agents it is about), so never write one by hand.
 Raise a card only when the Editor says the fix changes the idea, the price or the posting.
 Any other fix goes back to its author without asking the person.

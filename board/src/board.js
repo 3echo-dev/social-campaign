@@ -4145,7 +4145,9 @@ function stripCell(board, panel, index, { interactive = false, verdict = null, c
   return `<li class="${cls}"><button type="button" class="sb-cell-body" data-sb-panel="${esc(panelKey(board, panel, index))}" aria-label="${esc(`${panelLabelOf(panel, index)}${state}`)}"${current ? ' aria-current="step"' : ''}>${body}</button></li>`;
 }
 
-export function storyboardStrip(board, { interactive = false, verdicts = {}, current = null, highlight = null } = {}) {
+// `cells: false` draws only the heading (name, details, runtime note) and leaves out the row of small panel cards, for a place that
+// lists every panel in full right below it (storyboardReadout), so the same panels are not shown twice.
+export function storyboardStrip(board, { interactive = false, verdicts = {}, current = null, highlight = null, cells: showCells = true } = {}) {
   const panels = board?.panels || [];
   const total = Number(board?.totalSeconds) > 0 ? Number(board.totalSeconds) : Number(board?.runtimeSeconds) > 0 ? Number(board.runtimeSeconds) : null;
   const voiceOver = board?.voiceOver ? (board.voiceOver.enabled ? `Voice-over: yes${board.voiceOver.voice ? `, ${board.voiceOver.voice}` : ''}` : 'Voice-over: no') : '';
@@ -4155,7 +4157,7 @@ export function storyboardStrip(board, { interactive = false, verdicts = {}, cur
     const key = panelKey(board, panel, index);
     return stripCell(board, panel, index, { interactive, verdict: verdicts[key]?.verdict || null, current: current === key, highlight: highlight === key });
   }).join('');
-  return `<section class="storyboard"><div class="storyboard-head"><div class="storyboard-title"><h3>${esc(deliverableLabel(board, 'Storyboard'))}</h3>${refTag(boardRef)}</div><div class="storyboard-sub"><span class="muted">${esc(meta)}</span>${interactive ? askForChanges(boardRef) : ''}</div></div>${runtimeNote(board)}${panels.length ? `<ol class="sb-strip" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${cells}</ol>` : '<p class="muted">No panels found.</p>'}</section>`;
+  return `<section class="storyboard"><div class="storyboard-head"><div class="storyboard-title"><h3>${esc(deliverableLabel(board, 'Storyboard'))}</h3>${refTag(boardRef)}</div><div class="storyboard-sub"><span class="muted">${esc(meta)}</span>${interactive ? askForChanges(boardRef) : ''}</div></div>${runtimeNote(board)}${panels.length ? (showCells ? `<ol class="sb-strip" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${cells}</ol>` : '') : '<p class="muted">No panels found.</p>'}</section>`;
 }
 
 function storyboardPanelsOf(boards) {
@@ -7238,9 +7240,11 @@ export function storyboardKeptByStep(stages, who, doc) {
 export function storyboardReadout(board) {
   const slots = (board?.panels || []).map((panel, index) => {
     const frame = panelFrameHtml(panel, index, { large: true });
-    const picture = frame.startsWith('<img') ? `<div class="sb-slot-frame">${frame}</div>` : `<div class="sb-slot-frame is-empty${panel?.frame?.thumbOmitted ? ' is-omitted' : ''}">${frame}</div>`;
+    // A made frame opens full size, and each full panel can be talked about, as in the review's own slot.
+    const full = safePreviewUrl(panel?.frame?.reviewUrl) && panel.frame.kind === 'image' ? `<button type="button" class="media-open" data-view-media="${esc(safePreviewUrl(panel.frame.reviewUrl))}" data-view-alt="${esc(panelLabelOf(panel, index))}" aria-label="Open ${esc(panelLabelOf(panel, index))} full size">${frame}</button>` : frame;
+    const picture = frame.startsWith('<img') ? `<div class="sb-slot-frame">${full}</div>` : `<div class="sb-slot-frame is-empty${panel?.frame?.thumbOmitted ? ' is-omitted' : ''}">${frame}</div>`;
     const meta = [Number(panel?.durationSeconds) > 0 ? secondsWord(panel.durationSeconds) : '', PANEL_SOURCE_WORDS[panel?.source] || 'New'].filter(Boolean).join(' · ');
-    return `<div class="sb-slot" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${picture}<div class="sb-slot-body"><div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span></div>${panelFields(panel, board)}</div></div>`;
+    return `<div class="sb-slot" style="--sb-ratio:${frameRatio(board?.aspectRatio)}">${picture}<div class="sb-slot-body"><div class="sb-slot-head"><strong>${esc(panelLabelOf(panel, index))}</strong>${refTag(panelRefOf(panel, index))}<span class="sb-source">${esc(meta)}</span></div>${panelFields(panel, board)}<div class="sb-slot-actions">${frameAboutButton(board, panel, index)}</div></div></div>`;
   });
   return slots.join('');
 }
@@ -7270,7 +7274,7 @@ export function stepTrace(item, ctx = {}) {
   const priceList = withFiles && item.quote && status === 'done' ? `<p><b>Price list</b></p>${priceTable(item.quote, { withProvider: true })}` : '';
   const made = !withFiles ? '' : priceList + (traceFiles(files, ctx, `Files from ${item.name}`) || (status === 'done' && !priceList && !item.request && !compact ? '<p class="muted">No files listed for this step.</p>' : ''));
   const boards = withFiles ? stepStoryboards(item, files, ctx.chipContext?.doc) : [];
-  const shotPlan = boards.length ? traceSection('Storyboard', boards.map(board => storyboardStrip(board) + storyboardReadout(board)).join('')) : '';
+  const shotPlan = boards.length ? traceSection('Storyboard', boards.map(board => storyboardStrip(board, { cells: false }) + storyboardReadout(board)).join('')) : '';
   const meta = compact ? '' : traceMeta(item.agent || agent?.id, withWho ? person : null, status === 'done' ? item.doneAt || item.startedAt : item.startedAt);
   const session = win.known && !compact ? [traceRuns(agent ? [agent] : [], win), traceMessages(agent ? [agent] : [], win), traceMoves(agent ? [agent] : [], win)].join('') : '';
   const asked = withFiles ? requestTrace(item) : '';

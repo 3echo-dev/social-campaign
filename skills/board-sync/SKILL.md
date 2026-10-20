@@ -163,6 +163,8 @@ Use plain, professional language in chat and on the board.
 Keep implementation details out of routine messages.
 Provide relevant details for informed decisions or requested diagnostics, without secrets or private information.
 After a failure, name the failed action and give one supported next step.
+Name a cost by its own balance everywhere (a question, a card, a chat line): Studio credits pay for pictures and clips, Voice credits pay for voice-over and music, and they are separate balances.
+Say "about 121 Studio credits and about 1,219 Voice credits", the figures `pipeline_quote_save` returns in `totals`, and never add the two into one number; the server refuses a question that does.
 Claim success, saved diagnostics or team notification only when tool results confirm that specific outcome.
 
 ## Agent Box
