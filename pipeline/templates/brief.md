@@ -29,6 +29,42 @@ brand_files_reviewed: true    # false when onboarding was accepted as drafts
 Fill every section from the approved direction in `job.json` (`direction`) first. Research fills only what the direction leaves open. Never change the topic.
 The direction's message is a working line: when research shows a sharper line in the audience's own words, propose it under Core message as "Sharpened", with the reason, and the person approves it at the strategy gate. Never change it silently.
 
+## At a glance
+
+This is the ten-second read of the brief, for a person who will not open the sections below.
+Fill it last, from those sections, and delete these notes.
+Write one `- Label: value` line per row, with exactly these labels, in this order.
+The board reads the lines word for word, so keep the layout as it is.
+Every value is a short plain phrase that reads inside a sentence, with no file names, ids, tool names or model names.
+Leave out a row the brief cannot state yet and raise it as a question for the person.
+Never write a guess or "to be decided".
+Shape is the ratio the job's deliverable states, which is fixed per format.
+When the deliverable states none, use the default for the post type: 9:16 for a Reel, a Story or a TikTok video, 16:9 for a Facebook video post, otherwise 4:5.
+Voice, Music and Subtitles say what the brief plans, and the sound the person picks later replaces them.
+
+- Post: {platform and post type, e.g. Instagram Reel}
+- Length: {running time, e.g. 20 seconds}
+- Shape: {9:16 | 4:5 | 1:1 | 16:9}
+- Topic: {what the post is about, in a few words}
+- Message: {the one thing it says}
+- Who's in it: {who appears, or "No one on screen"}
+- Look: {how it looks and feels, in a few words}
+- Voice: {who or what speaks, or "None"}
+- Music: {the mood of the music, or "None"}
+- Subtitles: {Word by word | One line | None}
+- Ends on: {the last beat or the call to action}
+- Posting: {when and where, e.g. Friday 7:30 pm Singapore time}
+
+### Sources
+
+One bullet per thing this brief rests on, written `- {what it is}: {source file} ({solid | thin | gap})`.
+The label is a short plain phrase, such as "Customer words" or "Competitor ads", never a file name.
+The source file is the research or brand file it came from.
+Solid is a checked fact or the audience's own words, thin is one signal or an unchecked claim, and gap is nothing found.
+A gap names no file, so write `none` in its place.
+
+- {what it is}: {source file} ({solid | thin | gap})
+
 # Angle
 
 One sentence. "Our booking assistant recovers the bookings you lose to missed calls" is an angle. "Booking software" is a topic.

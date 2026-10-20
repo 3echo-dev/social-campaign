@@ -66,8 +66,21 @@ export const aboutOf = value => {
   const path = soundPath(value.path);
   const panel = typeof value.panel === 'string' ? PANEL_REF.exec(value.panel.trim())?.[2] : null;
   const revision = Number.isSafeInteger(value.revision) && value.revision >= 0 ? value.revision : null;
-  return { label, ...(path ? { path } : {}), ...(revision !== null ? { revision } : {}), ...(panel ? { panel } : {}) };
+  return { label, ...(path ? { path } : {}), ...(revision !== null ? { revision } : {}), ...(panel ? { panel } : {}), ...briefAboutOf(value) };
 };
+
+// A word of the brief the person changed (a tap on a word or a picker): the field, the brief version they looked at and, for a picker only, the new value
+// (short). A word tapped to type about carries no value. Only read when `kind` is "brief"; a part that does not fit is left off and the message still saves (no refusal).
+const BRIEF_VALUE_LIMIT = 120;
+const BRIEF_FIELD = /^[a-z][a-z-]{1,20}$/;
+function briefAboutOf(value) {
+  if (value.kind !== 'brief') return {};
+  const field = typeof value.field === 'string' && BRIEF_FIELD.test(value.field) ? value.field : null;
+  const text = word(value.value);
+  const shown = text && !CONTROL.test(text) ? text.slice(0, BRIEF_VALUE_LIMIT) : null;
+  const version = Number.isSafeInteger(value.version) && value.version >= 0 ? value.version : null;
+  return { kind: 'brief', ...(field ? { field } : {}), ...(shown ? { value: shown } : {}), ...(version !== null ? { version } : {}) };
+}
 
 export const messagesFile = (jobDir, agent) => join(jobDir, 'messages', `${agent}.jsonl`);
 
@@ -396,7 +409,10 @@ const quoted = texts => JSON.stringify(texts).replace(/</g, '\\u003c');
 function aboutLine(about, position) {
   const found = aboutOf(about);
   if (!found) return null;
-  const detail = [found.panel ? `panel ${quoted(found.panel)}${found.path ? ` of ${quoted(found.path)}` : ''}` : found.path ? `file ${quoted(found.path)}` : '', found.revision !== undefined ? `version ${found.revision}` : ''].filter(Boolean).join(', ');
+  // A word of the brief says its field, and for a picker's message the value to change it to, for example `about the brief: shape, change to "16:9"`; the value is
+  // quoted like the label. A word the person tapped and typed about names no value (the new words are the message), so the line never shows an old value as a new one.
+  const change = found.kind === 'brief' && found.field ? `about the brief: ${found.field}${found.value ? `, change to ${quoted(found.value)}` : ''}` : '';
+  const detail = [found.panel ? `panel ${quoted(found.panel)}${found.path ? ` of ${quoted(found.path)}` : ''}` : found.path ? `file ${quoted(found.path)}` : '', found.revision !== undefined ? `version ${found.revision}` : found.version !== undefined ? `version ${found.version}` : '', change].filter(Boolean).join(', ');
   return `Message ${position} is about ${quoted(found.label)}${detail ? ` (${detail})` : ''}.`;
 }
 

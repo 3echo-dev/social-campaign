@@ -104,7 +104,14 @@ done when:     every deliverable in job.json has a row in the deliverable map na
    | Action | reduced friction, a single obvious next step, a default |
 
 6. CTA intent per platform, required and prohibited elements (`brand/positioning.md` claims we never make, plus this job), the schedule inside the brand cadence, success, out of scope.
-7. Run `brand-check` and list supplied historical learning IDs used in `learnings_used`, otherwise `[]`.
+7. Fill the `## At a glance` block of `templates/brief.md` last, from the sections you wrote, exactly as the template lays it out, and delete its notes.
+   Take each row from the approved direction and the job first, and from your own sections for the rest.
+   Shape is the deliverable's ratio when `job.json` states one, else the post-type default the template names.
+   Voice, Music and Subtitles say what you plan; the sound plan the person confirms later replaces them on the board.
+   Leave out a row you cannot state and raise it in Supply questions; never guess a value.
+   Under `### Sources` list at most 8 things the brief rests on: solid when the proof point is labelled FACT or is the audience's own words, thin when it is an OBSERVATION, an INFERENCE or a single signal, and gap, with no file, when nothing was found.
+   Keep the front matter `version` equal to the brief's version: it is 1 on the first brief and one higher on every rewrite, with a Changelog line, because the board shows and cites it.
+8. Run `brand-check` and list supplied historical learning IDs used in `learnings_used`, otherwise `[]`.
    Accepted lessons live in `brand/learnings.json` (saved when the person approves a results review); list the ids of the ones this brief follows.
 
 ## Rules
@@ -133,7 +140,7 @@ Two things must survive the compression; the specialists never read the research
 
 ## Output
 
-Every section of `templates/brief.md`, filled.
+Every section of `templates/brief.md`, filled, including the `## At a glance` block.
 Front matter: `job`, `brand`, `version`, `status`, `pillar`, `angle`, `objective`, `distribution`, `created` with zone, `learnings_used`.
 Where research cannot support an angle, write what exists and raise `R-EVIDENCE` with a specific gap list, never "research was inadequate".
 
@@ -151,5 +158,6 @@ Where research cannot support an angle, write what exists and raise `R-EVIDENCE`
 | Historical record has no applicable scope or date | Omit it; use relevant sourced evidence |
 | Brief longer than the research | Compress |
 | A hook line, not a family | Name the `H-*` family |
+| An At a glance row that is a guess, or carries a file name, an id or a tool name | Leave the row out and ask; values are plain words |
 
 Number provenance: `docs/sources/research.md`.

@@ -1,7 +1,7 @@
 import { defineTool } from '../mcp/registry.mjs';
 import * as runtime from '../pipeline/runtime.mjs';
 import * as facts from '../pipeline/facts.mjs';
-import { registerTakes, setCombineRow } from '../pipeline/combine.mjs';
+import { VOICE_CATALOG_LIMIT, registerTakes, saveVoiceCatalog, setCombineRow } from '../pipeline/combine.mjs';
 import { addToLibrary, listLibrary } from '../pipeline/library.mjs';
 
 const string = { type: 'string' };
@@ -29,6 +29,7 @@ export const combineTools = [
     const { item, saved } = await addToLibrary({ root, kind: args.kind, path: args.path, brand: args.brand, title: args.title, licence: args.licence, origin: 'upload', addedFrom: 'library' });
     return { id: item.id, title: item.title, licence: item.licence, saved };
   }),
+  tool('pipeline_voice_catalog_save', "Save the ElevenLabs voices you just listed with creative_list_voices, so the board's voice picker can show them with their free preview clips. Pass voices: a list of { id (the voice id exactly as the list gave it), name, line (one plain line about the voice, such as its tone or accent), previewUrl (the https link of its free preview clip) }, at most " + VOICE_CATALOG_LIMIT + ". It replaces the whole saved list, so pass the full result of the latest search (when the person asks for voices like one they named, search for that and save what came back). A list that is empty or not usable is refused and the saved one stays. Saving never makes or buys anything: previews are free and the voice-over itself is priced with the storyboard. Record the voice the person picks with pipeline_finishing_choice (voice make with voiceId and voiceName), never by making audio.", { voices: { type: 'array', minItems: 1, maxItems: VOICE_CATALOG_LIMIT, description: 'The voices to keep, closest matches first.', items: { type: 'object', properties: { id: string, name: string, line: string, previewUrl: string }, required: ['id', 'name'] } } }, ['voices'], (args, { workspace }) => saveVoiceCatalog({ root: local(workspace), voices: args.voices })),
   tool('pipeline_combine_set', 'Settle one row of the combine card after the joined video was approved: row music or voice with source library (id), upload (path of the file the person gave, saved to the library with the job\'s brand tag), make (with take: the label of the ElevenLabs take the person picked, such as "Take 2"; without take it only marks the row as waiting for the made track) or none; row captions with source voice, script or none. Refused until the cut is approved with a finishing choice. Making music or voice is priced first and always needs the person\'s price click on the board.', { ...{ brand: string, jobId: string }, row: { type: 'string', enum: ['music', 'voice', 'captions'] }, source: { type: 'string', enum: ['library', 'upload', 'make', 'none', 'voice', 'script'] }, id: string, take: string, path: string, title: string, licence: string, why: string }, ['brand', 'jobId', 'row', 'source'], async (args, { workspace }) => {
     const root = local(workspace);
     return setCombineRow({ root, job: jobOf(root, args), row: args.row, source: args.source, id: args.id, take: args.take, path: args.path, title: args.title, licence: args.licence, why: args.why });

@@ -5,10 +5,10 @@
 // pipeline_finishing_choice and a change note. finish-video.py reads the same file and refuses to run without it
 // (pipeline/scripts/review_gate.py).
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as facts from './facts.mjs';
-import { openSoundQuestions } from './questions.mjs';
+import { isSoundQuestion, listQuestions, openSoundQuestions } from './questions.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 export const FINISHING_FILE = 'approvals/finishing.json';
@@ -70,13 +70,58 @@ export function transcriptSaved(job) {
 /** What a recorded plan reads when the person has not answered the sound plan question yet. */
 export const SUGGESTED_MESSAGE = 'Saved as a suggestion only: the sound plan question is still open, so this plan does not count yet. When the person answers, record the plan from their answer the same way; that replaces this one. Price the clips, voice-over and music only after that, so the price follows the answer.';
 
+/** Whether `by` names the person (their own tap or answer), not the Director. */
+export const madeByPerson = by => /^the person\b/i.test(String(by ?? ''));
+
+/** Whether a plan written by `by` now is only the Director's suggestion: the sound plan question is still open and the person did not write it. */
+export const isSuggestion = ({ job, by }) => !madeByPerson(by) && openSoundQuestions({ root: job.root, jobId: job.jobId }).length > 0;
+
+/** Whether the person already answered the sound plan question of the job (the plan is then recorded from that answer, whole). */
+export function soundQuestionAnswered(job) {
+  if (!job?.root || !job?.jobId) return false;
+  try { return listQuestions({ root: job.root, jobId: job.jobId, status: 'answered', readOnly: true }).some(isSoundQuestion); } catch { return false; }
+}
+
+// ---------------------------------------------------------------- the person's picks before the sound plan is answered
+// A tap on the brief's voice, music or subtitles word names one part of the sound. It is the person's word for that part, but it is not
+// the sound plan answer: the other parts are still open, and the storyboard price waits for the answer. So it is kept here, apart from
+// approvals/finishing.json, which facts.finishingRecord and review_gate.py read as the plan. The answer carries these picks forward.
+export const SOUND_PICKS_FILE = 'approvals/sound-picks.json';
+export const SOUND_ROWS = Object.freeze(['music', 'voice', 'captions']);
+
+/** The rows the person picked one at a time, { music?, voice?, captions? }, each a combine row ({ source, ... }); {} when there are none. */
+export function readSoundPicks(job) {
+  const saved = job?.dir ? readJson(join(job.dir, ...SOUND_PICKS_FILE.split('/'))) : null;
+  const out = {};
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return out;
+  for (const row of SOUND_ROWS) {
+    const pick = saved[row];
+    if (pick && typeof pick === 'object' && !Array.isArray(pick) && typeof pick.source === 'string') out[row] = pick;
+  }
+  return out;
+}
+
+export function writeSoundPicks({ job, picks, by }) {
+  mkdirSync(join(job.dir, 'approvals'), { recursive: true });
+  const rows = Object.fromEntries(SOUND_ROWS.filter(row => picks?.[row]).map(row => [row, picks[row]]));
+  const file = join(job.dir, ...SOUND_PICKS_FILE.split('/'));
+  const temp = `${file}.${randomUUID()}.tmp`;
+  writeFileSync(temp, JSON.stringify({ ...rows, decidedAt: new Date().toISOString(), by: by || 'the person' }, null, 2));
+  renameReplacing(temp, file);
+}
+
+/** The picks were carried into a plan that counts, so they have done their job. */
+export function clearSoundPicks(job) {
+  try { rmSync(join(job.dir, ...SOUND_PICKS_FILE.split('/')), { force: true }); } catch { /* nothing to clear */ }
+}
+
 /**
  * Write approvals/finishing.json. The sound can be chosen any time before finishing (before the clips are joined too), so it is not tied to the joined video's files. `extra` carries the combine picks (combine.mjs).
  * A plan written while the sound plan question is still open is the Director's suggestion (`suggested: true`): facts.finishingRecord does not count it, and the person's answer replaces it.
  */
 export function writeFinishingRecord({ job, choice, parts, extra = {}, by }) {
   mkdirSync(join(job.dir, 'approvals'), { recursive: true });
-  const suggested = !/^the person\b/i.test(String(by ?? '')) && openSoundQuestions({ root: job.root, jobId: job.jobId }).length > 0;
+  const suggested = isSuggestion({ job, by });
   const saved = { choice, ...parts, ...extra, ...(suggested ? { suggested: true } : {}), decidedAt: new Date().toISOString(), by: by || 'director' };
   const file = join(job.dir, ...FINISHING_FILE.split('/'));
   const temp = `${file}.${randomUUID()}.tmp`;

@@ -40,7 +40,7 @@ Keep generated media requests as producer inputs.
 
 Leave concept, storyboard, and content decisions to the board and pipeline decision tools.
 
-## Angles for every post that makes pictures or video
+## Ideas for every post that makes pictures or video
 
 Every post that makes pictures or video gets 2 or 3 angles to pick from before the storyboard, whether or not a reference video exists.
 Write them from the approved brief and the approved direction, and never change the topic or the message.
@@ -53,6 +53,7 @@ Open the choice with a short summary of the brief: the message, who it is for, t
 The person picks one angle, mixes two, or says "pick for me".
 Offer "Pick for me" as an option every time.
 When they say it, choose the angle you think is strongest, say which and why in one line, and carry on.
+When "Pick for me" comes from the board's ideas view, follow the ideas message section of `${CLAUDE_PLUGIN_ROOT}/skills/board-sync/references/job-requests.md` instead.
 
 The storyboard and the copy follow the pick.
 The hook line and the call to action of the picked angle are used as they are, and are never asked again.

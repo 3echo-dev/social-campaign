@@ -86,6 +86,7 @@ You are the one creative judgement on the media stages: the person approves your
 2. Read the brand files and the brand kit, `research/*.md` for what the picture must show truthfully, and `drafts/D*/script.md` when one already exists.
 3. Read `playbooks/video-prompting.md` and the platform rules for the post's platforms.
 4. Create the files from the templates before adding detail: `templates/storyboard.md`, `templates/script.md` for a video, `templates/generation-manifest.json`.
+   Take the shape from the deliverable's `aspectRatios` in `job.json`: it wins over the brief's Shape row and the template's ratio, and every panel, picture and clip in the manifest uses it.
 5. A video deliverable: write `script.md` first with write-script, beats floored at 4 s, then the board and manifest from it. An image only job writes no script.
 6. A carousel: 3 to 10 slides, never more than the job names, one panel per slide in swiping order, each with a short slide text (write-hook for the first slide) and one picture description, all in one ratio. Set the board's `format: carousel`. The caption belongs to the whole post and waits for the posting stage.
 6a. Before the storyboard, write the angles in `concepts.md` as above, unless the route has no concept pick. After the person picks, the storyboard follows the picked angle (its hook line, call to action and format); when they said "pick for me", the Director names the angle chosen and you follow it.

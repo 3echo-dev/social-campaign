@@ -29,7 +29,8 @@ import { attemptState, projectPublishStatus, readAttempts } from './publish-atte
 import { APP_ORIGIN, hostedAssetBySha, readApprovedIntent } from './media-host.mjs';
 import { agentBoxAndRoom, coreOnlyAgentBox, trimRoom } from './agent-box.mjs';
 import { musicSection } from './music.mjs';
-import { combineSection } from './combine.mjs';
+import { MUSIC_MOODS, combineSection } from './combine.mjs';
+import { readSoundPicks } from './finishing.mjs';
 // strategy-options.mjs reaches brand-library.mjs, which imports this file: it is only used inside functions, never at load time.
 import { withStrategyOptions } from './strategy-options.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
@@ -625,6 +626,129 @@ export function parseConcepts(text) {
     summary,
     concepts: concepts.slice(0, MAX_CONCEPTS),
   };
+}
+
+/**
+ * brief.md's fixed "## At a glance" block (pipeline/templates/brief.md), read for the board's brief paragraph:
+ *   - Label: value                        one row per line; the labels are BRIEF_GLANCE_LABELS, in any order in the file
+ *   ### Sources
+ *   - What it rests on: research/audience.md (solid)      strength is solid, thin or gap; a gap with no file says "none"
+ * Returns { rows: [{ label, value }], sources: [{ label, file, strength }], version }, rows in the fixed order and a row the brief
+ * does not state left out, or null for a brief without the block (an older brief), so the board keeps today's strategy panel.
+ * `version` is the brief's own front matter version (1 when it names none). The rows reuse the strategy summary's line reader.
+ */
+export const BRIEF_GLANCE_LABELS = Object.freeze(['Post', 'Length', 'Shape', 'Topic', 'Message', "Who's in it", 'Look', 'Voice', 'Music', 'Subtitles', 'Ends on', 'Posting']);
+const GLANCE_SOURCES_LIMIT = 12;
+const glanceKey = label => String(label).replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+const GLANCE_LABEL_BY_KEY = new Map(BRIEF_GLANCE_LABELS.map(label => [glanceKey(label), label]));
+const NOTHING_NAMED = /^(?:none|n\/a|na|nil|no file|-|\u2013|\u2014)?$/i;
+
+// One line under "### Sources": `- label: file (solid|thin|gap)`. A line that does not say how strong the source is reads as thin.
+function glanceSource(raw) {
+  const bullet = /^[-*+]\s+(.*)$/.exec(raw.trim());
+  const match = bullet ? /^(.{1,160}?)\s*:\s+(.+)$/.exec(bullet[1].replace(/\*\*/g, '')) : null;
+  // Only a bullet is a source, and a `{placeholder}` left from the template is none.
+  if (!match || /[{}]/.test(match[1])) return null;
+  const label = clip(match[1].replace(/`/g, ''), 120);
+  const strong = /^(.*?)\s*\(\s*(solid|thin|gap)\s*\)\s*$/i.exec(match[2].trim());
+  const bare = /^(solid|thin|gap)$/i.exec(match[2].trim());
+  const file = (strong ? strong[1] : bare ? '' : match[2]).replace(/[`]/g, '').trim();
+  if (!label) return null;
+  return { label, file: NOTHING_NAMED.test(file) ? null : clip(file, 200), strength: (strong?.[2] || bare?.[1] || 'thin').toLowerCase() };
+}
+
+export function parseBriefGlance(text) {
+  if (typeof text !== 'string' || !text) return null;
+  const { meta, body } = splitFrontMatter(text);
+  const block = sectionText(body, 'At a glance');
+  if (block === null) return null;
+  const picked = new Map();
+  const sources = [];
+  let inSources = false;
+  let last = null; // the fixed row on the line above: a wrapped line continues it
+  for (const line of block.split(/\r?\n/)) {
+    const bare = line.trim();
+    if (/^(?:#{1,6}\s+)?sources\s*:?\s*$/i.test(bare)) { inSources = true; continue; }
+    if (/^#{1,6}\s/.test(bare)) { inSources = false; continue; }
+    if (inSources) {
+      const source = glanceSource(line);
+      if (source && sources.length < GLANCE_SOURCES_LIMIT) sources.push(source);
+      continue;
+    }
+    // One line at a time, so a line of explanation between the rows never uses up the summary reader's places.
+    const scratch = last ? [last] : [];
+    addSummaryLine(scratch, line);
+    const row = scratch[scratch.length - 1];
+    if (!row || row === last) continue;
+    const known = GLANCE_LABEL_BY_KEY.get(glanceKey(row.label));
+    last = known && !picked.has(known) ? row : null;
+    if (last) picked.set(known, row);
+  }
+  const rows = new Map();
+  for (const [label, { value }] of picked) {
+    // An unfilled `{placeholder}` from the template is no value; a shape is read as its ratio ("4:5 portrait" is 4:5).
+    if (/^\{[^}]*\}$/.test(value.trim())) continue;
+    rows.set(label, label === 'Shape' ? /\b\d{1,2}:\d{1,2}\b/.exec(value)?.[0] || value : value);
+  }
+  if (!rows.size) return null;
+  const version = wholeNumber(meta.version);
+  return { rows: BRIEF_GLANCE_LABELS.filter(label => rows.has(label)).map(label => ({ label, value: rows.get(label) })), sources, version: version > 0 ? version : 1 };
+}
+
+// The job's first deliverable: the one the brief is about.
+const firstDeliverable = job => (Array.isArray(job?.deliverables) && job.deliverables[0] && typeof job.deliverables[0] === 'object' ? job.deliverables[0] : null);
+
+// The shape the job's deliverable states (fixed per format, defaulted from the post type when the job was made), else null.
+function deliverableShape(job) {
+  const first = firstDeliverable(job);
+  const ratios = Array.isArray(first?.aspectRatios) ? first.aspectRatios : [];
+  return ratios.find(ratio => typeof ratio === 'string' && /^\d{1,2}:\d{1,2}$/.test(ratio.trim()))?.trim() || null;
+}
+
+// The platform and post type the job's deliverable states, the source the board's own shape rules read (derivePlacement, as in the intake
+// rows), so the shape picker's lock never depends on the words of the brief's Post row. The post type is '' while the job has none yet.
+// Null when the job names no platform.
+function deliverablePost(job) {
+  const first = firstDeliverable(job);
+  const platform = typeof first?.platform === 'string' ? first.platform.trim().toLowerCase() : '';
+  return platform ? { platform, placement: deliverableRules.derivePlacement(first) || '' } : null;
+}
+
+// What the saved combine record (combine.mjs: music, voice and captions picks) says in the brief's own rows. A row the record cannot
+// state, or that the person did not pick, is left out here, so the brief's markdown stands for it. A take made before 0.19.5 carries the
+// job id in its title ("Voice-over Take 2 (job-...)"), so a trailing id is cut off and never shown.
+function combineGlance(combine, shape) {
+  const out = {};
+  if (!combine || typeof combine !== 'object') return out;
+  const named = value => { const text = typeof value === 'string' ? value.replace(/\s*\(job-[^)]*\)\s*$/i, '').trim() : ''; return text ? clip(text, 120) : ''; };
+  const row = (pick, words) => {
+    const source = pick && typeof pick === 'object' ? pick.source : null;
+    if (source === 'none') return 'None';
+    return Object.hasOwn(words, source) ? words[source](pick) : null;
+  };
+  const voice = row(combine.voice, { library: pick => named(pick.title) || 'A voice from your library', upload: pick => named(pick.title) || 'Your recording', make: pick => named(pick.voiceName) || 'A voice-over made for the video' });
+  const music = row(combine.music, { library: pick => named(pick.title) || 'A track from your library', upload: pick => named(pick.title) || 'Your track', make: pick => (MUSIC_MOODS.includes(pick.mood) ? `${pick.mood[0].toUpperCase()}${pick.mood.slice(1)} music made for the video` : 'Music made for the video') });
+  const style = pick => (pick.style === 'word' || pick.style === 'line' ? pick.style : shape === '9:16' ? 'word' : 'line');
+  const subtitles = row(combine.captions, { voice: pick => (style(pick) === 'word' ? 'Word by word' : 'One line'), script: pick => (style(pick) === 'word' ? 'Word by word' : 'One line') });
+  if (voice) out.Voice = voice;
+  if (music) out.Music = music;
+  if (subtitles) out.Subtitles = subtitles;
+  return out;
+}
+
+/**
+ * The brief's glance for the job document: parseBriefGlance with the deliverable's shape and the saved combine record laid over it,
+ * plus `post` ({ platform, placement } from the deliverable) when the job names a platform.
+ */
+export function briefGlance(text, { job = null, combine = null } = {}) {
+  const parsed = parseBriefGlance(text);
+  if (!parsed) return null;
+  const values = new Map(parsed.rows.map(row => [row.label, row.value]));
+  const shape = deliverableShape(job);
+  if (shape) values.set('Shape', shape);
+  for (const [label, value] of Object.entries(combineGlance(combine, values.get('Shape') || ''))) values.set(label, value);
+  const post = deliverablePost(job);
+  return { ...parsed, rows: BRIEF_GLANCE_LABELS.filter(label => values.has(label)).map(label => ({ label, value: values.get(label) })), ...(post ? { post } : {}) };
 }
 
 // A combined "Spoken / on-screen" cell: labelled parts when the writer labelled
@@ -1498,6 +1622,18 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
     const { raw } = load(path);
     try { return raw == null ? null : JSON.parse(raw); } catch { return null; }
   };
+
+  // The brief's "At a glance" block for the board's brief paragraph; null for an older brief, so the board keeps its strategy panel.
+  // The saved sound picks (combine) win over the brief's own words for voice, music and subtitles; the deliverable's ratio wins for the shape.
+  // Before the sound plan is answered the person's own taps stand alone: only the rows they picked overlay the brief.
+  let savedCombine = null;
+  try {
+    const chosen = finishingRecord({ dir })?.combine;
+    const picks = readSoundPicks({ dir });
+    if (chosen && typeof chosen === 'object') savedCombine = chosen;
+    else if (Object.keys(picks).length) savedCombine = picks;
+  } catch { /* the brief's own words stand */ }
+  document.brief = shaOf.has('brief.md') ? briefGlance(load('brief.md').raw, { job, combine: savedCombine }) : null;
 
   // Video posters and durations come from the generation manifests: a clip is
   // seeded from a panel image, and the stitched cut opens on its first clip.

@@ -34,9 +34,9 @@ const STATES = [
 
   // Concept gate
   { id: 'CONCEPTS_DRAFTED', label: 'Ideas ready to show you',            next: ['AWAITING_CONCEPT_APPROVAL', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
-  { id: 'AWAITING_CONCEPT_APPROVAL', label: 'Pick a concept', gate: 'concept', rollback: 'BRIEF_READY',
+  { id: 'AWAITING_CONCEPT_APPROVAL', label: 'Pick an idea', gate: 'concept', rollback: 'BRIEF_READY',
     next: ['CONCEPT_APPROVED', 'CONCEPTS_DRAFTED', 'BRIEF_READY', 'CHANGES_REQUESTED', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
-  { id: 'CONCEPT_APPROVED', label: 'Concept picked, writing the script', next: ['AWAITING_STORYBOARD_APPROVAL', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
+  { id: 'CONCEPT_APPROVED', label: 'Idea picked, writing the script', next: ['AWAITING_STORYBOARD_APPROVAL', 'BLOCKED', 'ESCALATED', 'CANCELLED'] },
 
   // Storyboard gate
   { id: 'AWAITING_STORYBOARD_APPROVAL', label: 'Approve the storyboard', gate: 'storyboard', rollback: ['AWAITING_CONCEPT_APPROVAL', 'BRIEF_READY'],

@@ -12,6 +12,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
   accessSync,
+  appendFileSync,
   constants,
   copyFileSync,
   existsSync,
@@ -61,6 +62,11 @@ const JOB_SUBJECTS = ['product', 'character', 'none'];
 const INTAKE_PATCH_ARRAYS = new Set(['platforms', 'deliverables', 'requiredClaims', 'prohibitedClaims']);
 const INTAKE_PATCH_OBJECTS = new Set(['audience', 'evidence', 'schedule', 'budget', 'productAsset', 'account', 'metricsScope']);
 const INTAKE_PATCH_BOOLEANS = new Set(['specWork', 'usesHistoricalData', 'aiMade', 'chatOnly', 'directionApproved']);
+// The shape of a post (0.19.5). The Director changes it with the patch { shape, deliverable? } through updateJobIntake, up to the
+// point where the storyboard is drawn (every picture of it is made in the shape), so after the brief and the ideas are written, not later.
+const SHAPES = Object.freeze(['9:16', '4:5', '1:1', '16:9']);
+const SHAPE_PATCH_KEYS = new Set(['shape', 'deliverable']);
+const SHAPE_CHANGE_STATES = new Set(['PLANNED', 'RESEARCH_RUNNING', 'RESEARCH_COMPLETE', 'BRIEF_READY', 'CONCEPTS_DRAFTED', 'AWAITING_CONCEPT_APPROVAL']);
 // The direction agreed with the person before research (plan 0.17). Every field is optional.
 const DIRECTION_TEXT_FIELDS = ['goal', 'audience', 'message', 'offer', 'cta', 'landingPageUrl', 'referenceKeep', 'referenceChange', 'successMeasure'];
 const DIRECTION_LIST_FIELDS = ['mustSay', 'mustNotSay', 'assumptions'];
@@ -83,6 +89,7 @@ const brandVoiceRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-voic
 const durableLock = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 const onboardingRunRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 const kindsRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-kinds.js'));
+const eventsRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-events.js'));
 const noBrandRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-no-brand.js'));
 
 export const NO_BRAND = noBrandRuntime.NO_BRAND;
@@ -2113,6 +2120,40 @@ function applyIntakePatch(current, patch) {
   return next;
 }
 
+/**
+ * Check a shape change and work out the deliverables it makes. The patch is { shape, deliverable? }: the shape is one of SHAPES, and
+ * `deliverable` is the id of the post it is for (the job's first deliverable, the one the brief is about, when none is named).
+ * The post type decides what it can take: this is the server's own copy of the board's placementIssue rule
+ * (lib-deliverable.js placementProblems), so a Reel, a Story and a TikTok video stay 9:16 and the board's disabled tile and this refusal
+ * always agree. Returns { deliverables, id, from, to, changed }, or throws a plain sentence.
+ */
+function shapeChange(job, patch) {
+  for (const key of Object.keys(patch)) {
+    if (!SHAPE_PATCH_KEYS.has(key)) throw new Error('Change the shape on its own: send only the shape, and the post it is for when the job has several.');
+  }
+  const shape = typeof patch.shape === 'string' ? patch.shape.trim() : '';
+  if (!SHAPES.includes(shape)) throw new TypeError(`The shape must be one of ${SHAPES.join(', ')}.`);
+  if (kindsRuntime.suppliesMedia(jobKindOf(job.kind))) throw new Error('A post made from your own files takes its shape from the files.');
+  const list = Array.isArray(job.deliverables) ? job.deliverables : [];
+  const wanted = patch.deliverable === undefined || patch.deliverable === null ? '' : toText(patch.deliverable).trim();
+  const index = wanted ? list.findIndex((item) => item && typeof item === 'object' && item.id === wanted) : list.findIndex((item) => item && typeof item === 'object');
+  if (index < 0) throw new Error(wanted ? `This job has no post with the id ${wanted}.` : 'This job has no post to set a shape for.');
+  const target = list[index];
+  // The post type the board shows for it, a derived one when none is written, so the picker and this check read the same thing.
+  const placement = deliverableRuntime.derivePlacement(target);
+  const read = placement ? { ...target, placement } : target;
+  const before = deliverableRuntime.placementProblems(read, job);
+  const added = deliverableRuntime.placementProblems({ ...read, aspectRatios: [shape] }, job).filter((problem) => !before.includes(problem));
+  // Only the ratio changed, so the one problem it can add is a post that fills a phone screen asked to be another shape.
+  if (added.length) {
+    const who = deliverableRuntime.describe(job, target);
+    throw new Error(`${who[0].toUpperCase()}${who.slice(1)} is 9:16, so it cannot be ${shape}.`);
+  }
+  const deliverables = list.map((item, at) => (at === index ? { ...item, aspectRatios: [shape] } : item));
+  const from = (Array.isArray(target.aspectRatios) ? target.aspectRatios : []).find((ratio) => typeof ratio === 'string' && SHAPES.includes(ratio)) || '';
+  return { deliverables, id: typeof target.id === 'string' ? target.id : '', from, to: shape, changed: JSON.stringify(deliverables) !== JSON.stringify(list) };
+}
+
 /** A title that only repeats the brief (how a job made with no title is named) is rewritten when the brief is; a title the person or the Director chose stays. */
 function titleFollowsBrief(job) {
   const title = toText(job?.title).trim();
@@ -2144,6 +2185,9 @@ function bumpStatusRevision(statusText, revision) {
  * overwrite a newer answer, imported input revision, or ownership binding.
  * Job identity, owners, source references, approvals, and input manifests are
  * intentionally outside the patch allowlist.
+ *
+ * A patch of `shape` (with `deliverable` for a job of several posts) changes the shape of one post from the plan up to the ideas:
+ * see shapeChange. After that the shape is fixed and the update refuses, as every other update does past intake.
  */
 export function updateJobIntake(options = {}) {
   const { root } = assertLocalWorkspace(options.root);
@@ -2184,6 +2228,34 @@ export function updateJobIntake(options = {}) {
     const route = readJson(routeFile, null);
     const intakeState = ['INTAKE_PENDING', 'NEEDS_CLARIFICATION', 'UNSUPPORTED'].includes(status.state);
     const blockedDraft = status.state === 'BLOCKED' && route?.status !== 'ROUTED' && !existsSync(planFile);
+    // The Director may change the shape of a post (a patch of `shape`, and `deliverable` when the job has several) from the plan up to
+    // the ideas, because the storyboard is drawn in the shape. While the job is still being set up it goes through the full update below
+    // as a deliverables patch; later it only rewrites the one ratio, so the route, the plan, the state and the revision stay as they are
+    // (the same narrow way chatOnly and the caption work) and the brief on the board shows the new shape from the job record.
+    const shapeAsked = Object.prototype.hasOwnProperty.call(options.patch || {}, 'shape');
+    let shaped = null;
+    if (shapeAsked) {
+      if (!intakeState && !blockedDraft && !SHAPE_CHANGE_STATES.has(status.state)) {
+        const error = new Error('The shape is fixed once an idea is picked, because the storyboard is drawn in that shape. To make this post in another shape, start a new post.');
+        error.code = 'INTAKE_UPDATE_NOT_ALLOWED';
+        throw error;
+      }
+      const before = readJson(jobFile, null);
+      if (!before || typeof before !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
+      shaped = shapeChange(before, options.patch);
+      if (!intakeState && !blockedDraft) {
+        if (!shaped.changed) return { jobId, brand: brand.slug, updated: false, revision: status.revision, shape: shaped.to, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
+        const at = now();
+        writeJsonAtomic(jobFile, { ...before, deliverables: shaped.deliverables, updatedAt: at });
+        try {
+          appendFileSync(join(dir, 'events.jsonl'), `${JSON.stringify(eventsRuntime.makeEvent(jobId, 'intake.updated', at, { type: 'job', id: jobId },
+            { field: 'shape', from: shaped.from, to: shaped.to, deliverable: shaped.id, by: 'the Director' }, { jobId, brandId: brand.id, source: 'local', salt: randomUUID() }))}\n`);
+        } catch {
+          // The log line is a record of the change; the change stands without it.
+        }
+        return { jobId, brand: brand.slug, updated: true, revision: status.revision, shape: shaped.to, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
+      }
+    }
     // A publish_post job is planned as soon as it is made, so the person's own answers about their post (its caption and
     // whether the files were made with AI) can still change until the final post is approved. They only rewrite the
     // posts: the plan, the route and the state stay as they are.
@@ -2212,7 +2284,7 @@ export function updateJobIntake(options = {}) {
       error.code = 'INTAKE_UPDATE_NOT_ALLOWED';
       throw error;
     }
-    const patch = options.patch || {};
+    const patch = shaped ? { deliverables: shaped.deliverables } : options.patch || {};
     const currentJob = readJson(jobFile, null);
     if (!currentJob || typeof currentJob !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
     const nextJob = applyIntakePatch(currentJob, patch);
@@ -2721,9 +2793,11 @@ const STEP_INFO = Object.freeze({
   research: ['Research', 'The facts and sources behind the post.'],
   'research (lite)': ['Quick research', 'A short check of the facts the post needs.'],
   'keep the words': ['Saving the key phrases', 'Keeping the best phrases for next time.'],
-  brief: ['Strategy', 'One clear direction for the post.'],
+  brief: ['Brief', 'The plan for the post, in one paragraph.'],
   'lite brief': ['Short brief', 'One clear direction for the post.'],
   concepts: ['Ideas', 'A few ideas to pick from.'],
+  ideas: ['Ideas', 'Three ways to make the post. You pick one.'],
+  angles: ['Ideas', 'Three ways to make the post. You pick one.'],
   'script and board': ['Script and storyboard', 'What is said and shown, shot by shot.'],
   'media spec': ['Shot plan', 'The pictures and clips to make.'],
   'media spec (carousel)': ['Slide plan', 'The slides, in swiping order.'],

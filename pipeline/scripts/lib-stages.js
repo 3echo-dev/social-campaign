@@ -17,7 +17,7 @@ const STAGE_OF = {
   RESEARCH_COMPLETE: { stage: 'researching', substep: 'Pulling it together', status: 'done' },
 
   BRIEF_READY: { stage: 'shaping-the-idea', substep: 'Strategy', status: 'running' },
-  CONCEPTS_DRAFTED: { stage: 'shaping-the-idea', substep: 'Concepts', status: 'running' },
+  CONCEPTS_DRAFTED: { stage: 'shaping-the-idea', substep: 'Ideas', status: 'running' },
   AWAITING_CONCEPT_APPROVAL: { stage: 'your-approval-of-the-idea', status: 'waiting' },
   CONCEPT_APPROVED: { stage: 'shaping-the-idea', substep: 'Storyboard', status: 'running' },
   AWAITING_STORYBOARD_APPROVAL: { stage: 'your-approval-of-the-idea', status: 'waiting' },

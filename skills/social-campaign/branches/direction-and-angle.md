@@ -14,4 +14,5 @@ new-job describes how the direction card is built and recorded.
 - The person answers by saying go, by editing, or on angles by picking one, mixing two, or saying "pick for me".
   "Go", "approve" and "just do it" approve the card as shown.
   "Pick for me" takes the angle you would choose: say which one and why in one line, and apply it as the pick.
+  When "Pick for me" comes from the board's ideas view, follow "An ideas message from the board" in `${CLAUDE_PLUGIN_ROOT}/skills/board-sync/references/job-requests.md` instead.
 - Never ask for the direction twice, and never start research before the person has approved it.

@@ -32,7 +32,8 @@ import { REFERENCE_TYPES } from './references.mjs';
 import { REQUEST_CLAIM_TTL_MS, readClaimRecord, releaseClaim, takeClaim, windowSessionId } from './session-claims.mjs';
 import { readyChecks } from './ready-checks.mjs';
 import { finishingChoice, finishingFromNote, FINISHING_CHOICES, recordFinishingChoice } from './finishing.mjs';
-import { normaliseCombine, recordCombine } from './combine.mjs';
+import { normaliseCombine, readVoiceCatalog, recordCombine } from './combine.mjs';
+import { listLibrary } from './library.mjs';
 import { boardLibrary, fileJobQuietly, readBank, recordConceptDecision, removeBankItem } from './brand-library.mjs';
 import { checkFolderRequest } from './brand-footage.mjs';
 import { FOLDER_PICK_TIMEOUT_MS, pickFolder } from '../lib/folder-pick.mjs';
@@ -75,7 +76,7 @@ const NEEDS_A_BRAND = 'A post or campaign needs a brand. Choose one, or onboard 
 const BADGE_OVERRIDES = Object.freeze({
   UNSUPPORTED: 'Not supported yet', BLOCKED: 'Held up',
   // Labels of a whole sentence are shortened so the badge stays one line.
-  INTAKE_PENDING: 'Waiting for details', RESEARCH_RUNNING: 'Researching', CONCEPT_APPROVED: 'Concept picked', STORYBOARD_APPROVED: 'Storyboard approved',
+  INTAKE_PENDING: 'Waiting for details', RESEARCH_RUNNING: 'Researching', CONCEPT_APPROVED: 'Idea picked', STORYBOARD_APPROVED: 'Storyboard approved',
   AWAITING_PUBLISH_APPROVAL: 'Approve the posting plan', AWAITING_REPORT_REVIEW: 'Approve the report', PROPOSAL_APPROVED: 'Plan approved', ACTIVATION_APPROVED: 'Approved to go live',
 });
 export function badgeLabel(state) {
@@ -1120,7 +1121,7 @@ function reviewSummary(dir, gate, paths) {
     const path = paths.find(item => /(^|\/)concepts\.md$/i.test(item));
     const text = path ? reviewText(dir, path) : null;
     const count = text == null ? 0 : parseConcepts(text).concepts.length;
-    return count ? `${plural(count, 'concept')} to choose from.` : 'The ideas are ready to read.';
+    return count ? `${plural(count, 'idea')} to choose from.` : 'The ideas are ready to read.';
   }
   if (gate === 'storyboard') {
     const boards = paths.filter(item => /(^|\/)storyboard\.md$/i.test(item)).map(item => reviewText(dir, item)).filter(text => text != null);
@@ -1663,6 +1664,38 @@ function connectorsSnapshot(root) {
   });
 }
 
+// The workspace's saved voices and music tracks (id, title, where it came from), for the brief's voice and music pickers. No file path, no preview.
+// A take made for a job is saved as "Voice-over Take 2 (job-20261001-launch-1a2b3c4d5e)": the person sees the take, never the job it came from.
+const AUDIO_LIBRARY_LIMIT = 60;
+const JOB_ID_IN_TITLE = /\s*\(\s*job-[^()]*\)|\bjob-\d{8}-[A-Za-z0-9._-]+/gi;
+export function audioTitle(title, kind) {
+  const text = typeof title === 'string' ? title.replace(JOB_ID_IN_TITLE, '').replace(/\s{2,}/g, ' ').trim() : '';
+  return text || (kind === 'voice' ? 'Voice-over' : 'Music');
+}
+function audioLibraryOf(root) {
+  const shelf = kind => { try { return listLibrary({ root, kind }).items.slice(0, AUDIO_LIBRARY_LIMIT).map(({ id, title, origin }) => ({ id, title: audioTitle(title, kind), origin })); } catch { return []; } };
+  return { music: shelf('music'), voice: shelf('voice') };
+}
+
+/**
+ * Brings a projection under its size budget by dropping the least needed parts first, in this order: the reference pictures; the brand intelligence's
+ * pictures and most of its posts (the checklist, the subtopics and the plan stay); the pickers' lists (twenty voices without their preview links, twenty
+ * tracks and twenty saved voices); the brand library's lists (the counts stay); the pictures on the Needs-you cards. A busy workspace still gets a board
+ * rather than none, and a long list of voices never costs a brand its library. Changes `projection` in place and returns it.
+ */
+export function fitProjection(projection, { budget = PROJECTION_BUDGET_BYTES } = {}) {
+  const over = () => serializedByteSize(projection) > budget;
+  if (over()) { projection.projects = withoutReferenceThumbs(projection.projects); projection.brands = projection.brands.map(brand => (brand.brandFiles ? { ...brand, brandFiles: brand.brandFiles.map(({ thumb, ...rest }) => rest) } : brand)); }
+  if (over()) projection.brands = projection.brands.map(brand => (brand.intelligence ? { ...brand, intelligence: slimIntelligence(brand.intelligence) } : brand));
+  if (over()) {
+    if (Array.isArray(projection.voiceCatalog)) projection.voiceCatalog = projection.voiceCatalog.slice(0, 20).map(voice => ({ ...voice, previewUrl: null }));
+    if (projection.audioLibrary) projection.audioLibrary = { music: (projection.audioLibrary.music || []).slice(0, 20), voice: (projection.audioLibrary.voice || []).slice(0, 20) };
+  }
+  if (over()) projection.brands = projection.brands.map(brand => (brand.library ? { ...brand, library: { ...brand.library, yours: [], proven: [], recentJobs: [] } } : brand));
+  if (over()) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
+  return projection;
+}
+
 export function boardSnapshot({ root } = {}) {
   root = rootOf(root);
   const workspace = runtime.readWorkspace({ root });
@@ -1775,14 +1808,9 @@ export function boardSnapshot({ root } = {}) {
     : brands.some(brand => brand.readyForJobs)
       ? 'ready'
       : 'brand_onboarding';
-  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
-  // Reference pictures are the first thing to go when the board is near its size limit.
-  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) { projection.projects = withoutReferenceThumbs(projection.projects); projection.brands = projection.brands.map(brand => (brand.brandFiles ? { ...brand, brandFiles: brand.brandFiles.map(({ thumb, ...rest }) => rest) } : brand)); }
-  // Then the brand intelligence's pictures and most of its posts (the checklist, the subtopics and the plan stay).
-  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.intelligence ? { ...brand, intelligence: slimIntelligence(brand.intelligence) } : brand));
-  // Then the brand library's lists (the counts stay), then the pictures on the Needs-you cards, so a busy workspace still gets a board rather than none.
-  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.brands = projection.brands.map(brand => (brand.library ? { ...brand, library: { ...brand.library, yours: [], proven: [], recentJobs: [] } } : brand));
-  if (serializedByteSize(projection) > PROJECTION_BUDGET_BYTES) projection.inbox = { ...projection.inbox, items: (projection.inbox?.items || []).map(({ previews, ...rest }) => rest) };
+  const projection = { schemaVersion:2, workspace:{workspaceId:workspace.workspaceId,name:basename(root),storageMode:'local'},brands,projects,inbox,connectors,setupStep,studioWorkspaces,voiceCatalog:readVoiceCatalog(root),audioLibrary:audioLibraryOf(root),metricoolConnected:metricoolOn,metricoolBrands:metricoolBrands.map(({id,label,timezone},index)=>({id,label,timezone,option:metricoolOptions[index]?.text||label})),identity:null,connection:{status:'not_configured',message:'Studio sync is parked until its API is available. Work is saved locally.',localEventCount,pendingCount:null,lastSyncAt:null},updatedAt:new Date().toISOString() };
+  // Over the size limit, the least needed parts go first (fitProjection says in which order).
+  fitProjection(projection);
   // The post pictures last: they take the room the rest of the board leaves and never push anything out (a card without one keeps its platform tile).
   projection.brands = fillPostThumbs(projection.brands, { root, room: PROJECTION_BUDGET_BYTES - serializedByteSize(projection) });
   return applyProjectionBudget(projection);

@@ -7,7 +7,8 @@ Read by `skills/board-sync/SKILL.md`. Each section is applied exactly as written
 Present these files with `pipeline_review_present` when each decision opens:
 
 - Approve the report: `report/report.md`, and for a video breakdown, its stills in `report/stills/`, shown as "Report".
-- Pick a concept: `concepts.md`.
+- Pick an idea: `concepts.md`.
+  A "Pick for me" or "Mix two" message about the ideas is handled under "An ideas message from the board" in `references/job-requests.md`.
 - Approve the storyboard: each `drafts/D*/storyboard.md`.
   On a video post the saved price rides on the same card, so save it with `pipeline_quote_save` first and there is no separate price stop.
 - Approve a later price (a redo beyond the allowance, a new shot): the job sits in `STORYBOARD_APPROVED` while media is priced, so save it with `pipeline_quote_save`, then pass `gate: "price"` with no files; the plugin presents the saved quote.

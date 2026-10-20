@@ -16,14 +16,14 @@ export function shortLine(text, max = 20) {
   const full = String(text ?? '').trim().replace(/\s+/g, ' ');
   const words = full.split(' ');
   if (!full || words.length <= max) return esc(full);
-  const cut = words.slice(0, max).join(' ').replace(/[\s,;:.–—-]+$/, '') + '…';
+  const cut = words.slice(0, max).join(' ').replace(/[\s,;:.–\u2014-]+$/, '') + '…';
   return `${esc(cut)}<details class="cs-more line-more"><summary>View details</summary><span class="line-more-full">${esc(full)}</span></details>`;
 }
 // The same cut with no disclosure, for a line that sits inside a summary.
 export function capWords(text, max = 20) {
   const full = String(text ?? '').trim().replace(/\s+/g, ' ');
   const words = full.split(' ');
-  return !full || words.length <= max ? full : words.slice(0, max).join(' ').replace(/[\s,;:.–—-]+$/, '') + '…';
+  return !full || words.length <= max ? full : words.slice(0, max).join(' ').replace(/[\s,;:.–\u2014-]+$/, '') + '…';
 }
 // Messages the board repeats, said once.
 export const NOTE_TOO_LARGE = 'Too large to show. Open it on your computer.';
@@ -33,33 +33,25 @@ const TXT_TYPE_TEXT_OR_CHOOSE = 'Type text or choose a file.';
 const TXT_CHOOSE_AN_OWNER_FIRST = 'Choose an owner first.';
 const TXT_USE_A_FULL_HTTPS = 'Use a full https:// link.';
 const TXT_FORMATS_AND_QUANTITIES = 'Formats and quantities';
-const TXT_CLIENT_WORK_ASK_FIRST = 'Client work, ask first';
-const TXT_READING_THE_FILES = 'Reading the files';
-const TXT_FOLDER_NOT_FOUND = 'Folder not found';
 const TXT_CHOOSE_WHAT_THIS_IS = 'Choose what this is first.';
 const TXT_NO_PREVIEW_YET = 'No preview yet.';
 const TXT_WAITING_FOR_CLAUDE = 'Waiting for Claude';
 const TXT_NEEDS_CLAUDE_ATTENTION = 'Needs Claude attention';
 const TXT_SAVE_AND_CONTINUE = 'Save and continue';
-const TXT_CALL_TO_ACTION = 'Call to action';
 const TXT_WAITING_FOR_CLAUDE_2 = 'Waiting for Claude.';
 const TXT_NOTHING_TO_SAVE = 'Nothing to save.';
-const TXT_THE_PLAN_IS_BEING = 'The plan is being rebuilt.';
-const TXT_PICK_A_CONCEPT_FIRST = 'Pick a concept first.';
+const TXT_PICK_A_CONCEPT_FIRST = 'Pick an idea first.';
 const TXT_SEND_THE_REQUESTED_CHANGES = 'Send the requested changes instead.';
 const TXT_CHOOSE_ONE_OF_THE = 'Choose one of the answers.';
 const TXT_ANSWER_THIS_FIRST = 'Answer this first.';
 const TXT_NOT_STARTED_YET = 'Not started yet';
 const TXT_WAITING_ON_YOU = 'Waiting on you';
-const TXT_COULD_NOT_FINISH = 'Could not finish';
 const TXT_WORKING_ON_IT = 'Working on it';
 const TXT_WHAT_IT_MADE = 'What it made';
 const TXT_OPEN_THIS_BOARD_INSIDE = 'Open this board inside Claude.';
 const TXT_REQUEST_ID_WAS_REUSED = 'Request ID reused with different data.';
 const TXT_NO_JOBS_YET_DESCRIBE = 'No jobs yet. Describe one above.';
 const TXT_NO_JOBS_YET_FINISH = 'No jobs yet. Finish brand onboarding first.';
-export const NOTE_WAITING_SAVE = 'Waiting for Claude to save this.';
-export const NOTE_SAVED_SOON = 'Saved. The board will update shortly.';
 export const NOTE_SAVED = TXT_SAVED_CLAUDE_WILL_UPDATE;
 export const NOTE_DECLINED = 'Declined in chat. Nothing changed.';
 export const NOTE_NEEDS_PRICE = 'Every item needs a price first.';
@@ -78,7 +70,6 @@ export const NOTE_FIX_ANSWERS = 'Fix the highlighted answers first.';
 export const NOTE_DECISION_WAITING = 'A decision is waiting for you.';
 export const NOTE_NAME_LONG = 'Keep the name under 120 characters.';
 export const NOTE_OWNER_FIRST = TXT_CHOOSE_AN_OWNER_FIRST;
-export const NOTE_FORMAT_UNSAVABLE = 'This format can\'t be saved here.';
 export const NOTE_NOTIFY_FAILED = 'Claude could not be notified.';
 export const NOTE_SAVING = 'Saving. Claude will confirm.';
 export const NOTE_HAS_ANSWER = 'Claude has your answer.';
@@ -121,7 +112,6 @@ export function jobProgress(project) {
   const text = `${done} of ${total} ${total === 1 ? 'step' : 'steps'} done`;
   return `<div class="job-progress"><span class="minimap" role="img" aria-label="${esc(text)}">${Array.from({ length: total }, (_, index) => `<i class="s-${status(index)}"></i>`).join('')}</span><span class="job-progress-text">${esc(text)}</span></div>`;
 }
-const compactCount = value => (value >= 1e6 ? `${(value / 1e6).toFixed(value >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M` : value >= 1000 ? `${Math.round(value / 1000)}k` : String(value));
 const openedWord = value => { const at = value ? new Date(value) : null; return at && !Number.isNaN(at.getTime()) ? at.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; };
 export const kindLabelOf = project => project?.kindLabel || PIPELINE_KINDS[project?.kind]?.label || 'Post or campaign';
 export const newJobWord = kind => PIPELINE_KINDS[kind]?.jobWord || 'job';
@@ -1973,7 +1963,7 @@ function libraryItem(item, brand, { removing, errors, copy = {} }) {
   const named = (item.source === 'review' || item.source === 'ad') && trimmed(item.competitor) ? ` of ${trimmed(item.competitor)}` : '';
   const where = LIBRARY_SOURCE_WORDS[item.source] ? `${LIBRARY_SOURCE_WORDS[item.source]}${named}` : '';
   const mentions = Number.isFinite(item.count) && item.count > 0 ? plural(Math.floor(item.count), 'mention') : '';
-  const meta = [item.concept ? `Concept ${item.concept}` : '', item.edited ? 'edited' : '', where, mentions, trimmed(item.who), LIBRARY_STAGE_WORDS[item.awarenessStage] || '', trimmed(item.ctaType), views, libraryDay(evidence?.date) || libraryDay(item.at)].filter(Boolean).map(esc).join(' &middot; ');
+  const meta = [item.concept ? `Idea ${item.concept}` : '', item.edited ? 'edited' : '', where, mentions, trimmed(item.who), LIBRARY_STAGE_WORDS[item.awarenessStage] || '', trimmed(item.ctaType), views, libraryDay(evidence?.date) || libraryDay(item.at)].filter(Boolean).map(esc).join(' &middot; ');
   // The words of a customer behind a pain, desire or objection (the first quote, with the page it came from), and what an angle rests on.
   const quote = Array.isArray(item.quotes) ? item.quotes.find(entry => entry && typeof entry === 'object' && trimmed(entry.text)) : null;
   const quoteLink = quote ? safeHttpsLink(quote.url) : null;
@@ -2027,7 +2017,7 @@ function libraryTrend(trend, brand, copy = {}) {
 function libraryJob(job) {
   const concept = job.concept && typeof job.concept === 'object' ? job.concept : {};
   const source = trimmed(concept.source) ? conceptSourceOf({ fields: [{ label: 'Source', value: concept.source }] }) : null;
-  const meta = [concept.id ? `Concept ${concept.id}${trimmed(concept.title) ? `: ${concept.title}` : ''}` : '', source?.label || '', libraryDay(job.filedAt) ? `filed ${libraryDay(job.filedAt)}` : ''].filter(Boolean).map(esc).join(' &middot; ');
+  const meta = [concept.id ? `Idea ${concept.id}${trimmed(concept.title) ? `: ${concept.title}` : ''}` : '', source?.label || '', libraryDay(job.filedAt) ? `filed ${libraryDay(job.filedAt)}` : ''].filter(Boolean).map(esc).join(' &middot; ');
   return `<li class="library-item"><div class="library-main"><span class="library-text">${esc(trimmed(job.title) || 'Finished job')}</span>${meta ? `<span class="library-meta">${meta}</span>` : ''}${trimmed(concept.hook) ? `<span class="library-hook">Opening line: ${esc(concept.hook)}</span>` : ''}${libraryJobResults(job.results)}</div></li>`;
 }
 export function brandLibrarySection(brand, { open = false, removing = new Set(), errors = new Map(), openKeys = new Set(), copy = {} } = {}) {
@@ -2888,7 +2878,7 @@ export function drawerAbout(item, file) {
   return `<dl class="drawer-facts">${fact('Kind', esc(kind))}${fact('Version', version ? esc(version) : '')}${fact('Versions', versions)}</dl>`;
 }
 const GATE_TITLES = Object.freeze({
-  concept: 'Pick a concept',
+  concept: 'Pick an idea',
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
   sample: 'Approve the sample',
@@ -2903,7 +2893,7 @@ const GATE_TITLES = Object.freeze({
   findings: 'Approve the report',
 });
 // What a decision card is about and its version, in the card's header: "Storyboard, version 3". A tap on an older version is refused.
-const CARD_NAMES = Object.freeze({ concept: 'Concepts', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Rough cut', finish: 'Finished video', content: 'Final post', publish: 'Posting plan', campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report' });
+const CARD_NAMES = Object.freeze({ concept: 'Ideas', storyboard: 'Storyboard', price: 'Price', sample: 'Sample', pictures: 'Pictures', clips: 'Video clips', cut: 'Rough cut', finish: 'Finished video', content: 'Final post', publish: 'Posting plan', campaign_proposal: 'Campaign plan', campaign_activation: 'Going live', findings: 'Report' });
 export function cardAbout(gate, version, { clip = false } = {}) {
   const name = gate === 'sample' && clip ? 'Test clip' : CARD_NAMES[gate] || humanize(gate);
   const number = Number(version);
@@ -3147,7 +3137,7 @@ function labelOf(body, head, platform) {
   const q = body.match(QUOTE_RE);
   let t = q ? q[1] : head.split(/[;:]/).pop().split(/,\s+/).pop();
   t = t.replace(ID_RE, '').replace(/\s+/g, ' ').trim();
-  if (!q) t = t.replace(/^[\s\-*•–—.,]+/, '').replace(/^(?:and|or|plus)\s+/i, '').replace(/[\s,;:.\-–—]+$/, '');
+  if (!q) t = t.replace(/^[\s\-*•–\u2014.,]+/, '').replace(/^(?:and|or|plus)\s+/i, '').replace(/[\s,;:.\-–\u2014]+$/, '');
   if (!/[A-Za-z]{3}/.test(t)) t = NAMES[platform];
   return t.length > 70 ? t.slice(0, 69).trimEnd() + '…' : t;
 }
@@ -3281,7 +3271,7 @@ const STRATEGY_TILE_WORDS = Object.freeze({ audience: "Who it's for", problem: '
 /** The first clause of a strategy line, plain and capitalised, cut to `limit` characters on a word. */
 export function strategyShort(value, limit = 70, { clause = true } = {}) {
   let text = String(value ?? '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
-  const cut = text.search(/\s\(|;|\s[-–—]\s|:\s|,\s(?:with|because|then|said|and then)\b/);
+  const cut = text.search(/\s\(|;|\s[-–\u2014]\s|:\s|,\s(?:with|because|then|said|and then)\b/);
   if (clause && cut > 3) text = text.slice(0, cut);
   text = text.replace(/[.,;:\s]+$/, '').replace(/^["“](.*)["”]$/, '$1');
   if (text.length > limit) text = `${text.slice(0, limit).replace(/\s+\S*$/, '')}…`;
@@ -3301,8 +3291,8 @@ export function conceptStrategy(summary, extra = '', { openKeys = new Set() } = 
   const topic = role.get('topic');
   const message = role.get('message');
   const head = topic || message
-    ? `<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three concepts share</h3>${topic ? `<p class="cs-topic">${esc(strategyShort(topic.value, 110, { clause: false }))}</p>` : ''}${message ? `<q class="cs-message">${esc(strategyShort(message.value, 200, { clause: false }).replace(/^["“]|["”]$/g, ''))}</q>` : ''}</div>`
-    : '<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three concepts share</h3></div>';
+    ? `<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three ideas share</h3>${topic ? `<p class="cs-topic">${esc(strategyShort(topic.value, 110, { clause: false }))}</p>` : ''}${message ? `<q class="cs-message">${esc(strategyShort(message.value, 200, { clause: false }).replace(/^["“]|["”]$/g, ''))}</q>` : ''}</div>`
+    : '<div class="cs-top"><h3 class="cs-eyebrow" id="concept-strategy-title">The plan all three ideas share</h3></div>';
   let tiles = ['audience', 'problem', 'cta'].filter(key => role.has(key)).map(key => ({ key, row: role.get(key) }));
   // A summary that names none of those still shows its first lines as tiles, so the glance view is never empty.
   if (tiles.length < 2) tiles = tiles.concat(rows.filter(row => !used.has(row) && !tiles.some(tile => tile.row === row)).slice(0, 3 - tiles.length).map(row => ({ key: 'other', row })));
@@ -3411,16 +3401,16 @@ function hookPicks(concept, field, { hooks, own, edited, edit, disabled }) {
   const picked = Number.isInteger(hooks?.[id]) && lines[hooks[id]] ? hooks[id] : 0;
   const editing = edit && edit.id === id ? edit : null;
   const rows = lines.map((line, at) => {
-    if (editing && editing.at === at) return hookEditForm(id, at, editing, `Edit opening line ${at + 1} for concept ${id}`, line.own ? 'Remove this line' : line.edited ? 'Use the original' : '');
+    if (editing && editing.at === at) return hookEditForm(id, at, editing, `Edit opening line ${at + 1} for idea ${id}`, line.own ? 'Remove this line' : line.edited ? 'Use the original' : '');
     const tag = line.own ? '<span class="hook-tag">yours</span>' : line.edited ? '<span class="hook-tag" title="You edited this line">yours<span class="visually-hidden"> (edited)</span></span>' : '';
     const radio = `<label class="hook-pick"><input type="radio" name="hook_choice_${esc(id)}" value="${at}" ${picked === at ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="hook-text">${esc(line.text)}</span>${tag}</label>`;
     return `<span class="hook-line">${radio}<button type="button" class="hook-edit" data-hook-edit="${esc(`${id}:${at}`)}" aria-label="${esc(`Edit this opening line: ${line.text}`)}" title="Edit this line" ${disabled ? 'disabled' : ''}>${PENCIL}</button></span>`;
   }).join('');
   const room = (Array.isArray(own?.[id]) ? own[id].length : 0) < HOOK_OWN_LIMIT;
   const adder = editing && editing.at === 'new'
-    ? hookEditForm(id, 'new', editing, `Your own opening line for concept ${id}`)
-    : room ? `<button type="button" class="hook-add" data-hook-add="${esc(id)}" aria-label="${esc(`Add your own opening line for concept ${id}`)}" ${disabled ? 'disabled' : ''}>+ Add your own opening line</button>` : '';
-  return `<div><dt>${esc(field?.label || 'Opening lines')}</dt><dd><span class="hook-picks" role="group" aria-label="${esc(`Opening lines for concept ${id}`)}">${rows}</span>${adder}</dd></div>`;
+    ? hookEditForm(id, 'new', editing, `Your own opening line for idea ${id}`)
+    : room ? `<button type="button" class="hook-add" data-hook-add="${esc(id)}" aria-label="${esc(`Add your own opening line for idea ${id}`)}" ${disabled ? 'disabled' : ''}>+ Add your own opening line</button>` : '';
+  return `<div><dt>${esc(field?.label || 'Opening lines')}</dt><dd><span class="hook-picks" role="group" aria-label="${esc(`Opening lines for idea ${id}`)}">${rows}</span>${adder}</dd></div>`;
 }
 
 // Strategy picks. A concepts review may carry `strategyOptions` (the lists of playbook options and the brand's own, with the marks
@@ -3610,14 +3600,14 @@ function pickChip(option, rowKey, picked, disabled, noun = '') {
 
 function pickRowHtml(row, { concept = null, edit = null, disabled = false } = {}) {
   const spec = PICK_ROW_OF[row.field];
-  const forConcept = concept ? ` for concept ${concept.id}` : '';
+  const forConcept = concept ? ` for idea ${concept.id}` : '';
   const labelId = `pick-label-${row.rowKey}`.replace(/\s+/g, '-');
   const chips = row.options.length ? `<div class="pick-chips" role="radiogroup" aria-labelledby="${esc(labelId)}">${row.options.map(option => pickChip(option, row.rowKey, row.picked, disabled, `${spec.noun}${forConcept}`)).join('')}</div>` : '';
   const editing = edit && edit.row === row.rowKey ? edit : null;
   const adder = editing
     ? pickEditForm(row.rowKey, editing, `Your own ${spec.noun}${forConcept}`, spec.limit ?? PICK_TEXT_LIMIT)
     : row.room ? `<button type="button" class="pick-add" data-pick-add="${esc(row.rowKey)}" aria-label="${esc(`Add your own ${spec.noun}${forConcept}`)}" ${disabled ? 'disabled' : ''}>+ Add your own</button>` : '';
-  return `<div class="pick-row"><span class="pick-label" id="${esc(labelId)}">${esc(spec.title)}${concept ? `<span class="visually-hidden"> for concept ${esc(concept.id)}</span>` : ''}</span><div class="pick-line">${chips}${adder}</div></div>`;
+  return `<div class="pick-row"><span class="pick-label" id="${esc(labelId)}">${esc(spec.title)}${concept ? `<span class="visually-hidden"> for idea ${esc(concept.id)}</span>` : ''}</span><div class="pick-line">${chips}${adder}</div></div>`;
 }
 
 /** The Industry row, which sits under the strategy summary: '' when the document offers no industries to choose from. */
@@ -3637,31 +3627,17 @@ export function industryRow(strategy, { disabled = false } = {}) {
 }
 
 /** The rows of a concept's strategy picks (funnel stage, ad style, format, call to action...), or '' when the document offers none. */
-function conceptPickRows(concept, strategy, disabled) {
+function conceptPickRows(concept, strategy) {
   const options = strategy?.options;
   if (!options || !concept) return null;
   const rows = CONCEPT_PICK_FIELDS.map(field => pickRowOf(options, field, pickRowKey(concept.id, field), pickFallback(options, field, concept), strategy)).filter(Boolean);
   return rows.length ? rows : null;
 }
 
-/** A concept's folded "Strategy picks" block: the picks as they stand in its summary, the four rows inside. */
-function conceptPickBlock(concept, strategy, disabled) {
-  const rows = conceptPickRows(concept, strategy, disabled);
-  if (!rows) return '';
-  const now = rows.map(row => { const option = row.options.find(item => item.id === row.picked); return option ? pickShown(option) : ''; }).filter(Boolean);
-  const key = `strategy-picks:${concept.id}`;
-  const open = Boolean(strategy.openKeys?.has(key)) || rows.some(row => strategy.edit?.row === row.rowKey);
-  return `<details class="strategy-picks" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary><span class="strategy-picks-title">Strategy picks</span><span class="strategy-picks-now">${now.length ? esc(now.join(' · ')) : 'None chosen yet'}</span></summary><div class="strategy-picks-body">${rows.map(row => pickRowHtml(row, { concept, edit: strategy.edit, disabled })).join('')}</div></details>`;
-}
-
-// ---- The "Pick a concept" cards ----
-// One concept per row: the idea on the left (title, source, one sentence, the opening line, four facts), the proof on the right (a
-// sentence, up to three tiles, the strength). "View details" opens a side panel with everything else (state.conceptPanel names the
-// concept it shows); nothing a concept says is left out of it.
+// ---- Concept fields and the details panel ----
+// "View details" opens a side panel with everything a concept says (state.conceptPanel names the concept it shows). The proof tiles
+// in it use these platform icons.
 const CC_ICON = Object.freeze({
-  brand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
-  competitors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M15.5 14.2c2.6-.3 4.8 1.2 5.5 4.3"/></svg>',
-  trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
   instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>',
   tiktok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.5 2.8 2.4 4.5 5 4.7"/></svg>',
   youtube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
@@ -3671,11 +3647,6 @@ const CC_ICON = Object.freeze({
 const CC_PLATFORMS = Object.freeze({
   tiktok: { name: 'TikTok', icon: 'tiktok' }, instagram: { name: 'Instagram', icon: 'instagram' }, youtube: { name: 'YouTube', icon: 'youtube' },
   facebook: { name: 'Facebook', icon: 'meta' }, 'meta-ad': { name: 'Meta ad', icon: 'meta' }, web: { name: 'Web', icon: 'web' },
-});
-const CC_WHY = Object.freeze({
-  brand: 'Built on what works for this brand.',
-  competitors: "Borrows a competitor winner's shape.",
-  trending: 'Rides a topic your niche watches.',
 });
 const CC_FIELD = Object.freeze({
   source: /^sources?$/i, insight: /^insight\b/i, anchor: /^anchor\b/i, stage: /^awareness[\s_-]*stage\b/i, angle: /^angle\b/i,
@@ -3693,11 +3664,11 @@ const CC_MONTHS = Object.freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'
 const ccLabel = field => String(field?.label || '').trim().replace(/:$/, '');
 /** Text as plain words: links, bare addresses and markdown marks taken out. */
 const ccPlain = value => String(value ?? '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, '').replace(/[`*_]{1,3}/g, '').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
-const ccCut = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, '').replace(/[\s,;:.–—-]+$/, '')}…`);
+const ccCut = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, '').replace(/[\s,;:.–\u2014-]+$/, '')}…`);
 /** A field value as a short fact: its first line, without a library id in front or a file reference behind. */
 function ccShort(value, max = 44) {
   let text = ccPlain(String(value ?? '').split('\n')[0]);
-  text = text.replace(/\s*\([^)]*\.(?:md|json)[^)]*\)\s*$/i, '').replace(/^[A-Z]{1,5}(?:-[A-Za-z0-9]+)+\s*(?:[-–—:]\s+)?/, '').trim();
+  text = text.replace(/\s*\([^)]*\.(?:md|json)[^)]*\)\s*$/i, '').replace(/^[A-Z]{1,5}(?:-[A-Za-z0-9]+)+\s*(?:[-–\u2014:]\s+)?/, '').trim();
   return ccCut(text, max);
 }
 function ccCount(n) {
@@ -3746,16 +3717,15 @@ function ccBeatsOf(value) {
   const parts = text.split(/(?:^|\s|\n)\d{1,2}[).]\s+/).map(part => part.trim()).filter(Boolean);
   if (parts.length < 2) return null;
   return parts.map(part => {
-    const cut = /\s[-–—]\s/.exec(part);
+    const cut = /\s[-–\u2014]\s/.exec(part);
     return cut ? { beat: part.slice(0, cut.index).trim(), takeaway: part.slice(cut.index + cut[0].length).trim() } : { beat: part, takeaway: '' };
   });
 }
 const ccMeter = (score, extra = '') => `<span class="cc-meter${extra}" role="img" aria-label="${esc(`${score} out of 10`)}"><i style="width:${Math.max(0, Math.min(100, score * 10))}%"></i></span>`;
-const ccSourcePill = source => (source ? `<span class="cc-src cc-src-${esc(source.kind)}">${CC_ICON[source.kind] || ''}<span class="visually-hidden">Source: </span>${esc(source.label)}</span>` : '');
 
-export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null, panel = null } = {}) {
+export function conceptCards(concepts, choice = null, { disabled = false, hooks = {}, own = {}, edited = {}, edit = null, strategy = null, panel = null, director = false, blocked = false, status = '', sent = false } = {}) {
   const list = concepts?.concepts || [];
-  if (!list.length) return '<p class="muted">No concepts found.</p>';
+  if (!list.length) return '<p class="muted">No ideas found.</p>';
   const lock = disabled || Boolean(strategy?.disabled);
   const model = concept => {
     const fields = (concept.fields || []).filter(field => field && String(field.value ?? '').trim());
@@ -3773,38 +3743,109 @@ export function conceptCards(concepts, choice = null, { disabled = false, hooks 
     return { concept, fields, find, source, sourceField, hookField, lines, picked, scores, strength, oneline, proof };
   };
   const models = list.map(model);
-  const factOf = (item, pattern) => {
-    const field = item.find(pattern);
+  // The idea open under the tabs is the review's `choice` (view state only: nothing is saved until the Pick button sends the approval).
+  const at = Math.max(0, models.findIndex(item => item.concept.id === choice));
+  const shown = models.findIndex(item => item.concept.id === panel);
+  return `<section class="ix" aria-labelledby="ix-title">${ideaHead(models.length)}${ideaTabs(models, at, { lock })}${ideaPreview(models, at, { lock, strategy, director, blocked, status, sent })}</section>${conceptPanelHtml(models[shown], { disabled, hooks, own, edited, edit, strategy, lock, n: shown + 1 })}`;
+}
+
+// ---- The ideas view: tabs, then one idea at a time ----
+// Each idea is a tab (its colour says where it comes from). Under the tabs the open idea shows how it opens, as a phone frame, with the idea
+// in a line and what a person needs to choose by (pictures, pace, proof, risk). Pick sends the existing approval; Mix two and Pick for me
+// are words to the Director. "View details" still opens the side panel with everything else.
+const IDEA_NUMBER_WORDS = Object.freeze(['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight']);
+const IDEA_SOURCE_WORDS = Object.freeze({ brand: 'Your brand', competitors: 'Competitors', trending: 'Trending' });
+export const IDEA_FINE_PRINT = 'Next: script and storyboard with a price. Nothing spent yet.';
+export const IDEA_FIRST_SECONDS = 'first 3 seconds';
+const IDEA_ARROW = dir => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir < 0 ? 'm15 6-6 6 6 6' : 'm9 6 6 6-6 6'}"/></svg>`;
+const IDEA_VOICE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 9v6M17 5v14M21 11v2"/></svg>';
+const ideaKind = source => (IDEA_SOURCE_WORDS[source?.kind] ? source.kind : 'other');
+const ideaChip = source => (source ? `<span class="pill ix-src is-${ideaKind(source)}"><span class="visually-hidden">Source: </span>${esc(IDEA_SOURCE_WORDS[source.kind] || source.label)}</span>` : '');
+const ideaRecommended = concept => (concept?.recommended ? '<span class="tag tag-rec">Recommended</span>' : '');
+
+/** "Three ideas": the count in words, whatever the number. */
+const ideaHead = count => `<div class="ix-head"><h3 id="ix-title">${IDEA_NUMBER_WORDS[count] ? `${IDEA_NUMBER_WORDS[count]} idea${count === 1 ? '' : 's'}` : `${count} ideas`}</h3><p>Tap one to see how it opens. Pick when you are sure.</p></div>`;
+
+/**
+ * An opening line as a subtitle: its longest word (the first of two as long) sits in a gold pill, and every other character is shown as
+ * written. The word is chosen from its letters and digits only, so a comma or a quote never makes a word longer.
+ */
+export function ideaSubtitle(text) {
+  const parts = String(text ?? '').split(/(\s+)/);
+  const sizes = parts.map(part => part.replace(/[^\p{L}\p{N}]/gu, '').length);
+  const longest = Math.max(0, ...sizes);
+  const at = longest ? sizes.indexOf(longest) : -1;
+  return parts.map((part, index) => {
+    if (index !== at) return esc(part);
+    const [, lead, word, trail] = /^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/su.exec(part);
+    return `${esc(lead)}<mark class="ix-hot">${esc(word)}</mark>${esc(trail)}`;
+  }).join('');
+}
+
+/** The rows under an idea's one line: Pictures, Pace, Proof and Risk, from the concept's own fields. A row the concept has no words for is dropped. */
+export function ideaFacts(item, strategy = null) {
+  const say = (field, max = 120) => {
     if (!field) return '';
     const now = pickFieldNow(item.concept, field, strategy);
-    return ccShort(now !== null ? now : field.value);
+    return ccShort(now !== null ? now : field.value, max);
   };
-  const card = item => {
-    const { concept, source, lines, picked, proof } = item;
+  const editing = item.find(/^editing(?:[\s_-]*style)?\b/i);
+  const beatsField = editing ? null : item.find(CC_FIELD.beats);
+  const beats = beatsField ? ccBeatsOf(beatsField.value) : null;
+  const pace = editing ? say(editing) : beats ? ccCut(beats.map(entry => ccShort(entry.beat, 28)).filter(Boolean).join(' · '), 120) : say(beatsField);
+  const proof = say(item.find(CC_FIELD.wins));
+  return [
+    ['Pictures', say(item.find(/^camera\b/i))],
+    ['Pace', pace],
+    // A proof that only repeats the one line above it adds nothing.
+    ['Proof', proof && ccPlain(proof) !== ccPlain(item.oneline) ? proof : ''],
+    ['Risk', say(item.find(/^honest[\s_-]*trade/i))],
+  ].filter(([, value]) => value);
+}
+
+/** The tabs: one per idea, in one row (one column on a phone). The open one is selected; arrow keys move between them (see the key handler). */
+export function ideaTabs(models, at, { lock = false } = {}) {
+  const tabs = models.map((item, index) => {
+    const { concept, source } = item;
     const id = esc(concept.id);
-    const facts = [['Format', factOf(item, CC_FIELD.format) || factOf(item, /^visual[\s_-]*format\b/i)], ['Subtopic', factOf(item, CC_FIELD.subtopic)], ['Length', factOf(item, CC_FIELD.length)], [TXT_CALL_TO_ACTION, factOf(item, CC_FIELD.cta)]]
-      .filter(([, value]) => value).map(([label, value]) => `<span class="cc-fact"><span>${esc(label)}</span><b title="${esc(value)}">${esc(value)}</b></span>`).join('');
-    const opens = lines.length
-      ? `<span class="cc-opens"><span class="cc-label">Opens with</span><q>${esc(lines[picked].text)}</q><span class="cc-opens-foot">Line ${picked + 1} of ${lines.length}</span></span>`
-      : `<span class="cc-opens is-empty"><span class="cc-label">Opens with</span><span class="cc-opens-none">None yet.</span></span>`;
-    const why = source && CC_WHY[source.kind] ? `<p class="cc-why">${esc(CC_WHY[source.kind])}</p>` : '';
-    let evidence = '';
-    if (proof.length) evidence = `<span class="cc-tiles">${proof.slice(0, 3).map(tile => ccTile(tile)).join('')}</span>`;
-    else if (source?.detail) evidence = `<p class="cc-evidence">${esc(ccCut(ccPlain(source.detail), 160))}</p>`;
-    else if (!source) evidence = '<p class="cc-evidence">No research attached.</p>';
-    const strength = item.strength === null ? '' : `<span class="cc-strength"><span class="cc-strength-row">Strength score<b>${item.strength.toFixed(1)} / 10</b></span>${ccMeter(item.strength)}</span>`;
-    const credits = Number.isInteger(concept.credits) ? `<span class="cc-credits">${esc(`${concept.credits.toLocaleString()} credits for media`)}</span>` : '';
-    return `<label class="cc-card"><input type="radio" class="visually-hidden" name="concept_choice" value="${id}" ${choice === concept.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="cc-face">`
-      + `<span class="cc-idea"><span class="cc-head"><span class="cc-letter" aria-hidden="true">${id}</span><span class="cc-title-block"><strong class="cc-title">${esc(concept.title)}</strong><span class="cc-badges">${ccSourcePill(source)}${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}</span></span><span class="cc-radio" aria-hidden="true"></span></span>`
-      + `${item.oneline ? `<p class="cc-oneliner">${esc(item.oneline)}</p>` : ''}${opens}${facts ? `<span class="cc-facts">${facts}</span>` : ''}`
-      + `<span class="cc-actions"><button type="button" data-concept-open="${id}" aria-haspopup="dialog">View details</button><span class="cc-chosen">✓ Your pick</span>${credits}</span></span>`
-      + `<span class="cc-proof"><span class="cc-label">Why we think it works</span>${why}${evidence}${strength}</span></span></label>`;
-  };
-  return `<div class="cc-stack" role="radiogroup" aria-label="Concepts">${models.map(card).join('')}</div>${conceptPanelHtml(models.find(item => item.concept.id === panel), { choice, disabled, hooks, own, edited, edit, strategy, lock })}`;
+    const on = index === at;
+    const name = `Idea ${index + 1}: ${concept.title}${concept.recommended ? ', recommended' : ''}`;
+    return `<button type="button" role="tab" class="ix-tab is-${ideaKind(source)}" id="ix-tab-${id}" data-idea-tab="${id}" aria-selected="${on}" aria-controls="ix-panel" aria-label="${esc(name)}" tabindex="${on ? 0 : -1}" ${lock ? 'disabled' : ''}>`
+      + `<span class="ix-tile" aria-hidden="true"></span><span class="ix-tab-body"><span class="ix-tab-meta">${ideaChip(source)}${ideaRecommended(concept)}</span><span class="ix-tab-title">${index + 1}. ${esc(concept.title)}</span></span></button>`;
+  }).join('');
+  return `<div class="ix-tabs" role="tablist" aria-label="Ideas" style="--n:${Math.min(models.length, 4)}">${tabs}</div>`;
+}
+
+/**
+ * The open idea: the phone frame with arrows, the idea beside it, then Pick (the gold button names the idea), Mix two and Pick for me.
+ * `lock` turns every control but "View details" off (a decision is sent or the card is no longer current); `blocked` holds only Pick (the
+ * copy choices below are not made yet); `director` says there is a Director to talk to; `status` replaces Pick's words while it is saved;
+ * `sent` says Pick for me went.
+ */
+export function ideaPreview(models, at, { lock = false, strategy = null, director = false, blocked = false, status = '', sent = false } = {}) {
+  const item = models[at];
+  if (!item) return '';
+  const { concept, source, lines, picked } = item;
+  const id = esc(concept.id);
+  const number = at + 1;
+  const line = lines.length ? lines[picked].text : '';
+  const picture = safePreviewUrl(concept.thumb) || safePreviewUrl(concept.image);
+  const step = (dir, name) => `<button type="button" class="ix-step" data-idea-step="${dir}" aria-label="${name}" ${lock || at + dir < 0 || at + dir >= models.length ? 'disabled' : ''}>${IDEA_ARROW(dir)}</button>`;
+  const frame = `<div class="ix-frame is-${ideaKind(source)}">${picture ? `<img class="ix-pic" src="${esc(picture)}" alt="">` : ''}`
+    + `<span class="ix-badge">Idea ${number} of ${models.length}<span class="ix-badge-sub"> · ${IDEA_FIRST_SECONDS}</span></span><span class="ix-ai">AI</span>`
+    + `<div class="ix-sub">${line ? `<p class="ix-subtitle">${ideaSubtitle(line)}</p>` : '<p class="ix-none">No opening line yet.</p>'}<span class="ix-vo">${IDEA_VOICE}voice-over</span></div></div>`;
+  const rows = ideaFacts(item, strategy).map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('');
+  const info = `<div class="ix-info"><div class="ix-badges">${ideaChip(source)}${ideaRecommended(concept)}</div><h4 class="ix-title">${esc(concept.title)}</h4>${item.oneline ? `<p class="ix-oneline">${esc(item.oneline)}</p>` : ''}`
+    + `${rows ? `<dl class="ix-rows">${rows}</dl>` : ''}<button type="button" class="cc-link ix-more" data-concept-open="${id}" aria-haspopup="dialog">View details</button></div>`;
+  const talk = lock || !director ? 'disabled' : '';
+  const actions = `<div class="ix-actions"><button type="button" class="primary ix-pick" data-idea-pick="${id}" ${lock || blocked ? 'disabled' : ''}><span class="ix-pick-text">${esc(status || `Pick idea ${number}: ${concept.title}`)}</span></button>`
+    + `<button type="button" data-idea-mix ${talk}>Mix two</button><button type="button" class="quiet" data-idea-ask ${talk}>Pick for me</button></div>`;
+  const fine = sent ? '<p class="ix-fine" role="status">Sent to the Director.</p>' : `<p class="ix-fine">${IDEA_FINE_PRINT}</p>`;
+  return `<div class="ix-body" id="ix-panel" role="tabpanel" aria-labelledby="ix-tab-${id}"><div class="ix-stage"><div class="ix-phone">${step(-1, 'Previous idea')}${frame}${step(1, 'Next idea')}</div>${info}</div>${actions}${fine}</div>`;
 }
 
 /** The side panel of one concept: everything the card leaves out. '' when no concept is open. */
-function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, strategy, lock }) {
+function conceptPanelHtml(item, { disabled, hooks, own, edited, edit, strategy, lock, n }) {
   if (!item) return '';
   const { concept, fields, find, source, sourceField, hookField, proof, scores } = item;
   const id = esc(concept.id);
@@ -3846,7 +3887,7 @@ function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, st
   const restRows = rest.map(field => fieldRow(ccLabel(field) || 'Note', field)).join('');
   const playSection = (beatsHtml || playRows || restRows) ? `<section class="cc-sec" data-cc-sec="plays"><h3>How the video plays</h3>${beatsHtml}${playRows || restRows ? `<dl class="cc-kv">${playRows}${restRows}</dl>` : ''}</section>` : '';
   // Strategy picks
-  const pickRows = conceptPickRows(concept, strategy, lock);
+  const pickRows = conceptPickRows(concept, strategy);
   const picksSection = pickRows ? `<section class="cc-sec" data-cc-sec="picks"><h3>Strategy picks</h3><div class="cc-picks">${pickRows.map(entry => pickRowHtml(entry, { concept, edit: strategy.edit, disabled: lock })).join('')}</div></section>` : '';
   // Scores
   const average = item.strength === null ? '' : `<p class="cc-score-total"><span>Strength score</span><b>${item.strength.toFixed(1)} / 10</b></p>`;
@@ -3858,9 +3899,9 @@ function conceptPanelHtml(item, { choice, disabled, hooks, own, edited, edit, st
   const credits = Number.isInteger(concept.credits) ? `<p class="cc-credits-line">${esc(`${concept.credits.toLocaleString()} credits for media`)}</p>` : '';
   return `<button type="button" class="cc-scrim" data-concept-close tabindex="-1" aria-label="Close details"></button>`
     + `<aside class="cc-panel" role="dialog" aria-modal="true" aria-labelledby="cc-title-${id}" data-concept-panel="${id}">`
-    + `<div class="cc-panel-head"><span class="cc-letter" aria-hidden="true">${id}</span><div class="cc-title-block"><h2 id="cc-title-${id}" class="cc-title">${esc(concept.title)}</h2><span class="cc-badges">${ccSourcePill(source)}${concept.recommended ? '<span class="pill ready">Recommended</span>' : ''}</span></div><button type="button" class="quiet cc-x" data-concept-close aria-label="Close details">✕</button></div>`
+    + `<div class="cc-panel-head"><span class="cc-letter" aria-hidden="true">${n}</span><div class="cc-title-block"><h2 id="cc-title-${id}" class="cc-title">${esc(concept.title)}</h2><span class="cc-badges">${ideaChip(source)}${ideaRecommended(concept)}</span></div><button type="button" class="quiet cc-x" data-concept-close aria-label="Close details">✕</button></div>`
     + `<div class="cc-panel-body">${hooksSection}${whySection}${playSection}${picksSection}${scoresSection}${raw}${credits}</div>`
-    + `<div class="cc-panel-foot"><button type="button" data-concept-close>Close</button><button type="button" class="primary" data-concept-choose="${id}" ${disabled ? 'disabled' : ''}>Choose this concept</button></div></aside>`;
+    + `<div class="cc-panel-foot"><button type="button" data-concept-close>Close</button><button type="button" class="primary" data-concept-choose="${id}" ${disabled ? 'disabled' : ''}>Choose this idea</button></div></aside>`;
 }
 
 const RECIPE_FIELDS = Object.freeze(['pillar', 'angle', 'hookFamily', 'cta', 'hashtags']);
@@ -5133,7 +5174,10 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
     // The picks (industry under the strategy, funnel stage, ad style, format and call to action on each card) come with the options the document offers.
     const strategy = { options: strategyOptionsOf(doc), chosen: state.strategyPicks || {}, added: state.strategyOwn || {}, edit: state.strategyEdit || null, openKeys, disabled: locked, industryOpen: Boolean(state.industryOpen) };
     parts.push(conceptStrategy(conceptSummaryOf(review.concepts, doc), industryRow(strategy, { disabled: locked }), { openKeys }));
-    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy, panel: state.conceptPanel || null }));
+    // Pick sends the approval, so it says what that button says while the decision is saved or handled; it waits for the copy choices below it.
+    const picking = state.busy && state.verdict === 'approve' ? 'Saving...' : state.submitted && state.verdict === 'approve' ? TXT_WAITING_FOR_CLAUDE : state.settled ? 'Already handled' : '';
+    const copyPending = unchosenRecipes(doc).some(([id]) => !recipeReady(recipeState, id));
+    parts.push(conceptCards(review.concepts, state.choice, { disabled: state.busy || state.submitted, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, edit: state.hookEdit || null, strategy, panel: state.conceptPanel || null, director: Boolean(agentBoxOf(doc)?.director), blocked: copyPending, status: picking, sent: Boolean(state.ideaSent) }));
   }
   if (gate === 'concept') parts.push(recipeReviewSection(doc, recipeState, { disabled: state.busy || state.submitted }));
   // Panel-by-panel decisions belong to the storyboard approval only (the server refuses them anywhere else), so a later
@@ -5241,10 +5285,10 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
     if (!concept) return { disabled: true, label: 'Approve', line: TXT_PICK_A_CONCEPT_FIRST };
     const pending = unchosenRecipes(doc);
     if (pending.some(([id]) => !recipeReady(recipeState, id))) {
-      return { disabled: true, label: `Approve concept ${concept.id}`, line: NOTE_CHOOSE_COPY };
+      return { disabled: true, label: `Approve idea ${concept.id}`, line: NOTE_CHOOSE_COPY };
     }
     const credits = conceptCredits(concepts, concept);
-    return { label: `Approve concept ${concept.id}`, credits, line: credits ? `Approving allows up to ${credits.toLocaleString()} credits for media.` : 'Approving allows no media spend yet.' };
+    return { label: `Approve idea ${concept.id}`, credits, line: credits ? `Approving allows up to ${credits.toLocaleString()} credits for media.` : 'Approving allows no media spend yet.' };
   }
   if (gate === 'price') {
     const totals = priceTotals(doc?.review?.quote);
@@ -6263,15 +6307,471 @@ export function previewUnavailableReason({ type = '', path = '', hasDoc = true }
   return 'Cannot show this file type. Open it on your computer.';
 }
 
-/** Research and strategy as collapsible, readable panels. */
-export function documentPanels(doc, openKeys = new Set()) {
+// @module brief
+// The brief as one paragraph, in step 1. The job document's `brief` is { rows: [{ label, value }], sources: [{ label, file, strength }], version }
+// (briefGlance in server/pipeline/job-document.mjs, read from the "At a glance" block of the brief), or null for an older brief, which keeps its panel.
+// Every value is a highlighted word. A tap on a word sends the Director a change: the Agent Box composer opens, addressed to the Director, with the
+// words started and an About chip. Nothing is written here; the next version of the brief comes back from the Director.
+// Shape, voice, music and subtitles open a picker instead (openBriefPicker below).
+const briefNorm = value => String(value ?? '').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+// key: the word's field; label: the row's label in the document; name: how the person reads it; draft: how the message to the Director starts.
+export const BRIEF_FIELDS = Object.freeze([
+  { key: 'post', label: 'Post', name: 'Post type', draft: 'Change the post type to: ' },
+  { key: 'length', label: 'Length', name: 'Length', draft: 'Change the length to: ' },
+  { key: 'shape', label: 'Shape', name: 'Shape', draft: 'Change the shape to: ' },
+  { key: 'topic', label: 'Topic', name: 'Topic', draft: 'Change the topic to: ' },
+  { key: 'message', label: 'Message', name: 'Message', draft: 'Change the message to: ' },
+  { key: 'who', label: "Who's in it", name: 'Who is in it', draft: 'Change who is in it to: ' },
+  { key: 'look', label: 'Look', name: 'Look', draft: 'Change the look to: ' },
+  { key: 'voice', label: 'Voice', name: 'Voice', draft: 'Change the voice to: ' },
+  { key: 'music', label: 'Music', name: 'Music', draft: 'Change the music to: ' },
+  { key: 'subtitles', label: 'Subtitles', name: 'Subtitles', draft: 'Change the subtitles to: ' },
+  { key: 'ending', label: 'Ends on', name: 'Ending', draft: 'Change the ending to: ' },
+  { key: 'posting', label: 'Posting', name: 'Posting', draft: 'Change the posting to: ' },
+]);
+const BRIEF_FIELD_OF = new Map(BRIEF_FIELDS.map(field => [field.key, field]));
+const BRIEF_KEY_OF = new Map(BRIEF_FIELDS.flatMap(field => [[field.key, field.key], [briefNorm(field.label), field.key]]));
+/** The four words that open a picker rather than the composer. */
+export const BRIEF_PICKER_FIELDS = Object.freeze(['shape', 'voice', 'music', 'subtitles']);
+export const BRIEF_INTRO = 'Read this in ten seconds. Tap any highlighted word to change it.';
+export const BRIEF_SOURCES_TITLE = 'Where this came from';
+
+// The open picker (the pickers module below draws it): { field, jobId, current, selected, search, playing, busy, error }, or null. One sheet at a time.
+let briefPicker = null;
+let briefPickerWake = null;
+/** Opens the picker of 'shape', 'voice', 'music' or 'subtitles' when that word is tapped; returns true once it is open (false for any other word). */
+export function openBriefPicker(field, { jobId = '', current = '' } = {}) {
+  if (!BRIEF_PICKER_FIELDS.includes(field)) return false;
+  briefPicker = { field, jobId, current, selected: current || null, search: '', playing: null, busy: false, error: '' };
+  briefPickerWake?.();
+  return true;
+}
+/** Closes the open picker. `notify: false` when the page is drawing it anyway. */
+export function closeBriefPicker({ notify = true } = {}) {
+  if (!briefPicker) return false;
+  briefPicker = null;
+  if (notify) briefPickerWake?.();
+  return true;
+}
+/** The open picker's state (the page changes its selection and search in place), or null. */
+export const briefPickerOpen = () => briefPicker;
+/** The page's redraw, called whenever a picker opens or closes. */
+export function onBriefPickerChange(wake) { briefPickerWake = typeof wake === 'function' ? wake : null; }
+
+/** The key of a brief field from its key or its label in the document ("Ends on" and "ending" both give 'ending'), or null. */
+export const briefKeyOf = value => BRIEF_KEY_OF.get(briefNorm(value)) || null;
+
+/** The brief's values by field key; a row with no value is left out. */
+export function briefValues(brief) {
+  const out = new Map();
+  for (const row of Array.isArray(brief?.rows) ? brief.rows : []) {
+    const key = briefKeyOf(row?.label);
+    const value = trimmed(row?.value);
+    if (key && value && !out.has(key)) out.set(key, value);
+  }
+  return out;
+}
+
+// What a question's words say about each field. Only read for a question about the brief that names no field.
+const BRIEF_ASKS_ABOUT = Object.freeze({
+  post: /\b(?:post type|platform|reel)\b/i,
+  length: /\b(?:length|how long|seconds?|duration|running time|minutes?)\b/i,
+  shape: /\b(?:shape|aspect|ratio|9:16|4:5|1:1|16:9|tall|portrait|square|wide)\b/i,
+  topic: /\btopic\b/i,
+  message: /\bmessage\b|\bmain point\b/i,
+  who: /\bwho(?:'s|\s+is|\s+are)?\s+(?:in|on)\b|\b(?:talent|on[- ]screen|presenter|actor|spokesperson)\b/i,
+  look: /\b(?:look|feel|style|visuals?)\b/i,
+  voice: /\b(?:voice|voice-?over|narrat\w*|speaker)\b/i,
+  music: /\b(?:music|track|song|soundtrack)\b/i,
+  subtitles: /\b(?:subtitles?|captions?)\b/i,
+  ending: /\b(?:ends? on|ending|call to action|cta|last (?:beat|line|shot))\b/i,
+  posting: /\b(?:posting|post time|when (?:to|should|do we) post|schedule|publish)\b/i,
+});
+const BRIEF_FILE = /(?:^|\/)brief\.md$/i;
+
+/**
+ * The fields the Director still wants the person's word on: the words that get the dashed outline. A question counts when it is open (not
+ * closing, not marked non-blocking) and it is about a brief field:
+ *   - its `about.field` names one (a key or a label: 'ending' or 'Ends on'), or
+ *   - it is about the brief (`about.kind` is 'brief', or `about.path` is the brief file) and names no field, and its words name one or more
+ *     fields (the table above). A question about the brief whose words name none marks nothing; a question with no `about` marks nothing.
+ * The board's question items carry `about: { path, revision }` today (server/pipeline/questions.mjs); `field` and `kind` are read when they come.
+ */
+export function briefAskedFields(items) {
+  const asked = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || item.closing || item.blocking === false) continue;
+    const about = item.about && typeof item.about === 'object' ? item.about : null;
+    if (!about) continue;
+    const named = briefKeyOf(about.field);
+    if (named) { asked.add(named); continue; }
+    if (about.kind !== 'brief' && !BRIEF_FILE.test(trimmed(about.path))) continue;
+    const text = [item.text, item.title].filter(value => typeof value === 'string').join(' ');
+    for (const field of BRIEF_FIELDS) if (BRIEF_ASKS_ABOUT[field.key].test(text)) asked.add(field.key);
+  }
+  return asked;
+}
+
+const BRIEF_SHAPES = Object.freeze({ '9:16': '9:16 tall', '4:5': '4:5 portrait', '1:1': '1:1 square', '16:9': '16:9 wide' });
+/** A shape as the paragraph says it: "9:16 tall", "4:5 portrait", "1:1 square", "16:9 wide". */
+export const briefShapeWord = value => BRIEF_SHAPES[/\b\d{1,2}:\d{1,2}\b/.exec(String(value ?? ''))?.[0]] || trimmed(value);
+const briefNone = value => /^(?:none|no|nothing|n\/a|no voice[- ]?over|no music|no subtitles|no captions)$/i.test(trimmed(value));
+const briefTail = value => trimmed(value).replace(/[\s.]+$/, '');
+const briefUpper = value => (value ? value[0].toUpperCase() + value.slice(1) : value);
+const briefLower = value => (value ? value[0].toLowerCase() + value.slice(1) : value);
+const briefArticle = value => (/^(?:[aeio]|u(?!ni|se|g|k|x)|8(?!\d)|8\d(?!\d)|11(?!\d)|18(?!\d))/i.test(value) ? 'An' : 'A');
+// "20 seconds" reads "20-second" before a noun; anything else stays as written.
+const briefLength = value => {
+  const found = /^(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?)$/i.exec(trimmed(value));
+  return found ? `${found[1]}-${/^m/i.test(found[2]) ? 'minute' : 'second'}` : briefTail(value);
+};
+// A mood ("Warm") reads "warm music"; a name or a phrase that already says music or a track stays as it is (a title keeps its capitals).
+const briefMusic = value => {
+  const text = briefTail(value);
+  if (/\s[A-Z][a-z]/.test(text)) return text;
+  const lower = briefLower(text);
+  return /\b(?:music|track|song|score|soundtrack|beat|piano|guitar|acoustic|instrumental)\b/i.test(lower) ? lower : `${lower} music`;
+};
+const briefSubtitles = value => {
+  const text = briefTail(value);
+  if (briefNone(text)) return 'no subtitles';
+  if (/^word[ -]by[ -]word$/i.test(text)) return 'word-by-word subtitles';
+  if (/^one[ -]line$/i.test(text)) return 'one-line subtitles';
+  return /subtitle|caption/i.test(text) ? briefLower(text) : `${briefLower(text)} subtitles`;
+};
+const briefEnd = text => (/[!?]$/.test(text) ? '' : '.');
+
+/**
+ * The sentence: "A {length} {platform}, {shape}, telling {topic}. The message is {message}. We meet {who}, {look}. {voice} speaks over {music},
+ * with {subtitles}. It ends on {ending}. Posted as {posting}." Every value is a highlighted word (a button); a value the brief does not state
+ * drops its clause and the sentence stays whole. A chosen "None" is worded plainly ("There is no voice-over, just warm music", "Adam speaks
+ * with no music", "No voice-over and no music", "with no subtitles"). `asked` is the set of field keys that get the dashed outline.
+ */
+export function briefSentence(brief, asked = new Set()) {
+  const value = briefValues(brief);
+  const word = (key, text) => {
+    const field = BRIEF_FIELD_OF.get(key);
+    const ask = asked.has(key);
+    const picker = BRIEF_PICKER_FIELDS.includes(key);
+    const note = ask ? 'The Director needs your word on this.' : picker ? 'Tap to choose.' : 'Tap to change.';
+    return `<span class="bw-nb"><button type="button" class="bw${ask ? ' bw-ask' : ''}" data-brief-field="${key}"${picker ? ` data-brief-picker="${key}"` : ''} aria-label="${esc(`${field.name}: ${text}. ${note}`)}">${esc(text)}</button></span>`;
+  };
+  const sentences = [];
+  // A 20-second Instagram Reel, 9:16 tall, telling how a dinner comes together.
+  const length = value.has('length') ? briefLength(value.get('length')) : '';
+  const post = value.has('post') ? briefTail(value.get('post')) : '';
+  if (length || post || value.has('shape') || value.has('topic')) {
+    const lead = length || post || 'post';
+    sentences.push(`${briefArticle(lead)} ${length ? `${word('length', length)} ` : ''}${post ? word('post', post) : 'post'}${value.has('shape') ? `, ${word('shape', briefShapeWord(value.get('shape')))}` : ''}${value.has('topic') ? `, telling ${word('topic', briefTail(value.get('topic')))}` : ''}.`);
+  }
+  if (value.has('message')) { const message = briefTail(value.get('message')); sentences.push(`The message is ${word('message', message)}${briefEnd(message)}`); }
+  if (value.has('who') || value.has('look')) {
+    const who = value.has('who') ? briefTail(value.get('who')) : '';
+    const look = value.has('look') ? briefTail(value.get('look')) : '';
+    const nobody = /^(?:no one|nobody|no people|none)\b/i.test(who);
+    const text = who && look ? `${nobody ? '' : 'We meet '}${word('who', nobody ? briefUpper(who) : who)}, ${word('look', look)}` : who ? `${nobody ? '' : 'We meet '}${word('who', nobody ? briefUpper(who) : who)}` : `The look is ${word('look', look)}`;
+    sentences.push(`${text}${briefEnd(look || who)}`);
+  }
+  // Voice, music and subtitles are one sentence.
+  const voice = value.has('voice') ? briefTail(value.get('voice')) : '';
+  const music = value.has('music') ? briefTail(value.get('music')) : '';
+  const noVoice = Boolean(voice) && briefNone(voice);
+  const noMusic = Boolean(music) && briefNone(music);
+  let sound = '';
+  if (voice && music) {
+    if (noVoice && noMusic) sound = `${word('voice', 'No voice-over')} and ${word('music', 'no music')}`;
+    else if (noVoice) sound = `There is ${word('voice', 'no voice-over')}, just ${word('music', briefMusic(music))}`;
+    else if (noMusic) sound = `${word('voice', briefUpper(voice))} speaks with ${word('music', 'no music')}`;
+    else sound = `${word('voice', briefUpper(voice))} speaks over ${word('music', briefMusic(music))}`;
+  } else if (voice) sound = noVoice ? `There is ${word('voice', 'no voice-over')}` : `${word('voice', briefUpper(voice))} speaks`;
+  else if (music) sound = noMusic ? `There is ${word('music', 'no music')}` : `${word('music', briefUpper(briefMusic(music)))} plays`;
+  if (value.has('subtitles')) {
+    const subtitles = word('subtitles', briefSubtitles(value.get('subtitles')));
+    sound = sound ? `${sound}, with ${subtitles}` : `It has ${subtitles}`;
+  }
+  if (sound) sentences.push(`${sound}.`);
+  if (value.has('ending')) { const ending = briefTail(value.get('ending')); sentences.push(`It ends on ${word('ending', ending)}${briefEnd(ending)}`); }
+  if (value.has('posting')) { const posting = briefTail(value.get('posting')); sentences.push(`Posted as ${word('posting', posting)}${briefEnd(posting)}`); }
+  // A comma or a full stop stays with the word before it when the line breaks (it joins that word's no-break wrapper).
+  return sentences.join(' ').replace(/<\/button><\/span>([,.!?])/g, '</button>$1</span>');
+}
+
+const BRIEF_SOURCE_WORDS = Object.freeze({ solid: 'solid', thin: 'thin', gap: 'nothing found' });
+// "Where this came from": what the brief rests on, each with a dot (green solid, amber thin, an empty grey ring for a gap). A file name is never shown.
+function briefSources(sources, { jobId = '', openKeys = new Set() } = {}) {
+  const list = (Array.isArray(sources) ? sources : []).filter(source => trimmed(source?.label));
+  if (!list.length) return '';
+  const key = `brief:sources:${jobId}`;
+  const rows = list.map(source => {
+    const strength = BRIEF_SOURCE_WORDS[source.strength] ? source.strength : 'thin';
+    return `<li><i class="bp-dot is-${strength}" aria-hidden="true"></i><span>${esc(trimmed(source.label))}</span><span class="visually-hidden">: ${esc(BRIEF_SOURCE_WORDS[strength])}</span></li>`;
+  }).join('');
+  return `<details class="bp-src" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary>${esc(BRIEF_SOURCES_TITLE)}</summary><ul class="bp-src-list">${rows}</ul></details>`;
+}
+
+/**
+ * The brief as one paragraph with the Director beside it: the Director's face and one line, the paragraph, a legend line, the open question
+ * cards (`asks`, drawn unchanged), "Where this came from", and the file chip "Brief v1". `openQuestions` are the open question items of the job:
+ * a word one of them is about gets the dashed outline (briefAskedFields). `fileIndex` is the brief file's place among the job's files, for the chip.
+ * "Start over" is left out: the board has no start-over action for a brief yet.
+ */
+export function briefParagraph(brief, openQuestions = [], { asks = '', fileIndex = -1, jobId = '', openKeys = new Set(), sent = '' } = {}) {
+  if (!briefValues(brief).size) return '';
+  const asked = briefAskedFields(openQuestions);
+  const version = Number(brief.version) > 0 ? Math.floor(Number(brief.version)) : 1;
+  const chip = fileIndex >= 0
+    ? `<li><button type="button" class="ab-chip" data-artifact="${fileIndex}" aria-label="${esc(`Open the brief, version ${version}`)}">Brief v${version}</button></li>`
+    : `<li><button type="button" class="ab-chip" disabled aria-label="${esc(`Brief version ${version}, on your computer`)}">Brief v${version}<small>On your computer</small></button></li>`;
+  const legend = `<p class="bp-legend"><span class="bp-key"><i class="bw-key" aria-hidden="true"></i>Tap a highlighted word to change it</span>${asked.size ? '<span class="bp-key"><i class="bw-key is-ask" aria-hidden="true"></i>The Director wants your word</span>' : ''}</p>`;
+  return `<section class="brief-p" data-brief-version="${version}" aria-label="The brief"><div class="bp-intro">${blob('producer', asked.size ? 'surprised' : 'happy', 36)}<p>${esc(BRIEF_INTRO)}</p></div><p class="bp-text">${briefSentence(brief, asked)}</p>${legend}${sent ? `<p class="bp-sent" role="status">${esc(sent)}</p>` : ''}${asks}${briefSources(brief.sources, { jobId, openKeys })}<ul class="ab-chips" aria-label="Brief file">${chip}</ul></section>`;
+}
+
+/**
+ * What a tapped word is about, as the composer and the request carry it: { label, kind: 'brief', field, version, revision, path }. It names no value:
+ * the person types the new words in the message, and the word's current value is in the brief file at that version. Only a picker's message carries a
+ * `value`, and that one is the new value (see pickerAbout), so a `value` is never read as the old one.
+ */
+export function briefAbout(brief, key) {
+  const field = BRIEF_FIELD_OF.get(key);
+  if (!field || !brief) return null;
+  const version = Number(brief.version) > 0 ? Math.floor(Number(brief.version)) : 1;
+  // `revision` and `path` are what the server keeps of an about today (the Director reads "version N" of the file); `kind`, `field` and `version` are the brief's own.
+  return { label: `Brief: ${field.name}`, kind: 'brief', field: key, version, revision: version, path: 'brief.md' };
+}
+
+/** How the message to the Director starts when a word is tapped ("Change the ending to: "). */
+export const briefDraft = key => BRIEF_FIELD_OF.get(key)?.draft || '';
+
+// @module pickers
+// Shape, voice, music and subtitles open a sheet instead of the composer. "Use this" sends the Director one message (the Agent Box's board request
+// agent_message) that says the change in words and carries { kind: 'brief', field, value, version }. Nothing is written on the board: the word on
+// the paragraph changes when the Director's next brief version comes back. The board never calls ElevenLabs: it lists the voices the Director saved
+// (data.voiceCatalog) and the workspace library (data.audioLibrary), and a preview is the free clip the saved list points to.
+// A selection is a token: shape '16:9'; voice 'none', 'eleven:{id}' or 'library:{id}'; music 'none', 'mood:{warm|upbeat|calm|minimal}' or 'library:{id}';
+// subtitles 'word', 'line' or 'none'.
+export const PICKER_SHAPES = Object.freeze([
+  Object.freeze({ value: '9:16', name: 'Tall', where: 'TikTok, Reels, Shorts', width: 26 }),
+  Object.freeze({ value: '4:5', name: 'Portrait', where: 'Instagram feed', width: 35 }),
+  Object.freeze({ value: '1:1', name: 'Square', where: 'Feed, carousel', width: 44 }),
+  Object.freeze({ value: '16:9', name: 'Wide', where: 'YouTube, LinkedIn, website', width: 78 }),
+]);
+export const PICKER_MOODS = Object.freeze([
+  Object.freeze({ id: 'warm', name: 'Warm', line: 'Soft and friendly', recommended: true }),
+  Object.freeze({ id: 'upbeat', name: 'Upbeat', line: 'Light and quick' }),
+  Object.freeze({ id: 'calm', name: 'Calm', line: 'Slow and easy' }),
+  Object.freeze({ id: 'minimal', name: 'Minimal', line: 'Quiet, stays under the voice' }),
+]);
+export const PICKER_SUBTITLES = Object.freeze([
+  Object.freeze({ id: 'word', name: 'Word by word', line: 'One or two words at a time', recommended: true }),
+  Object.freeze({ id: 'line', name: 'One line', line: 'A whole line at a time' }),
+  Object.freeze({ id: 'none', name: 'None', line: 'No words on the picture' }),
+]);
+export const PICKER_SEARCH_LIMIT = 80;
+const PICKER_HEADS = Object.freeze({
+  shape: ['Choose the shape', 'The video is made to this shape.'],
+  voice: ['Choose a voice', 'Listen to a free preview, then pick the voice that reads the script.'],
+  music: ['Choose the music', 'Made for the video, or a track from your library.'],
+  subtitles: ['Choose the subtitles', 'How the words show on the picture.'],
+});
+const PICKER_ICONS = Object.freeze({
+  play: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>',
+});
+const PICKER_PLATFORMS = Object.freeze([['tiktok', /\btik\s?tok\b/i], ['instagram', /\binstagram\b/i], ['facebook', /\bfacebook\b/i], ['youtube', /\byoutube\b/i], ['linkedin', /\blinkedin\b/i]]);
+
+/** The platform and post type the brief's Post row names ("Instagram Reel" is instagram and reel; "TikTok video" is tiktok and video), for placementIssue. A `post` the document gives wins. */
+export function briefPostType(brief) {
+  const given = brief?.post;
+  if (given && typeof given === 'object' && trimmed(given.platform)) return { platform: trimmed(given.platform).toLowerCase(), placement: trimmed(given.placement).toLowerCase() };
+  const text = briefValues(brief).get('post') || '';
+  const platform = PICKER_PLATFORMS.find(([, pattern]) => pattern.test(text))?.[0] || '';
+  const placement = /\bstor(?:y|ies)\b/i.test(text) ? 'story' : /\breels?\b/i.test(text) ? 'reel' : platform === 'tiktok' && /\bvideo\b/i.test(text) ? 'video' : '';
+  return { platform, placement };
+}
+/** The shape the brief has now: the one it states, else the one its post type starts with (a Reel, a Story and a TikTok video are always 9:16). */
+export function pickerShapeCurrent(brief) {
+  const { platform, placement } = briefPostType(brief);
+  const stated = /\b\d{1,2}:\d{1,2}\b/.exec(briefValues(brief).get('shape') || '')?.[0];
+  return rowShape(platform, placement, '', stated ? [stated] : []);
+}
+/** The four shape tiles with the current one marked, and a tile the post type cannot take disabled with the rule's own words ("A TikTok video is 9:16."). */
+export function pickerShapeTiles(brief) {
+  const { platform, placement } = briefPostType(brief);
+  const current = pickerShapeCurrent(brief);
+  return PICKER_SHAPES.map(shape => {
+    const reason = placementIssue(platform, placement, '', [shape.value]);
+    return { ...shape, current: shape.value === current, disabled: Boolean(reason), reason };
+  });
+}
+/** The voices whose name or one line holds every word typed; the whole list when nothing is typed. */
+export function pickerVoiceMatches(catalog, text) {
+  const list = (Array.isArray(catalog) ? catalog : []).filter(voice => voice && trimmed(voice.id) && trimmed(voice.name));
+  const words = briefNorm(text).split(' ').filter(Boolean);
+  if (!words.length) return list;
+  return list.filter(voice => { const hay = briefNorm(`${voice.name} ${voice.line || ''}`); return words.every(word => hay.includes(word)); });
+}
+/** A preview clip's address when it is a plain https link, else ''. */
+export const pickerPreviewUrl = value => { const url = safePreviewUrl(value); return url && /^https:/i.test(url) ? url : ''; };
+const pickerNamed = (list, id) => (Array.isArray(list) ? list : []).find(item => item && item.id === id) || null;
+/** The token of what the brief has now for a field, or '' when the picker cannot tell (a voice or track is matched by its name). */
+export function pickerCurrent(kind, brief, { catalog = [], library = {} } = {}) {
+  if (kind === 'shape') return pickerShapeCurrent(brief);
+  const value = trimmed(briefValues(brief).get(kind));
+  if (!value) return '';
+  if (briefNone(value)) return 'none';
+  const same = (a, b) => briefNorm(a) === briefNorm(b);
+  if (kind === 'subtitles') return /word/i.test(value) ? 'word' : /line/i.test(value) ? 'line' : '';
+  if (kind === 'music') {
+    const mood = PICKER_MOODS.find(item => new RegExp(`\\b${item.id}\\b`, 'i').test(value));
+    if (mood) return `mood:${mood.id}`;
+    const track = (Array.isArray(library.music) ? library.music : []).find(item => same(item.title, value));
+    return track ? `library:${track.id}` : '';
+  }
+  const voice = (Array.isArray(catalog) ? catalog : []).find(item => same(item.name, value));
+  if (voice) return `eleven:${voice.id}`;
+  const mine = (Array.isArray(library.voice) ? library.voice : []).find(item => same(item.title, value));
+  return mine ? `library:${mine.id}` : '';
+}
+/** What a selection says to the Director: { text, value } (the value is what the Director applies: see "A brief change from the board" in its job-requests reference), or null when the lists do not hold it. */
+export function pickerChoice(kind, token, { catalog = [], library = {} } = {}) {
+  if (kind === 'shape') { const shape = PICKER_SHAPES.find(item => item.value === token); return shape ? { text: `Change the shape to ${briefShapeWord(shape.value)}`, value: shape.value } : null; }
+  if (kind === 'subtitles') { const item = PICKER_SUBTITLES.find(entry => entry.id === token); return item ? { text: item.id === 'none' ? 'Use no subtitles' : `Use ${item.name.toLowerCase()} subtitles`, value: item.id } : null; }
+  const [source, ...rest] = String(token ?? '').split(':');
+  const id = rest.join(':');
+  if (kind === 'voice') {
+    if (token === 'none') return { text: 'Use no voice-over', value: 'none' };
+    if (source === 'eleven') { const voice = pickerNamed(catalog, id); return voice ? { text: `Use the voice ${voice.name} from ElevenLabs`, value: `elevenlabs ${voice.id} ${voice.name}`.slice(0, 120) } : null; }
+    if (source === 'library') { const voice = pickerNamed(library.voice, id); return voice ? { text: `Use the voice ${voice.title} from your library`, value: `library ${voice.id}` } : null; }
+    return null;
+  }
+  if (kind === 'music') {
+    if (token === 'none') return { text: 'Use no music', value: 'none' };
+    if (source === 'mood') { const mood = PICKER_MOODS.find(item => item.id === id); return mood ? { text: `Use ${mood.name.toLowerCase()} music made for the video`, value: mood.id } : null; }
+    if (source === 'library') { const track = pickerNamed(library.music, id); return track ? { text: `Use the track ${track.title} from your library`, value: `library ${track.id}` } : null; }
+  }
+  return null;
+}
+/** Whether "Use this" can send: something other than what the brief has now, and something the lists hold. */
+export const pickerCanUse = (kind, selected, current, lists = {}) => Boolean(selected) && selected !== current && Boolean(pickerChoice(kind, selected, lists));
+// The about of a picker's message: the brief word's own about (briefAbout) plus the NEW value, or none for a request that names no value.
+// This is the only about that carries a `value`; the server words it as "change to" so it cannot be read as what the brief says now.
+function pickerAbout(brief, kind, value) {
+  const base = briefAbout(brief, kind);
+  if (!base) return null;
+  return { ...base, ...(value ? { value: String(value).slice(0, 120) } : {}) };
+}
+/** The message "Use this" sends: { text, about } for a selection, or null. */
+export function pickerMessage(kind, token, { brief = null, catalog = [], library = {} } = {}) {
+  const choice = pickerChoice(kind, token, { catalog, library });
+  const about = choice ? pickerAbout(brief, kind, choice.value) : null;
+  return choice && about ? { text: choice.text, about } : null;
+}
+/** The message "Ask the Director to find voices like ..." sends: the words typed, and the voice word of the brief as its subject. */
+export function pickerFindMessage(brief, search) {
+  const wanted = agentMessageText(search).replace(/\s+/g, ' ').trim().slice(0, PICKER_SEARCH_LIMIT).trim();
+  const about = pickerAbout(brief, 'voice', '');
+  return wanted && about ? { text: `Find voices like ${wanted}`, about } : null;
+}
+// What the paragraph shows for a picker word right now: the shape the brief has, else the words of its row.
+const pickerShown = (kind, brief) => (kind === 'shape' ? pickerShapeCurrent(brief) : trimmed(briefValues(brief).get(kind)));
+/** What to remember when a picker's message goes out, for pickerSentLine: the word, the brief version seen, what the word showed, and whether it only asked for more voices. */
+export function pickerSentRecord(brief, field, { find = false } = {}) {
+  return { field, version: Number(brief?.version) > 0 ? Math.floor(Number(brief.version)) : 1, was: pickerShown(field, brief), find };
+}
+/**
+ * The line under the paragraph once a picker's message went out. It stops when the word it was about shows something else (a voice, music, subtitles or
+ * shape change does not raise the brief's version, so the word itself is the sign) or when a newer brief arrives. A request for more voices has no word
+ * to wait for, so it stays.
+ */
+export function pickerSentLine(brief, sent) {
+  if (!sent || typeof sent !== 'object') return '';
+  if (sent.find) return 'Sent to the Director. New voices show in the list when they are ready.';
+  const version = Number(brief?.version) > 0 ? Math.floor(Number(brief.version)) : 1;
+  if (version > (Number(sent.version) || 0)) return '';
+  if (typeof sent.was === 'string' && BRIEF_PICKER_FIELDS.includes(sent.field) && pickerShown(sent.field, brief) !== sent.was) return '';
+  return 'Sent to the Director. The word changes once the Director makes the change.';
+}
+
+const pickerChip = (item, eleven) => `<span class="tag">${eleven || item?.origin === 'elevenlabs' ? 'ElevenLabs' : 'Your library'}</span>`;
+// A voice or a track as a row: a free preview button when the saved list has a clip (28px), the name, one line, and where it comes from.
+function pickerRow(item, { source, pressed, playing }) {
+  const eleven = source === 'eleven';
+  const name = trimmed(eleven ? item.name : item.title) || (eleven ? 'Voice' : 'Track');
+  const token = `${source}:${item.id}`;
+  const url = eleven ? pickerPreviewUrl(item.previewUrl) : '';
+  const on = playing === item.id;
+  const play = url
+    ? `<button type="button" class="pk-play${on ? ' is-playing' : ''}" aria-pressed="${on}" aria-label="${esc(`Play a free preview of ${name}`)}" data-pk-play="${esc(item.id)}" data-pk-key="${esc(`play:${item.id}`)}"><span class="pk-ic-play">${PICKER_ICONS.play}</span><span class="pk-ic-pause">${PICKER_ICONS.pause}</span></button>`
+    : eleven ? '<span class="pk-play-gap" aria-hidden="true"></span>' : '';
+  const line = eleven ? trimmed(item.line) : '';
+  return `<li class="pk-row${play ? '' : ' is-plain'}">${play}<button type="button" class="pk-main" aria-pressed="${pressed}" data-pk-pick="${esc(token)}" data-pk-key="${esc(token)}"><span class="pk-text"><span class="pk-name">${esc(name)}</span>${line ? `<span class="pk-line">${esc(line)}</span>` : ''}</span>${pickerChip(item, eleven)}</button></li>`;
+}
+/** The ElevenLabs rows for what is typed, or the offer to ask the Director when nothing matches. Drawn again in place on every key. */
+export function pickerVoiceResults(catalog, search, { pressed = '', playing = null } = {}) {
+  const wanted = String(search ?? '').replace(/\s+/g, ' ').trim();
+  const list = pickerVoiceMatches(catalog, wanted);
+  if (list.length) return `<ul class="pk-list">${list.map(voice => pickerRow(voice, { source: 'eleven', pressed: pressed === `eleven:${voice.id}`, playing })).join('')}</ul>`;
+  if (wanted) return `<p class="pk-empty">${esc(`No voice matches "${wanted}".`)}</p><button type="button" class="pk-find" data-pk-find data-pk-key="find">${esc(`Ask the Director to find voices like ${wanted}`)}</button>`;
+  return '<p class="pk-empty">The Director has not listed any ElevenLabs voices yet. Type what you want, then ask the Director to find it.</p>';
+}
+const pickerCard = (token, pressed, body, { cls = '', off = false } = {}) => `<button type="button" class="pk-card${cls ? ` ${cls}` : ''}" aria-pressed="${pressed}" data-pk-pick="${esc(token)}" data-pk-key="${esc(token)}"${off ? ' aria-disabled="true" aria-describedby="pk-why"' : ''}>${body}</button>`;
+const pickerRecommended = '<span class="tag tag-rec">Recommended</span>';
+const pickerShelf = (title, rows, empty) => `<section class="pk-sec"><h3 class="pk-h">${esc(title)}</h3>${rows ? `<ul class="pk-list">${rows}</ul>` : `<p class="pk-empty">${esc(empty)}</p>`}</section>`;
+
+/**
+ * The sheet of one picker: the scrim and the dialog (560px, 16px padding; the full width at the foot of a phone). `selected` is the token chosen so far
+ * (the brief's current one when null); "Use this" is off until the person picks something else. `catalog` is the saved ElevenLabs voice list, `library`
+ * the workspace's saved { music, voice }.
+ */
+export function pickerSheet(kind, { brief = null, catalog = [], library = {}, selected = null, search = '', playing = null, busy = false, error = '' } = {}) {
+  if (!BRIEF_PICKER_FIELDS.includes(kind)) return '';
+  const lists = { catalog, library };
+  const current = pickerCurrent(kind, brief, lists);
+  const chosen = selected ?? current;
+  const [title, line] = PICKER_HEADS[kind];
+  let body = '';
+  if (kind === 'shape') {
+    const shapes = pickerShapeTiles(brief);
+    const tiles = shapes.map(tile => pickerCard(tile.value, tile.value === chosen && !tile.disabled,
+      `<span class="pk-box is-r${tile.value.replace(':', 'x')}" aria-hidden="true"></span><span class="pk-card-name"><b>${esc(tile.value)}</b> ${esc(tile.name)}</span><span class="pk-card-line">${esc(tile.where)}</span>${tile.disabled ? '<span class="pk-why">Not for this post</span>' : ''}`,
+      { cls: 'pk-shape', off: tile.disabled }));
+    // The rule's own words, once, under the tiles it turns off.
+    const why = [...new Set(shapes.map(tile => tile.reason).filter(Boolean))];
+    body = `<div class="pk-grid pk-grid-4" role="group" aria-label="Shape">${tiles.join('')}</div>${why.length ? `<p class="pk-note" id="pk-why">${esc(why.join(' '))}</p>` : ''}`;
+  } else if (kind === 'voice') {
+    const mine = (Array.isArray(library.voice) ? library.voice : []).filter(item => item && trimmed(item.id)).map(item => pickerRow(item, { source: 'library', pressed: chosen === `library:${item.id}`, playing })).join('');
+    body = `${pickerShelf('Your voices', mine, 'No saved voices yet.')}`
+      + `<section class="pk-sec"><h3 class="pk-h">ElevenLabs library</h3><input type="search" class="pk-search" id="pk-search" name="pk_search" value="${esc(String(search ?? '').slice(0, PICKER_SEARCH_LIMIT))}" maxlength="${PICKER_SEARCH_LIMIT}" autocomplete="off" placeholder="Search by name or feel, like warm or deep" aria-label="Search the ElevenLabs voices" data-pk-search data-pk-key="search"><div class="pk-results" data-pk-results>${pickerVoiceResults(catalog, search, { pressed: chosen, playing })}</div></section>`
+      + `<section class="pk-sec">${pickerCard('none', chosen === 'none', '<span class="pk-card-name">No voice-over</span>', { cls: 'pk-none' })}</section>`
+      + '<p class="pk-fine">Previews are free. The voice-over itself is priced with the storyboard.</p>';
+  } else if (kind === 'music') {
+    const moods = PICKER_MOODS.map(mood => pickerCard(`mood:${mood.id}`, chosen === `mood:${mood.id}`, `<span class="pk-card-name">${esc(mood.name)}${mood.recommended ? pickerRecommended : ''}</span><span class="pk-card-line">${esc(mood.line)}</span>`, { cls: 'pk-mood' })).join('');
+    const tracks = (Array.isArray(library.music) ? library.music : []).filter(item => item && trimmed(item.id)).map(item => pickerRow(item, { source: 'library', pressed: chosen === `library:${item.id}`, playing })).join('');
+    body = `<section class="pk-sec"><h3 class="pk-h">Made for the video</h3><div class="pk-grid pk-grid-2" role="group" aria-label="Made for the video">${moods}</div></section>`
+      + pickerShelf('From your library', tracks, 'No tracks in your library yet.')
+      + `<section class="pk-sec">${pickerCard('none', chosen === 'none', '<span class="pk-card-name">No music</span>', { cls: 'pk-none' })}</section>`
+      + '<p class="pk-fine">A track made for the video is priced with the storyboard.</p>';
+  } else {
+    const samples = { word: '<span class="pk-cap pk-cap-word"></span>', line: '<span class="pk-cap pk-cap-line"></span>', none: '<span class="pk-cap pk-cap-none"></span>' };
+    const cards = PICKER_SUBTITLES.map(item => pickerCard(item.id, chosen === item.id, `<span class="pk-frame" aria-hidden="true">${samples[item.id]}</span><span class="pk-sub-text"><span class="pk-card-name">${esc(item.name)}${item.recommended ? pickerRecommended : ''}</span><span class="pk-card-line">${esc(item.line)}</span></span>`, { cls: 'pk-sub' })).join('');
+    body = `<div class="pk-grid pk-grid-3" role="group" aria-label="Subtitles">${cards}</div>`;
+  }
+  const usable = !busy && pickerCanUse(kind, chosen, current, lists);
+  return `<button type="button" class="pk-scrim" data-pk-close tabindex="-1" aria-hidden="true"></button>`
+    + `<section class="pk-sheet" role="dialog" aria-modal="true" aria-labelledby="pk-title" data-picker="${kind}"><div class="pk-head"><h2 id="pk-title">${esc(title)}</h2><p>${esc(line)}</p></div>`
+    + `<div class="pk-body" data-pk-body>${body}</div>${error ? `<p class="pk-error" role="alert">${esc(error)}</p>` : ''}`
+    + `<div class="pk-foot"><button type="button" class="quiet" data-pk-close data-pk-key="cancel"${busy ? ' disabled' : ''}>Cancel</button><button type="button" class="primary" data-pk-use data-pk-key="use"${usable ? '' : ' disabled'}>${busy ? 'Sending' : 'Use this'}</button></div></section>`;
+}
+
+/** Research and strategy as collapsible, readable panels. `briefShown`: the brief is drawn as the paragraph in step 1, so its panel is left out. */
+export function documentPanels(doc, openKeys = new Set(), { briefShown = false } = {}) {
   if (!doc) return '';
   const files = new Map((doc.files || []).map(file => [file.path, file]));
   const research = (doc.research || []).map(path => files.get(path)).filter(Boolean);
-  const strategy = doc.strategy ? files.get(doc.strategy) : null;
+  const strategy = doc.strategy && !(briefShown && doc.brief) ? files.get(doc.strategy) : null;
   const block = file => `<article class="doc-file"><h3>${esc(outputLabel(file, doc).title)}</h3>${file.text != null ? `<div class="md">${renderMarkdown(withoutTitle(file.text, file.title))}</div>` : `<p class="muted">${NOTE_TOO_LARGE}</p>`}${file.truncated ? `<p class="muted">${NOTE_SHORTENED}</p>` : ''}</article>`;
   const panel = (key, title, list) => `<details class="panel doc-panel" data-open-key="${esc(key)}"${openKeys.has(key) ? ' open' : ''}><summary><span class="doc-summary-title">${esc(title)}</span>${list.length > 1 ? `<span class="count">${list.length} files</span>` : ''}</summary><div class="doc-body">${list.map(block).join('')}</div></details>`;
-  return `${research.length ? panel('doc:research', 'Research', research) : ''}${strategy ? panel('doc:strategy', 'Strategy', [strategy]) : ''}`;
+  return `${research.length ? panel('doc:research', 'Research', research) : ''}${strategy ? panel('doc:strategy', BRIEF_FILE.test(trimmed(doc.strategy)) ? 'Brief' : 'Strategy', [strategy]) : ''}`;
 }
 
 const CODE_TOKEN = /\b(?:job-[a-z0-9-]*\d[a-z0-9-]*|[0-9a-f]{8,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f-]+)\b/i;
@@ -6419,7 +6919,9 @@ export function agentAboutOf(about) {
   if (!label) return null;
   const path = trimmed(about?.path);
   const panel = trimmed(about?.panel);
-  return { label, ...(path ? { path } : {}), ...(Number.isSafeInteger(about?.revision) && about.revision >= 0 ? { revision: about.revision } : {}), ...(panel ? { panel } : {}) };
+  // A word of the brief paragraph: { kind: 'brief', field, version } on top of the label (see briefAbout); a picker's message adds `value`, the new value (see pickerAbout).
+  const brief = about?.kind === 'brief' && BRIEF_FIELD_OF.has(about.field) ? { kind: 'brief', field: about.field, ...(trimmed(about.value) ? { value: trimmed(about.value).slice(0, 120) } : {}), ...(Number.isSafeInteger(about.version) && about.version >= 0 ? { version: about.version } : {}) } : null;
+  return { label, ...(path ? { path } : {}), ...(Number.isSafeInteger(about?.revision) && about.revision >= 0 ? { revision: about.revision } : {}), ...(panel ? { panel } : {}), ...(brief || {}) };
 }
 /** The request the composer sends: exactly these fields, and `about` when the message started from a frame or file (the transport adds the workspace). */
 export function agentMessageArgs({ project, agent, text, requestId, about = null }) {
@@ -7184,16 +7686,21 @@ const narrowBrandPage = () => Boolean(globalThis.matchMedia?.('(max-width: 950px
  * draws above the list. `asking` is the open questions' card, drawn inside the stop waiting on the person (`asked` says it found one).
  * `ask` is the Director's chat id and its draft is what "Ask for changes" starts. `who` gives the agent card
  * behind a step (`agent`, `called`), `chipContext` links its files. `done` and `total` count the stops, once.
+ * `brief` draws the brief paragraph (briefParagraph) at the top of the stop with the Brief step, else the first stop that began; it is called with
+ * the open questions' card of that stop (or ''), which it places under the paragraph. `briefPlaced` says it was drawn.
  */
-export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer', closed = false, asking = '', lift = false } = {}) {
+export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, isOpen = (key, open) => open, chipContext = {}, above = '', ask = 'producer', closed = false, asking = '', lift = false, brief = null } = {}) {
   const placed = new Set();
   const lifted = [];
   const merged = mergeDecidedGates(model);
   for (const [gate, own] of Object.entries(bodies)) if (own?.html && merged.gates.has(gate)) placed.add(gate);
   let done = 0;
+  let briefPlaced = false;
   // Where an open question sits: in the stop waiting on the person, else the one being worked on, else the last that began.
   const states = merged.stages.map(stopStatus);
   const askAt = asking ? [states.indexOf('waiting'), states.indexOf('running'), states.lastIndexOf('done')].find(index => index >= 0) ?? -1 : -1;
+  const briefStop = merged.stages.findIndex((stage, at) => states[at] !== 'pending' && stage.items.some(item => item.kind === 'step' && /^(?:short )?brief$/i.test(trimmed(item.name))));
+  const briefAt = typeof brief === 'function' ? (briefStop >= 0 ? briefStop : states.findIndex(state => state !== 'pending')) : -1;
   const stops = merged.stages.map((stage, at) => {
     const status = states[at];
     const name = esc(stage.label);
@@ -7204,6 +7711,9 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
     const holds = stage.items.some(item => { const gate = item.kind === 'gate' ? item : item.decided; return Boolean(gate && bodies[gate.gate]?.html && bodies[gate.gate].open); });
     // A stop with an open question stays open, so the question is never folded away.
     const asks = at === askAt ? asking : '';
+    // The brief paragraph holds this stop's question cards under it, so they are drawn once.
+    const paragraph = at === briefAt ? brief(asks) : '';
+    if (paragraph) briefPlaced = true;
     const open = isOpen(key, status !== 'done' || holds) || Boolean(asks);
     // The card a stop waits on lives inside that stop. Folded on a phone, it is lifted out above the steps so it stays in reach.
     const own = new Map();
@@ -7221,9 +7731,9 @@ export function stageFlow(model, { jobId = '', who = () => null, bodies = {}, is
     const starting = status === 'running' && running.length > 0 && running.every(item => who(item.agent)?.called === false);
     // `closed`: no session watches the board, so a stop that reads running is waiting for the studio to open.
     const word = starting ? STEP_STARTING_WORD : closed && status === 'running' ? ENGINE_CLOSED_WORD : STEP_STATUS_WORDS[status];
-    return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body">${asks}<ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
+    return `<li class="stg s-${status}"><details class="stg-d" data-open-key="${esc(key)}"${open ? ' open' : ''}><summary class="stg-row"><span class="n">${status === 'done' ? icon('check') : at + 1}</span><span class="stg-t"><h3>${name}</h3>${line ? `<span class="meta">${esc(line)}</span>` : ''}</span><span class="pill st-${status}">${esc(word)}</span><span class="chev" aria-hidden="true">${icon('chev')}</span></summary><div class="stg-body">${paragraph || asks}<ol class="sub-list">${rows.join('')}</ol>${foot}</div></details></li>`;
   });
-  return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length, lifted: lifted.join(''), asked: askAt >= 0 };
+  return { html: stops.length ? `<ol class="flow" aria-label="Steps of this job">${stops.join('')}</ol>` : '', placed, done, total: stops.length, lifted: lifted.join(''), asked: askAt >= 0, briefPlaced };
 }
 
 /**
@@ -7540,18 +8050,18 @@ function intelOwnPanel(intel, ui, ctx) {
   const empty = intel.newBrand
     ? 'None yet.'
     : 'No winners yet.';
-  return `<p class="intel-intro">Your best posts feed concept A.</p>${posts.length ? intelCards(posts, intel, ui, 'own', ctx) : `<p class="intel-empty">${esc(empty)}</p>`}`;
+  return `<p class="intel-intro">Your best posts feed idea A.</p>${posts.length ? intelCards(posts, intel, ui, 'own', ctx) : `<p class="intel-empty">${esc(empty)}</p>`}`;
 }
 function intelCompetitorsPanel(intel, ui, ctx) {
   const groups = intelRecords(intel.competitors);
   const posts = groups.flatMap(group => intelRecords(group.posts).map(post => ({ post, competitor: trimmed(group.name) })));
   const names = groups.map(group => trimmed(group.name)).filter(Boolean);
   const who = names.length ? ` ${names.length === 1 ? 'Competitor' : 'Competitors'}: ${names.join(', ')}.` : '';
-  return `<p class="intel-intro">${esc(`Competitor winners feed concept B.${who}`)}</p>${posts.length ? intelCards(posts, intel, ui, 'competitor', ctx) : '<p class="intel-empty">No competitor posts yet.</p>'}`;
+  return `<p class="intel-intro">${esc(`Competitor winners feed idea B.${who}`)}</p>${posts.length ? intelCards(posts, intel, ui, 'competitor', ctx) : '<p class="intel-empty">No competitor posts yet.</p>'}`;
 }
 function intelViralPanel(intel, ui, ctx) {
   const posts = intelRecords(intel.viral).map(post => ({ post, competitor: '' }));
-  return `<p class="intel-intro">Rising now. Feeds concept C.</p>${posts.length ? intelCards(posts, intel, ui, 'viral', ctx) : '<p class="intel-empty">Nothing viral found yet.</p>'}`;
+  return `<p class="intel-intro">Rising now. Feeds idea C.</p>${posts.length ? intelCards(posts, intel, ui, 'viral', ctx) : '<p class="intel-empty">Nothing viral found yet.</p>'}`;
 }
 
 // The 6 subtopics: cards to read, and the controls that confirm, edit, add and remove. Confirming sends all of them at once.
@@ -7782,7 +8292,7 @@ function signalMessage(outcome) {
 }
 
 const GATE_COMMENT_NAMES = Object.freeze({
-  concept: 'Concept',
+  concept: 'Idea',
   storyboard: 'Storyboard',
   price: 'Price',
   sample: 'Sample',
@@ -8281,6 +8791,9 @@ if (typeof document !== 'undefined') {
   const questionUi = new Map();
   const inboxQuestions = new Map();
   const inboxBriefs = new Map();
+  // The brief pickers: what was last sent to the Director for each job ({ field, version, find }, for the "Sent to the Director" line) and the preview clip playing.
+  const briefSent = new Map();
+  let previewAudio = null;
   const inboxDocWatches = new Map();
   let pendingJump = null;
   const selectedId = () => routeOf(location.hash).id || '';
@@ -8848,7 +9361,9 @@ if (typeof document !== 'undefined') {
     // inside the step waiting on the person; the Director's chat holds a pointer to the card and the questions themselves while it is open.
     const inDirectorChat = Boolean(chatAgent && isDirectorAgent(chatAgent));
     const card = pendingGate ? bodies[pendingGate]?.html || '' : '';
-    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext, ask: box.director?.id || 'producer', closed: closedNow, asking: inDirectorChat ? '' : stageAsking, lift: narrowWidth() });
+    // A job with a brief glance (doc.brief) shows the brief as one paragraph in its first step, with the question cards under it, in place of the Brief panel.
+    const briefDraw = doc?.brief ? asks => briefParagraph(doc.brief, openQuestions.filter(item => !questionClosed(item, questionState(item.questionId))), { asks, fileIndex: (project.artifacts || []).findIndex(item => item?.path === 'brief.md'), jobId: project.jobId, openKeys, sent: pickerSentLine(doc.brief, briefSent.get(project.jobId)) }) : null;
+    const flow = stageFlow(stages, { jobId: project.jobId, who, bodies, isOpen: gateOpen, chipContext, ask: box.director?.id || 'producer', closed: closedNow, asking: inDirectorChat ? '' : stageAsking, lift: narrowWidth(), brief: briefDraw });
     // A card no step could hold (the job has no steps yet) and a card lifted out of a folded step on a phone come first.
     const cardAbove = flow.lifted || (card && !flow.placed.has(pendingGate) ? card : '');
     const left = (gate, html) => (gate === pendingGate || flow.placed.has(gate) ? '' : html);
@@ -8897,7 +9412,7 @@ if (typeof document !== 'undefined') {
     // are the page's middle column, always drawn; what waits on the person sits inside them.
     const lead = intakePanel + cardAbove + (inDirectorChat ? '' : (flow.asked ? '' : stageAsking) + (railParts ? inboxNeed(railParts, project.jobId, top, boxUi.handoff) : ''));
     waitsNow = Boolean(pendingGate) || openNeeds.length > 0;
-    return `${headOf(railParts?.need === nextLine ? '' : nextLine)}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}"><div class="studio-main">${lead ? `<div class="studio-now"${cardAbove ? ` data-gate="${esc(pendingGate)}"` : ''}>${lead}</div>` : ''}${flow.done ? '<div class="flow-tools" role="group" aria-label="Done steps"><button type="button" class="sm" data-stops="all">Show all</button><button type="button" class="sm" data-stops="min">Minimal</button></div>' : ''}${flow.html}${referencesBox}${standalone}<div class="studio-more">${documentPanels(doc, openKeys)}${filesPanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
+    return `${headOf(railParts?.need === nextLine ? '' : nextLine)}${brandDriftNotice(project)}<div class="studio${chatAgent ? ' open' : ''}"><div class="studio-main">${lead ? `<div class="studio-now"${cardAbove ? ` data-gate="${esc(pendingGate)}"` : ''}>${lead}</div>` : ''}${flow.done ? '<div class="flow-tools" role="group" aria-label="Done steps"><button type="button" class="sm" data-stops="all">Show all</button><button type="button" class="sm" data-stops="min">Minimal</button></div>' : ''}${flow.html}${referencesBox}${standalone}<div class="studio-more">${documentPanels(doc, openKeys, { briefShown: flow.briefPlaced })}${filesPanel}${aboutPanel}</div></div><div class="studio-side">${side}</div></div>`;
   }
   // The picker state for the posting plan card: the same brand-level pick and state the brand card uses.
   function planMetricool(project) {
@@ -9119,7 +9634,7 @@ if (typeof document !== 'undefined') {
     const jumped = Object.values(JUMP_TARGETS).find(selector => document.activeElement?.matches?.(`${selector}[tabindex="-1"]`)) || null;
     const stripScroll = [...app.querySelectorAll('.sb-strip')].map(strip => strip.scrollLeft);
     const paneScroll = capturePaneScroll();
-    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):overview())+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'');
+    app.innerHTML=topbar(project)+'<main class="wrap">'+(error?`<div class="notice error" role="alert">${esc(error)}</div>`:'')+(connectorsView && Array.isArray(data.connectors) && data.connectors.length ? connectorsPanel(false) : project?details(project):overview())+'</main>'+ (drawer?renderDrawer():'') + (viewer?renderViewer():'') + renderBriefPicker();
     const inlineForm = app.querySelector('#inline-form');
     restoreForm(inlineForm, inline?.values);
     inlineForm?.querySelectorAll('.context-textarea').forEach(fitBox);
@@ -9141,6 +9656,7 @@ if (typeof document !== 'undefined') {
     restorePaneScroll(paneScroll);
     loadKitFonts();
     restoreJobFocus(jobFocus);
+    keepBriefPickerFocus();
     announceAgents(project);
     // A caption that fits in its two lines has nothing to open, so it shows no Show all control.
     app.querySelectorAll('.publish-text:not(.is-open)').forEach(item => {
@@ -10065,6 +10581,8 @@ if (typeof document !== 'undefined') {
     if(target.dataset.inboxAnswer!==undefined){void answerQuestion(target.dataset.inboxAnswer,{choice:Number(target.dataset.choice)});return;}
     if(target.dataset.inboxType!==undefined){openAnswerBox(target.dataset.inboxType);return;}
     if(target.dataset.inboxCancel!==undefined){closeAnswerBox(target.dataset.inboxCancel);return;}
+    // A highlighted word of the brief: a picker for shape, voice, music and subtitles, else a message to the Director that starts with the change.
+    if(target.dataset.briefField!==undefined){openBriefWord(target.dataset.briefField,target.dataset.briefPicker!==undefined);return;}
     if(target.dataset.abOpen!==undefined){
       let about=null;
       try{about=target.dataset.abAbout?JSON.parse(target.dataset.abAbout):null;}catch{about=null;}
@@ -10098,6 +10616,11 @@ if (typeof document !== 'undefined') {
     if(target.dataset.conceptOpen!==undefined){event.preventDefault();openConceptPanel(target.dataset.conceptOpen,target.dataset.conceptFocus,target);return;}
     if(target.dataset.conceptClose!==undefined){closeConceptPanel();return;}
     if(target.dataset.conceptChoose!==undefined){chooseConceptFromPanel(target.dataset.conceptChoose);return;}
+    if(target.dataset.ideaTab!==undefined){showIdea(target.dataset.ideaTab);return;}
+    if(target.dataset.ideaStep!==undefined){showIdea(Number(target.dataset.ideaStep));return;}
+    if(target.dataset.ideaPick!==undefined){pickIdea(target.dataset.ideaPick);return;}
+    if(target.dataset.ideaMix!==undefined){mixIdeas();return;}
+    if(target.dataset.ideaAsk!==undefined){void askDirectorToPick();return;}
     if(target.dataset.industryToggle!==undefined){toggleIndustryList();return;}
     if(target.dataset.hookAdd!==undefined){startHookEdit(target.dataset.hookAdd,'new');return;}
     if(target.dataset.hookEdit!==undefined){const cut=target.dataset.hookEdit.lastIndexOf(':');startHookEdit(target.dataset.hookEdit.slice(0,cut),Number(target.dataset.hookEdit.slice(cut+1)));return;}
@@ -10604,13 +11127,57 @@ if (typeof document !== 'undefined') {
     conceptOpener = null;
     back?.focus({ preventScroll: true });
   }
-  // "Choose this concept" in the panel is the same as clicking the concept's radio, then the panel closes.
+  // "Choose this idea" in the panel opens that idea under the tabs (the review's `choice`), then the panel closes; Pick is under the tabs.
   function chooseConceptFromPanel(id) {
     const found = conceptShell();
     if (!found || found.state.busy || found.state.submitted) return;
     found.state.choice = id;
     found.state.error = '';
+    found.state.ideaSent = false;
     closeConceptPanel();
+  }
+  // The ideas view. A tab or an arrow opens an idea (view state only: the review's `choice`). Pick sends the approval for the open one
+  // (submit_decision, as before). Mix two starts a message to the Director; Pick for me sends one. Only the Director's engine writes the job.
+  const ideaListOf = project => docFor(project)?.review?.concepts?.concepts || [];
+  const IDEA_ASK_TEXT = 'Pick an idea for me';
+  // `to` is an idea's id (a tab) or how far to step (an arrow); focus goes to the tab, or back to the arrow that was used.
+  function showIdea(to) {
+    const found = conceptShell();
+    const list = found ? ideaListOf(found.project) : [];
+    const { busy, submitted, needsReconciliation, settled } = found?.state || {};
+    if (!list.length || busy || submitted || needsReconciliation || settled) return;
+    const now = Math.max(0, list.findIndex(item => item.id === found.state.choice));
+    const next = typeof to === 'string' ? list.findIndex(item => item.id === to) : Math.min(list.length - 1, Math.max(0, now + to));
+    if (next < 0) return;
+    found.state.choice = list[next].id;
+    found.state.error = '';
+    found.state.ideaSent = false;
+    render();
+    if (typeof to === 'string') focusQuietly(`[data-idea-tab="${CSS.escape(list[next].id)}"]`);
+    else focusQuietly(`[data-idea-step="${to}"]:not(:disabled)`) || focusQuietly('[data-idea-step]:not(:disabled)');
+  }
+  function pickIdea(id) {
+    const found = conceptShell();
+    if (!found || !ideaListOf(found.project).some(item => item.id === id)) return;
+    found.state.choice = id;
+    found.state.error = '';
+    found.state.ideaSent = false;
+    void submitDecision(found.project, 'approve');
+  }
+  function mixIdeas() {
+    const found = conceptShell();
+    if (!found || found.state.busy || found.state.submitted) return;
+    // The same about as Pick for me, with the revision the person is looking at.
+    openChat('producer', 'Mix two ideas: ', { label: 'Ideas', revision: found.project.revision });
+  }
+  async function askDirectorToPick() {
+    const found = conceptShell();
+    const director = found ? agentBoxOf(docFor(found.project))?.director : null;
+    if (!transport || !director || agentBoxState(found.project).send.busy || found.state.busy || found.state.submitted) return;
+    const sent = await sendAgentMessage(found.project, { agent: director.id, text: IDEA_ASK_TEXT, about: { label: 'Ideas', revision: found.project.revision }, saved: () => { found.state.ideaSent = true; } });
+    if (sent === null) return;
+    if (!sent) found.state.error = AGENT_SEND_FAILED;
+    render();
   }
   function toggleIndustryList() {
     const found = conceptShell();
@@ -10674,14 +11241,13 @@ if (typeof document !== 'undefined') {
     render();
     focusHook(`[data-hook-add="${CSS.escape(edit.id)}"]`);
   }
-  // Strategy picks on a concept card or the industry row: add an option of one's own (the box being typed in is state.strategyEdit, see
+  // Strategy picks in an idea's details or the industry row: add an option of one's own (the box being typed in is state.strategyEdit, see
   // applyPickEdit). Picking a chip is the change handler's. Nothing is saved from here; the approval carries the picks in its note.
   function startPickEdit(rowKey) {
     const found = hookTarget();
     const parts = found ? pickRowParts(rowKey) : null;
     if (!parts || (parts.id !== null && !hookConcept(found.project, parts.id))) return;
     found.state.strategyEdit = { row: rowKey, text: '' };
-    if (parts.id !== null) openKeys.add(`strategy-picks:${parts.id}`);
     render();
     focusHook(`[data-pick-input="${CSS.escape(rowKey)}"]`);
   }
@@ -10853,6 +11419,173 @@ if (typeof document !== 'undefined') {
     // Narrow screens show the chat in the page, under the card: bring it into view.
     if (narrowScreen()) app.querySelector('.studio-side')?.scrollIntoView({ block: 'start' });
   }
+  // A highlighted word of the brief paragraph. Shape, voice, music and subtitles open their picker (openBriefPicker); any other word opens a message to
+  // the Director that starts with the change and carries an About chip for the word. Nothing is saved here: the Director changes the brief.
+  function openBriefWord(key, picker = false) {
+    const project = current();
+    const doc = project ? docFor(project) : null;
+    if (!doc?.brief) return;
+    if (picker) {
+      briefSent.delete(project.jobId);
+      openBriefPicker(key, { jobId: project.jobId, current: pickerCurrent(key, doc.brief, { catalog: pickerVoices(), library: pickerShelves() }) });
+      return;
+    }
+    const about = briefAbout(doc.brief, key);
+    if (!about) return;
+    const director = agentBoxOf(doc)?.director?.id || 'producer';
+    // The start left by another word is swapped for this one's; a message the person began is kept.
+    const box = agentBoxState(project);
+    const started = text => BRIEF_FIELDS.some(field => field.draft === text);
+    if (started(box.draft)) box.draft = '';
+    if (started(box.drafts[director])) box.drafts[director] = '';
+    openChat(director, briefDraft(key), about);
+  }
+  // ---- The brief pickers (shape, voice, music, subtitles): a sheet over the page. The picker's own state (briefPickerOpen) holds what is chosen and typed; a
+  // pick or a key changes the sheet in place, so the list keeps its scroll and the typing keeps its caret. "Use this" is one agent_message to the Director. ----
+  const pickerVoices = () => (Array.isArray(data.voiceCatalog) ? data.voiceCatalog : []);
+  const pickerShelves = () => ({ music: Array.isArray(data.audioLibrary?.music) ? data.audioLibrary.music : [], voice: Array.isArray(data.audioLibrary?.voice) ? data.audioLibrary.voice : [] });
+  function stopPreview() {
+    if (!previewAudio) return;
+    previewAudio.pause();
+    previewAudio.removeAttribute('src');
+    previewAudio.load();
+    previewAudio = null;
+  }
+  // The sheet for the page being drawn. It runs before the page is replaced, so the old sheet's scroll, focus and caret are noted here and put back by keepBriefPickerFocus.
+  function renderBriefPicker() {
+    const picker = briefPickerOpen();
+    if (!picker) return '';
+    const project = current();
+    const doc = project ? docFor(project) : null;
+    if (!project || project.jobId !== picker.jobId || !doc?.brief) { closeBriefPicker({ notify: false }); stopPreview(); return ''; }
+    const old = app.querySelector('.pk-sheet');
+    if (old) {
+      const body = old.querySelector('[data-pk-body]');
+      if (body) picker.scroll = body.scrollTop;
+      const active = document.activeElement;
+      if (active && old.contains(active)) {
+        picker.focusKey = active.dataset?.pkKey || picker.focusKey;
+        picker.caret = typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+      }
+    }
+    return pickerSheet(picker.field, { brief: doc.brief, catalog: pickerVoices(), library: pickerShelves(), selected: picker.selected, search: picker.search, playing: picker.playing, busy: picker.busy, error: picker.error });
+  }
+  function keepBriefPickerFocus() {
+    const picker = briefPickerOpen();
+    const sheet = picker ? app.querySelector('.pk-sheet') : null;
+    if (!sheet) return;
+    const body = sheet.querySelector('[data-pk-body]');
+    if (body && picker.scroll) body.scrollTop = picker.scroll;
+    if (sheet.contains(document.activeElement)) return;
+    const keyed = picker.focusKey ? [...sheet.querySelectorAll('[data-pk-key]')].find(item => item.dataset.pkKey === picker.focusKey && !item.disabled) : null;
+    const target = keyed || sheet.querySelector('[data-pk-body] [aria-pressed="true"]:not([aria-disabled="true"])') || sheet.querySelector('[data-pk-body] button:not([aria-disabled="true"]),[data-pk-body] input') || sheet.querySelector('[data-pk-close]');
+    target?.focus({ preventScroll: true });
+    if (keyed && picker.caret && typeof keyed.setSelectionRange === 'function') { try { keyed.setSelectionRange(picker.caret[0], picker.caret[1]); } catch { /* Not a text field. */ } }
+  }
+  // Changes the open sheet without drawing the page again.
+  function syncBriefPicker() {
+    const picker = briefPickerOpen();
+    const sheet = picker ? app.querySelector('.pk-sheet') : null;
+    if (!sheet) return;
+    sheet.querySelectorAll('[data-pk-pick]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.pkPick === picker.selected && item.getAttribute('aria-disabled') !== 'true')));
+    sheet.querySelectorAll('[data-pk-play]').forEach(item => {
+      const on = item.dataset.pkPlay === picker.playing;
+      item.setAttribute('aria-pressed', String(on));
+      item.classList.toggle('is-playing', on);
+    });
+    const use = sheet.querySelector('[data-pk-use]');
+    if (use) use.disabled = picker.busy || !pickerCanUse(picker.field, picker.selected, picker.current, { catalog: pickerVoices(), library: pickerShelves() });
+  }
+  function closePicker() {
+    const picker = briefPickerOpen();
+    if (!picker || picker.busy) return;
+    const field = picker.field;
+    stopPreview();
+    closeBriefPicker();
+    focusQuietly(`button.bw[data-brief-picker="${CSS.escape(field)}"]`);
+  }
+  function togglePreview(id) {
+    const picker = briefPickerOpen();
+    if (!picker) return;
+    if (picker.playing === id) { stopPreview(); picker.playing = null; syncBriefPicker(); return; }
+    const url = pickerPreviewUrl(pickerVoices().find(item => item.id === id)?.previewUrl);
+    if (!url) return;
+    stopPreview();
+    const audio = document.createElement('audio');
+    const done = () => { if (previewAudio !== audio) return; previewAudio = null; picker.playing = null; syncBriefPicker(); };
+    audio.addEventListener('ended', done);
+    audio.addEventListener('error', done);
+    audio.src = url;
+    previewAudio = audio;
+    picker.playing = id;
+    syncBriefPicker();
+    Promise.resolve(audio.play()).catch(done);
+  }
+  // One message to the Director through the same request the composer sends. The sheet closes when it is saved; the word changes only when the next brief arrives.
+  async function sendBriefPicker({ find = false } = {}) {
+    const picker = briefPickerOpen();
+    const project = current();
+    const doc = project ? docFor(project) : null;
+    if (!picker || !transport || !project || !doc?.brief || picker.busy || project.jobId !== picker.jobId) return;
+    const box = agentBoxState(project);
+    const state = box.send;
+    if (state.busy) return;
+    const lists = { brief: doc.brief, catalog: pickerVoices(), library: pickerShelves() };
+    const message = find ? pickerFindMessage(doc.brief, picker.search) : picker.selected === picker.current ? null : pickerMessage(picker.field, picker.selected, lists);
+    if (!message) return;
+    const director = agentBoxOf(doc)?.director || null;
+    const problem = agentMessageProblem(message.text, director);
+    if (problem) { picker.error = problem; render(); return; }
+    Object.assign(picker, { busy: true, error: '' });
+    const sent = await sendAgentMessage(project, { agent: director?.id || 'producer', text: message.text, about: message.about });
+    // null: a newer send took the shared sending state, so this one has no result to wait for. The sheet must not stay on "Sending".
+    if (sent === null) { picker.busy = false; if (briefPickerOpen() === picker) render(); return; }
+    if (!sent) { Object.assign(picker, { busy: false, error: AGENT_SEND_FAILED }); render(); return; }
+    briefSent.set(project.jobId, pickerSentRecord(doc.brief, picker.field, { find }));
+    stopPreview();
+    closeBriefPicker({ notify: false });
+    render();
+    focusQuietly(`button.bw[data-brief-picker="${CSS.escape(picker.field)}"]`);
+  }
+  onBriefPickerChange(() => { render(); });
+  // These run before the page's own click, key and input handlers, and stop what they take.
+  app.addEventListener('click', event => {
+    const picker = briefPickerOpen();
+    const target = picker ? event.target.closest?.('[data-pk-pick],[data-pk-play],[data-pk-use],[data-pk-close],[data-pk-find]') : null;
+    if (!target) return;
+    event.stopPropagation();
+    if (picker.busy) return;
+    if (target.dataset.pkClose !== undefined) { closePicker(); return; }
+    if (target.dataset.pkUse !== undefined) { void sendBriefPicker(); return; }
+    if (target.dataset.pkFind !== undefined) { void sendBriefPicker({ find: true }); return; }
+    if (target.dataset.pkPlay !== undefined) { togglePreview(target.dataset.pkPlay); return; }
+    if (target.getAttribute('aria-disabled') === 'true') return;
+    picker.selected = target.dataset.pkPick;
+    picker.focusKey = target.dataset.pkKey || picker.focusKey;
+    syncBriefPicker();
+  }, true);
+  app.addEventListener('input', event => {
+    const picker = briefPickerOpen();
+    const field = event.target;
+    if (!picker || !(field instanceof HTMLInputElement) || field.dataset.pkSearch === undefined) return;
+    event.stopPropagation();
+    picker.search = field.value.slice(0, PICKER_SEARCH_LIMIT);
+    const results = app.querySelector('[data-pk-results]');
+    if (results) results.innerHTML = pickerVoiceResults(pickerVoices(), picker.search, { pressed: picker.selected, playing: picker.playing });
+  }, true);
+  document.addEventListener('keydown', event => {
+    const picker = briefPickerOpen();
+    const sheet = picker ? app.querySelector('.pk-sheet') : null;
+    if (!sheet) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closePicker(); return; }
+    if (event.key !== 'Tab') return;
+    const controls = [...sheet.querySelectorAll('button:not(:disabled),input:not(:disabled)')].filter(item => item.getClientRects().length);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!sheet.contains(document.activeElement)) { event.preventDefault(); first?.focus(); }
+    else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }, true);
   function closeChat({ focus = true } = {}) {
     const project = current();
     let was = null;
@@ -10876,27 +11609,22 @@ if (typeof document !== 'undefined') {
     jumpTo(app.querySelector(selector) ? selector : JUMP_TARGETS.review);
   }
   const AGENT_SEND_FAILED = 'Message not saved. Try again.';
-  async function submitAgentMessage(project, form) {
-    const box = agentBoxState(project);
-    const agents = agentBoxOf(docFor(project))?.all || [];
-    box.to = form.elements.namedItem('to')?.value || box.to;
-    box.draft = form.elements.namedItem('text')?.value ?? box.draft;
-    const agent = agents.find(item => item.id === box.to) || agents[0];
-    const state = box.send;
-    if (!transport || !agent || state.busy) return;
-    box.error = agentMessageProblem(box.draft, agent);
-    if (box.error) { render(); focusQuietly('#ab-text'); return; }
+  // The one way a board message reaches the Director's thread: the composer, the brief pickers and Pick for me all send their agent_message here,
+  // as the same request with the same saved line. `started` runs once the sending state is drawn, `saved` the moment the send is accepted
+  // (before the board refreshes). It resolves true when saved, false when it failed and null when a newer send took its place; the caller
+  // shows the result in its own place.
+  async function sendAgentMessage(project, { agent, text, about = null, started = null, saved = null }) {
+    const state = agentBoxState(project).send;
     const requestId = randomId(globalThis);
-    const args = agentMessageArgs({ project, agent: agent.id, text: box.draft, requestId, about: box.about });
+    const args = agentMessageArgs({ project, agent, text, requestId, about });
     Object.assign(state, { requestId, sentRequestId: requestId, busy: true, submitted: false, needsReconciliation: false, declined: false, error: '', message: 'Saved. Claude will pass it on.', operation: 'agent_message', args });
     render();
-    focusQuietly('#ab-text');
+    started?.();
     try {
       const result = await transport.call('agent_message', args);
-      if (state.requestId !== requestId) return;
-      box.draft = '';
-      box.about = null;
+      if (state.requestId !== requestId) return null;
       state.busy = false;
+      saved?.();
       if (artifactMode()) {
         Object.assign(state, { submitted: true, submittedAt: Date.now(), signal: result?.signal || null });
         watchJobRequest(project.jobId, 'agent-msg', state);
@@ -10904,14 +11632,27 @@ if (typeof document !== 'undefined') {
       } else {
         await refresh();
       }
-      render();
+      return true;
     } catch {
-      if (state.requestId !== requestId) return;
+      if (state.requestId !== requestId) return null;
       Object.assign(state, { busy: false, submitted: false, requestId: null, operation: null, args: null });
-      box.error = AGENT_SEND_FAILED;
-      render();
-      focusQuietly('#ab-text');
+      return false;
     }
+  }
+  async function submitAgentMessage(project, form) {
+    const box = agentBoxState(project);
+    const agents = agentBoxOf(docFor(project))?.all || [];
+    box.to = form.elements.namedItem('to')?.value || box.to;
+    box.draft = form.elements.namedItem('text')?.value ?? box.draft;
+    const agent = agents.find(item => item.id === box.to) || agents[0];
+    if (!transport || !agent || box.send.busy) return;
+    box.error = agentMessageProblem(box.draft, agent);
+    if (box.error) { render(); focusQuietly('#ab-text'); return; }
+    const sent = await sendAgentMessage(project, { agent: agent.id, text: box.draft, about: box.about, started: () => focusQuietly('#ab-text'), saved: () => { box.draft = ''; box.about = null; } });
+    if (sent === null) return;
+    if (!sent) box.error = AGENT_SEND_FAILED;
+    render();
+    if (!sent) focusQuietly('#ab-text');
   }
   // The Post-production offer and return: one request, then the skill does the work. The buttons stay locked once it is saved.
   async function submitHandoff(jobId, operation) {
@@ -11515,13 +12256,6 @@ if (typeof document !== 'undefined') {
     }
     const project = current();
     if (!project) return;
-    if (field.name === 'concept_choice') {
-      const state = uiFor(project).review;
-      state.choice = field.value;
-      state.error = '';
-      setTimeout(render, 0);
-      return;
-    }
     if (field.name.startsWith('hook_choice_')) {
       // Picking an opening line also picks its concept.
       const state = uiFor(project).review;
@@ -11695,6 +12429,12 @@ if (typeof document !== 'undefined') {
     }
   });
   document.addEventListener('keydown',event=>{
+    if(event.target?.dataset?.ideaTab!==undefined&&!event.altKey&&!event.ctrlKey&&!event.metaKey){
+      // The idea tabs move with the arrow keys (round the ends), Home and End.
+      const tabs=[...app.querySelectorAll('[data-idea-tab]:not(:disabled)')];const from=tabs.indexOf(event.target);const move={ArrowLeft:-1,ArrowUp:-1,ArrowRight:1,ArrowDown:1}[event.key];
+      const to=from<0?null:move?tabs[(from+move+tabs.length)%tabs.length]:event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):null;
+      if(to){event.preventDefault();showIdea(to.dataset.ideaTab);return;}
+    }
     if(!drawer&&!viewer&&current()&&uiFor(current()).review.conceptPanel&&app.querySelector('.cc-panel')){
       if(event.key==='Escape'){event.preventDefault();closeConceptPanel();return;}
       if(event.key==='Tab'){const box=app.querySelector('.cc-panel');const controls=[...box.querySelectorAll('button:not(:disabled),input:not(:disabled),select,textarea,summary,a[href]')].filter(item=>item.getClientRects().length);const first=controls[0],last=controls.at(-1);if(!box.contains(document.activeElement)){event.preventDefault();first?.focus();}else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}return;}

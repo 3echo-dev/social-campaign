@@ -210,6 +210,19 @@ def finishing(jobdir):
     return captions, music, d["choice"]
 
 
+def card_picks(d):
+    """The combine card's picks held by a finishing record (a dict), or None for an older four-way record, which holds none.
+
+    A record made on the card holds its picks whatever its choice says: "combine" when there is a voice-over, and "captions",
+    "music", "both" or "skip" (what combine.mjs combineChoice gives) when there is none.
+    """
+    if d is None:
+        return None
+    if isinstance(d.get("combine"), dict):
+        return d["combine"]
+    return {} if d.get("choice") == "combine" else None
+
+
 def combine_picks(jobdir):
     """(want_voice, captions_source, uses_combine): the voice-over row and where the captions' words come from.
 
@@ -217,12 +230,26 @@ def combine_picks(jobdir):
     placed by the manifest. captions_source is "voice" (the voice-over words, or what is heard), "script" or "none".
     """
     d = finishing_record(jobdir)
-    if d is None or d.get("choice") != "combine":
+    picks = card_picks(d)
+    if picks is None:
         return False, "voice", False
-    picks = d.get("combine") if isinstance(d.get("combine"), dict) else {}
     voice = (picks.get("voice") or {}).get("source", "none")
     captions = (picks.get("captions") or {}).get("source", "voice")
     return bool(d.get("voice")) and voice != "none", captions if captions in ("voice", "script", "none") else "voice", True
+
+
+def caption_style(jobdir):
+    """The subtitle look picked on the combine card, "word" (one or two words at a time) or "line" (whole lines), or None when none was picked.
+
+    None means the shape decides (finish-video.py: word on a 9:16 video, line on every other shape). An older four-way choice has no style.
+    A record made on the card carries it with or without a voice-over (see card_picks).
+    """
+    picks = card_picks(finishing_record(jobdir))
+    if picks is None:
+        return None
+    captions = picks.get("captions") if isinstance(picks.get("captions"), dict) else {}
+    style = captions.get("style")
+    return style if style in ("word", "line") else None
 
 
 def finishing_problem(jobdir):

@@ -15,7 +15,7 @@ const problems = [];
 const files = [];
 const walk = dir => {
   for (const name of readdirSync(join(ROOT, dir))) {
-    if (['.git', 'node_modules'].includes(name)) continue;
+    if (['.git', 'node_modules'].includes(name) || (!dir && name === 'tmp')) continue;
     const rel = dir ? `${dir}/${name}` : name;
     if (statSync(join(ROOT, rel)).isDirectory()) walk(rel); else files.push(rel);
   }

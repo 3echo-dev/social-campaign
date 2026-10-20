@@ -25,6 +25,10 @@ drawn here, once, in one style (bold white on a dark rounded box, inside the saf
     (media/voice/transcript.json, or imports/transcripts/<sha256 of the voice-over file>.json), "from the script words" always
     uses the script wording. The words turn gold one by one (word times spread evenly over the chunk's span). No spoken lines,
     no captions.
+    The card also picks the subtitles' style (approvals/finishing.json, combine.captions.style): "word" shows one or two words at
+    a time, "line" is the two-line chunks above. Nothing picked: word on a 9:16 video, line on every other shape. That holds for
+    any record made on the card, with or without a voice-over; an older four-way choice (captions, both) holds no picks and keeps
+    the lines.
   * Voice-over: on the board's combine card the chosen voice-over is media/voice/choice.json, one recording laid over the
     whole video from the start (the music is ducked under it) and replaces the per-beat files. Otherwise the manifest's
     top-level voiceover [{beat, file, text}] (beat is 1-based, 1 or "B1") places each file at its beat's start. A missing file is skipped with one plain line. When the clip already has its own dialogue, the
@@ -67,6 +71,7 @@ FONTS = ["C:/Windows/Fonts/arialbd.ttf", "/usr/share/fonts/truetype/dejavu/DejaV
          "/System/Library/Fonts/Supplemental/Arial Bold.ttf"]
 SAFE = {"top": 220, "bottom": 500, "left": 180, "right": 180}   # house default on 1080x1920
 LINE_CHARS, MAX_LINES, END_SECONDS, FADE_SECONDS = 32, 2, 2.0, 1.5
+WORD_CUE_WORDS = 2   # the most words in one cue of the "word" subtitle style
 NO_SPEECH = ("", "-", "(silent)", "silent", "none")
 GOLD, WHITE = (245, 200, 75, 255), (255, 255, 255, 255)   # #F5C84B for the spoken word
 HOOK_SECONDS = 2.0
@@ -200,6 +205,32 @@ def chunk_lines(text):
     """Chunks of at most two lines of 32 characters."""
     lines = wrap(re.sub(r"\s+", " ", text).strip())
     return ["\n".join(lines[i:i + MAX_LINES]) for i in range(0, len(lines), MAX_LINES)]
+
+
+def chunk_words(text, per=WORD_CUE_WORDS):
+    """Word by word: cues of one or two words, so the viewer reads along as it is said. A pair that would not fit one line is split."""
+    words = [piece for word in re.sub(r"\s+", " ", text).split() for piece in wrap(word)]
+    cues, cur = [], []
+    for word in words:
+        if cur and (len(cur) >= per or len(" ".join(cur + [word])) > LINE_CHARS):
+            cues.append(" ".join(cur))
+            cur = []
+        cur.append(word)
+    if cur:
+        cues.append(" ".join(cur))
+    return cues
+
+
+def is_9x16(width, height):
+    return bool(width and height) and abs(width / float(height) - 9 / 16.0) < 0.02
+
+
+def caption_style_for(chosen, uses_combine, width, height):
+    """The subtitle style to draw: the one picked on the card, else word on a 9:16 video and line on every other shape.
+    A record that is not from the combine card (the older four-way choice) keeps the lines."""
+    if chosen in ("word", "line"):
+        return chosen
+    return "word" if uses_combine and is_9x16(width, height) else "line"
 
 
 def front_matter(path):
@@ -626,6 +657,7 @@ def main():
     a.want_music = want_music and not a.no_music
     a.want_voice = want_voice and not a.no_voice
     a.caption_choice = caption_choice
+    a.caption_style = review_gate.caption_style(jobdir)
     a.uses_combine = uses_combine
     plan_path = a.onscreen or os.path.join(os.path.dirname(final), "onscreen.json")
     has_onscreen = bool(read_onscreen(plan_path)[0])
@@ -859,13 +891,14 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         box.save(p)
         overlays.append((p, (W - box.width) // 2, place_onscreen(box, W, H, scale, zone, slot_bottom, item["position"], avoid), start, end))
         drawn_text += 1
+    style = caption_style_for(a.caption_style, a.uses_combine, W, H)
     if has_lines:
         n = 0
         for idx, ((s, e), text) in enumerate(zip(spans, lines)):
             e = min(e, caption_ends.get(idx, e))
             if not text or e <= s:
                 continue
-            chunks = chunk_lines(text)
+            chunks = chunk_words(text) if style == "word" else chunk_lines(text)
             weights = [max(1, len(c.replace("\n", " "))) for c in chunks]
             at = s
             for chunk, w in zip(chunks, weights):
@@ -950,7 +983,7 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         open(stamp, "w").write(sha256(final))
     source_words = {"transcript": "from the transcript of the approved cut", "script": "from the script wording, not checked against the speech", "none": ""}[caption_source]
     try:
-        report = {"captions": has_lines, "captionSource": caption_source, "transcript": transcript_path.replace(os.sep, "/") if transcript_path else None,
+        report = {"captions": has_lines, "captionSource": caption_source, "captionStyle": style if has_lines else None, "transcript": transcript_path.replace(os.sep, "/") if transcript_path else None,
                   "onScreenText": drawn_text, "music": bool(music), "voiceOver": bool(whole_voice), "finalSha256": sha256(final)}
         if not a.variant:
             with open(os.path.join(os.path.dirname(final), "finish-report.json"), "w", encoding="utf-8") as f:

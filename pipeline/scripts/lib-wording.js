@@ -27,8 +27,8 @@ const SENTENCES = {
   AWAITING_REPORT_REVIEW: 'The report is ready for your review.',
 
   CONCEPTS_DRAFTED: 'The ideas are written and about to be sent to you.',
-  AWAITING_CONCEPT_APPROVAL: 'Pick a concept, or say what to change. Nothing is spent until you do.',
-  CONCEPT_APPROVED: 'You picked a concept, so the script is being written.',
+  AWAITING_CONCEPT_APPROVAL: 'Pick an idea, or say what to change. Nothing is spent until you do.',
+  CONCEPT_APPROVED: 'You picked an idea, so the script is being written.',
 
   AWAITING_STORYBOARD_APPROVAL: 'Approve the storyboard, or name a panel to change. Nothing is spent until you do.',
   STORYBOARD_APPROVED: 'The storyboard is approved and the pictures can be made.',
@@ -78,7 +78,7 @@ const OLD_JOB = 'An old job, kept for your records.';
 const historical = () => OLD_JOB;
 
 const GATE_ASKS = Object.freeze({
-  concept: 'Pick a concept, or say what to change.',
+  concept: 'Pick an idea, or say what to change.',
   storyboard: 'Approve the storyboard, or name a panel to change.',
   price: 'Approve the price before anything is made.',
   sample: 'Check the sample before the rest is made.',

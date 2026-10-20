@@ -81,3 +81,82 @@ When the answer is a new description of what they want, treat it as the words of
 For a `continue_job` request, apply it once and pass its returned snapshot to `new-job` to resume the existing job when it is still in intake (state `INTAKE_PENDING` or `NEEDS_CLARIFICATION`), or to `resume-job` when it is established (routed or later).
 Never create a replacement job to answer missing intake fields.
 Local imports use a source folder selected on the runner's computer, never a Drive URL.
+
+## A brief change from the board
+
+A tap on a word of the brief, or on the shape, voice, music or subtitles picker, reaches the Director as an `agent_message` request whose `about` is `{kind: "brief", field, version}`.
+A tapped word carries no value: the person's own words are the message.
+A picker also carries `value`, the new value, which the Director reads as `change to "..."`.
+The `version` is the brief version the person was looking at.
+The `value` is the new ratio for `shape`, and `word`, `line` or `none` for `subtitles`.
+For `music` it is a mood word for a made track (`warm`, `upbeat`, `calm` or `minimal`), `library <id>` or `none`.
+For `voice` it is `elevenlabs <id> <name>`, `library <id>` or `none`.
+A voice picker that finds nothing sends "Find voices like ..." with `field` `voice` and no `value`; treat it as a request for voices, below.
+Land it with `pipeline_board_request_land` and apply it with `pipeline_board_request_apply`, as board-sync's Agent Box describes, then apply the change through the engine.
+Never edit `brief.md`, `job.json` or a finishing record by hand.
+When the brief is already at a higher version than the one the person saw, read the new brief first and apply the change only if it still fits; otherwise answer with one line that the brief changed.
+
+Apply the change by its `field`:
+
+- `shape` (9:16, 4:5, 1:1 or 16:9): call `pipeline_intake_update` with the job's current `expectedRevision` and a `patch` of only `{shape: "<ratio>"}`.
+  The engine changes the first post, the one the brief is about; add `deliverable` (that post's id from `pipeline_job_read`) only when the job has several posts and the change is for another.
+  It works from the plan up to the ideas, and the update refuses once an idea is picked, because the storyboard is drawn in that shape.
+  It also refuses a Reel, a Story or a TikTok video asked for any shape but 9:16.
+  Each refusal comes in plain words: pass the sentence on in one line.
+  The brief file keeps its old Shape row until the brief is written again; the board and the Creative Director read the shape from the job, so both use the new shape.
+  Write the `documents` it returns.
+- `voice`, `music` or `subtitles`: call `pipeline_finishing_choice` with `by` set to `the person` and a `combine` that holds only the row that changes, because a row left out keeps what is recorded.
+  Before the sound plan question is answered, such a tap is kept as the person's pick for that one part (the reply says `partial`).
+  It is not the sound plan: the other parts are not chosen, the storyboard price still waits for the answer, and the plan recorded from the answer carries the pick.
+  - Voice from the ElevenLabs list: `voice: {source: "make", voiceId, voiceName}` with the id and name exactly as the saved voice list gives them.
+  - Voice from the library: `voice: {source: "library", id}`.
+  - No voice-over: `voice: {source: "none"}`.
+  - Music: `music: {source: "library", id}` for a library track, `music: {source: "make", mood}` for a track made to the mood the person named (`warm`, `upbeat`, `calm` or `minimal`), or `music: {source: "none"}`.
+    Always pass `source` with the `mood`, and name a mood only when the person did.
+  - Subtitles: `captions: {source, style: "word"}` for word by word or `captions: {source, style: "line"}` for one line, or `captions: {source: "none"}`.
+    Always pass `source` with the style: the source the subtitles already have, or when they have none, `voice` when the video has a voice-over and `script` when it has none.
+    Leave the style out when the person gave none, because the shape decides (word by word on 9:16, one line on every other shape).
+  - A voice or a mood the person picked stays theirs: a suggestion and the plan recorded from their answer (`voice: {source: "make"}`, `music: {source: "make"}`) carry it, so never pick another voice or mood for them.
+- Any other word (topic, message, who is in it, look, ending, posting): ask the Strategist for the brief again with that one change, naming the field and the new value in its brief.
+  The new brief keeps the front matter `version` one higher with a Changelog line, as the Strategist's procedure says.
+  Write the job's documents again so the paragraph shows the new version.
+
+The sound picks never approve money:
+
+- Recording a voice or music pick makes nothing and buys nothing, and a pick made with ElevenLabs stays priced with the storyboard.
+- Never call `creative_generate_speech` or `creative_generate_in_flow` for a pick, and never treat typed words as the price click.
+- When the reply from `pipeline_finishing_choice` says the saved price does not follow the plan, do what it says, then present the storyboard again.
+- A voice preview is free and plays from the saved list without making anything.
+
+When the person types a voice instead of tapping one ("use Adam from ElevenLabs", "something warmer"):
+
+- A voice id comes only from `creative_list_voices` or from the person, never from memory.
+  Search `creative_list_voices` for the name or the description, and save what came back as below.
+- When exactly one voice fits the name, record it as above.
+  When several fit, ask which one with `pipeline_board_ask` and the same question in chat, naming each voice in plain words.
+
+When the person asks for voices ("find voices like Adam", "show me calmer voices"):
+
+1. Call `creative_list_voices` with the name or description they gave.
+2. Keep the closest matches, at most 50, and call `pipeline_voice_catalog_save` with `voices`, one `{id, name, line, previewUrl}` for each: the voice id as given, its name, one plain line about its tone or accent, and its free preview link.
+   The save replaces the whole saved list, so pass the full result of this search.
+3. Write the job's documents again so the picker shows the new list, then answer with one line.
+
+After any of these changes, answer with one plain line through `pipeline_agent_reply`, for example "Voice set to Adam. The voice-over is priced with the storyboard." or "Subtitles set to word by word."
+Use plain words only: no ids, file names, tool names or field names.
+Do not add a line for the work itself, because the room stays quiet.
+
+## An ideas message from the board
+
+Two buttons on the ideas step talk to the Director and approve nothing: "Pick for me" sends "Pick an idea for me", and "Mix two" starts a message with "Mix two ideas: " that the person finishes.
+Both arrive as an `agent_message` request whose `about` is `{label: "Ideas", revision}`; land and apply them like a brief change above.
+Never approve an idea for the person: the pick stands only when the board sends their tap on the idea card.
+
+- "Pick an idea for me": read `concepts.md` and choose the idea marked recommended, or the one with the strongest proof when none is marked.
+  Answer with one plain line through `pipeline_agent_reply` that names the idea by its number and title, says why in a few words, and asks the person to confirm it with the "Pick idea" button on the card.
+  Do not call `pipeline_chat_decision` or `pipeline_decision_apply` for this message.
+- "Mix two ideas: ...": ask the Creative Director to write the mix the person described as one more idea in `concepts.md`, with the same fields and the other ideas kept.
+  When the person named no two ideas or no way to mix them, ask one question with `pipeline_agent_reply` and wait.
+  Then call `pipeline_review_present` for the concept pick again, so the card shows the new version and a tap on the older one is refused as changed, and write the `documents` it returns.
+  Answer with one plain line that the mixed idea is on the card.
+- When the ideas are already picked, answer with one line saying so and change nothing.

@@ -1,9 +1,17 @@
 /**
  * The combine step: after the clips are joined, ONE card with three rows says what goes on the joined video.
  *
- *   Music      From your library · Upload a track · Make with ElevenLabs (priced) · None
+ *   Music      From your library · Upload a track · Make with ElevenLabs (priced; it may carry a `mood`) · None
  *   Voice-over From your library · Upload your recording · Make with ElevenLabs from the script (priced) · None
- *   Captions   From the voice-over words · From the script words · None
+ *   Captions   From the voice-over words · From the script words · None (the subtitles; they also take a `style`, word or line)
+ *
+ * The voice-over "make" pick may carry the ElevenLabs voice the person chose (`voiceId`, `voiceName`), and the music "make" pick the
+ * mood (`mood`: warm, upbeat, calm or minimal): recording either never makes anything, both stay priced with the storyboard. The
+ * voices on offer are saved by the Director in library/voices.json.
+ *
+ * A tap on one part of the sound before the sound plan is answered (a word of the brief) is the person's pick for that part only. It is
+ * kept apart (approvals/sound-picks.json, finishing.mjs), does not count as the sound plan, and is carried into the plan when it is
+ * recorded: the parts the person did not name are never recorded as chosen.
  *
  * The person's picks are saved with the cut approval in approvals/finishing.json (finishing.mjs) as `combine`. A pick from the
  * library is resolved at once into the job (media/music/choice.json, media/voice/choice.json). An upload or a "Make with
@@ -15,10 +23,10 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as facts from './facts.mjs';
-import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, listLibrary } from './library.mjs';
+import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, libraryDir, listLibrary } from './library.mjs';
 import { chooseMusic, readChoice as readMusicChoice } from './music.mjs';
 import { askQuestion } from './questions.mjs';
-import { FINISHING_FILE, SUGGESTED_MESSAGE, musicTrack, transcriptSaved, writeFinishingRecord } from './finishing.mjs';
+import { FINISHING_FILE, SOUND_ROWS, SUGGESTED_MESSAGE, clearSoundPicks, isSuggestion, madeByPerson, musicTrack, readSoundPicks, soundQuestionAnswered, transcriptSaved, writeFinishingRecord, writeSoundPicks } from './finishing.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 export const COMBINE_ROWS = Object.freeze({
@@ -41,6 +49,15 @@ export const COMBINE_ROWS = Object.freeze({
   ]),
 });
 const LISTED_LIMIT = 60;
+
+/** The mood a made music track can be asked for. */
+export const MUSIC_MOODS = Object.freeze(['warm', 'upbeat', 'calm', 'minimal']);
+
+/** How the subtitles are cut: one or two words at a time, or whole lines. A look, not a row choice, so the card's labels above stay as they are. */
+export const CAPTION_STYLES = Object.freeze([
+  Object.freeze({ id: 'word', label: 'Word by word' }),
+  Object.freeze({ id: 'line', label: 'One line' }),
+]);
 
 const readJson = file => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
 const writeJson = (file, value) => { mkdirSync(join(file, '..'), { recursive: true }); const tmp = `${file}.tmp`; writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`); renameReplacing(tmp, file); };
@@ -106,7 +123,8 @@ export function storyboardVoiceOver(jobDir) {
 /**
  * What each row starts on. Voice-over follows the storyboard's answer (yes: make it with ElevenLabs from the script; no, or not
  * asked: none). Music starts on the track the job already has, else none. Captions follow the voice: from the voice-over words
- * when there is a voice-over or a transcript of the cut, else none. Nothing here spends anything: making is priced and clicked.
+ * when there is a voice-over or a transcript of the cut, else none. A row the person picked on its own earlier starts on that pick.
+ * Nothing here spends anything: making is priced and clicked.
  */
 export function combineDefaults(job) {
   const answer = storyboardVoiceOver(job.dir);
@@ -114,11 +132,14 @@ export function combineDefaults(job) {
   const hasMusic = music && music.source !== 'none' && music.source !== 'pending' && music.file;
   const voiceOn = Boolean(answer?.enabled);
   const transcript = existsSync(join(job.root, 'imports', 'transcripts')) && facts.cutSet(job).panels.some(panel => existsSync(join(job.root, 'imports', 'transcripts', `${panel.sha256}.json`)));
-  return {
+  const started = {
     music: hasMusic ? { source: 'library', id: null, title: music.title || null } : { source: 'none' },
     voice: voiceOn ? { source: 'make' } : { source: 'none' },
     captions: { source: voiceOn || transcript ? 'voice' : 'none' },
   };
+  // A row the person already picked (a tap on the brief, before the sound plan was answered) starts on that pick.
+  const picks = readSoundPicks(job);
+  return { music: picks.music ?? started.music, voice: picks.voice ?? started.voice, captions: picks.captions ?? started.captions };
 }
 
 // ---------------------------------------------------------------- the card's data (the job document's `combine`)
@@ -144,16 +165,108 @@ export function combineSection({ root, brand, jobId }) {
 // ---------------------------------------------------------------- the picks
 const SOURCES = Object.freeze({ music: ['library', 'upload', 'make', 'none'], voice: ['library', 'upload', 'make', 'none'], captions: ['voice', 'script', 'none'] });
 
-/** A combine object checked and cleaned, with library ids that must exist. Missing rows take the defaults. Throws a plain message. */
-export function normaliseCombine({ root, job, combine }) {
+const VOICE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const VOICE_NAME_LIMIT = 80;
+
+/** The shape (9:16, 4:5, 1:1 or 16:9) the job's first deliverable asks for, or null when it names none. */
+export function jobShape(job) {
+  const spec = readJson(join(job.dir, 'job.json'));
+  const ratios = (Array.isArray(spec?.deliverables) ? spec.deliverables : []).map(item => (Array.isArray(item?.aspectRatios) ? item.aspectRatios[0] : null));
+  return ratios.find(ratio => typeof ratio === 'string' && ratio) || null;
+}
+
+/** The subtitle look nothing was picked for: word by word on a 9:16 video, one line on every other shape. */
+export const defaultCaptionStyle = shape => (shape === '9:16' ? 'word' : 'line');
+
+/** The look the subtitles will have: the style picked, else the shape's default. null when the picks hold no subtitles. */
+export function captionStyleOf(job, captions) {
+  if (!captions || captions.source === 'none') return null;
+  return CAPTION_STYLES.some(style => style.id === captions.style) ? captions.style : defaultCaptionStyle(jobShape(job));
+}
+
+/** The picks already recorded for the job (a suggestion made before the person answered does not count), or {}. */
+const recordedCombine = job => { const picks = facts.finishingRecord(job)?.combine; return picks && typeof picks === 'object' && !Array.isArray(picks) ? picks : {}; };
+
+/** What a row keeps of the pick recorded before it when the new pick does not name it: the subtitle style, the music mood, the ElevenLabs voice. */
+function carried(kept, row) {
+  if (!kept || typeof kept !== 'object') return {};
+  if (row === 'captions') return kept.source !== 'none' && CAPTION_STYLES.some(style => style.id === kept.style) ? { style: kept.style } : {};
+  if (row === 'music') return kept.source === 'make' && MUSIC_MOODS.includes(kept.mood) ? { mood: kept.mood } : {};
+  return kept.source === 'make' && kept.voiceId ? { voiceId: kept.voiceId, ...(kept.voiceName ? { voiceName: kept.voiceName } : {}) } : {};
+}
+
+const hasText = value => value !== undefined && value !== null && value !== '';
+const isPlain = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/** `style` of a subtitles pick: absent stays absent (the shape decides), word or line is kept, anything else is refused. */
+function captionFields(given) {
+  const style = typeof given === 'object' ? given.style : undefined;
+  if (style === undefined || style === null || style === '') return {};
+  if (!CAPTION_STYLES.some(entry => entry.id === style)) throw new Error('Pick word by word or one line for the subtitles.');
+  return { style };
+}
+
+/** `mood` of a "make with ElevenLabs" music pick: absent stays absent, warm, upbeat, calm or minimal is kept, anything else is refused. */
+function musicFields(given) {
+  const mood = typeof given === 'object' ? given.mood : undefined;
+  if (mood === undefined || mood === null || mood === '') return {};
+  if (!MUSIC_MOODS.includes(mood)) throw new Error(`Pick ${MUSIC_MOODS.slice(0, -1).join(', ')} or ${MUSIC_MOODS.at(-1)} for the music mood.`);
+  return { mood };
+}
+
+/** `voiceId` and `voiceName` of a "make with ElevenLabs" voice-over pick: both absent, or an id as the voice list gave it with an optional name. */
+function voiceFields(given) {
+  if (typeof given !== 'object' || (given.voiceId === undefined && given.voiceName === undefined)) return {};
+  const id = typeof given.voiceId === 'string' ? given.voiceId.trim() : '';
+  if (!VOICE_ID.test(id)) throw new Error('Give the voice id exactly as the voice list returned it, along with the voice name.');
+  if (given.voiceName === undefined || given.voiceName === null || given.voiceName === '') return { voiceId: id };
+  if (typeof given.voiceName !== 'string') throw new Error('The voice name must be text.');
+  const name = given.voiceName.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (name.length > VOICE_NAME_LIMIT) throw new Error(`Keep the voice name under ${VOICE_NAME_LIMIT} characters.`);
+  return name ? { voiceId: id, voiceName: name } : { voiceId: id };
+}
+
+/**
+ * A row given without its source changes only the fields it names, on the pick kept before it. A field that has no meaning on that
+ * pick takes the source it needs, so it is never dropped silently: a subtitle style over no subtitles turns them on (from the
+ * voice-over words when the video has a voice-over, else from the script words), a music mood over any other music asks for a made
+ * track, and an ElevenLabs voice over any other voice-over asks for a made one.
+ */
+function mergedRow(row, kept, given, hasVoiceOver) {
+  const merged = { ...kept, ...given };
+  if (row === 'captions' && hasText(given.style) && merged.source === 'none') return { ...merged, source: hasVoiceOver ? 'voice' : 'script' };
+  if (row === 'voice' && (hasText(given.voiceId) || hasText(given.voiceName)) && merged.source !== 'make') return { source: 'make', voiceId: given.voiceId, voiceName: given.voiceName };
+  if (row === 'music' && hasText(given.mood) && merged.source !== 'make') return { source: 'make', mood: given.mood };
+  return merged;
+}
+
+/**
+ * A combine object checked and cleaned, with library ids that must exist. A row left out keeps what is recorded for the job (the
+ * person's own earlier pick of that row, else the defaults, when nothing is), and a row given without its source changes only the
+ * fields it names, so one pick never undoes another. `rows` limits the result to those rows (a pick of one part on its own).
+ * Throws a plain message.
+ */
+export function normaliseCombine({ root, job, combine, rows = SOUND_ROWS }) {
   if (!combine || typeof combine !== 'object' || Array.isArray(combine)) throw new Error('Pick what to add for music, voice-over and captions.');
   const defaults = combineDefaults(job);
+  const recorded = recordedCombine(job);
   const out = {};
-  for (const row of ['music', 'voice', 'captions']) {
-    const given = combine[row] === undefined ? defaults[row] : combine[row];
+  // Whether the video has a voice-over once these picks are in: the voice row as given here, else as kept.
+  const hasVoiceOver = () => {
+    const kept = recorded.voice ?? defaults.voice;
+    const now = combine.voice === undefined ? kept : typeof combine.voice === 'string' ? { source: combine.voice } : isPlain(combine.voice) ? mergedRow('voice', kept, combine.voice, false) : kept;
+    return now?.source !== 'none';
+  };
+  for (const row of SOUND_ROWS.filter(name => rows.includes(name))) {
+    const kept = recorded[row] ?? defaults[row];
+    let given = combine[row] === undefined ? kept : combine[row];
+    if (isPlain(given) && given.source === undefined) given = mergedRow(row, kept, given, row === 'captions' && hasVoiceOver());
     const source = typeof given === 'string' ? given : given?.source;
-    if (!SOURCES[row].includes(source)) throw new Error(`Pick one of: ${COMBINE_ROWS[row].map(option => option.label).join(', ')} for ${row === 'voice' ? 'the voice-over' : row}.`);
-    if (row === 'captions' || source === 'none' || source === 'upload' || source === 'make') { out[row] = { source }; continue; }
+    if (!SOURCES[row].includes(source)) throw new Error(`Pick one of: ${COMBINE_ROWS[row].map(option => option.label).join(', ')} for ${row === 'voice' ? 'the voice-over' : row === 'captions' ? 'the subtitles' : row}.`);
+    if (row === 'captions') { out[row] = source === 'none' ? { source } : { source, ...carried(kept, 'captions'), ...captionFields(given) }; continue; }
+    if (source === 'make' && row === 'voice') { const named = voiceFields(given); out[row] = { source, ...(named.voiceId ? named : carried(kept, 'voice')) }; continue; }
+    if (source === 'make' && row === 'music') { const named = musicFields(given); out[row] = { source, ...(named.mood ? named : carried(kept, 'music')) }; continue; }
+    if (source === 'none' || source === 'upload' || source === 'make') { out[row] = { source }; continue; }
     const id = typeof given === 'object' && typeof given.id === 'string' ? given.id.trim() : '';
     if (!id) throw new Error(`Pick a ${row === 'voice' ? 'voice-over' : 'track'} from the library, or another choice.`);
     if (!findItem({ root, id, kind: row === 'voice' ? 'voice' : 'music' })) throw new Error(`That ${row === 'voice' ? 'voice-over' : 'track'} is not in the library.`);
@@ -190,9 +303,12 @@ export function combineNextSteps(job, combine) {
   const steps = [];
   const code = job.jobId;
   if (combine.music.source === 'upload') steps.push('Music: ask the person for the track with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "music", source: "upload", path}.');
-  if (combine.music.source === 'make') steps.push(`Music: price it (creative_generate_in_flow with node_type "music", an eleven_music model, a prompt from the brief and estimate_only true, generations_count 1), save one price item {provider elevenLabs, kind music, key ${code}-D1-M1-v1, the estimateId} with pipeline_quote_save and show the price: the person must click it on the board. Only after the approval make it with the same call without estimate_only, then pipeline_combine_takes {kind: "music", files}. Never make music any other way.`);
+  if (combine.music.source === 'make') steps.push(`Music: price it (creative_generate_in_flow with node_type "music", an eleven_music model, a prompt from the brief${combine.music.mood ? ` in a ${combine.music.mood} mood` : ''} and estimate_only true, generations_count 1), save one price item {provider elevenLabs, kind music, key ${code}-D1-M1-v1, the estimateId} with pipeline_quote_save and show the price: the person must click it on the board. Only after the approval make it with the same call without estimate_only, then pipeline_combine_takes {kind: "music", files}. Never make music any other way.`);
   if (combine.voice.source === 'upload') steps.push('Voice-over: ask the person for the recording with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "voice", source: "upload", path}.');
-  if (combine.voice.source === 'make') steps.push(`Voice-over: price the script read aloud with creative_generate_speech (estimate_only true, generations_count 2 or 3 so the person gets takes to pick from), save a voice price item {provider elevenLabs, kind voice, key ${code}-D1-VO1-v1, generationsCount} with pipeline_quote_save; the person clicks the price on the board. After the approval make it, then pipeline_combine_takes {kind: "voice", files}, which shows the takes side by side.`);
+  if (combine.voice.source === 'make') {
+    const picked = combine.voice.voiceId ? ` Use the voice the person picked${combine.voice.voiceName ? `, ${combine.voice.voiceName}` : ''}, as voice_id ${combine.voice.voiceId}; it is recorded already, so do not pick another.` : '';
+    steps.push(`Voice-over: price the script read aloud with creative_generate_speech (estimate_only true, generations_count 2 or 3 so the person gets takes to pick from), save a voice price item {provider elevenLabs, kind voice, key ${code}-D1-VO1-v1, generationsCount} with pipeline_quote_save; the person clicks the price on the board.${picked} After the approval make it, then pipeline_combine_takes {kind: "voice", files}, which shows the takes side by side.`);
+  }
   if (combine.captions.source === 'voice' && combine.voice.source !== 'none') steps.push('Captions: once the voice-over is chosen, transcribe it (media_transcribe on the voice-over file, or creative_transcribe_audio after its price) so the captions use its real words; without a transcript they use the script wording and you must say so.');
   return steps;
 }
@@ -228,9 +344,10 @@ export async function setCombineRow({ root, job, row, source, id, take, path, ti
   const record = readRecord(job);
   if (!SOURCES[row].includes(source)) throw new Error(`Pick one of: ${SOURCES[row].join(', ')}.`);
   const combine = { ...(record.combine || combineDefaults(job)) };
+  const before = combine[row];
   let message = '';
   if (row === 'captions') {
-    combine.captions = { source };
+    combine.captions = { source, ...(source === 'none' ? {} : carried(before, 'captions')) };
     message = source === 'none' ? 'No captions.' : source === 'voice' ? 'Captions from the voice-over words.' : 'Captions from the script words.';
   } else {
     const kind = row === 'voice' ? 'voice' : 'music';
@@ -248,12 +365,12 @@ export async function setCombineRow({ root, job, row, source, id, take, path, ti
       combine[row] = { source, id: item.id, title: picked.title };
       message = `Using ${picked.title} (added to the library, tagged ${job.brand}).`;
     } else {
-      if (!take) { if (row === 'music') pendingMusic(job, why); else chooseVoice({ root, job, id: 'pending', why }); combine[row] = { source }; message = 'Waiting for ElevenLabs to make it.'; }
+      if (!take) { if (row === 'music') pendingMusic(job, why); else chooseVoice({ root, job, id: 'pending', why }); combine[row] = { source, ...carried(before, row) }; message = 'Waiting for ElevenLabs to make it.'; }
       else {
         const found = takesFor(job, kind).find(entry => entry.label.toLowerCase() === String(take).trim().toLowerCase());
         if (!found) throw new Error(`There is no ${take} for the ${row === 'voice' ? 'voice-over' : 'music'}. The takes are: ${takesFor(job, kind).map(entry => entry.label).join(', ') || 'none yet'}.`);
         const picked = choose(found.libraryId);
-        combine[row] = { source, id: found.libraryId, title: picked.title, take: found.label };
+        combine[row] = { source, id: found.libraryId, title: picked.title, take: found.label, ...carried(before, row) };
         message = `Using ${found.label}.`;
       }
     }
@@ -284,7 +401,7 @@ export async function registerTakes({ root, job, kind, files, text }) {
     const label = `Take ${index + 1}`;
     const name = `take-${index + 1}${extname(source).toLowerCase()}`;
     if (source !== join(dir, name)) copyFileSync(source, join(dir, name));
-    const { item } = await addToLibrary({ root, kind, path: join(dir, name), brand: job.brand, title: `${kind === 'voice' ? 'Voice-over' : 'Music'} ${label} (${job.jobId})`, licence: ELEVEN_LABS_LICENCE, origin: 'elevenlabs', addedFrom: `job:${job.jobId}` });
+    const { item } = await addToLibrary({ root, kind, path: join(dir, name), brand: job.brand, title: `${kind === 'voice' ? 'Voice-over' : 'Music'} ${label}`, licence: ELEVEN_LABS_LICENCE, origin: 'elevenlabs', addedFrom: `job:${job.jobId}` });
     takes.push({ label, file: `media/${kind}/takes/${name}`, libraryId: item.id, sha256: item.sha256 });
   }
   writeJson(takesPath(job.dir, kind), takes);
@@ -326,19 +443,69 @@ function repriceWords({ drop, missing }) {
 }
 
 // ---------------------------------------------------------------- recording the card's picks with the cut approval
-/** Record the combine card's picks (from the board approval, or pipeline_finishing_choice with combine). */
+const ROW_WORDS = Object.freeze({ music: 'the music', voice: 'the voice-over', captions: 'the subtitles' });
+const listed = words => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0]);
+
+/**
+ * Whether these picks are one or two parts of the sound, tapped on their own by the person before the sound plan was answered. Such a
+ * pick is the person's word for the parts it names and nothing more: the plan is not recorded, so the parts it leaves out are not
+ * chosen as "none" and the storyboard price keeps waiting for the answer. Not partial: a plan that already counts (a pick then changes
+ * only its row), the Director's own plan, a pick that names every part, a plan recorded after the person answered the sound plan
+ * question, and any pick once the clips are joined (the rough cut's approval records the whole card).
+ */
+function isPartialPick({ job, combine, by }) {
+  if (!madeByPerson(by) || !combine || typeof combine !== 'object' || Array.isArray(combine)) return false;
+  const named = SOUND_ROWS.filter(row => combine[row] !== undefined);
+  if (!named.length || named.length === SOUND_ROWS.length) return false;
+  if (facts.finishingRecord(job) || facts.cutSet(job).panels.length) return false;
+  return !soundQuestionAnswered(job);
+}
+
+/** Keep the person's pick of some parts of the sound, apart from the plan; the plan they answer later carries it. */
+function recordPartialPick({ job, combine, by }) {
+  const named = SOUND_ROWS.filter(row => combine[row] !== undefined);
+  const picked = normaliseCombine({ root: job.root, job, combine, rows: named });
+  for (const row of named) {
+    if (picked[row].source !== 'library') continue;
+    const found = findItem({ root: job.root, id: picked[row].id, kind: row === 'voice' ? 'voice' : 'music' });
+    if (found?.item?.title) picked[row] = { ...picked[row], title: found.item.title };
+  }
+  const kept = { ...readSoundPicks(job), ...picked };
+  writeSoundPicks({ job, picks: kept, by });
+  return {
+    recorded: true, partial: true, combine: kept, captionStyle: kept.captions ? captionStyleOf(job, kept.captions) : null, waiting: [], next: [],
+    message: `Saved as the person's pick for ${listed(named.map(row => ROW_WORDS[row]))} only. It is not the sound plan: ${listed(SOUND_ROWS.filter(row => !named.includes(row)).map(row => ROW_WORDS[row]))} stay${SOUND_ROWS.length - named.length === 1 ? 's' : ''} open, nothing is priced from it, and the storyboard price still waits for the sound plan answer. When the person answers, record the whole plan with pipeline_finishing_choice and this pick is kept for any part the answer leaves as it is. Nothing was made or bought.`,
+  };
+}
+
+/** A person's plan that a Director's suggestion is about to replace: its parts are kept as the person's own picks, so the suggestion cannot undo them. */
+function keepPersonsPlan(job) {
+  const counted = facts.finishingRecord(job);
+  if (!counted || !madeByPerson(counted.by) || !isPlain(counted.combine)) return;
+  const rows = Object.fromEntries(SOUND_ROWS.filter(row => isPlain(counted.combine[row])).map(row => [row, counted.combine[row]]));
+  if (Object.keys(rows).length) writeSoundPicks({ job, picks: { ...rows, ...readSoundPicks(job) }, by: counted.by });
+}
+
+/**
+ * Record the combine card's picks (from the board approval, or pipeline_finishing_choice with combine). A pick of some parts on their
+ * own, before the sound plan is answered, is only kept as the person's pick (recordPartialPick); a plan that counts takes those picks
+ * with it, and a Director's suggestion never undoes them.
+ */
 export function recordCombine({ job, combine, by }) {
+  if (isPartialPick({ job, combine, by })) return recordPartialPick({ job, combine, by });
+  if (isSuggestion({ job, by })) keepPersonsPlan(job);
   const picks = normaliseCombine({ root: job.root, job, combine });
   const flags = combineFlags(picks);
   const choice = combineChoice(picks);
   const stored = applyCombine({ root: job.root, job, combine: picks });
   const { suggested } = writeFinishingRecord({ job, choice, parts: { captions: flags.captions, music: flags.music }, extra: { voice: flags.voice, combine: stored }, by });
+  if (!suggested) clearSoundPicks(job);
   const noTrack = flags.music && !musicTrack(job.dir);
   const waiting = ['music', 'voice'].filter(row => ['upload', 'make'].includes(stored[row].source));
   const steps = combineNextSteps(job, stored);
   const base = {
     recorded: true, choice, captions: flags.captions, music: flags.music, musicTrack: flags.music ? !noTrack : null, transcript: flags.captions ? transcriptSaved(job) : null,
-    voice: flags.voice, voiceTrack: flags.voice ? Boolean(voiceTrack(job.dir)) : null, combine: stored, waiting, next: steps,
+    voice: flags.voice, voiceTrack: flags.voice ? Boolean(voiceTrack(job.dir)) : null, captionStyle: captionStyleOf(job, stored.captions), combine: stored, waiting, next: steps,
     ...(suggested ? { suggested: true } : {}),
   };
   if (suggested) return { ...base, message: SUGGESTED_MESSAGE };
@@ -352,4 +519,60 @@ export function recordCombine({ job, combine, by }) {
     return { ...base, message: `${nothing} ${reprice}`.trim() };
   }
   return { ...base, message: `Saved. ${steps.join(' ')} ${reprice} ${steps.length || reprice ? 'Then ' : 'Now '}${finish}`.replace(/\s+/g, ' ') };
+}
+
+// ---------------------------------------------------------------- the voices the Director listed, for the board's voice picker
+export const VOICE_CATALOG_LIMIT = 50;
+const VOICE_LINE_LIMIT = 140;
+const PREVIEW_LIMIT = 600;
+
+/** `<workspace>/library/voices.json`: the last list of ElevenLabs voices the Director saved, a plain array of { id, name, line, previewUrl }. */
+export const voiceCatalogFile = root => join(libraryDir(root), 'voices.json');
+
+const oneLine = value => String(value).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+function previewLink(value, at) {
+  if (value === undefined || value === null || value === '') return null;
+  const text = typeof value === 'string' ? value.trim() : '';
+  let url = null;
+  try { url = new URL(text); } catch { /* refused below */ }
+  if (!url || url.protocol !== 'https:' || url.username || url.password || text.length > PREVIEW_LIMIT) throw new Error(`${at}: the preview must be a plain https link, or left out.`);
+  return text;
+}
+
+/**
+ * Keep the Director's latest list of ElevenLabs voices (from creative_list_voices) where the board can read it. The whole file is replaced
+ * each time. Each voice is { id, name, line?, previewUrl? }; a list that is not usable is refused and the saved one stays as it is.
+ * Saving a list never makes or buys anything: previews are free and the voice-over is priced with the storyboard.
+ */
+export function saveVoiceCatalog({ root, voices }) {
+  if (!Array.isArray(voices)) throw new Error('Give the list of voices to save.');
+  if (!voices.length) throw new Error('That list has no voices, so the saved list was kept as it is.');
+  if (voices.length > VOICE_CATALOG_LIMIT) throw new Error(`Save at most ${VOICE_CATALOG_LIMIT} voices at a time: keep the closest matches.`);
+  const seen = new Set();
+  const list = [];
+  voices.forEach((voice, index) => {
+    const at = `Voice ${index + 1}`;
+    if (!voice || typeof voice !== 'object' || Array.isArray(voice)) throw new Error(`${at} needs an id and a name.`);
+    const id = typeof voice.id === 'string' ? voice.id.trim() : '';
+    if (!VOICE_ID.test(id)) throw new Error(`${at}: give the voice id exactly as the voice list returned it.`);
+    if (typeof voice.name !== 'string' || !oneLine(voice.name)) throw new Error(`${at} needs a name.`);
+    const name = oneLine(voice.name);
+    if (name.length > VOICE_NAME_LIMIT) throw new Error(`${at}: keep the name under ${VOICE_NAME_LIMIT} characters.`);
+    if (voice.line !== undefined && voice.line !== null && typeof voice.line !== 'string') throw new Error(`${at}: the line must be text.`);
+    const line = oneLine(voice.line ?? '');
+    const previewUrl = previewLink(voice.previewUrl, at);
+    if (seen.has(id)) return;
+    seen.add(id);
+    list.push({ id, name, line: line.length > VOICE_LINE_LIMIT ? `${line.slice(0, VOICE_LINE_LIMIT - 1).trimEnd()}\u2026` : line, previewUrl });
+  });
+  writeJson(voiceCatalogFile(root), list);
+  return { saved: list.length, duplicatesLeftOut: voices.length - list.length, file: 'library/voices.json', message: `Saved ${list.length} voice${list.length === 1 ? '' : 's'} for the board's voice picker. Nothing was made or bought: previews are free and the voice-over is priced with the storyboard.` };
+}
+
+/** The saved voice list, [] when none was saved yet. */
+export function readVoiceCatalog(root) {
+  const list = readJson(voiceCatalogFile(root));
+  return (Array.isArray(list) ? list : []).filter(voice => voice && typeof voice === 'object' && typeof voice.id === 'string' && voice.id && typeof voice.name === 'string' && voice.name)
+    .map(voice => ({ id: voice.id, name: voice.name, line: typeof voice.line === 'string' ? voice.line : '', previewUrl: typeof voice.previewUrl === 'string' && voice.previewUrl ? voice.previewUrl : null }));
 }

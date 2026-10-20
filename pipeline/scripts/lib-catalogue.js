@@ -71,7 +71,7 @@ const CREDIT_GATES = Object.freeze([{ id: 'price' }, { id: 'sample' }]);
 // The short approval-style name of every gate, as the board asks it. Every gate id a workflow
 // lists, and price and sample, needs one; a missing label throws.
 const GATE_LABELS = Object.freeze({
-  concept: 'Pick a concept',
+  concept: 'Pick an idea',
   storyboard: 'Approve the storyboard',
   price: 'Approve the price',
   sample: 'Approve the sample',
