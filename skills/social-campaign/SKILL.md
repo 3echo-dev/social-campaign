@@ -199,6 +199,9 @@ An existing ready brand leaves both actions available: start a new job or update
 
 Invoke new-job once the pipeline is picked and, when it needs a brand, a ready brand is chosen.
 
+A new ask is a new job, even when an older unfinished job sits in intake.
+Attach it to an existing job only when the person names that job or clearly carries on with it, as new-job describes.
+
 Collect a written brief before creating the job.
 
 Keep an incomplete typed brief as a local job with route blockers when the user chooses to save it.

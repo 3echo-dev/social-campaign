@@ -219,6 +219,8 @@ export const INTAKE_OPTIONS = Object.freeze({
   objective: Object.freeze([['awareness', 'Awareness'], ['engagement', 'Engagement'], ['traffic', 'Website traffic'], ['leads', 'Leads'], ['sales', 'Sales'], ['app_installs', 'App installs'], ['retention', 'Retention']].map(option)),
   distribution: Object.freeze([['organic', 'Organic'], ['paid', 'Paid'], ['both', 'Organic and paid']].map(option)),
   format: Object.freeze([['static_image', 'Image'], ['carousel', 'Carousel'], ['brand_video', 'Brand video'], ['ugc', 'UGC video'], ['motion_graphic', 'Motion graphic'], ['text_only', 'Text only']].map(option)),
+  // The shape of each deliverable, saved as its aspect ratio. Every value is one of ASPECT_RATIOS below.
+  shape: Object.freeze([['9:16', '9:16 (vertical)'], ['4:5', '4:5 (portrait)'], ['1:1', '1:1 (square)'], ['16:9', '16:9 (wide)']].map(option)),
 });
 // The post types each platform offers, as the board's per-deliverable choice. The rules live in
 // lib-deliverable.js so the router, the read path and this form agree on them. A carousel is left
@@ -449,6 +451,7 @@ export function projectIntake(snapshot, profile = null) {
     if (spec.input === 'checkboxes') field.options = PLATFORMS_V1.map(value => ({ value, label: PLATFORM_LABELS[value] }));
     if (spec.input === 'deliverables') {
       field.options = INTAKE_OPTIONS.format;
+      field.shapes = INTAKE_OPTIONS.shape;
       // Paid-only work has its own placements, so it is asked for no post type: no choices, no mark.
       if (deliverableRules.asksForPlacement(job)) field.placements = intakePlacements();
       if (Object.keys(placementNotes).length) {

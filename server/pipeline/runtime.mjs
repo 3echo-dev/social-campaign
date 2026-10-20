@@ -2113,6 +2113,12 @@ function applyIntakePatch(current, patch) {
   return next;
 }
 
+/** A title that only repeats the brief (how a job made with no title is named) is rewritten when the brief is; a title the person or the Director chose stays. */
+function titleFollowsBrief(job) {
+  const title = toText(job?.title).trim();
+  return !title || title === job?.jobId || title === toText(job?.request).trim();
+}
+
 function replaceFileContents(filePath, contents) {
   if (contents === null) {
     if (existsSync(filePath)) unlinkSync(filePath);
@@ -2210,6 +2216,11 @@ export function updateJobIntake(options = {}) {
     const currentJob = readJson(jobFile, null);
     if (!currentJob || typeof currentJob !== 'object') throw new Error(`Job ${jobId} has no readable job record.`);
     const nextJob = applyIntakePatch(currentJob, patch);
+    // Re-derive the title the way createJob names a job with no title: from the brief, now the new one.
+    const briefPatched = Object.prototype.hasOwnProperty.call(patch, 'request') || Object.prototype.hasOwnProperty.call(patch, 'brief');
+    if (briefPatched && !Object.prototype.hasOwnProperty.call(patch, 'title') && nextJob.request && titleFollowsBrief(currentJob)) {
+      nextJob.title = toText(nextJob.request).trim();
+    }
     const changed = JSON.stringify(nextJob) !== JSON.stringify(currentJob);
     if (!changed) {
       return { jobId, brand: brand.slug, updated: false, revision: status.revision, snapshot: readJobSnapshot({ root, brandId: brand.id, jobId }) };
@@ -2237,6 +2248,9 @@ export function updateJobIntake(options = {}) {
 
     try {
       writeJsonAtomic(jobFile, nextJob);
+      if (nextJob.title !== currentJob.title && statusBefore !== null) {
+        writeFileSync(statusFile, statusBefore.replace(/(\*\*Title:\*\*[ \t]*)[^\r\n]*/, (_match, label) => `${label}${nextJob.title.replace(/\s+/g, ' ')}`), 'utf8');
+      }
       ensureJobFolders(dir, nextJob.kind);
       // The posts of a publish_post job carry its caption, platforms, post types, time and AI answer, so an edit to any of
       // them rewrites them from the job (the files stay as they were placed).

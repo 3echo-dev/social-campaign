@@ -46,6 +46,12 @@ If the route is pending, show its questions and resolve the same job with pipeli
 
 If the caller supplied a board request rather than a snapshot, use pipeline_board_request_apply and continue from its returned snapshot.
 
+A new ask creates a new job with pipeline_job_create.
+Reuse an existing job only when the caller supplies continue_job, or the person names that job or clearly carries on with it.
+Never reuse an unfinished job whose request differs from the new ask, however old it is.
+
+When the person edits the brief of an existing job, call pipeline_intake_update and write the `documents` it returns to the board straight away.
+
 ## 1. Confirm the workspace and brand
 
 Reuse a fresh pipeline_status snapshot supplied by the caller.
@@ -314,7 +320,7 @@ pipeline_intake_update is only for answers given after the job exists, on that f
 
 An answer on the form arrives as an `update_intake` board request and is applied as `board-sync` describes.
 
-For an answer in chat, call pipeline_intake_update with that job ID, the displayed expectedRevision, and a patch containing only the user's answered fields, then call pipeline_status and write its `documents` so the form no longer asks it.
+For an answer in chat, call pipeline_intake_update with that job ID, the displayed expectedRevision, and a patch containing only the user's answered fields, then write the `documents` it returns so the form no longer asks it.
 
 Reuse the snapshot returned by pipeline_intake_update and never call pipeline_job_create again to resolve the same draft.
 

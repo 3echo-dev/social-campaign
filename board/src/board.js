@@ -2516,7 +2516,9 @@ export function deliverableRows(field, platforms = [], values = {}) {
     (existing.length ? existing : [null]).forEach((item, index) => {
       const key = `deliv_${platform}_${index}`;
       const placements = field?.placements?.[platform] || [];
-      rows.push({ key, platform, label: labels.get(platform) || platform, item, format: String(values[`${key}_format`] ?? item?.format ?? ''), placements, placement: String(values[`${key}_placement`] ?? item?.placement ?? ''), count: String(values[`${key}_count`] ?? item?.count ?? 1) });
+      const row = { key, platform, label: labels.get(platform) || platform, item, format: String(values[`${key}_format`] ?? item?.format ?? ''), placements, placement: String(values[`${key}_placement`] ?? item?.placement ?? ''), count: String(values[`${key}_count`] ?? item?.count ?? 1) };
+      // The shape is the one the person picked, else the ratio the job already has, else the one its post type starts with.
+      rows.push({ ...row, shape: String(values[`${key}_shape`] || rowShape(platform, row.placement, row.format, item?.extra?.aspectRatios)) });
     });
   }
   return rows;
@@ -2545,6 +2547,16 @@ export function placementIssue(platform, placement, format, ratios = []) {
   if (VERTICAL_TYPES.includes(placement) && (placement !== 'video' || platform === 'tiktok') && (ratios || []).some(ratio => ratio !== '9:16')) return `${name} is 9:16.`;
   return '';
 }
+// The shape a deliverable starts with, from its post type: a Reel, a Story and a TikTok video fill a phone screen (9:16),
+// a video post on Facebook is wide (16:9), any other feed post is 4:5. With no post type to go on (paid work), the format decides.
+export function defaultShape(platform, placement, format) {
+  if (isVerticalPostType(platform, placement) || (platform === 'tiktok' && placement === 'photo')) return '9:16';
+  if (platform === 'facebook' && placement === 'post' && VIDEO_FORMATS.includes(format)) return '16:9';
+  if (placement) return '4:5';
+  return VIDEO_FORMATS.includes(format) ? '9:16' : '4:5';
+}
+// The shape a row shows before the person picks one: the vertical post types are always 9:16, else the ratio the job already states.
+const rowShape = (platform, placement, format, stated) => (isVerticalPostType(platform, placement) ? '9:16' : stated?.[0] || defaultShape(platform, placement, format));
 // The board's own copy of the intake text limit (also enforced server-side by
 // validateIntakePatch/intakeText), used both to cap the textarea's maxlength
 // and to explain a prefilled value that already exceeds it.
@@ -2627,7 +2639,17 @@ export function intakePatch(intake, draft = {}) {
         if (!formats.includes(row.format)) { errors[`${row.key}_format`] = 'Choose a format.'; rowErrors = true; }
         if (!Number.isInteger(count) || count < 1 || count > 100) { errors[`${row.key}_count`] = 'Enter a number from 1 to 100.'; rowErrors = true; }
         const extra = { ...(row.item?.extra || {}) };
-        if (row.placements.length && isVerticalPostType(row.platform, row.placement)) extra.aspectRatios = ['9:16'];
+        const stated = extra.aspectRatios || [];
+        const picked = values[`${row.key}_shape`];
+        if (row.placements.length && isVerticalPostType(row.platform, row.placement)) {
+          // A Reel, a Story and a TikTok video are 9:16 and nothing else: a leftover ratio is replaced, one picked on this form is refused.
+          const issue = picked && picked !== '9:16' ? placementIssue(row.platform, row.placement, '', [picked]) : '';
+          if (issue) { errors[`${row.key}_shape`] = issue; rowErrors = true; }
+          extra.aspectRatios = ['9:16'];
+        } else if (stated.length ? row.shape !== stated[0] : (row.placements.length && row.placement) || (picked && picked !== defaultShape(row.platform, row.placement, row.format))) {
+          // The shape on the form is what is saved: the one picked, or the one the post type starts with.
+          extra.aspectRatios = [row.shape];
+        }
         if (row.placements.length) {
           if (!row.placements.some(option => option.value === row.placement)) { errors[`${row.key}_placement`] = 'Choose a post type.'; rowErrors = true; }
           else if (placementIssue(row.platform, row.placement, row.format, extra.aspectRatios)) { errors[`${row.key}_placement`] = placementIssue(row.platform, row.placement, row.format, extra.aspectRatios); rowErrors = true; }
@@ -2635,7 +2657,9 @@ export function intakePatch(intake, draft = {}) {
         out.push({ ...extra, id: row.item?.id || `D${next++}`, platform: row.platform, count, creativeDiscipline: row.format, ...(row.placements.length ? { placement: row.placement } : {}), ...(row.format === 'ugc' ? { ugcSource: 'ai' } : {}) });
       }
       const rowNames = rows.flatMap(row => [`${row.key}_format`, `${row.key}_count`, `${row.key}_placement`]);
-      if (!rowErrors && (field.missing || changed(rowNames) || rows.length !== items.length)) patch.deliverables = out;
+      // A shape left as the form showed it is not a change; one the person picked is.
+      const shapeMoved = rows.some(row => { const picked = values[`${row.key}_shape`]; return picked && picked !== rowShape(row.platform, row.item?.placement || '', row.item?.format || '', row.item?.extra?.aspectRatios); });
+      if (!rowErrors && (field.missing || changed(rowNames) || shapeMoved || rows.length !== items.length)) patch.deliverables = out;
     }
   }
   return { patch, errors };
@@ -2758,7 +2782,18 @@ function delivRowHtml(field, row, errors, prefix) {
   // A question about a missing post type is a quiet hint; red is for a rule the choice breaks.
   const said = field.notes?.[row.item?.ref];
   const note = said ? `<p class="${said.kind === 'conflict' ? 'field-error' : 'field-hint'} deliv-note"${said.kind === 'ask' ? ' data-ask' : ''}>${esc(said.text)}</p>` : '';
-  return `<div class="deliv-row" data-deliv-row><span class="deliv-platform">${esc(row.label)}</span>${placementCellHtml(row, errors, prefix)}${format}${count}${fieldError(errors, `${row.key}_placement`, prefix)}${fieldError(errors, `${row.key}_format`, prefix)}${fieldError(errors, `${row.key}_count`, prefix)}${note}</div>`;
+  return `<div class="deliv-row" data-deliv-row><span class="deliv-platform">${esc(row.label)}</span>${placementCellHtml(row, errors, prefix)}${format}${count}${shapeCellHtml(field, row, errors, prefix)}${fieldError(errors, `${row.key}_placement`, prefix)}${fieldError(errors, `${row.key}_format`, prefix)}${fieldError(errors, `${row.key}_count`, prefix)}${fieldError(errors, `${row.key}_shape`, prefix)}${note}</div>`;
+}
+// The shape of one deliverable (9:16, 4:5, 1:1 or 16:9), saved as its aspect ratio. It starts from the post type, and the
+// vertical post types offer only 9:16. The data attributes let a post type or format change move it in place (refreshShapes).
+function shapeCellHtml(field, row, errors, prefix) {
+  if (!field.shapes?.length) return '';
+  const name = `${row.key}_shape`;
+  const vertical = row.placements.length > 0 && isVerticalPostType(row.platform, row.placement);
+  const list = !row.shape || field.shapes.some(option => option.value === row.shape) ? field.shapes : [...field.shapes, { value: row.shape, label: row.shape }];
+  const options = list.map(option => `<option value="${esc(option.value)}" ${row.shape === option.value ? 'selected' : ''} ${vertical && option.value !== '9:16' ? 'disabled' : ''}>${esc(option.label)}</option>`).join('');
+  const data = `data-platform="${esc(row.platform)}" data-placement="${esc(row.placements.length ? '' : row.placement)}" data-default="${esc(defaultShape(row.platform, row.placement, row.format))}"`;
+  return delivCell('Shape', `<select name="${name}" aria-label="${esc(row.label)} shape" ${data} ${invalid(errors, name, prefix)}>${options}</select>`, ' deliv-shape');
 }
 
 function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'intake', needed = true, labelled = true, currency = '' } = {}) {
@@ -2773,7 +2808,7 @@ function intakeFieldHtml(field, values, errors, platforms, photo, { prefix = 'in
   if (field.input === 'deliverables') {
     const rows = deliverableRows(field, platforms, values);
     const body = rows.length
-      ? `<div class="deliv-head" aria-hidden="true"><span>Platform</span><span>${rows.some(row => row.placements.length) ? 'Post type' : ''}</span><span>Format</span><span>Quantity</span></div>${rows.map(row => delivRowHtml(field, row, errors, prefix)).join('')}`
+      ? `<div class="deliv-head" aria-hidden="true"><span>Platform</span><span>${rows.some(row => row.placements.length) ? 'Post type' : ''}</span><span>Format</span><span>Quantity</span>${field.shapes?.length ? '<span>Shape</span>' : ''}</div>${rows.map(row => delivRowHtml(field, row, errors, prefix)).join('')}`
       : '<p class="muted">Choose a platform first.</p>';
     return `<div class="intake-field intake-wide" role="group" aria-labelledby="${id}-label">${head('legend')}<div class="deliv-list">${body}</div>${fieldError(errors, field.key, prefix)}</div>`;
   }
@@ -11332,6 +11367,21 @@ if (typeof document !== 'undefined') {
       note.className = `${ask.kind === 'conflict' ? 'field-error' : 'field-hint'} deliv-note`;
     });
   }
+  // The shape follows the post type and the format until the person picks one of their own: a shape still on the
+  // starting value moves with them, and a vertical post type is 9:16 and offers nothing else. Moved in place, in every
+  // copy of the form, so focus and typed text stay put.
+  function refreshShapes() {
+    for (const rowElement of app.querySelectorAll('#intake-form [data-deliv-row],[data-inbox-intake] [data-deliv-row]')) {
+      const shape = rowElement.querySelector('select[name$="_shape"]');
+      if (!shape) continue;
+      const placement = rowElement.querySelector('select[name$="_placement"]')?.value ?? shape.dataset.placement ?? '';
+      const next = defaultShape(shape.dataset.platform, placement, rowElement.querySelector('select[name$="_format"]')?.value || '');
+      const vertical = isVerticalPostType(shape.dataset.platform, placement);
+      for (const option of shape.options) option.disabled = vertical && option.value !== '9:16';
+      if (vertical || shape.value === shape.dataset.default) shape.value = next;
+      shape.dataset.default = next;
+    }
+  }
   app.addEventListener('input', event => {
     const field = event.target;
     if (field.dataset?.brandName !== undefined) {
@@ -11466,8 +11516,12 @@ if (typeof document !== 'undefined') {
         select.value = kept;
       }
       refreshPlacementAsks(field.closest('#intake-form,[data-inbox-intake]'));
+      refreshShapes();
     }
-    if (/^deliv_.+_placement$/.test(field.name)) refreshPlacementAsks(field.closest?.('#intake-form,[data-inbox-intake]'));
+    if (/^deliv_.+_placement$/.test(field.name)) {
+      refreshPlacementAsks(field.closest?.('#intake-form,[data-inbox-intake]'));
+      refreshShapes();
+    }
     if (intakeEdit(field)) {
       if (field.name === 'platforms') setTimeout(render, 0);
       return;
