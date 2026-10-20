@@ -11716,12 +11716,7 @@ if (typeof document !== 'undefined') {
     const state = intelState(brand.slug);
     if (intelSentLanded(intel, state.sent)) state.sent = null;
     const key = `brand-intel:${brand.slug}`;
-    const here = inline?.kind === 'onboard' && inline.brand === brand.slug;
-    const phase = `${key}:${intelIsRunning(intel) ? 'running' : 'ready'}:${here ? 'here' : 'away'}`;
-    if (!gateSeen.has(phase)) {
-      gateSeen.add(phase);
-      if (intelIsRunning(intel) || here || (data.brands || []).filter(item => intelOf(item)).length === 1) openKeys.add(key);
-    }
+    // The panel starts closed and opens only when the person toggles it; its summary line says enough while research runs.
     const kinds = new Set((Array.isArray(brand.library?.banks) ? brand.library.banks : []).filter(bank => bank && Array.isArray(bank.items) && bank.items.some(item => item && !item.removed && trimmed(item.text))).map(bank => bank.kind));
     return brandIntelligence(brand, state, { open: openKeys.has(key), now: Date.now(), hint: intelHint(), libraryKinds: kinds, badPictures: intelBadPictures });
   }
