@@ -19,6 +19,7 @@ On a picture-only post the first picture made is the sample: pick the one panel 
 Run `preflight-generation.js {brand} {job-id} {D} --pictures` first: it refuses an image prompt that does not carry the job's style preamble word for word.
 One style per job and one set of references: every picture opens with the same style preamble, repeats the continuity block for each recurring person, place and product, and attaches the same references (the brand's real photos under `brand/assets/references/`, the product photo, approved faces).
 Once every panel has its picture, present the storyboard (`pipeline_review_present` with `gate: "storyboard"`): it shows every panel with its picture, and approving it approves the pictures. A change on a picture is a redo, made as a new version of that panel.
+A redo of a picture that was mostly right is an edit, not a new picture: the earlier picture is the only reference and the prompt is the one short change line the Creative Director saved, under the next version key, with the same price rules. Only a person who rejects the whole picture gets a fresh prompt. The steps are in make-image Rule 11a.
 Reuse an observed provider result when its request ID, hash, and revision still match.
 Leave unknown provider outcomes unresolved and do not retry blindly.
 

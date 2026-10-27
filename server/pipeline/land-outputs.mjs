@@ -124,7 +124,9 @@ function convertToTemp(job, dir, item, source, targetExt) {
   return null;
 }
 
-function promoteFile(job, parsed, key, source) {
+// Puts the file at `source` (a path inside the job) under the slot's own name in the media folder, keeping whatever was there as <item>-r<n>.
+// Landing uses it, and so does the clips review when the person picks a take other than the newest.
+export function promoteFile(job, parsed, key, source) {
   const extension = extname(source).slice(1).toLowerCase();
   const manifestFile = manifestFileFor(job, parsed, kindOfFile(source));
   const wanted = manifestFile ? extname(manifestFile).slice(1).toLowerCase() : null;
@@ -154,16 +156,16 @@ function promoteFile(job, parsed, key, source) {
     const promotedSha256 = fileHash(temp);
     const promotedBytes = statSync(temp).size;
     const moved = [];
-    for (const name of slotFiles(dir, parsed.item, kindOfFile(`x.${targetExt}`))) {
-      const own = name.slice(parsed.item.length + 1);
-      if (own === targetExt && fileHash(join(dir, name)) === promotedSha256) continue;
-      let k = 1;
-      while (existsSync(join(dir, `${parsed.item}-r${k}.${own}`))) k++;
-      const to = `${parsed.item}-r${k}.${own}`;
-      renameSync(join(dir, name), join(dir, to));
-      moved.push([name, to]);
-    }
     try {
+      for (const name of slotFiles(dir, parsed.item, kindOfFile(`x.${targetExt}`))) {
+        const own = name.slice(parsed.item.length + 1);
+        if (own === targetExt && fileHash(join(dir, name)) === promotedSha256) continue;
+        let k = 1;
+        while (existsSync(join(dir, `${parsed.item}-r${k}.${own}`))) k++;
+        const to = `${parsed.item}-r${k}.${own}`;
+        renameSync(join(dir, name), join(dir, to));
+        moved.push([name, to]);
+      }
       renameReplacing(temp, target);
     } catch (error) {
       for (const [from, to] of moved.reverse()) {

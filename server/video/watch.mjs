@@ -32,7 +32,9 @@ import { sha256File } from '../media/hash.mjs';
 import { probeFile } from '../media/probe.mjs';
 import { loadSchema, validateAgainstSchema } from '../planner/validate.mjs';
 import { LOCAL_WHISPER_MISSING, localWhisperAvailable, transcribeLocally } from './local-whisper.mjs';
-import { ensureSpeechModel } from '../setup/research-helper.mjs';
+import { ensureSpeechModel, installProgress } from '../setup/research-helper.mjs';
+import * as pipelineFacts from '../pipeline/facts.mjs';
+import { windowSessionId } from '../pipeline/session-claims.mjs';
 import { extractWatchFrames } from './watch-frames.mjs';
 import {
   captionLanguageTag,
@@ -485,12 +487,139 @@ function readyAnswer(stored, path, reused) {
   };
 }
 
+/** What the person is told while the free speech to text is still being put on this computer. */
+export const GETTING_READY = 'Claude is still getting ready to turn speech into text. Try this video again in a few minutes.';
+
+/** Is the free local speech to text on its way (the helper or the speech model is being installed or downloaded now)? */
+function localReaderGettingReady(workspace, local) {
+  if (!local || local.ok) return false;
+  if (local.message === GETTING_READY) return true;
+  if (local.status !== 'not_installed' && local.status !== 'model_missing') return false;
+  try {
+    const progress = installProgress(workspace);
+    return progress.state === 'installing' || progress.speech?.state === 'installing';
+  } catch {
+    return false;
+  }
+}
+
+/** Is ElevenLabs marked connected in this workspace (the same record integration_probe keeps)? */
+function elevenLabsConnected(workspace) {
+  try {
+    const record = workspace.readIntegrations().elevenlabs;
+    const state = record && typeof record === 'object' ? String(record.state ?? '') : '';
+    return state === 'connected' || state === 'ready';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The job a paid transcription would be priced on: the one named, else the one this window is bound to. Null when there is none,
+ * it cannot be found, or it is finished (a finished job cannot pay for a transcription).
+ * @param {import('../workspace/index.mjs').Workspace} workspace
+ * @param {unknown} jobId
+ */
+function jobForOffer(workspace, jobId) {
+  const root = workspace.root;
+  if (!root) return { job: null, why: null };
+  try {
+    const named = optionalString(jobId);
+    const bound = named ? null : pipelineFacts.readSessionBinding(root, windowSessionId());
+    const job = named ? pipelineFacts.findJob(root, named) : bound ? pipelineFacts.jobAt(root, bound.brand, bound.jobId) : null;
+    if (!job) return { job: null, why: named ? 'That job was not found, so the cost cannot be tied to it.' : null };
+    if (pipelineFacts.isFinishedState(job.state)) return { job: null, why: 'That job is finished, so the cost cannot be tied to it.' };
+    return { job, why: null };
+  } catch {
+    return { job: null, why: null };
+  }
+}
+
+/** The next transcription number nothing has used: TR1, else one past the highest in the price, the estimates and the records. */
+function nextTranscriptionNumber(job) {
+  const keys = [];
+  for (const item of pipelineFacts.readQuote(job)?.quote.items ?? []) keys.push(item?.key);
+  for (const entry of [...pipelineFacts.readRecords(job), ...pipelineFacts.readLanded(job), ...pipelineFacts.readEstimates(job)]) keys.push(entry?.key, entry?.priceKey);
+  let top = 0;
+  for (const key of keys) {
+    const parsed = typeof key === 'string' ? pipelineFacts.parseJobKey(key) : null;
+    const hit = parsed ? /^TR(\d+)$/.exec(parsed.item) : null;
+    if (hit) top = Math.max(top, Number(hit[1]));
+  }
+  return top + 1;
+}
+
+/**
+ * The paid route, ready to offer: the transcription key to price on the job and the steps in order. Nothing here spends; the price is
+ * approved by a tap on the board.
+ * @param {{jobId: string, brand: string}} job
+ * @param {{mediaPath: string|null, assetId: string|null}} media
+ */
+function transcriptionOffer(job, media) {
+  const panel = `TR${nextTranscriptionNumber(job)}`;
+  const itemKey = pipelineFacts.formatJobKey({ jobId: job.jobId, deliverable: 'D1', item: panel, version: 1 });
+  const context = `job:${job.jobId} D1 ${panel}`;
+  const saved = media.assetId ? `asset_id "${media.assetId}"` : `path "${media.mediaPath}"`;
+  return {
+    provider: 'elevenLabs',
+    kind: 'transcription',
+    brand: job.brand,
+    job_id: job.jobId,
+    deliverable: 'D1',
+    panel,
+    item_key: itemKey,
+    context,
+    media_path: media.mediaPath,
+    asset_id: media.assetId,
+    spends_nothing: true,
+    steps: [
+      'Ask the person whether they want the words checked, and say it costs credits they approve on the board.',
+      `Put the file on a flow (creative_create_asset_upload, creative_finalize_asset_upload), then call creative_transcribe_audio with the returned node_id as connect_from, the context "${context}" and estimate_only true.`,
+      `Save the price with pipeline_quote_save: the item {key: "${itemKey}", provider: "elevenLabs", kind: "transcription", deliverable: "D1", panel: "${panel}", credits: the estimate, estimateId}.`,
+      'Present it with pipeline_review_present and gate "price".',
+      'Stop there. The price is approved only by the person tapping it on the board; a typed yes does not approve it.',
+      'Once the board shows it approved, call creative_transcribe_audio again with the same inputs and context, without estimate_only.',
+      `Store the result with transcript_save, source "elevenlabs" and ${saved}.`,
+    ],
+  };
+}
+
 /**
  * What the agent should do when there is no transcript to be had.
  * @param {{mediaPath: string|null, assetId: string|null, url: string|null, durationS: number|null}} facts
  * @param {Awaited<ReturnType<typeof transcribeLocally>>|null} [local] why the free local speech to text did not give one.
+ * @param {{workspace?: import('../workspace/index.mjs').Workspace, jobId?: unknown}} [context] the workspace and the job asked about, for the paid offer.
  */
-function noProviderAnswer(facts, local = null) {
+function noProviderAnswer(facts, local = null, context = {}) {
+  const workspace = context.workspace;
+  const gettingReady = Boolean(workspace) && localReaderGettingReady(workspace, local);
+  const manual = 'If the person has the script, a transcript or a subtitle file for this video, store it with transcript_save and source "manual"; every later watch will use it.';
+  const connected = Boolean(workspace) && !gettingReady && elevenLabsConnected(/** @type {any} */ (workspace));
+  const found = connected ? jobForOffer(/** @type {any} */ (workspace), context.jobId) : { job: null, why: null };
+  const offer = found.job ? transcriptionOffer(found.job, facts) : null;
+  const tried = local && !local.ok ? `The free local speech to text could not be used: ${local.message} ` : '';
+  let next;
+  if (gettingReady) {
+    next = `${GETTING_READY} Do not offer anything paid while it is getting ready. ${manual}`;
+  } else if (offer) {
+    next =
+      tried +
+      'No speech to text service is connected to the plugin itself, but ElevenLabs is connected and the job is known, so the paid route is ready in offer. ' +
+      'Offer it only if the person wants the spoken words checked, then follow offer.steps in order. This tool never spends: the cost is approved by a tap on the board price. ' +
+      'It has its own approval, works in any job state including research, and never touches the media price or starts media. ' +
+      'If the person says no, carry on with the frames from video_watch and say the spoken words were not available. ' +
+      manual;
+  } else {
+    next =
+      tried +
+      'No speech to text service is connected to the plugin itself. ' +
+      (connected
+        ? `ElevenLabs is connected but this call has no open job to tie the cost to. ${found.why ?? ''} ` +
+          'Call this tool again with job_id for a priced offer. Without a job, creative_transcribe_audio can still read the words once the person says yes (the file goes on a flow first, as connect_from); the cost is then not tracked against a job. '
+        : 'ElevenLabs can read the words with creative_transcribe_audio, but it is not marked connected here. If the person says it is, record it with integration_probe, then call this tool again with job_id for a priced offer. ') +
+      'Otherwise carry on with the frames from video_watch and say the spoken words were not available. ' +
+      manual;
+  }
   return {
     status: /** @type {const} */ (NEEDS_TRANSCRIPTION_PROVIDER),
     provider_available: false,
@@ -499,15 +628,10 @@ function noProviderAnswer(facts, local = null) {
     asset_id: facts.assetId,
     source_url: facts.url,
     duration_s: facts.durationS === null ? null : round3(facts.durationS),
-    local_transcription: local && !local.ok ? { status: local.status, message: local.message } : null,
-    next:
-      (local && !local.ok ? `The free local speech to text could not be used: ${local.message} ` : '') +
-      'No speech to text service is connected to the plugin itself. ' +
-      'If ElevenLabs is connected to this chat, get the words with its creative_transcribe_audio tool; the file goes onto a flow first (creative_create_asset_upload, creative_finalize_asset_upload) and the returned node_id is connect_from. ' +
-      'With a job bound, in this order: 1) call it with connect_from, the context "job:{jobId} D1 TR{k}" and estimate_only true; 2) pipeline_quote_save with the item {key: "{jobId}-D1-TR{k}-v1", provider: "elevenLabs", kind: "transcription", deliverable: "D1", panel: "TR{k}", credits: the estimate, estimateId}, always D1, k counting up from 1; 3) pipeline_review_present with gate "price"; 4) once the person approves, call it again with the same inputs and context, without estimate_only; 5) transcript_save with source "elevenlabs". This has its own approval, works in any job state including research, and never touches the media price or starts media, so it is fine at any stage. ' +
-      'With no job bound, run it once the person says yes; the cost is not tracked against a job. ' +
-      'If it is not connected, carry on with the frames from video_watch and say the spoken words were not available. ' +
-      'If the person has the script, a transcript or a subtitle file for this video, store it with transcript_save and source "manual"; every later watch will use it.',
+    local_transcription: local && !local.ok ? { status: local.status, message: gettingReady ? GETTING_READY : local.message } : null,
+    ...(gettingReady ? { getting_ready: true } : {}),
+    offer,
+    next,
   };
 }
 
@@ -525,7 +649,7 @@ async function transcribeWithLocalReader(workspace, facts) {
     if (local.status === 'model_missing') {
       const fetching = ensureSpeechModel(workspace, local.model);
       if (fetching.state === 'downloading') {
-        return { ok: false, local: { ...local, message: 'Claude is still getting ready to turn speech into text. Try this video again in a few minutes.' } };
+        return { ok: false, local: { ...local, message: GETTING_READY } };
       }
     }
     return { ok: false, local };
@@ -558,8 +682,9 @@ function localAnswer(made) {
 }
 
 /**
- * Find or fetch a transcript. Never sends anything anywhere.
- * @param {{workspace: import('../workspace/index.mjs').Workspace, assetId?: unknown, path?: unknown, url?: unknown, language?: unknown, breaker?: import('../social/breaker.mjs').Breaker}} options
+ * Find or fetch a transcript. Never sends anything anywhere and never spends: when only the paid route is left, the answer carries an
+ * offer for the job (jobId, else the job this window is bound to) that Claude prices on the board.
+ * @param {{workspace: import('../workspace/index.mjs').Workspace, assetId?: unknown, path?: unknown, url?: unknown, language?: unknown, jobId?: unknown, breaker?: import('../social/breaker.mjs').Breaker}} options
  */
 export async function transcribeMedia(options) {
   const { workspace } = options;
@@ -583,11 +708,11 @@ export async function transcribeMedia(options) {
     }
     // No captions. The video is downloaded for the free local speech to text only when it can actually run.
     if (!(await localWhisperAvailable())) {
-      return noProviderAnswer({ mediaPath: fetched.videoPath, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'not_installed', message: LOCAL_WHISPER_MISSING });
+      return noProviderAnswer({ mediaPath: fetched.videoPath, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'not_installed', message: LOCAL_WHISPER_MISSING }, { workspace, jobId: options.jobId });
     }
     const downloaded = fetched.videoPath ? fetched : await fetchUrl({ url, workspaceRoot: root, language, breaker: options.breaker });
     if (!downloaded.ok || !downloaded.videoPath) {
-      return noProviderAnswer({ mediaPath: null, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'failed', message: 'The video could not be downloaded for the local speech to text.' });
+      return noProviderAnswer({ mediaPath: null, assetId: null, url, durationS: fetched.durationS }, { ok: false, status: 'failed', message: 'The video could not be downloaded for the local speech to text.' }, { workspace, jobId: options.jobId });
     }
     const downloadedSha = await sha256File(downloaded.videoPath);
     const probed = await probeFile(downloaded.videoPath);
@@ -597,7 +722,7 @@ export async function transcribeMedia(options) {
     const made = await transcribeWithLocalReader(workspace, { key: downloadedSha, sha256: downloadedSha, url, assetId: null, mediaPath: downloaded.videoPath, language, durationS: probed.duration });
     if (made.ok) return localAnswer(made);
     if (made.local.status === 'no_speech') return { status: /** @type {const} */ ('no_speech'), local_transcription: { status: made.local.status, message: made.local.message } };
-    return noProviderAnswer({ mediaPath: downloaded.videoPath, assetId: null, url, durationS: probed.duration }, made.local);
+    return noProviderAnswer({ mediaPath: downloaded.videoPath, assetId: null, url, durationS: probed.duration }, made.local, { workspace, jobId: options.jobId });
   }
 
   const source = resolveWatchSource(/** @type {string} */ (optionalString(options.assetId) ?? optionalString(options.path)), workspace);
@@ -613,7 +738,7 @@ export async function transcribeMedia(options) {
   const made = await transcribeWithLocalReader(workspace, { key: sha256, sha256, url: null, assetId, mediaPath, language, durationS: probe.duration });
   if (made.ok) return localAnswer(made);
   if (made.local.status === 'no_speech') return { status: /** @type {const} */ ('no_speech'), local_transcription: { status: made.local.status, message: made.local.message } };
-  return noProviderAnswer({ mediaPath, assetId, url: null, durationS: probe.duration }, made.local);
+  return noProviderAnswer({ mediaPath, assetId, url: null, durationS: probe.duration }, made.local, { workspace, jobId: options.jobId });
 }
 
 // ---------------------------------------------------------------------------

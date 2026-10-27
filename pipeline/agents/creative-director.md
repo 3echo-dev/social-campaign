@@ -159,6 +159,7 @@ The producer spawns you once with the note and the item.
 
 1. Read the current manifest, the item and the note.
 2. Rewrite only that one item's prompt, so it is still complete on its own, still opens with its legend and still follows the five parts for a clip. Say in the prompt what the person wanted changed, in plain words.
+   When the note changes, adds, removes or moves something in a picture the person otherwise accepts, the redo is an edit: also save `edit: { "from": "<key of the version being edited>", "change": "<one short line>" }` in that item, as make-image Rule 11a says. A note that rejects the whole picture is a fresh prompt with no `edit`, and a clip redo never carries one.
 3. Leave every other item, the board, the script, the other prompts and the sample flags exactly as they are.
 4. Do not price, approve, generate or change the item's status. The producer prices it and makes it.
 

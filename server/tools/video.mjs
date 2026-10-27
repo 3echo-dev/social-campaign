@@ -62,7 +62,10 @@ export const videoTools = [
     description:
       'Get a timestamped transcript for a video or audio. Returns a transcript already saved for it, or the platform captions when they exist, ' +
       'or, when faster-whisper is installed in this computer\'s Python and its small model is downloaded, a free local transcript (CPU, up to 15 minutes; source local_whisper, stored for every later step). ' +
-      'When none of those is possible it answers needs_transcription_provider, with local_transcription saying why the local reader could not run: when ElevenLabs is connected, creative_transcribe_audio (file on a flow first, as connect_from) with estimate_only; with a job bound, save a transcription quote item TR{k} with pipeline_quote_save, get the price approved, run it again without estimate_only, then transcript_save (source elevenlabs), at any job stage; with no job, run it once the person says yes; otherwise carry on from the frames, and store a transcript the person has with transcript_save.',
+      'When none of those is possible it answers needs_transcription_provider, with local_transcription saying why the local reader could not run. ' +
+      'If the free reader is still being put on this computer, the answer says so in plain words (Claude is still getting ready to turn speech into text, try again in a few minutes) and offers nothing paid. ' +
+      'Otherwise, when ElevenLabs is connected and a job is known (job_id, or the job this window is working on), the answer carries a ready offer: the next free transcription item to price on that job, and the steps in order (creative_transcribe_audio with estimate_only, a transcription price item saved with pipeline_quote_save, the price presented for a tap on the board, the same call again without estimate_only once it is approved, then transcript_save with source elevenlabs). ' +
+      'This tool never spends: the person approves the price with a tap on the board, at any job stage. Without a connected ElevenLabs or a job, offer is null and the answer says what to do instead: carry on from the frames, or store a transcript the person has with transcript_save.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,11 +73,12 @@ export const videoTools = [
         path: { type: 'string' },
         url: { type: 'string' },
         language: { type: 'string', description: 'BCP 47 tag, for example en.' },
+        job_id: { type: 'string', description: 'The job a paid transcription would be priced on. Optional: without it, the job this window is working on is used.' },
       },
       additionalProperties: false,
     },
     handler: (args, { workspace }) =>
-      transcribeMedia({ workspace, assetId: args.asset_id, path: args.path, url: args.url, language: args.language }),
+      transcribeMedia({ workspace, assetId: args.asset_id, path: args.path, url: args.url, language: args.language, jobId: args.job_id }),
   }),
   defineTool({
     name: 'transcript_save',

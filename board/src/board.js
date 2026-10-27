@@ -4311,19 +4311,58 @@ export function mediaPanelStates(doc, saved = {}) {
   }));
 }
 
+// The clips review lists every take of a shot as a panel of its own. A shot is its takes together, oldest first; the person uses one of
+// them, the newest until they pick another. The pictures and the cut have one panel per shot, so each shot there has a single take.
+const mediaTakeNumber = panel => (Number(panel?.version) > 0 ? Number(panel.version) : 1);
+export function mediaShots(doc) {
+  const shots = new Map();
+  for (const panel of mediaPanelsOf(doc)) {
+    const key = mediaPanelKey(panel);
+    shots.set(key, [...(shots.get(key) || []), panel]);
+  }
+  return [...shots].map(([key, list]) => {
+    const takes = [...list].sort((a, b) => mediaTakeNumber(a) - mediaTakeNumber(b));
+    return { key, takes, newest: takes[takes.length - 1] };
+  });
+}
+
+/** The take used for a shot: the one picked (`saved` maps a shot to its take number), else the newest. */
+export function mediaTakePicked(shot, saved = {}) {
+  const wanted = Number(saved?.[shot.key]);
+  return shot.takes.find(take => mediaTakeNumber(take) === wanted) || shot.newest;
+}
+
+function mediaTakesRow(shot, picked, title, { disabled = false } = {}) {
+  const dis = disabled ? 'disabled' : '';
+  const tiles = shot.takes.map(take => {
+    const number = mediaTakeNumber(take);
+    const on = take === picked;
+    const tile = mediaTile({ kind: take.kind, title: `${title}, take ${number}`, thumb: take.thumb, poster: take.poster, reviewUrl: take.reviewUrl, durationSeconds: take.durationSeconds }, { className: 'sample-frame' });
+    const choose = on
+      ? `<p class="take-picked">${CHECK_ICON}<span>Using this take</span></p>`
+      : `<button type="button" data-mr-take="${esc(shot.key)}" data-mr-version="${number}" ${dis}>Use this take</button>`;
+    return `<div class="media-take${on ? ' is-picked' : ''}"><strong class="take-name">Take ${number}</strong>${tile}${choose}</div>`;
+  }).join('');
+  return `<div class="media-takes" role="group" aria-label="${esc(`Takes of ${title}, side by side`)}">${tiles}</div>`;
+}
+
 export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
-  const panels = mediaPanelsOf(doc);
-  if (!panels.length) return '';
+  const shots = mediaShots(doc);
+  if (!shots.length) return '';
   const gate = doc.review.gate;
   const dis = disabled ? 'disabled' : '';
   const states = mediaPanelStates(doc, state.mediaPanels);
-  const cards = panels.map(panel => {
-    const key = mediaPanelKey(panel);
+  const cards = shots.map(shot => {
+    const key = shot.key;
+    const several = shot.takes.length > 1;
+    const panel = mediaTakePicked(shot, state.mediaTakes);
     const mine = states[key];
     const editing = state.mediaEditing === key;
     const title = mediaPanelTitle(panel);
-    const media = mediaTile({ kind: panel.kind, title, thumb: panel.thumb, poster: panel.poster, reviewUrl: panel.reviewUrl, durationSeconds: panel.durationSeconds }, { className: 'sample-frame' });
-    const version = Number(panel.version) > 1 ? `<span class="count">Version ${esc(Number(panel.version))}</span>` : '';
+    const media = several
+      ? mediaTakesRow(shot, panel, title, { disabled })
+      : mediaTile({ kind: panel.kind, title, thumb: panel.thumb, poster: panel.poster, reviewUrl: panel.reviewUrl, durationSeconds: panel.durationSeconds }, { className: 'sample-frame' });
+    const version = !several && Number(panel.version) > 1 ? `<span class="count">Version ${esc(Number(panel.version))}</span>` : '';
     const head = `<div class="sb-slot-head"><strong>${esc(title)}</strong>${refTag(trimmed(panel.deliverable))}${refTag(trimmed(panel.panel))}${version}</div>`;
     const verdict = mine.verdict === 'changes'
       ? `<p class="sb-verdict is-changes">${CHANGE_ICON}<span>${esc(mine.note ? `Asked for changes: ${mine.note}` : 'Asked for changes')}</span>${notSentPill(state)}</p>`
@@ -4332,7 +4371,7 @@ export function mediaSetView(doc, state = {}, { disabled = false } = {}) {
     const actions = editing
       ? `<div class="sb-change"><label for="mr-note">What should change in ${esc(title)}?</label><textarea id="mr-note" name="mr_note" maxlength="1000" placeholder="For example: make the light warmer." ${dis}>${esc(state.mediaDraft ?? mine.note ?? '')}</textarea>${error}<div class="sb-slot-actions"><button type="button" class="quiet" data-mr-action="cancel" ${dis}>Cancel</button><button type="button" data-mr-action="save" data-mr-key="${esc(key)}" ${dis}>Ask for changes</button></div></div>`
       : `<div class="sb-slot-actions">${mine.verdict === 'changes' ? `<button type="button" class="quiet" data-mr-action="undo" data-mr-key="${esc(key)}" ${dis}>Keep as is</button>` : ''}<button type="button" data-mr-action="change" data-mr-key="${esc(key)}" ${dis}>Ask for changes</button></div>`;
-    return `<article class="sb-slot media-card" style="--sb-ratio:${frameRatio(panel.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${panel.text ? panelFields(panel.text, panel.board) : ''}${verdict}${actions}</div></article>`;
+    return `<article class="sb-slot media-card${several ? ' has-takes' : ''}" style="--sb-ratio:${frameRatio(panel.board?.aspectRatio)}">${media}<div class="sb-slot-body">${head}${panel.text ? panelFields(panel.text, panel.board) : ''}${verdict}${actions}</div></article>`;
   }).join('');
   return `<div class="media-review-grid">${cards}</div>`;
 }
@@ -4410,7 +4449,8 @@ export function priceTable(quote, { used = null, withProvider = false } = {}) {
   const items = Array.isArray(quote?.items) ? quote.items : [];
   const rows = items.map(item => {
     const version = Number(item.version) > 1 ? `Redo, version ${Number(item.version)}` : '';
-    const detail = [withProvider ? PRICE_PROVIDER_NAMES[item.provider] || '' : '', item.sample ? 'Sample' : '', version, item.detail || '', item.made ? 'Already made' : ''].filter(Boolean).join(' · ');
+    const pictures = item.kind === 'image' && Number.isInteger(item.count) && item.count >= 1 ? `${item.count} extra picture${item.count === 1 ? '' : 's'}` : '';
+    const detail = [withProvider ? PRICE_PROVIDER_NAMES[item.provider] || '' : '', item.sample ? 'Sample' : '', version, pictures, item.detail || '', item.made ? 'Already made' : ''].filter(Boolean).join(' · ');
     const credits = creditNumber(item.credits);
     return `<tr><td><span class="price-item">${refTag(item.deliverable)}${refTag(item.panel)}<span>${esc(QUOTE_KIND_LABELS[item.kind] || humanize(item.kind))}</span></span>${detail ? `<small>${esc(detail)}</small>` : ''}</td><td class="num">${credits === null ? '<span class="muted">Not priced</span>' : esc(creditFigure(credits))}</td></tr>`;
   }).join('');
@@ -5212,6 +5252,7 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   if (!planned) (review.posts || []).forEach(post => (post?.media || []).forEach(ref => { if (ref?.path) { used.add(ref.path); if (shaOfPath.has(ref.path)) shown.add(shaOfPath.get(ref.path)); } }));
   const looseMedia = (review.media || []).filter(ref => !used.has(ref.path) && !(shaOfPath.has(ref.path) && shown.has(shaOfPath.get(ref.path))));
   if (looseMedia.length) parts.push(`<div class="media-grid">${looseMedia.map(ref => mediaTile(ref)).join('')}</div>`);
+  if (gate === 'cut') parts.push(earlierShotsLine(doc.earlierShots));
   if (gate === 'content' && doc.publishNote) parts.unshift(publishNoteLine(doc.publishNote));
   if (gate === 'content' && doc.music) parts.push(musicLine(doc.music));
   if (gate === 'content' && review.checks) parts.push(suppliedChecksCard(review.checks, openKeys));
@@ -5223,6 +5264,14 @@ function reviewBody(project, doc, state, { recipeState = {}, workspaceState = {}
   if (rest.length) parts.push(reviewFilesHtml(doc, rest));
   parts.push(readyChecksList(review.readyChecks));
   return parts.join('');
+}
+
+// The rough cut says in one line when a shot also has an earlier version. Taking it back costs nothing and is asked for on the change note.
+export function earlierShotsLine(shots) {
+  const numbers = [...new Set((Array.isArray(shots) ? shots : []).map(shot => /(\d+)$/.exec(trimmed(shot?.panel))?.[1] || trimmed(shot?.panel)).filter(Boolean))];
+  if (!numbers.length) return '';
+  const names = numbers.length === 1 ? numbers[0] : `${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+  return `<p class="muted earlier-shots">${esc(numbers.length === 1 ? `Shot ${names} also has an earlier version.` : `Shots ${names} also have an earlier version.`)} Ask for changes and say which to use.</p>`;
 }
 
 // The short "Ready check" above the buttons: a green tick for a check that passes, a red mark for a required one that does not
@@ -5316,7 +5365,7 @@ function approvalBase(gate, doc, state, recipeState = {}, routeState = {}, postS
     return { label: STORYBOARD_PRICED_LABEL, line: [approved, words ? `Approving allows ${words} for this job.` : 'Approving allows no credits for this job.'].filter(Boolean).join(' ') };
   }
   if (MEDIA_GATE_IDS.has(gate)) {
-    const all = mediaPanelsOf(doc);
+    const all = mediaShots(doc);
     const [one, many] = MEDIA_GATE_NOUNS[gate];
     const changes = Object.values(mediaPanelStates(doc, state.mediaPanels)).filter(item => item.verdict === 'changes').length;
     if (changes) return { label: 'Ask for changes', action: 'send-panels', line: `${changes} to change, ${all.length - changes} approved.${gate === 'cut' || gate === 'finish' ? '' : ' A redo is priced again.'}` };
@@ -5358,7 +5407,7 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * the storyboard reads its marks from `panels`; the pictures, clips, cut and finish reviews read theirs from `mediaPanels`;
  * price approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, mediaPanels = {}, accepted = {}, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, mediaPanels = {}, mediaTakes = {}, accepted = {}, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -5385,9 +5434,11 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
   }
   if (MEDIA_GATE_IDS.has(gate)) {
     const states = mediaPanelStates(doc, mediaPanels);
-    const decided = mediaPanelsOf(doc).map(panel => {
-      const mine = states[mediaPanelKey(panel)];
-      return { panel: trimmed(panel.panel), ...(trimmed(panel.deliverable) ? { deliverable: trimmed(panel.deliverable) } : {}), verdict: mine.verdict, ...(mine.verdict === 'changes' && trimmed(mine.note) ? { note: trimmed(mine.note) } : {}) };
+    // A shot with several takes (the clips) names the one to use, the newest unless the person picked another.
+    const decided = mediaShots(doc).map(shot => {
+      const panel = mediaTakePicked(shot, mediaTakes);
+      const mine = states[shot.key];
+      return { panel: trimmed(panel.panel), ...(trimmed(panel.deliverable) ? { deliverable: trimmed(panel.deliverable) } : {}), ...(shot.takes.length > 1 ? { version: mediaTakeNumber(panel) } : {}), verdict: mine.verdict, ...(mine.verdict === 'changes' && trimmed(mine.note) ? { note: trimmed(mine.note) } : {}) };
     });
     if (verdict === 'approve' && decided.some(entry => entry.verdict !== 'approve')) return { error: TXT_SEND_THE_REQUESTED_CHANGES };
     if (verdict === 'request_changes' && !note && !decided.some(entry => entry.verdict === 'changes')) return { error: NOTE_SAY_CHANGE };
@@ -10617,6 +10668,7 @@ if (typeof document !== 'undefined') {
     if(target.dataset.sbPanel!==undefined){panelAction('select', target.dataset.sbPanel);return;}
     if(target.dataset.sbAction){panelAction(target.dataset.sbAction);return;}
     if(target.dataset.mrAction){mediaPanelAction(target.dataset.mrAction, target.dataset.mrKey);return;}
+    if(target.dataset.mrTake!==undefined){mediaTakeAction(target.dataset.mrTake, target.dataset.mrVersion);return;}
     if(target.dataset.flagAccept||target.dataset.flagUndo){flagAction(target.dataset.flagAccept || target.dataset.flagUndo, Boolean(target.dataset.flagAccept));return;}
     if(target.dataset.conceptOpen!==undefined){event.preventDefault();openConceptPanel(target.dataset.conceptOpen,target.dataset.conceptFocus,target);return;}
     if(target.dataset.conceptClose!==undefined){closeConceptPanel();return;}
@@ -11291,7 +11343,7 @@ if (typeof document !== 'undefined') {
     if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel your opening line first.'; render(); return; }
     if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel your option first.'; render(); return; }
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, mediaPanels: state.mediaPanels || {}, accepted: state.accepted || {}, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, mediaPanels: state.mediaPanels || {}, mediaTakes: state.mediaTakes || {}, accepted: state.accepted || {}, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();
@@ -12042,6 +12094,18 @@ if (typeof document !== 'undefined') {
       state.error = '';
       render();
     }
+  }
+  // Use one take of a shot in the clips review. The pick goes with the decision; nothing is sent from here.
+  function mediaTakeAction(key, version) {
+    const project = current();
+    if (!project || !key) return;
+    const state = uiFor(project).review;
+    if (state.busy || state.submitted || state.needsReconciliation) return;
+    state.mediaTakes ||= {};
+    state.mediaTakes[key] = Number(version);
+    state.error = '';
+    render();
+    focusQuietly(`[data-mr-take="${CSS.escape(key)}"]`);
   }
   function flagAction(id, accept) {
     const project = current();

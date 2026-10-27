@@ -8,6 +8,7 @@ import { InvalidInputError } from '../lib/errors.mjs';
 import { defaultWorkspaceRoot, expandUserPath, globalConfigDir, globalConfigPath, workspaceConfigPath } from '../lib/paths.mjs';
 import {
   ELEVEN_LABS_MEDIA, FACT_FILE_DENY, MUSIC_MODEL, MUSIC_TOOL, isMusicCall, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  MAX_PICTURES_PER_PANEL, pictureCapText,
   asObject, isFactFile, toolBase,
 } from './spend-tools.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
@@ -15,6 +16,7 @@ import { renameReplacing } from '../lib/rename.mjs';
 export { IMAGE_CREDITS_EACH };
 export {
   ELEVEN_LABS_MEDIA, FACT_FILE_DENY, MUSIC_MODEL, MUSIC_TOOL, isMusicCall, FREE_PICTURES_PER_PANEL, NO_JOB_DENY, NO_JOB_WARNING, SPEND_DENY, THREE_ECHO_SPENDERS, VOICE_ESTIMABLE, VOICE_SPENDERS,
+  MAX_PICTURES_PER_PANEL, pictureCapText,
   asObject, isFactFile, toolBase,
 };
 
@@ -1085,6 +1087,34 @@ export function mediaSet(job, kind) {
   return { kind, panels, complete: panels.length > 0 && panels.every(panel => panel.file) };
 }
 
+/**
+ * Every take of each clip that landed as a saved file, not only the newest: one entry per landed version of a shot that is in the
+ * clip set, { slot, key, deliverable, panel, version, file, sha256 }, in shot order and then take order. The clips review shows all of
+ * them so the person can pick the take to join; mediaSet keeps naming the newest take of each shot, which is what the gate compares.
+ */
+export function clipTakes(job) {
+  const shots = new Set(mediaSet(job, 'video').panels.map(panel => panel.slot));
+  const landed = readLanded(job).filter(entry => entry.type === 'landed' && typeof entry.file === 'string' && entry.file && typeof entry.sha256 === 'string' && existsSync(join(job.dir, ...entry.file.split('/'))));
+  const found = new Map();
+  for (const entry of [...landed].reverse()) {
+    const parsed = parseJobKey(entry.key);
+    const slot = parsed ? slotOfKey(parsed.key) : null;
+    if (!slot || !shots.has(slot) || found.has(parsed.key)) continue;
+    found.set(parsed.key, { slot, key: parsed.key, deliverable: parsed.deliverable, panel: parsed.item, version: parsed.version, file: entry.file, sha256: entry.sha256 });
+  }
+  return [...found.values()].sort((a, b) => a.deliverable.localeCompare(b.deliverable, 'en', { numeric: true }) || a.panel.localeCompare(b.panel, 'en', { numeric: true }) || a.version - b.version);
+}
+
+/**
+ * The shots that have more than one saved version, { deliverable, panel, versions }, in shot order. The rough cut says so in one line,
+ * because an earlier version can be put back without making anything (pipeline_clip_use_version).
+ */
+export function shotsWithEarlierVersions(job) {
+  const shots = new Map();
+  for (const take of clipTakes(job)) shots.set(take.slot, [...(shots.get(take.slot) || []), take]);
+  return [...shots.values()].filter(takes => takes.length > 1).map(takes => ({ deliverable: takes[0].deliverable, panel: takes[0].panel, versions: takes.map(take => take.version) }));
+}
+
 /** The set a review gate covers. A new panel-grid review adds its entry to MEDIA_REVIEWS and a case here. */
 export const reviewSet = (job, gate) => (gate === 'cut' || gate === 'finish' ? finishedSet(job) : mediaSet(job, MEDIA_REVIEWS[gate].kind));
 
@@ -1403,6 +1433,19 @@ function pictureSampleLocked(job, key, made) {
   return !(approvedKey && slotOfKey(approvedKey) === sample && sampleApproved(job, approvedKey));
 }
 
+// How many pictures one panel may make: the free three, plus the extra pictures an approved price line for that panel names in its
+// count (N extra means up to 3 + N in all). Only an approved price is passed in, so a count that was only written down, or typed
+// in chat, allows nothing; one board tap on the price is what allows it.
+function pictureAllowanceFor(quote, key) {
+  let extra = 0;
+  for (const entry of Array.isArray(quote?.items) ? quote.items : []) {
+    if (!entry || entry.provider !== THREE_ECHO || entry.kind !== 'image' || slotOfKey(entry.key) !== slotOfKey(key)) continue;
+    const count = finite(entry.count);
+    if (count !== null && Number.isInteger(count) && count > extra) extra = Math.min(count, MAX_PICTURES_PER_PANEL);
+  }
+  return FREE_PICTURES_PER_PANEL + extra;
+}
+
 // A picture the approved price does not list goes ahead on its own, with the checks above. null: this item is in the approved
 // price, so the normal price checks judge it.
 function freePictureDecision(job, price, options) {
@@ -1411,12 +1454,19 @@ function freePictureDecision(job, price, options) {
   if (!key) return deny(SPEND_DENY.noItem);
   if (price && quoteItem(price.quote, key)) return null;
   if (isFinishedState(readJobState(job.dir).state)) return deny(SPEND_DENY.jobFinished);
+  // A key that is not one of the storyboard's panels (a typo such as PP4) makes nothing; a reference picture or a transcription is not a panel.
+  const parsedKey = parseJobKey(key);
+  if (parsedKey && !isReferenceItem(parsedKey.key) && !isTranscriptionItem(parsedKey.key)) {
+    const unknown = unknownPanelRefusal(job, parsedKey.deliverable, parsedKey.item);
+    if (unknown) return deny(unknown);
+  }
   const again = repeatVerdict(job, key, options);
   if (again) return again;
   // A key whose create failed made nothing, but 3Echo hands back the same failed job for it, so the next try is the next version.
   if (readRecords(job).some(record => record.type === 'create' && record.provider === THREE_ECHO && canonicalJobKey(record.key) === key)) return { allow: false, reason: SPEND_DENY.failedBefore, key, provider: THREE_ECHO, repeat: true };
   const made = madePictures(job);
-  if (made.filter(picture => slotOfKey(picture.key) === slotOfKey(key)).length >= FREE_PICTURES_PER_PANEL) return deny(SPEND_DENY.pictureCap);
+  const allowed = pictureAllowanceFor(price?.quote, key);
+  if (made.filter(picture => slotOfKey(picture.key) === slotOfKey(key)).length >= allowed) return deny(pictureCapText(allowed));
   // On a video job the storyboard review is the picture review and the test clip is the sample, so there is no picture sample lock.
   if (!plansVideo(job) && pictureSampleLocked(job, key, made)) return deny(SPEND_DENY.sampleLock);
   return { allow: true, cost: IMAGE_CREDITS_EACH, key, provider: THREE_ECHO, free: true };
@@ -1653,6 +1703,84 @@ function resolutionPrices(estimates, estimate, own) {
   return RESOLUTION_CHOICES.every(choice => prices[choice] !== undefined) ? { '720p': prices['720p'], '1080p': prices['1080p'] } : null;
 }
 
+// The panels a deliverable's storyboard lists, as canonical keys (P1, P2 ...), or null when there is no storyboard to read yet.
+// The Sequence line is the list that counts (a cut panel is not on it); without one, the rows of the panel table that are not cut.
+export function storyboardPanelKeys(job, deliverable) {
+  const d = canonicalDeliverable(deliverable);
+  if (!job?.dir || !d) return null;
+  let raw;
+  try {
+    raw = readFileSync(join(job.dir, 'drafts', d, 'storyboard.md'), 'utf8');
+  } catch {
+    return null;
+  }
+  const keys = new Set();
+  const sequence = /\*\*Sequence:\*\*\s*([^\r\n]+)/i.exec(raw)?.[1];
+  for (const part of sequence ? sequence.split(/\s*(?:->|→|,)\s*/) : []) {
+    const item = canonicalItem(part.replace(/[`*]/g, '').trim());
+    if (item) keys.add(item);
+  }
+  if (keys.size) return keys;
+  const cells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim().replace(/[`*]/g, ''));
+  let idCol = -1;
+  let keepCol = -1;
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) {
+      if (idCol >= 0) break;
+      continue;
+    }
+    const row = cells(line);
+    if (idCol < 0) {
+      idCol = row.findIndex(cell => /^(id|panel|panel id)$/i.test(cell));
+      keepCol = row.findIndex(cell => /keep|cut/i.test(cell));
+      continue;
+    }
+    if (row.every(cell => /^:?-{2,}:?$/.test(cell))) continue;
+    if (keepCol >= 0 && /^cut$/i.test(row[keepCol] || '')) continue;
+    const item = canonicalItem(row[idCol]);
+    if (item) keys.add(item);
+  }
+  return keys.size ? keys : null;
+}
+
+const editDistance = (a, b) => {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const above = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diagonal = above;
+    }
+  }
+  return row[b.length];
+};
+
+/** The panel of the list that a mistyped key most likely meant (one or two slips away), or null. */
+export function closestPanel(item, panels) {
+  const wanted = String(item ?? '').toUpperCase();
+  let best = null;
+  let bestDistance = 3;
+  for (const panel of panels) {
+    const distance = editDistance(wanted, panel.toUpperCase());
+    if (distance < bestDistance) {
+      best = panel;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** The plain refusal for a picture key that is not one of the storyboard's panels, or null when the key is fine or cannot be checked. */
+export function unknownPanelRefusal(job, deliverable, item) {
+  const panels = storyboardPanelKeys(job, deliverable);
+  if (!panels || panels.has(item)) return null;
+  const list = [...panels].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  const near = closestPanel(item, list);
+  return `${item} is not one of the storyboard's pictures for ${deliverable} (they are ${list.join(', ')}).${near ? ` Did you mean ${near}?` : ''}`;
+}
+
 // A job priced before clips had their own S numbers may already hold a video keyed P: that slot stays as it is.
 function pricedAsClip(job, parsed) {
   return (Array.isArray(readQuote(job)?.quote?.items) ? readQuote(job).quote.items : []).some(entry => entry && entry.kind === 'video' && slotOfKey(entry.key) === slotOfKey(parsed.key));
@@ -1675,13 +1803,22 @@ function quoteItemFrom(job, raw, index, estimates) {
   if (isReferenceItem(parsed.key) && raw.kind !== 'image') throw new Error(`${label}: the prefix R is for reference pictures only, so a ${raw.kind === 'video' ? 'video clip' : 'voice line'} needs another key, such as S1.`);
   if (raw.kind === 'video' && /^P\d+$/.test(parsed.item) && !pricedAsClip(job, parsed)) throw new Error(`${label}: clips are numbered S1, S2 and so on. P is for pictures (P1, P2). Key this clip with S, such as ${job.jobId}-${parsed.deliverable}-S${parsed.item.slice(1)}.`);
   if (raw.kind === 'image' && /^S\d+$/.test(parsed.item)) throw new Error(`${label}: pictures are numbered P1, P2 and so on. S is for clips (S1, S2). Key this picture with P, such as ${job.jobId}-${parsed.deliverable}-P${parsed.item.slice(1)}.`);
+  if (raw.kind === 'image' && !isReferenceItem(parsed.key) && !isTranscriptionItem(parsed.key)) {
+    const unknown = unknownPanelRefusal(job, parsed.deliverable, parsed.item);
+    if (unknown) throw new Error(unknown);
+  }
   const credits = finite(raw.credits);
   if (credits === null || credits < 0) throw new Error(`${label}: the credits must be a number of zero or more.`);
   if (raw.sample !== undefined && raw.sample !== true && raw.sample !== false) throw new Error(`${label}: sample must be true or false.`);
   const item = { key: parsed.key, provider: raw.provider, kind: raw.kind, deliverable: parsed.deliverable, panel: parsed.item, version: parsed.version, credits };
   if (raw.sample === true && !isReferenceItem(item)) item.sample = true;
   if (raw.kind === 'image') {
-    if (Math.abs(credits - IMAGE_CREDITS_EACH) > EPSILON) throw new Error(`${label}: a 3Echo image costs ${IMAGE_CREDITS_EACH} credit.`);
+    // A picture line may carry a count: the extra pictures this panel may make beyond its free three, paid for by this one approval.
+    const given = raw.count === undefined || raw.count === null ? null : finite(raw.count);
+    if (given !== null && (!Number.isInteger(given) || given < 1 || given > MAX_PICTURES_PER_PANEL)) throw new Error(`${label}: the number of extra pictures for this panel must be a whole number from 1 to ${MAX_PICTURES_PER_PANEL}.`);
+    const pictures = given !== null ? given : 1;
+    if (Math.abs(credits - pictures * IMAGE_CREDITS_EACH) > EPSILON) throw new Error(`${label}: ${pictures > 1 ? `${pictures} extra pictures cost ${pictures * IMAGE_CREDITS_EACH} credits` : `a 3Echo image costs ${IMAGE_CREDITS_EACH} credit`}.`);
+    if (given !== null) item.count = given;
     return item;
   }
   const what = raw.kind === 'video' ? 'video clip' : raw.kind === 'transcription' ? 'transcription' : raw.kind === 'music' ? 'music track' : 'voice line';

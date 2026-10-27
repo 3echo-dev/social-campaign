@@ -20,7 +20,7 @@ The Director makes the pictures (the sample first on a picture-only post), lands
 ## Steps
 
 Pictures are made while the storyboard is still a draft: the storyboard text is written first, then these steps, then the storyboard is presented with a picture on every panel.
-Pictures cost 1 credit each and need no price approval. Every one is still recorded and counted in the job's credit total, and the price card lists what pictures have used. The guard allows 3 pictures per panel (the first and two redos); a fourth needs a normal price approval. Video, voice and music always need one.
+Pictures cost 1 credit each and need no price approval. Every one is still recorded and counted in the job's credit total, and the price card lists what pictures have used. The guard allows 3 pictures per panel (the first and two redos); a fourth needs a normal price approval (Rule 11 says how to price extra pictures for one panel). Video, voice and music always need one.
 
 1. `preflight-generation.js {brand} {job-id} {D} --pictures`; exit 0 is the permission to start. It checks the manifest and that every image prompt carries the style preamble word for word. No product photo on a product job: `ask-product-photo.js`.
 A `subject: character` job with no reference picture makes a small set of reference pictures of the character first, each keyed `{job-id}-D{n}-R{k}-v1`, with the prefix R and never P.
@@ -31,7 +31,7 @@ A `subject: character` job with no reference picture makes a small set of refere
 Write the documents (`pipeline_status`) so the board shows the sample, say what you saw, and ask for the style check on the board and in chat the same as every other decision (`waitingOn` is `sample image`).
 End the turn: wait for yes before making the rest, in chat or on the board.
 A yes typed in chat is recorded with `pipeline_chat_decision` (gate `sample`, the person's words as `confirmedBy`) after the sample was presented with `pipeline_review_present`; without it the guard keeps holding the rest.
-After a request for changes, redo the sample first (a new version of the same panel).
+After a request for changes, redo the sample first (a new version of the same panel, as an edit when Rule 11a says so).
 6. **The rest.**
    On a video post, make a picture for every panel that needs one now. On a picture-only post, after the sample is approved, make a picture for every other panel that needs one, same job key pattern with `v1`, same preamble, continuity, references and negatives.
    Use `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link; for an expired 3Echo link, call `get_asset` again for that item.
@@ -63,7 +63,16 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply.
 8. Verify what a real place or landmark looks like first.
 9. UGC stills name camera physics, not quality: front phone camera, 26 mm lens, deep focus, unbalanced exposure, awkward crop; no studio lighting, stock look, perfect skin, centred framing or grading. Unless the brand or brief sets another look, the default is an everyday phone photo in daylight with real, ordinary clutter in the scene.
 10. `assetIds` takes 16 references. `aspectRatio` is one of `1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9`.
-11. A redo is one panel: the Director spawns the Creative Director once with the person's note and that panel, which rewrites that one prompt in the manifest. The redo is a fresh job key with `v` increased and needs no price approval: it is the panel's second or third picture. Only the ids in `regenerate`, the note verbatim in its prompt (the Creative Director puts it there), then the storyboard again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A panel's fourth picture is refused until a price for it is saved (`pipeline_quote_save`, the new key) and approved on the board.
+11. A redo is one panel: the Director spawns the Creative Director once with the person's note and that panel, which rewrites that one prompt in the manifest. The redo is a fresh job key with `v` increased and needs no price approval: it is the panel's second or third picture. Only the ids in `regenerate`, the note verbatim in its prompt (the Creative Director puts it there), or in `edit.change` for an edit (Rule 11a), then the storyboard again with the new picture in its place. Landing promotes the new version to `P{id}` and archives the old one as `P{id}-r{k}` itself; never archive, rename or move media files by hand. To go back to an earlier version, ask for it as a redo; never copy files. A panel's fourth picture is refused until a price for it is saved (`pipeline_quote_save`, the new key) and approved on the board.
+   When the person wants more than 3 tries at one panel's picture, offer it as one price line for that panel with `count` N (from 1 to 12) and `credits` N, instead of one line per extra picture. `count` N means N extra pictures beyond the free 3 for that panel, so the panel's cap becomes 3 + N; it is approved only with a board tap.
+   It still needs the board tap: once the price is approved there, that panel may have up to N pictures in all, and the next is refused until a new price is approved; saving the line or a yes typed in chat allows nothing.
+11a. A redo of a picture that was mostly right is an edit, not a new picture, on the sample and on every other panel. A fresh prompt for each redo fixes one thing and breaks another.
+   - Read the person's note. A note that changes, adds, removes or moves something in a picture they otherwise accept is an edit. A note that rejects the whole picture ("start again", "wrong idea", "not this at all") is a fresh picture: the Creative Director writes a full prompt and Rules 3, 4a and the Labelled references apply as for the first picture.
+   - For an edit the item carries `edit: { from, change }` (the Creative Director writes it). `from` is the key of the version being edited, the one the person liked or named; if the person says go back to an earlier version, that one. `change` is one short line naming only what changes, such as "make her smaller against the kiosk".
+   - The reference is the earlier picture alone. `assetIds` is that one asset, found in the landed record or as `outputAssetIds` in that picture's `get_job_result`; `references` has one entry labelled "Earlier picture", keeping everything except the change. Leave the brand photos, the product photo and the faces off this call: the earlier picture already carries them.
+   - The `prompt` sent to `create_image_job` is `[Image 1] Earlier picture: keep everything except the change.`, then `change`, then "No text, no captions, no watermark." The style preamble and the continuity block are not sent again. It is the `change` saved in the item, never words of your own. The item's own `prompt` stays the full prompt, so a later fresh redo and `preflight-generation.js` still work.
+   - Everything else is a normal redo: the same `aspectRatio`, the next `v` key, one picture at 1 credit, the 3 per panel cap and the fourth-picture price rule above. If the edit comes back worse than the picture it started from, the next redo edits from the better one.
+   - Edit through `create_image_job` only. `creative_edit_image` is refused inside a campaign workspace.
 12. Cutting a panel returns to the storyboard gate. Stills for a video job is a change of deliverable: `change-deliverable.js`, in their words.
 
 <!-- BEGIN labelled references (0.14 task 3) -->
@@ -94,6 +103,7 @@ Does not price or ask for a click for pictures within 3 per panel.
 | `preflight-media.js` exits 3 | Allowlist the host; do not generate. |
 | A generation tool fails silently | `check-3echo.js`; three in a row is reachability. |
 | Competitor packaging or a redesigned product | Say so; on their note, repeat `# Not in frame`, pass the pack shot. |
+| The saved price refuses a picture as "not one of the storyboard's pictures ... Did you mean" a panel | A typo in the key. While nothing was spent on it, fix it with `pipeline_panel_rekey` (the post, the mistyped key and the right one); the approved price stays approved. Never save a second price line for the right key. |
 | An outcome that never resolves | Leave it unresolved; `pipeline_generation_land` says what is still pending. Never retry blindly. |
 
 Numbers here carry provenance in `docs/sources/media.md`.

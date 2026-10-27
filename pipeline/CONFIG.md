@@ -209,7 +209,7 @@ On `create_image_job` and `create_video_job` it refuses unless all of this holds
 - an explicit yes to the quote is on record, which the guard learned by watching `wait-answer.js` print it
 - the hero panel of that deliverable has come back, unless this is the hero
 
-Pictures are the one exception in this plugin's own guard (`server/pipeline/facts.mjs`): a `create_image_job` needs no price approval and no approved board, is recorded and counted in the job's credits, and stops at 3 pictures per panel (the first and two redos), after which it needs a normal price approval. The first storyboard picture made is the sample and holds every other panel until the person approves it. Video, voice and music always need a price approval.
+Pictures are the one exception in this plugin's own guard (`server/pipeline/facts.mjs`): a `create_image_job` needs no price approval and no approved board, is recorded and counted in the job's credits, and stops at 3 pictures per panel (the first and two redos), after which it needs a normal price approval. A price line with `count` N (from 1 to 12) for one panel means N extra pictures beyond the free 3, so once approved with the board tap that panel may have up to 3 + N pictures; make-image Rule 11 says when to offer it. The first storyboard picture made is the sample and holds every other panel until the person approves it. Video, voice and music always need a price approval.
 
 Every refusal is one plain sentence with no path and no state id in it, because the model reads it as its next instruction.
 Anything that throws inside the check is a refusal too: a guard that fails open is not a guard.

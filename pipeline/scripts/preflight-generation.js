@@ -69,6 +69,27 @@ const fail = m => problems.push(m);
 const note = m => notes.push(m);
 
 const readJson = p => JSON.parse(fs.readFileSync(p, 'utf8'));
+// The board panel a mistyped key most likely meant (one or two slips away), so the refusal can say "Did you mean P4?".
+function closestPanel(item, panels) {
+  const dist = (a, b) => {
+    const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      let diag = row[0]; row[0] = i;
+      for (let j = 1; j <= b.length; j++) { const up = row[j]; row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1)); diag = up; }
+    }
+    return row[b.length];
+  };
+  let best = null, bestD = 3;
+  for (const p of panels) { const d = dist(String(item).toUpperCase(), String(p).toUpperCase()); if (d < bestD) { best = p; bestD = d; } }
+  return best;
+}
+// A job key (job-...-D1-P1-v2) taken apart, or null. Zero padding is ignored, so P01 and P1 are the same panel.
+function keyOf(value) {
+  const hit = /-(D\d+)-([A-Za-z]+)0*(\d+)-v(\d+)$/i.exec(String(value || '').trim());
+  if (!hit) return null;
+  const item = hit[2].toUpperCase() + Number(hit[3]);
+  return { deliverable: 'D' + Number(hit[1].slice(1)), item, key: String(value).trim().slice(0, hit.index) + '-D' + Number(hit[1].slice(1)) + '-' + item + '-v' + Number(hit[4]) };
+}
 let wsCfg = {};
 try { wsCfg = readJson(path.join(ws.wsDir(brand, argv), 'workspace.json')); } catch {}
 let jobSpec = {};
@@ -135,11 +156,23 @@ for (const D of dels) {
   else {
     for (const p of boardPanels) if (!itemPanels.includes(p))
       fail(D + ': board panel ' + p + ' has no manifest item, so it would never be generated');
-    for (const p of itemPanels) if (!boardPanels.includes(p))
-      fail(D + ': manifest item names panel ' + p + ', which is not in the approved Sequence. A cut panel must not be generated.');
+    for (const p of itemPanels) if (!boardPanels.includes(p)) {
+      const near = closestPanel(p, boardPanels);
+      fail(D + ': manifest item names panel ' + p + ', which is not in the approved Sequence.' + (near ? ' Did you mean ' + near + '? Fix the key with pipeline_panel_rekey while nothing has been spent on it.' : ' A cut panel must not be generated.'));
+    }
   }
 
   // 5. Tool limits.
+  // The earlier pictures that really landed, by job key, so an edit can be checked against them.
+  const landedKeys = new Set();
+  try {
+    for (const line of fs.readFileSync(path.join(jobDir, 'generation', 'landed.jsonl'), 'utf8').split(/\r?\n/)) {
+      let rec = null;
+      try { rec = JSON.parse(line); } catch { continue; }
+      const parsed = rec && rec.type === 'landed' && rec.key ? keyOf(rec.key) : null;
+      if (parsed) landedKeys.add(parsed.key);
+    }
+  } catch {}
   let imageCount = 0;
   for (const it of man.items || []) {
     const where = D + ' ' + (it.panel || '?') + ' (' + (it.kind || '?') + ')';
@@ -148,6 +181,12 @@ for (const D of dels) {
       imageCount++;
       if (refs > IMAGE_MAX_REFS) fail(where + ': ' + refs + ' reference assets, the image tool accepts at most ' + IMAGE_MAX_REFS);
       if (it.credits !== 1) fail(where + ': image items cost exactly 1 credit; this says ' + it.credits);
+      if (it.edit !== undefined) {
+        const from = it.edit && typeof it.edit === 'object' ? keyOf(it.edit.from) : null;
+        const same = from && from.deliverable === D && String(from.item).toUpperCase() === String(it.panel).toUpperCase();
+        if (!same || !landedKeys.has(from.key)) fail(where + ': this picture is an edit, so it must start from an earlier picture of ' + it.panel + ' that was already made. Name that picture, or make it a new picture instead.');
+        else if (refs !== 1) fail(where + ': an edit uses the earlier picture alone, so it needs exactly one picture attached; this has ' + refs + '.');
+      }
     }
     if (it.kind === 'video') {
       const d = it.durationSeconds;

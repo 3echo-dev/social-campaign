@@ -12,6 +12,7 @@ Call the words posted under the video "the post text", never "captions", so the 
 The sound plan question of a video opens with "Sound plan" and is answered before the price is saved; its answer replaces any plan recorded earlier (see the sound plan paragraph of the Director agent).
 
 Making the storyboard pictures is not spending to ask about: up to 3 pictures per panel are made with no question and counted in the job total (make-image), so never ask "may I make the sample".
+Extra pictures for one panel beyond the free 3 are priced as make-image Rule 11 says, one line with `count` (the number of extra pictures), and is approved with the board tap, never with a question or a typed yes.
 On a picture-only post the first picture is the sample, approved on its own card; on a video post the test clip is the sample.
 
 A go-ahead for sending or spending outside the posting decision is answered in chat only: still post it with `pipeline_board_ask` and `inChat` true, with the same words you will say in chat, so the board shows the notice.

@@ -326,6 +326,20 @@ function voiceMakePick({ root, job, kept, given }) {
 }
 
 /**
+ * A music "make" pick, whole. It keeps the mood named (or the one kept before) and the take already chosen for it: the chosen take's
+ * id, title and label stay through every later recording, so recording the card again never sends the music back to waiting. Naming a
+ * different mood than the track was made in is a request for a new track: the chosen take goes and the pick waits for it.
+ */
+function musicMakePick({ root, kept, given }) {
+  const named = musicFields(given);
+  const keptMake = isPlain(kept) && kept.source === 'make' ? kept : null;
+  const sameMood = !named.mood || (Boolean(keptMake?.mood) && named.mood === keptMake.mood);
+  const out = { source: 'make', ...(named.mood ? named : carried(kept, 'music')) };
+  if (sameMood && keptMake?.id && findItem({ root, id: keptMake.id, kind: 'music' })) return { ...out, id: keptMake.id, ...(keptMake.title ? { title: keptMake.title } : {}), ...(keptMake.take ? { take: keptMake.take } : {}) };
+  return out;
+}
+
+/**
  * A combine object checked and cleaned, with library ids that must exist. A row left out keeps what is recorded for the job (the
  * person's own earlier pick of that row, else the defaults, when nothing is), and a row given without its source changes only the
  * fields it names, so one pick never undoes another. `rows` limits the result to those rows (a pick of one part on its own).
@@ -350,7 +364,7 @@ export function normaliseCombine({ root, job, combine, rows = SOUND_ROWS }) {
     if (!SOURCES[row].includes(source)) throw new Error(`Pick one of: ${COMBINE_ROWS[row].map(option => option.label).join(', ')} for ${row === 'voice' ? 'the voice-over' : row === 'captions' ? 'the subtitles' : row}.`);
     if (row === 'captions') { out[row] = source === 'none' ? { source } : { source, ...carried(kept, 'captions'), ...captionFields(given) }; continue; }
     if (source === 'make' && row === 'voice') { out[row] = voiceMakePick({ root, job, kept, given }); continue; }
-    if (source === 'make' && row === 'music') { const named = musicFields(given); out[row] = { source, ...(named.mood ? named : carried(kept, 'music')) }; continue; }
+    if (source === 'make' && row === 'music') { out[row] = musicMakePick({ root, kept, given }); continue; }
     if (source === 'none' || source === 'upload' || source === 'make') { out[row] = { source }; continue; }
     const id = typeof given === 'object' && typeof given.id === 'string' ? given.id.trim() : '';
     if (!id) throw new Error(`Pick a ${row === 'voice' ? 'voice-over' : 'track'} from the library, or another choice.`);
@@ -375,7 +389,7 @@ export const combineFlags = combine => ({ captions: combine.captions.source !== 
 export function applyCombine({ root, job, combine, why }) {
   const stored = { ...combine };
   if (combine.music.source === 'none') chooseMusic({ root, brand: job.brand, jobId: job.jobId, id: 'none', why });
-  else if (combine.music.source === 'library') { const picked = chooseMusic({ root, brand: job.brand, jobId: job.jobId, id: combine.music.id, why }); stored.music = { ...combine.music, title: picked.title }; }
+  else if (combine.music.source === 'library' || (combine.music.source === 'make' && combine.music.id)) { const picked = chooseMusic({ root, brand: job.brand, jobId: job.jobId, id: combine.music.id, why }); stored.music = { ...combine.music, title: picked.title }; }
   else pendingMusic(job, why);
   if (combine.voice.source === 'none') chooseVoice({ root, job, id: 'none', why });
   else if (combine.voice.source === 'make' && combine.voice.id) { const picked = chooseVoice({ root, job, id: combine.voice.id, why }); stored.voice = { ...combine.voice, title: picked.title }; }
@@ -407,7 +421,7 @@ export function combineNextSteps(job, combine) {
   const steps = [];
   const code = job.jobId;
   if (combine.music.source === 'upload') steps.push('Music: ask the person for the track with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "music", source: "upload", path}.');
-  if (combine.music.source === 'make') steps.push(`Music: price it (creative_generate_in_flow with node_type "music", an eleven_music model, a prompt from the brief${combine.music.mood ? ` in a ${combine.music.mood} mood` : ''} and estimate_only true, generations_count 1), save one price item {provider elevenLabs, kind music, key ${code}-D1-M1-v1, the estimateId} with pipeline_quote_save and show the price: the person must click it on the board. Only after the approval make it with the same call without estimate_only, then pipeline_combine_takes {kind: "music", files}. Never make music any other way.`);
+  if (combine.music.source === 'make' && !combine.music.id) steps.push(`Music: price it (creative_generate_in_flow with node_type "music", an eleven_music model, a prompt from the brief${combine.music.mood ? ` in a ${combine.music.mood} mood` : ''} and estimate_only true, generations_count 1), save one price item {provider elevenLabs, kind music, key ${code}-D1-M1-v1, the estimateId} with pipeline_quote_save and show the price: the person must click it on the board. Only after the approval make it with the same call without estimate_only, then pipeline_combine_takes {kind: "music", files}. Never make music any other way.`);
   if (combine.voice.source === 'upload') steps.push('Voice-over: ask the person for the recording with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "voice", source: "upload", path}.');
   if (combine.voice.source === 'make') { const step = voiceMakeStep(job, combine.voice); if (step) steps.push(step); }
   if (combine.captions.source === 'voice' && combine.voice.source !== 'none') steps.push('Captions: once the voice-over is chosen, transcribe it (media_transcribe on the voice-over file, or creative_transcribe_audio after its price) so the captions use its real words; without a transcript they use the script wording and you must say so.');
@@ -535,7 +549,9 @@ export function soundPriceGaps(job, combine) {
   for (const kind of ['music', 'voice']) {
     const lines = saved.quote.items.filter(item => item && item.provider === facts.ELEVEN_LABS && item.kind === kind);
     // A voice-over already made and paid for needs no new price line; a fresh one does.
-    const have = kind === 'voice' && combine.voice?.source === 'make' && !combine.voice.fresh && (Boolean(combine.voice.id) || Boolean(madeVoice(job)));
+    const have = kind === 'voice'
+      ? combine.voice?.source === 'make' && !combine.voice.fresh && (Boolean(combine.voice.id) || Boolean(madeVoice(job)))
+      : combine.music?.source === 'make' && Boolean(combine.music.id);
     if (combine[kind]?.source === 'make') { if (!lines.length && !have) out.missing.push(kind); } else out.drop.push(...lines.map(item => item.key));
   }
   return out;

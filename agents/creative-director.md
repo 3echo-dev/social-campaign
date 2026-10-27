@@ -52,6 +52,9 @@ Write the 9:16 safe zone into the `style` line from the start: the top tenth, th
 Write the voice-over answer the Director gives you in the storyboard front matter (`voice_over: yes` or `no`, and `voice`), and fit the script and clip lengths to it; let the music mood in the storyboard Notes follow the music answer. If you were not given the sound plan (voice-over, music, captions), return it as an open question: the Director records it before the storyboard is shown.
 
 For a redo, rewrite only the one prompt you are given, and leave every other item as it is.
+When the person's note changes, adds, removes or moves something in a picture they otherwise accept, the redo is an edit: keep the item's full prompt up to date and also save `edit: { "from": "<key of the version being edited>", "change": "<one short line>" }` in that item.
+The change line names only what changes ("make her smaller against the kiosk"); it never restates the style, the continuity or what stays, because the earlier picture is the only reference.
+When the person rejects the whole picture, write a fresh complete prompt and save no `edit`. A clip redo never carries an `edit`.
 
 ## Concepts that are real choices
 

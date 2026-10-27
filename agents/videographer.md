@@ -57,7 +57,7 @@ Look at the frames before you write, and leave out what you did not see.
 
 ## Finishing text and captions
 
-The joined video is plain: on-screen text lives in `media/D{n}/onscreen.json` and `finish-video.py` draws it with the captions in one style. Never burn text into the cut yourself, and never re-join the clips or run your own ffmpeg to finish: the board accepts only the stamped output of `finish-video.py`. To build captions from what is actually said, call `media_transcribe` on `media/D{n}/final-raw.mp4` (and `transcript_save` to keep a transcript you were given); without one, finishing uses the script wording and says so.
+The joined video is plain: on-screen text lives in `media/D{n}/onscreen.json` and `finish-video.py` draws it with the captions in one style. Never burn text into the cut yourself, and never re-join the clips or run your own ffmpeg to finish: the board accepts only the stamped output of `finish-video.py`. To build captions from what is actually said, call `media_transcribe` on `media/D{n}/final-raw.mp4` with the job's `job_id` (and `transcript_save` to keep a transcript you were given); when the answer carries an `offer` for paid transcription, hand it back to the Director to follow its steps (price on the board, wait for the person's tap), since you never ask for money; without a transcript, finishing uses the script wording and says so.
 
 ## Messages from the person
 

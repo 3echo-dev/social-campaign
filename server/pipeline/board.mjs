@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, realpathSync, statSync, renameSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, realpathSync, statSync, renameSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -17,6 +17,7 @@ import { researchCoverage } from './research-coverage.mjs';
 import { referenceAssets } from './brand-references.mjs';
 import { answerQuestion, closeUploadQuestion, isSoundQuestion, listQuestions, openSoundQuestions, plainWordsProblem, readQuestion, validateAnswer } from './questions.mjs';
 import { landOutputs, repairPromotions } from './land-outputs.mjs';
+import { placeTake } from './clip-versions.mjs';
 import { copiesMissingFor, isReviewMediaPath, reviewUrlFor } from './review-copies.mjs';
 import { assertContentQc } from './label-qc.mjs';
 import { checkRecipePicks, chooseRecipe, readJobRecipes } from './recipe.mjs';
@@ -42,6 +43,7 @@ import { SUBTOPIC_COUNT, boardIntelligence, confirmSubtopics, planCell, slimInte
 import { boardPostPictures, fillPostThumbs } from './post-thumbs.mjs';
 import { PUBLISH_INTENT_FILE, anythingSent, buildPublishIntent, checkPostTime, checkPostType, checkPublishRoute, choosePublishRoute, evaluatePublishPlan, plannedBeforeMetricool, publishContext, readPublishIntent, savePostTime, savePostType, suppliedChecks, withPublishIntent } from './publish-intent.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
+import { kindOfFile } from './generated-media-check.mjs';
 
 const states = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-states.js'));
 const campaignReport = createRequire(import.meta.url)(join(runtime.runtimeConstants.pipelineRoot,'scripts','lib-campaign-report.js'));
@@ -734,7 +736,9 @@ export function mediaReview(root, brand, jobId, snapshot, gate) {
   // The storyboard review already showed every picture, and its approval covers them.
   if (gate === PICTURES_GATE && facts.mediaSetApproved(job, gate)) return null;
   const set = facts.reviewSet(job, gate);
-  return set.complete ? panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile: spec.file, kind: spec.kind, panels: set.panels }) : null;
+  // The clips review shows every take of each shot so the person can pick one; the gate still compares the newest take of each shot.
+  const shown = gate === CLIPS_GATE ? facts.clipTakes(job) : set.panels;
+  return set.complete ? panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile: spec.file, kind: spec.kind, panels: shown.length ? shown : set.panels, setPanels: set.panels }) : null;
 }
 
 /**
@@ -758,10 +762,10 @@ function changeMadeSince(job, decided) {
  * its decision file, and calling this with its items.
  *
  * panels: [{ key, deliverable, panel, version, file (job-relative path), sha256 }]. kind: 'image' | 'video'. decisionFile: where the
- * decision is saved (approvals/<gate>.json). Returns the pending review record { brand, jobId, gate, revision, artifacts, mediaSet },
+ * decision is saved (approvals/<gate>.json). setPanels: the set the gate compares, one panel per slot, when `panels` lists several takes of a slot. Returns the pending review record { brand, jobId, gate, revision, artifacts, mediaSet },
  * or null when the files cannot be read or a decision on exactly these files (same keys and hashes) is already saved.
  */
-export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile, kind, panels }) {
+export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFile, kind, panels, setPanels = panels }) {
   const artifacts = [];
   for (const panel of panels) {
     let bytes;
@@ -771,7 +775,7 @@ export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFil
   const decided = readJsonFile(join(job.dir, ...decisionFile.split('/')), null);
   // The same comparison facts.mediaSetApproved makes. A joined-video panel key ("D1-cut") is not a priced job key, so comparing canonical
   // keys alone never matched it and the card stayed waiting after the cut was approved.
-  const same = decided && Array.isArray(decided.files) && decided.files.length === panels.length && panels.every(panel => decided.files.some(file => facts.sameKey(file?.key, panel.key) && file.sha256 === panel.sha256));
+  const same = decided && Array.isArray(decided.files) && decided.files.length === setPanels.length && setPanels.every(panel => decided.files.some(file => facts.sameKey(file?.key, panel.key) && file.sha256 === panel.sha256));
   if (same && decided.decision === 'approve') return null;
   // A change asked on the rough cut stands only until the new finished video exists (written after the decision). A redo that
   // leaves the picture files byte for byte the same would otherwise hide the cut for good.
@@ -3238,14 +3242,19 @@ function validatePanels(dir, artifacts, panels, decision, note) {
 
 // The pictures and the clips are decided panel by panel: each is approved, or has changes asked with a note. Approving all needs
 // every panel approved; asking for changes needs a panel with changes, or a note that says what to change.
+// The clips review lists every take of a shot; a decision names the take to use with `version` (the newest when it is left out).
+const MEDIA_PANEL_ENTRY_KEYS = new Set([...PANEL_ENTRY_KEYS,'version']);
+const mediaSlotOf = item => `${item.deliverable}|${item.panel}`;
+
 function validateMediaPanels(registered, panels, decision, note) {
   const known = registered?.mediaSet?.panels || [];
+  const shots = new Set(known.map(mediaSlotOf));
   const word = MEDIA_GATE_WORDS[registered?.gate] || 'panels';
   const seen = new Set();
   if(panels!==undefined) {
     if(!Array.isArray(panels) || !panels.length || panels.length>200) throw new Error('The panel decisions are not valid.');
     for(const entry of panels) {
-      if(!plainObject(entry) || Object.keys(entry).some(key=>!PANEL_ENTRY_KEYS.has(key))) throw new Error('The panel decisions are not valid.');
+      if(!plainObject(entry) || Object.keys(entry).some(key=>!MEDIA_PANEL_ENTRY_KEYS.has(key))) throw new Error('The panel decisions are not valid.');
       if(typeof entry.panel!=='string' || !PANEL_REF.test(entry.panel)) throw new Error('Each panel decision needs its panel, such as P1.');
       if(entry.deliverable!==undefined && (typeof entry.deliverable!=='string' || !DELIVERABLE_ID.test(entry.deliverable))) throw new Error('Each panel decision can only name its post, such as D1.');
       if(!['approve','changes'].includes(entry.verdict)) throw new Error('Each panel is either approved or has changes asked.');
@@ -3253,14 +3262,15 @@ function validateMediaPanels(registered, panels, decision, note) {
       if(entry.verdict==='changes' && !(typeof entry.note==='string' && entry.note.trim())) throw new Error(`Say what should change in ${entry.panel}.`);
       const matches = known.filter(item=>item.panel===entry.panel && (entry.deliverable===undefined || item.deliverable===entry.deliverable));
       if(!matches.length) throw new Error(`${entry.panel} is not one of these ${word}.`);
-      if(matches.length>1) throw new Error(`Say which post ${entry.panel} belongs to, such as D1.`);
-      const key = matches[0].key;
+      if(new Set(matches.map(mediaSlotOf)).size>1) throw new Error(`Say which post ${entry.panel} belongs to, such as D1.`);
+      if(entry.version!==undefined && (!Number.isInteger(entry.version) || !matches.some(item=>item.version===entry.version))) throw new Error(`Take ${entry.version} is not one of the takes of ${entry.panel}.`);
+      const key = mediaSlotOf(matches[0]);
       if(seen.has(key)) throw new Error(`${entry.panel} has more than one decision.`);
       seen.add(key);
     }
   }
   const changes = (panels || []).filter(entry=>entry.verdict==='changes');
-  if(decision==='approve' && (changes.length || (panels!==undefined && seen.size!==known.length))) throw new Error(`Approve every one of the ${word} before approving them all.`);
+  if(decision==='approve' && (changes.length || (panels!==undefined && seen.size!==shots.size))) throw new Error(`Approve every one of the ${word} before approving them all.`);
   if(decision==='request_changes' && !changes.length && !(typeof note==='string' && note.trim())) throw new Error(`Say what should change in the ${word}.`);
 }
 
@@ -3993,6 +4003,21 @@ function recordNoteChange({job,fromNote,by}) {
   return recordFinishingChoice({job,choice:captions && music ? 'both' : captions ? 'captions' : music ? 'music' : 'skip',by});
 }
 
+// The clips review lists every take of a shot. The gate compares the newest take of each shot (what facts.mediaSet names), and the
+// person's pick of a take is recorded next to it and is the one joined.
+function takesByShot(panels) {
+  const shots = new Map();
+  for(const item of panels) shots.set(`${item.deliverable}|${item.panel}`,[...(shots.get(`${item.deliverable}|${item.panel}`) || []),item]);
+  return shots;
+}
+const newestTake = takes => takes.reduce((best,item)=>item.version>best.version ? item : best);
+
+// Put the picked take under the shot's own name in the media folder, which is the file the join reads. A different file that was there is
+// kept aside as <shot>-r<n>. The save step is told with a promotion record on the newest take, so a later save pass leaves the pick alone.
+function placePickedClips({job,picked,newest}) {
+  for(const pick of picked) placeTake({job,pick,top:newest.get(`${pick.deliverable}|${pick.panel}`),verify:file=>artifactFile(job.dir,file)});
+}
+
 function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const review = validated.registered;
   const gate = args.reviewId;
@@ -4006,15 +4031,33 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
   const claimed = claimBoardRequest(file);
   if(claimed) return claimed;
   const decidedAt = new Date().toISOString();
-  const said = (Array.isArray(args.panels) ? args.panels : []).map(entry=>{
+  const shots = takesByShot(review.mediaSet.panels);
+  const newest = new Map([...shots].map(([slot,takes])=>[slot,newestTake(takes)]));
+  const told = new Map();
+  for(const entry of Array.isArray(args.panels) ? args.panels : []) {
     const match = review.mediaSet.panels.find(item=>item.panel===entry.panel && (entry.deliverable===undefined || item.deliverable===entry.deliverable));
-    return {key:match.key,deliverable:match.deliverable,panel:match.panel,verdict:entry.verdict,...(entry.verdict==='changes' ? {note:entry.note.trim()} : {})};
+    told.set(`${match.deliverable}|${match.panel}`,entry);
+  }
+  // The take used for a shot: the one the person picked, else the newest.
+  const takeOf = slot => shots.get(slot).find(item=>item.version===told.get(slot)?.version) || newest.get(slot);
+  const said = [...told].map(([slot,entry])=>{
+    const take = takeOf(slot);
+    return {key:take.key,deliverable:take.deliverable,panel:take.panel,...(shots.get(slot).length>1 ? {version:take.version} : {}),verdict:entry.verdict,...(entry.verdict==='changes' ? {note:entry.note.trim()} : {})};
   });
+  const picked = gate===CLIPS_GATE ? [...shots.keys()].map(slot=>{
+    const take = takeOf(slot);
+    return {key:take.key,deliverable:take.deliverable,panel:take.panel,version:take.version,file:take.path,sha256:take.sha256};
+  }) : null;
+  if(approve && picked) {
+    const job = facts.jobAt(root,validated.snapshot.brand?.slug || args.brand,args.jobId);
+    if(job) placePickedClips({job,picked,newest});
+  }
   const saved = {
     gate,decision:approve?'approve':'changes',decidedAt,by:confirmedBy,requestId:record.requestId,
     ...(note ? {note} : {}),
 
-    files:review.mediaSet.panels.map(item=>({key:item.key,deliverable:item.deliverable,panel:item.panel,file:item.path,sha256:item.sha256})),
+    files:[...newest.values()].map(item=>({key:item.key,deliverable:item.deliverable,panel:item.panel,file:item.path,sha256:item.sha256})),
+    ...(picked ? {picked} : {}),
     panels:said,
   };
   mkdirSync(join(validated.dir,'approvals'),{recursive:true});

@@ -46,7 +46,7 @@ export const brandFootageTools = [
   defineTool({
     name: 'brand_footage_import',
     description: [
-      'Bring a folder of past videos, pictures, audio and fonts into a brand\'s footage library, or carry on with one that is already imported. Use this, not library_ingest, for a brand\'s archive. A board request to add a folder (brand_folder_add) does the same when it is applied.',
+      'Bring a folder of past videos, pictures, audio and fonts into a brand\'s footage library, or carry on with one that is already imported. Use this for a brand\'s archive. A board request to add a folder (brand_folder_add) does the same when it is applied.',
       'Indexing is local and free (no model usage): it lists the files, skips copies of the same content, reads each file\'s length and size, makes a small thumbnail and reads a font file\'s family name from the file itself. The originals are never copied, moved or changed. When the brand kit has no fonts yet, the fonts found go into it (the person still confirms the kit as usual); brand_footage_digest says what else the folders offer.',
       'rights is required and is the person\'s answer about whose footage it is: ours (free to use), client_ask (ask the person before posting anything from it) or never (never use it). Ask the person; never guess. A folder already imported keeps its rights (change them with brand_footage_folder).',
       'A big folder is indexed in batches in the background and the answer says how far it got; the work survives a stop and carries on when you call this again with the same folder, which also picks up files added since.',

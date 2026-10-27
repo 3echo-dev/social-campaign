@@ -78,7 +78,9 @@ An approval needs every panel approved.
 The applied decision is saved as `approvals/pictures.json` or `approvals/clips.json`, with the exact files shown, so a redo (a new file) opens the review again; the plugin's sign-off is saved in the same `approvals/clips.json`.
 
 **A picture change is free until the panel has had 3 pictures.**
+When the person wants more tries than that at one panel, price it as make-image Rule 11 says (one line with `count`, meaning that many extra pictures beyond the free 3); it still waits for the board tap.
 **A clip change is a redo.**
+A note asking for an earlier version of a shot is not a redo; see make-video Rule 10.
 Have the Creative Director rewrite that one prompt, then make the redo as a new version of that clip (`-v2`).
 A redo inside the allowance (two per clip, up to the extra credits shown on the storyboard card) needs no new price tap.
 Beyond it, add the redo with `pipeline_quote_save`, present the price (`gate: "price"`), and wait for the person to approve the extra cost; the spend guard refuses an item that is not covered.

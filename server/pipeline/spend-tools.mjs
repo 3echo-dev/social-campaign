@@ -11,6 +11,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 export const THREE_ECHO_SPENDERS = Object.freeze(['create_image_job', 'create_video_job']);
 /** Pictures go ahead with no price approval: the first picture of a panel and two redos. A fourth needs a normal price approval. */
 export const FREE_PICTURES_PER_PANEL = 3;
+/** The most extra pictures one approved price line can allow for a single panel, beyond its free three. */
+export const MAX_PICTURES_PER_PANEL = 12;
 export const VOICE_SPENDERS = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio', 'creative_design_voice']);
 /** The only guarded tools that take `estimate_only` and then spend nothing. */
 export const VOICE_ESTIMABLE = Object.freeze(['creative_generate_speech', 'creative_transcribe_audio']);
@@ -96,6 +98,12 @@ export const SPEND_DENY = Object.freeze({
   unsupported: "This 3Echo or ElevenLabs tool isn't covered by an approved price, so it isn't used for campaign jobs. Pictures and clips are made with create_image_job and create_video_job, voice with creative_generate_speech, and music with creative_generate_in_flow (node_type music).",
   unchecked: "The price check couldn't finish, so nothing was made. Try again in a moment.",
 });
+
+/** The refusal for a panel that has made all the pictures it may: the free three, or the number one approved price line allowed. */
+export function pictureCapText(allowed = FREE_PICTURES_PER_PANEL) {
+  if (allowed <= FREE_PICTURES_PER_PANEL) return SPEND_DENY.pictureCap;
+  return `This panel has had the ${allowed} pictures that were approved for it. Another one needs a new price approved first. Show the price and wait for approval.`;
+}
 
 export function asObject(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;

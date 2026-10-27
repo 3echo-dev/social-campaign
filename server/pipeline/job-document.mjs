@@ -21,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, clipRedoAllowance, finishingRecord, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords } from './facts.mjs';
+import { FACT_FILES, PROVIDERS, canonicalDeliverable, canonicalItem, canonicalJobKey, clipRedoAllowance, finishingRecord, parseJobKey, quoteTotals, readEstimates, readLanded, readRecords, shotsWithEarlierVersions } from './facts.mjs';
 import { labelCheckStatus, readLabelCheck } from './label-qc.mjs';
 import { FIELDS as RECIPE_FIELDS, readJobRecipes } from './recipe.mjs';
 import { HANDOFF_ONLY_TEXT, localDateTime, postTypeChoices, projectPublish, validZone, whenText } from './publish-preflight.mjs';
@@ -1063,6 +1063,7 @@ export function parseQuote(value, { made = new Set(), estimates = [] } = {}) {
         detail: quoteDetail(item, byId.get(item.estimateId)),
         made: Boolean(key && made.has(key)),
         ...(item.sample === true ? { sample: true } : {}),
+        ...(Number.isInteger(item.count) ? { count: item.count } : {}),
       };
     });
   return { items: items.slice(0, MAX_QUOTE_ROWS), totals: quoteTotals(source.items), truncated: items.length > MAX_QUOTE_ROWS };
@@ -1590,6 +1591,10 @@ export function buildJobDocument({ dir, root = null, workspaceId = null, project
   // The combine card (music, voice-over and captions rows) is drawn while the joined video waits for its approval.
   if (gate === 'cut' && root) {
     try { const combine = combineSection({ root, brand: project.brand, jobId: project.jobId }); if (combine) document.combine = combine; } catch { /* the card falls back to the older buttons */ }
+  }
+  // A shot with an earlier saved version: the rough cut says so, because the person can ask for that version at no cost.
+  if (gate === 'cut') {
+    try { const earlier = shotsWithEarlierVersions({ dir }); if (earlier.length) document.earlierShots = earlier.slice(0, 12); } catch { /* the card shows no such line */ }
   }
   // The sound is chosen before the storyboard: the storyboard card shows what was recorded, read only.
   if (gate === 'storyboard') {
