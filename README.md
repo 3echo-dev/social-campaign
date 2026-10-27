@@ -1,7 +1,7 @@
 # Social Campaign
 
 A Claude Code plugin that takes a brand and a brief and gives back finished social content: posts, Reels, ad creative, or a written research report.
-Current version: 0.19.6.
+Current version: 0.19.7.
 
 You describe a brand once, on a page called the board.
 You write a brief for a job.
@@ -299,8 +299,8 @@ It is also what reads colours from a social profile picture when a website gives
 
 **Recommended:** yt-dlp, for TikTok posts and video addresses.
 
-**Optional:** a browser-driven research helper, for sites that show almost nothing to a plain page fetch.
-It needs Python 3.10 or later, and it installs only after you say yes, in the one question setup asks (a download of roughly 400 MB, about 1 GB on disk, in the background; free speech to text for videos without captions is a separate choice in the same question, about 630 MB more).
+**Installed for you:** a browser-driven research helper, for sites that show almost nothing to a plain page fetch, with free speech to text for videos without captions.
+It needs Python 3.10 or later and about 3 GB free, and it installs by itself in the background during setup or at the next session start (a download of roughly 1 GB, about 1.6 GB on disk).
 Nothing else waits for it, and it keeps itself current, removing what it no longer uses.
 `/social-campaign:doctor` reports on it and offers a repair.
 

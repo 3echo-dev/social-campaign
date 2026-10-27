@@ -44,7 +44,7 @@ import { listBoardRequests } from '../pipeline/board.mjs';
 import { setupChecks } from './doctor-setup.mjs';
 import { buildBoardShellText } from '../../scripts/build-board.mjs';
 import { YtDlpBackend } from '../social/backends/ytdlp.mjs';
-import { detect as detectResearchHelper, installPlan, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
+import { detect as detectResearchHelper, installProgress, manualCommands, readRecord, startInstall } from '../setup/research-helper.mjs';
 import { hasUsableResearchHelperRecord, researchHelperChildEnv } from '../setup/research-helper-record.mjs';
 import {
   YTDLP_STALE_DAYS,
@@ -159,12 +159,11 @@ export const diagnosticsTools = [
         },
         confirm: {
           type: 'boolean',
-          description:
-            'research_helper only: true after the user has agreed to install it. Without it nothing is installed and the result describes what would be.',
+          description: 'Ignored. Repairs run without a question; kept so an older caller still works.',
         },
         speech: {
           type: 'boolean',
-          description: 'research_helper only: true if the user also agreed to local speech to text (about 630 MB, downloaded in the background).',
+          description: 'Ignored. Local speech to text is always part of the research helper; kept so an older caller still works.',
         },
       },
       required: ['check'],
@@ -580,7 +579,7 @@ async function researchHelperCheck(workspace) {
       detail: lastFailure
         ? `The page readers are installed, but the browser they drive is not. Last time: ${lastFailure}`
         : 'The page readers are installed, but the browser they drive is not.',
-      fix: `Say yes and I will finish setting it up. To do it yourself: ${third}`,
+      fix: `I can finish setting it up now. To do it yourself: ${third}`,
     };
   }
   const detail = !recordUsable && record?.state === 'connected'
@@ -601,8 +600,8 @@ async function researchHelperCheck(workspace) {
       ? `${detail} Research still runs on public pages and web search. Last time: ${lastFailure}`
       : `${detail} Research still runs on public pages and web search.`,
     fix: !found.python.found
-      ? `It needs Python 3.10 or newer first, which Social Campaign does not install. Run ${manualCommands()[0]} yourself, then say yes and I will add the page readers and the browser they drive (a download of roughly 400 MB, about 1 GB on disk). Or do it all yourself: ${second} then ${third}`
-      : `Say yes and I will set it up: the page readers and the browser they drive (a download of roughly 400 MB, about 1 GB on disk). To do it yourself: ${second} then ${third}`,
+      ? `It needs Python 3.10 or newer first, which Social Campaign does not install. Run ${manualCommands()[0]} yourself, then I will add the page readers and the browser they drive. Or do it all yourself: ${second} then ${third}`
+      : `I can set it up now: the page readers and the browser they drive. To do it yourself: ${second} then ${third}`,
   };
 }
 
@@ -823,28 +822,15 @@ const REPAIRS = {
     };
   },
 
-  research_helper(workspace, _options = {}, args = {}) {
-    // It downloads a browser and Python packages onto the person's computer, so it
-    // only runs after their explicit yes. Without it, say what would happen.
-    if (args?.confirm !== true) {
-      const plan = installPlan();
-      return {
-        repaired: false,
-        confirmation_required: true,
-        plan,
-        detail: `Nothing was installed. ${plan.summary} ${plan.size} ${plan.needs} Say yes if you want it.`,
-      };
-    }
+  research_helper(workspace) {
     // Kicked off, not waited on: the install takes minutes and no tool call is
     // allowed to sit on one. Running the doctor again is how a person watches it
-    // finish.
-    const state = startInstall(workspace, { confirmed: true, speech: args?.speech === true, update: true });
+    // finish. It needs no question: it is the same install that setup starts alone.
+    const state = startInstall(workspace, { update: true });
     return {
       repaired: state.state === 'installing',
-      detail:
-        state.state === 'installing'
-          ? 'Setting up the research helper now. It carries on in the background. Run the doctor again to see how it is going.'
-          : 'The research helper is already set up.',
+      // The install line, when there is one, is the only install wording; the detail never repeats it.
+      ...(state.say ? { say: state.say } : { detail: 'Done.' }),
     };
   },
 

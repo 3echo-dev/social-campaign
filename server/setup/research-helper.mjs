@@ -3,17 +3,15 @@
  *
  * Some sites show almost nothing to a plain page fetch. The helper puts Scrapling (a Python page reader that can drive a
  * real browser), yt-dlp and a private copy of the Chromium browser they drive on the person's computer, in their own
- * virtual environment, and optionally faster-whisper for speech to text on the CPU. All of it is somebody else's
- * software, so none of it is installed without the person choosing to (a fresh install needs `confirmed: true`, which
- * only an explicit yes in chat sets), and none of it is ever required. Python itself must already be there: it is never
- * installed for the person, who gets the command instead.
+ * virtual environment, together with faster-whisper for speech to text on the CPU. It all installs by itself, in the
+ * background, as one install: nothing asks first, and nothing is ever required. Python itself must already be there: it
+ * is never installed for the person, who gets the command instead (and a computer that is nearly full is left alone).
  *
  * The environment and its browser go in the plugin data folder when Claude Code provides one (removed on uninstall),
  * and in `~/.social-campaign/research-helper` otherwise. An install already in that older place keeps being used.
  *
  * What it installs is exactly what the code calls, and nothing else: Scrapling with its fetchers (plus Playwright and
- * Patchright, which Scrapling requires, and curl_cffi), yt-dlp with browser impersonation, and, only when asked,
- * faster-whisper. Earlier releases also installed the Crawl4AI browser worker and the two retired discovery libraries; no code
+ * Patchright, which Scrapling requires, and curl_cffi), yt-dlp with browser impersonation, and faster-whisper. Earlier releases also installed the Crawl4AI browser worker and the two retired discovery libraries; no code
  * calls those now, so an update uninstalls them and the packages only they needed, from this environment only (helper-packages.mjs).
  *
  * Three rules hold this file together.
@@ -35,8 +33,8 @@
  * this file writes the state, and the capability resolver reads it.
  */
 
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -437,33 +435,58 @@ export async function detectPython(candidates = pythonCandidates()) {
   for (const command of candidates) {
     const result = await run(command, ['-c', VERSION_SCRIPT], STEP_TIMEOUT_MS.probe);
     if (result.spawnFailed) continue;
-    if (isStoreStub(result)) {
-      storeStub = true;
-      continue;
+    const read = readProbe(result);
+    if (read.kind === 'store_stub') storeStub = true;
+    else if (read.kind === 'xcode_stub') xcodeStub = true;
+    else if (read.kind === 'too_old') tooOld = true;
+    else if (read.kind === 'ok') {
+      return { found: true, command, executable: read.parsed.executable || null, version: `${read.parsed.major}.${read.parsed.minor}`, storeStub, xcodeStub, tooOld };
     }
-    if (isXcodeCLTStub(result)) {
-      xcodeStub = true;
-      continue;
-    }
-    const parsed = parseVersionLine(result.stdout);
-    if (!parsed) continue;
-    const newEnough =
-      parsed.major > MIN_PYTHON.major || (parsed.major === MIN_PYTHON.major && parsed.minor >= MIN_PYTHON.minor);
-    if (!newEnough) {
-      tooOld = true;
-      continue;
-    }
-    return {
-      found: true,
-      command,
-      executable: parsed.executable || null,
-      version: `${parsed.major}.${parsed.minor}`,
-      storeStub,
-      xcodeStub,
-      tooOld,
-    };
   }
   return { found: false, command: null, executable: null, version: null, storeStub, xcodeStub, tooOld };
+}
+
+/**
+ * What one run of VERSION_SCRIPT says about a Python command. Shared by the async and the sync detection.
+ * @param {{code: number|string|null, stdout: string, stderr: string}} result
+ * @returns {{kind: 'store_stub'|'xcode_stub'|'unreadable'|'too_old'} | {kind: 'ok', parsed: {major: number, minor: number, executable: string}}}
+ */
+function readProbe(result) {
+  if (isStoreStub(result)) return { kind: 'store_stub' };
+  if (isXcodeCLTStub(result)) return { kind: 'xcode_stub' };
+  const parsed = parseVersionLine(result.stdout);
+  if (!parsed) return { kind: 'unreadable' };
+  const newEnough = parsed.major > MIN_PYTHON.major || (parsed.major === MIN_PYTHON.major && parsed.minor >= MIN_PYTHON.minor);
+  return newEnough ? { kind: 'ok', parsed } : { kind: 'too_old' };
+}
+
+/** How long the quick, blocking look for Python waits on one candidate. */
+const SYNC_PROBE_MS = 5_000;
+
+/**
+ * The same answer as `detectPython`, without waiting on a promise, for the one place that has to know at once whether a
+ * fresh install can start (`research_tools_check` and the setup step answer in the same call). Each candidate is asked
+ * for its version and nothing else, so it costs a few tens of milliseconds.
+ * @param {string[][]} [candidates]
+ * @returns {boolean} whether a Python 3.10 or newer is on this computer.
+ */
+export function pythonAvailableSync(candidates = pythonCandidates()) {
+  for (const [program, ...fixed] of candidates) {
+    try {
+      const done = spawnSync(program, [...fixed, '-c', VERSION_SCRIPT], {
+        encoding: 'utf8',
+        timeout: SYNC_PROBE_MS,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: pythonChildEnv(),
+      });
+      if (done.error) continue;
+      if (readProbe({ code: done.status, stdout: String(done.stdout ?? ''), stderr: String(done.stderr ?? '') }).kind === 'ok') return true;
+    } catch {
+      // a candidate that cannot even be started is simply not there
+    }
+  }
+  return false;
 }
 
 /** The one line the package prints so detection can read its version. */
@@ -676,7 +699,8 @@ function paddedDate(version) {
  * from the session start hook and from a tool that must answer in a few seconds.
  * @param {string} [environmentRoot]
  * @param {{now?: number, ffmpeg?: boolean, speechWanted?: boolean, latest?: Record<string, string>|null, latestCheckedAt?: string|null}} [options]
- * `ffmpeg` overrides the PATH lookup, for tests; `speechWanted` is whether the person said yes to local speech to text.
+ * `ffmpeg` overrides the PATH lookup, for tests. Local speech to text is part of every install, so it is always wanted;
+ * `speechWanted` is still accepted and ignored.
  * @returns {ResearchToolsState}
  */
 export function researchToolsState(environmentRoot = managedEnvironmentRoot(), options = {}) {
@@ -695,7 +719,7 @@ export function researchToolsState(environmentRoot = managedEnvironmentRoot(), o
   const latest = options.latest ?? {};
   const venv = existsSync(managedPythonPath(environmentRoot));
   const installed = venv ? installedVersions(environmentRoot) : null;
-  const speech = { installed: false, version: /** @type {string|null} */ (null), wanted: Boolean(options.speechWanted), modelReady: false };
+  const speech = { installed: false, version: /** @type {string|null} */ (null), wanted: true, modelReady: false };
   if (!venv || !installed) {
     missing.push('Python environment');
   } else {
@@ -748,10 +772,8 @@ export function researchToolsState(environmentRoot = managedEnvironmentRoot(), o
       const newestWhisper = latest['faster-whisper'] ?? null;
       rows.push({ id: 'faster-whisper', name: 'faster-whisper', installed: whisper, expected: null, latest: newestWhisper, state: newestWhisper && compareVersions(whisper, newestWhisper) < 0 ? 'newer_available' : 'current' });
     }
-    if (options.speechWanted) {
-      if (!whisper) missing.push('Local speech to text');
-      else if (!speech.modelReady) missing.push('Speech model');
-    }
+    if (!whisper) missing.push('Local speech to text');
+    else if (!speech.modelReady) missing.push('Speech model');
   }
   const hasFfmpeg = options.ffmpeg ?? (findOnPath('ffmpeg') !== null && findOnPath('ffprobe') !== null);
   if (!hasFfmpeg) manual.push('FFmpeg');
@@ -820,7 +842,8 @@ export function writeRecord(workspace, record) {
  * @property {string|null} scraplingVersion
  * @property {string|null} startedAt
  * @property {string|null} finishedAt
- * @property {boolean} [consentNeeded] nothing was started because the person has not said yes to the install yet.
+ * @property {string} [say] the one line for the person, on the call that started a first install or was blocked (never on `installProgress`).
+ * @property {'low_space'|'no_python'} [blocked] why a fresh install was not started; always comes with `say`.
  * @property {SpeechProgress} [speech] the optional local speech to text, which installs after the helper is ready.
  */
 
@@ -1046,13 +1069,12 @@ export function noPythonReason() {
 }
 
 /**
- * What installing the helper would put on this computer, in plain words, for the
- * person to say yes or no to. Returned by every install entry point that was
- * called without `confirm: true`, and by `workspace_initialize`.
+ * What installing the helper puts on this computer, for the Director to read (no install entry point returns it to a
+ * person any more: nothing asks first).
  *
  * Sizes are measured: the browser takes about 700 MB on disk (Chromium and its headless shell, 433 MB and 271 MB), the
- * Python packages about 250 MB after retired ones are removed, and the download is roughly 400 MB. Local speech to text is
- * a separate yes inside the same question: about 150 MB of packages and a speech model of about 480 MB.
+ * Python packages about 250 MB after retired ones are removed, and the download is roughly 400 MB. Local speech to text
+ * adds about 150 MB of packages and a speech model of about 480 MB.
  * @returns {{summary: string, needs: string, size: string, location: string, removal: string, speech: {summary: string, size: string}}}
  */
 export function installPlan() {
@@ -1079,8 +1101,7 @@ export function installPlan() {
 }
 
 /**
- * Describe the install for the person to say yes or no to, including whether Python is here. This is what the setup
- * question is built from; it installs nothing.
+ * Describe the install and whether Python is here, for diagnostics; it installs nothing and nothing asks the person.
  * @returns {Promise<{plan: ReturnType<typeof installPlan>, python: {found: boolean, version: string|null, explanation: string, command: string|null}}>}
  */
 export async function describeInstall() {
@@ -1178,17 +1199,51 @@ async function ensurePipReady(python, options = {}) {
   };
 }
 
+/** A fresh install needs about this much free space (the browser, the packages and the speech model, with room to spare). */
+const MIN_FREE_BYTES = 3 * 1024 ** 3;
+
+/** The only lines about the install that ever reach the person. */
+const SAY_INSTALLING = 'Claude is installing what it needs to turn speech into text.';
+const SAY_LOW_SPACE = "Your computer is nearly full, so Claude can't turn speech into text yet. Free up some space and it will try again.";
+
+/** @returns {string} */
+function sayNoPython() {
+  return `Claude can't turn speech into text on this computer yet. Ask whoever set up your computer to run this one line: \`${manualCommands()[0]}\``;
+}
+
 /**
- * Whether the person has said yes to installing the helper here: a yes recorded for this workspace, an explicit
- * `confirmed`, or an environment that already exists on this computer (it only exists because somebody said yes, and the
- * update of a copy that is already there downloads nothing new). Local speech to text is separate: see `speechConsent`.
- * @param {Record<string, any>|null} record
- * @param {{confirmed?: boolean}} options
- * @param {string} environmentRoot
- * @returns {boolean}
+ * Free bytes on the drive that holds `path` (or the nearest folder above it that exists), or null when that cannot be read.
+ * Under the test runner only, `SOCIAL_CAMPAIGN_TEST_FREE_BYTES` stands in for the drive; nothing in the product sets it.
+ * @param {string} path
+ * @returns {number|null}
  */
-function installConsented(record, options, environmentRoot) {
-  return options.confirmed === true || Boolean(record?.consent_at) || existsSync(managedPythonPath(environmentRoot));
+function freeBytesAt(path) {
+  if (isNodeTestProcess() && process.env.SOCIAL_CAMPAIGN_TEST_FREE_BYTES) {
+    const forced = Number(process.env.SOCIAL_CAMPAIGN_TEST_FREE_BYTES);
+    if (Number.isFinite(forced)) return forced;
+  }
+  try {
+    let at = resolve(path);
+    while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+    const stats = statfsSync(at);
+    return Number(stats.bavail) * Number(stats.bsize);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a fresh install can start on this computer: enough room on the drive that will hold the environment, and a
+ * Python 3.10 or newer. Nothing is started or written here. An unreadable drive counts as enough room.
+ * @param {string} environmentRoot
+ * @param {string[][]} [candidates] the Python commands to try (tests supply their own).
+ * @returns {{blocked: 'low_space'|'no_python', say: string}|null} null when the install may start.
+ */
+function freshInstallBlock(environmentRoot, candidates) {
+  const free = freeBytesAt(environmentRoot);
+  if (free !== null && free < MIN_FREE_BYTES) return { blocked: 'low_space', say: SAY_LOW_SPACE };
+  if (!pythonAvailableSync(candidates ?? pythonCandidates())) return { blocked: 'no_python', say: sayNoPython() };
+  return null;
 }
 
 /**
@@ -1197,11 +1252,13 @@ function installConsented(record, options, environmentRoot) {
  * Returns immediately. The result is watched through `installProgress()` and recorded
  * in integrations.json when it ends, either way.
  *
- * A fresh install is started only with the person's yes: `confirmed: true`. Without it, and with no copy of the helper on
- * this computer already, nothing is started and the answer says `consentNeeded`. `speech: true` adds the optional local
- * speech to text (its own yes, taken in the same question).
+ * Nothing asks first: the helper and local speech to text install together. A fresh install (no environment on this
+ * computer yet) first checks for room on the drive and for a Python; if either is missing nothing is started and the
+ * answer carries `blocked` and the `say` line for the person. The call that starts a first install carries `say` too.
+ * `confirmed` and `speech` are still accepted and ignored. `announce: false` (the session start hook) starts a first
+ * install without saying it, leaving it for the next call to `claimInstallAnnouncement`.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @param {{candidates?: string[][], environmentRoot?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], update?: boolean, confirmed?: boolean, speech?: boolean, speechScript?: string, speechPollMs?: number}} [options]
+ * @param {{announce?: boolean, candidates?: string[][], environmentRoot?: string, smokeUrl?: string, allowRealInstall?: boolean, runtimeCommand?: string[], update?: boolean, confirmed?: boolean, speech?: boolean, speechScript?: string, speechPollMs?: number}} [options]
  * `runtimeCommand` is a test fixture hook and is never supplied by a product tool. `update: true` runs the
  * install again over a healthy install to add or refresh the pinned tools; without it a healthy install is left alone.
  * @returns {InstallProgress} the state as of this call, always `installing` unless one was already finished.
@@ -1228,15 +1285,29 @@ export function startInstall(workspace, options = {}) {
     return { ...persisted };
   }
   const environmentRoot = options.environmentRoot ?? managedEnvironmentRoot();
-  if (!installConsented(persistedRecord, options, environmentRoot)) {
-    return { ...initialProgress(), consentNeeded: true };
+  /** @type {string|undefined} */
+  let say;
+  /** @type {'now'|'pending'|null} whether this first install is announced by this call, or left for the next Director call. */
+  let announcement = null;
+  if (!existsSync(managedPythonPath(environmentRoot))) {
+    const block = freshInstallBlock(environmentRoot, options.candidates);
+    if (block) return { ...initialProgress(), say: block.say, blocked: block.blocked };
+    // Said once: a retry after a failed first attempt (the record already has its time) says nothing.
+    if (!persistedRecord?.consent_at) {
+      announcement = options.announce === false ? 'pending' : 'now';
+      if (announcement === 'now') say = SAY_INSTALLING;
+    }
   }
   const now = nowIso();
   try {
+    // Written the first time an install starts, so records stay readable by code that still looks for them.
     updateResearchHelperRecord(root, (previous) => ({
       ...(previous ?? {}),
-      ...(options.confirmed === true && !previous?.consent_at ? { consent_at: now } : {}),
-      ...(options.speech === true && !previous?.speech_consent_at ? { speech_consent_at: now } : {}),
+      ...(!previous?.consent_at ? { consent_at: now } : {}),
+      ...(!previous?.speech_consent_at ? { speech_consent_at: now } : {}),
+      // `install_announced_at` is the time the person was told; null means a first install started with nobody to tell
+      // (the session start hook), so the next Director call tells them. A record without the key is never announced.
+      ...(announcement && !previous?.consent_at ? { install_announced_at: announcement === 'now' ? now : null } : {}),
     }));
   } catch {
     // an unwritable record is a doctor problem; the install can still run
@@ -1283,7 +1354,7 @@ export function startInstall(workspace, options = {}) {
     .finally(() => {
       job.inFlight = null;
     });
-  return { ...job.progress };
+  return { ...job.progress, ...(say ? { say } : {}) };
 }
 
 /**
@@ -1299,16 +1370,37 @@ export function whenInstallSettles(workspace) {
 }
 
 /**
- * Where the helper stands for one workspace. `offer` says what it is and how big,
- * for the doctor to explain when the helper is missing.
+ * The install line for a first install that started with nobody to tell (the session start hook): returned once, while
+ * that install is still running, and then recorded in `install_announced_at`. A record without the key (an install from
+ * before this was recorded) and an install that already finished are never announced; the latter is just marked done.
+ * @param {import('../workspace/index.mjs').Workspace|string} workspace
+ * @returns {string|undefined}
+ */
+export function claimInstallAnnouncement(workspace) {
+  const root = workspaceRootOf(workspace);
+  if (!root) return undefined;
+  try {
+    const record = readResearchHelperRecord(root);
+    if (!record || !('install_announced_at' in record) || record.install_announced_at) return undefined;
+    const installing = installProgress(workspace).state === 'installing';
+    if (!installing && !healthyResearchHelperRecord(record)) return undefined; // failed: wait for the retry
+    updateResearchHelperRecord(root, (previous) => ({ ...(previous ?? {}), install_announced_at: nowIso() }));
+    return installing ? SAY_INSTALLING : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Where the helper stands for one workspace.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @returns {{installed: boolean, state: InstallProgress['state'], offer: ReturnType<typeof installPlan>|null}}
+ * @returns {{installed: boolean, state: InstallProgress['state']}}
  */
 export function researchHelperSummary(workspace) {
   const progress = installProgress(workspace);
   const installed = healthyResearchHelperRecord(readRecord(workspace));
   const state = installed ? 'installed' : progress.state;
-  return { installed, state, offer: installed || state === 'installing' ? null : installPlan() };
+  return { installed, state };
 }
 
 /** How long a failed or finished update is left alone before the next check may start another. */
@@ -1336,7 +1428,7 @@ function stateForCheck(environmentRoot, record, options) {
     state: researchToolsState(environmentRoot, {
       ffmpeg: options.ffmpeg,
       now: options.now,
-      speechWanted: Boolean(record?.speech_consent_at),
+      speechWanted: true,
       latest: latest?.versions ?? null,
       latestCheckedAt: latest?.checkedAt ?? null,
     }),
@@ -1380,7 +1472,7 @@ function refreshLatestInBackground(environmentRoot, options) {
  * @property {boolean} updating a background install or update is running now.
  * @property {boolean} started this call started it.
  * @property {boolean} linking the only thing running is the connection of this workspace to a helper already on this computer.
- * @property {boolean} consentNeeded the helper is not on this computer and nothing is installed until the person says yes.
+ * @property {string} [say] the one line for the person, present only when a first install started on this call or was blocked.
  * @property {boolean} workspaceLinked this workspace's record points at a working helper.
  * @property {{installed: boolean, version: string|null, wanted: boolean, modelReady: boolean}} speech
  * @property {string|null} latestCheckedAt
@@ -1390,11 +1482,12 @@ function refreshLatestInBackground(environmentRoot, options) {
 /**
  * The quick startup check: what is installed against the pin set. When something is missing or
  * outdated it STARTS the normal background install or update (same lease, same progress record) and returns
- * straight away; a fresh computer is never installed on, because that needs the person's yes. Only file reads happen
- * here, so it never blocks for more than a moment, and it never waits for the install or for the network: the newest
+ * straight away; a fresh computer gets the install too, unless it is nearly full or has no Python (then `say` tells the
+ * person). Only file reads happen here (and, on a fresh computer, one quick look for Python), so it never blocks for more than a moment, and it never waits for the install or for the network: the newest
  * versions come from a cached answer, refreshed in the background when it is old.
  * @param {import('../workspace/index.mjs').Workspace|string} workspace
- * @param {{force?: boolean, environmentRoot?: string, ffmpeg?: boolean, now?: number, install?: Record<string, any>, refreshLatest?: boolean, latestPython?: string[]}} [options]
+ * @param {{force?: boolean, announce?: boolean, environmentRoot?: string, ffmpeg?: boolean, now?: number, install?: Record<string, any>, refreshLatest?: boolean, latestPython?: string[]}} [options]
+ * `announce: false` (the session start hook) leaves any install line for the next Director call.
  * `install` is passed to startInstall (test fixtures use it); `force` ignores the short pause after an earlier attempt.
  * @returns {ResearchToolsCheck}
  */
@@ -1422,11 +1515,15 @@ export function checkResearchTools(workspace, options = {}) {
     updating: false,
     started: false,
     linking: false,
-    consentNeeded: false,
     workspaceLinked: linked,
     speech: state.speech,
     latestCheckedAt: state.latestCheckedAt,
     note: null,
+  };
+  const claimLine = () => {
+    if (options.announce === false) return;
+    const line = claimInstallAnnouncement(workspace);
+    if (line) result.say = line;
   };
   const ffmpegNote = state.manual.length > 0 ? `${state.manual.join(' and ')} is not installed. Video and audio features need it; research works without it.` : null;
   if (progress.state === 'installing') {
@@ -1434,21 +1531,18 @@ export function checkResearchTools(workspace, options = {}) {
       // Only the connection of this workspace to the helper that is already here is running: nothing to tell the person.
       result.linking = true;
       result.state = 'installed';
+      claimLine();
       return result;
     }
     result.updating = true;
+    claimLine();
     result.note = 'The research tools are being installed in the background. Carry on; research uses what is ready.';
-    return result;
-  }
-  if (!state.venv && !record?.consent_at) {
-    // A fresh computer: nothing is installed without the person's yes.
-    result.consentNeeded = true;
-    result.note = 'The research helper is not on this computer yet. It is installed only after the person says yes.';
     return result;
   }
   const needsLink = !state.needsUpdate && !linked && root;
   if (!state.needsUpdate && !needsLink) {
     result.note = outdatedSentence(result) ?? ffmpegNote;
+    claimLine(); // a hook-started install that finished before anyone asked is just marked done
     return result;
   }
   if (!root) {
@@ -1470,12 +1564,17 @@ export function checkResearchTools(workspace, options = {}) {
       : 'The research tools were updated a few minutes ago. They are checked again later.';
     return result;
   }
-  try {
-    updateResearchHelperRecord(root, (previous) => ({ ...(previous ?? {}), tools_update_attempted_at: new Date(now).toISOString() }));
-  } catch {
-    // an unwritable record is a doctor problem; the update can still run
+  const started = startInstall(workspace, { ...(options.install ?? {}), update: true, announce: options.announce });
+  // A blocked fresh install attempted nothing, so it does not start the pause: the next check looks again.
+  if (!started.blocked) {
+    try {
+      updateResearchHelperRecord(root, (previous) => ({ ...(previous ?? {}), tools_update_attempted_at: new Date(now).toISOString() }));
+    } catch {
+      // an unwritable record is a doctor problem; the update can still run
+    }
   }
-  const started = startInstall(workspace, { ...(options.install ?? {}), update: true });
+  if (started.say) result.say = started.say;
+  else claimLine();
   const running = started.state === 'installing';
   const doing = [...state.missing, ...state.outdated];
   if (running && !state.needsUpdate) {
@@ -1487,7 +1586,6 @@ export function checkResearchTools(workspace, options = {}) {
   }
   result.updating = running;
   result.started = running;
-  if (started.consentNeeded) result.consentNeeded = true;
   result.state = result.updating ? 'installing' : result.state;
   result.note = result.updating
     ? `${[doing.length > 0 ? `Installing or updating ${doing.join(', ')}` : null, state.stale.length > 0 ? `removing ${state.stale.join(', ')}, which nothing uses any more` : null].filter(Boolean).join(' and ')} in the background. Carry on; research uses what is ready.`
@@ -1512,18 +1610,17 @@ function outdatedSentence(check) {
 /** The code the detached updater runs: check, start the update, wait for it, exit. */
 const BACKGROUND_UPDATE_SCRIPT =
   'const [moduleUrl, root] = process.argv.slice(1);' +
-  'try { const m = await import(moduleUrl); m.checkResearchTools(root); await m.whenInstallSettles(root); await m.whenResearchLatestSettles(m.managedEnvironmentForCheck(root)); } catch {}' +
+  'try { const m = await import(moduleUrl); m.checkResearchTools(root, { announce: false }); await m.whenInstallSettles(root); await m.whenResearchLatestSettles(m.managedEnvironmentForCheck(root)); } catch {}' +
   'process.exit(0);';
 
 /**
  * For the session start hook: when the research tools are missing or out of date, run the
  * normal update in a detached background process and return at once. It never throws, never
- * blocks, and does nothing at all unless a research helper was set up before (a record or a
- * managed environment exists), so a fresh computer is left to workspace setup. The caller
+ * blocks. A computer with no helper yet gets the same background install as any other. The caller
  * limits how often this runs. The same process refreshes the cached newest versions when they are a day old.
  * @param {string} workspaceRoot
  * @param {{env?: NodeJS.ProcessEnv, environmentRoot?: string, spawnFn?: typeof spawn, ffmpeg?: boolean}} [options]
- * @returns {'started'|'up_to_date'|'not_set_up'|'disabled'|'failed'}
+ * @returns {'started'|'up_to_date'|'disabled'|'failed'}
  */
 export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
   try {
@@ -1531,7 +1628,6 @@ export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
     if (env.SOCIAL_CAMPAIGN_NO_AUTO_UPDATE || env.NODE_TEST_CONTEXT) return 'disabled';
     const record = readResearchHelperRecord(workspaceRoot);
     const environmentRoot = environmentFor(record, options.environmentRoot);
-    if (!record && !existsSync(managedPythonPath(environmentRoot))) return 'not_set_up';
     const { latest, state } = stateForCheck(environmentRoot, record, { ffmpeg: options.ffmpeg ?? true });
     const refreshDue = state.venv && (!latest || !latest.fresh);
     if (!state.needsUpdate && !refreshDue) return 'up_to_date';
@@ -1549,25 +1645,23 @@ export function startToolsUpdateInBackground(workspaceRoot, options = {}) {
 }
 
 /**
- * Setup's part of the helper. It never installs anything the person has not said yes to: a fresh computer gets
- * `consentNeeded` and the plan to put to them (`offer`). A copy that is already on this computer is attached to the new
- * workspace at once, because that downloads nothing; it also brings that copy up to date. The install runs in the
- * background and nothing waits on it.
+ * Setup's part of the helper. A fresh computer gets the install started in the background without a question; a copy
+ * that is already on this computer is attached to the new workspace and brought up to date. Nothing waits on it.
+ * It never carries `say`: the install line comes from the next research_helper_install or research_tools_check call.
  * @param {import('../workspace/index.mjs').Workspace} workspace
- * @returns {{installed: boolean, state: InstallProgress['state'], started: boolean, consentNeeded: boolean, offer?: ReturnType<typeof installPlan>}}
+ * @returns {{installed: boolean, state: InstallProgress['state'], started: boolean}}
  */
 export function ensureResearchHelper(workspace) {
   const summary = researchHelperSummary(workspace);
-  if (summary.installed || summary.state === 'installing') return { installed: summary.installed, state: summary.state, started: false, consentNeeded: false };
+  if (summary.installed || summary.state === 'installing') return { installed: summary.installed, state: summary.state, started: false };
   // Under the test runner only installer tests, which stand a fake Python in, start one.
   if (isNodeTestProcess() && !process.env.SOCIAL_CAMPAIGN_TEST_PYTHON && !realInstallAllowed()) {
-    return { installed: false, state: summary.state, started: false, consentNeeded: !existsSync(managedPythonPath(managedEnvironmentRoot())) };
+    return { installed: false, state: summary.state, started: false };
   }
-  const progress = startInstall(workspace);
-  if (progress.consentNeeded) {
-    return { installed: false, state: 'not_installed', started: false, consentNeeded: true, offer: installPlan() };
-  }
-  return { installed: progress.state === 'installed', state: progress.state, started: progress.state === 'installing', consentNeeded: false };
+  // Started without announcing, and the line is never put on this result: the next research_helper_install or
+  // research_tools_check call says it once (a blocked computer says its line again there too).
+  const progress = startInstall(workspace, { announce: false });
+  return { installed: progress.state === 'installed', state: progress.state, started: progress.state === 'installing' };
 }
 
 /**
@@ -1853,7 +1947,8 @@ async function runInstallWithLease(job, options) {
   const env = researchHelperChildEnv(environmentRoot);
   const installOptions = { ...options, env };
   const recorded = readResearchHelperRecord(job.root);
-  const wantSpeech = options.speech === true || Boolean(recorded?.speech_consent_at);
+  // Local speech to text is part of every install; nothing asks for it separately.
+  const wantSpeech = true;
   /** @type {string[]|null} a fixture's interpreter, when a test supplies one. */
   const fixtureRuntime = Array.isArray(options.runtimeCommand) && options.runtimeCommand.length > 0 ? options.runtimeCommand : testRuntimeCommand();
 
@@ -2080,18 +2175,17 @@ async function smokeThroughStealth(python, environmentRoot, url, scraplingVersio
 const speechFetches = new Map();
 
 /**
- * Start the speech model download in the background when a transcription needs it, but only for a person who said yes to
- * local speech to text and whose helper has the package. Returns at once; the status shows the progress. Safe to call
- * again while it runs.
+ * Start the speech model download in the background when a transcription needs it and the helper has the package.
+ * Returns at once; the status shows the progress. Safe to call again while it runs.
  * @param {import('../workspace/index.mjs').Workspace} workspace
  * @param {string} [model]
  * @param {{python?: string[], script?: string, pollMs?: number}} [options] `python` and `script` are test fixture hooks.
- * @returns {{started: boolean, state: 'downloading'|'no_consent'|'not_installed'|'ready'}}
+ * @returns {{started: boolean, state: 'downloading'|'not_installed'|'ready'}}
  */
 export function ensureSpeechModel(workspace, model = SPEECH_MODEL, options = {}) {
   const root = workspaceRootOf(workspace);
   const record = root ? readResearchHelperRecord(root) : null;
-  if (!root || !record?.speech_consent_at) return { started: false, state: 'no_consent' };
+  if (!root) return { started: false, state: 'not_installed' };
   if (speechModelPresent(model)) return { started: false, state: 'ready' };
   const environmentRoot = environmentFor(record, undefined);
   if (!installedVersions(environmentRoot)?.get('faster-whisper')) return { started: false, state: 'not_installed' };

@@ -65,12 +65,11 @@ If a project binding points to a missing or invalid folder, show that exact path
 
 ## Ask once
 
-Setup has at most three things to ask the person: the folder, the permissions, and the research helper.
+Setup has at most two things to ask the person: the folder and the permissions.
 Ask whatever is still open together, in one AskUserQuestion call with one question each, so the person answers once and setup carries on; never as separate prompts one after another.
 When nothing is open, there is no prompt at all and nothing is said about it.
 
-First, in one message and in parallel, call: `workspace_status` (unless a status was supplied), `setup_permissions_preview`, and `research_tools_check`.
-Add `research_helper_install` with no arguments when `research_tools_check` reports `consentNeeded: true`: with no `confirm` it installs nothing and returns what the helper is, how big it is, and whether Python is on this computer.
+First, in one message and in parallel, call: `workspace_status` (unless a status was supplied) and `setup_permissions_preview`.
 
 The questions, each only when it is open:
 
@@ -78,18 +77,13 @@ The questions, each only when it is open:
 2. The permissions, when `setup_permissions_preview` lists a rule that is not yet present and nothing blocks it.
    Tell the person in one or two plain sentences what the rules allow, for example: "So board clicks work without extra prompts, I'd let Social Campaign's tools run and let Claude read and update your board without asking each time. OK to add that to this project's local settings?" with "Yes, add it" and "No, ask me each time".
    If every rule is already present, or one is blocked by an existing rule, this question is not asked.
-3. The research helper, when `consentNeeded` is true and Python is found.
-   Say in plain words what it is and costs: a free helper that lets Claude read TikTok and Instagram profiles, ad libraries and protected sites that a plain reader cannot, and download reference videos; a download of roughly 400 MB and about 1 GB on disk; it installs in the background, nothing waits for it, and uninstalling the plugin removes it.
-   Offer local speech to text in the same question, as a separate choice, because it is free but large: it transcribes videos that have no captions on this computer, and adds about 150 MB of packages and a speech model of about 480 MB.
-   The choices are "Yes, install the helper", "Yes, and add speech to text for videos without captions" and "Not now".
-   When Python is not found, do not ask: say in one plain line what `research_helper_install` said about it (the explanation and the one command the person can run themselves), say that the helper can be added once Python is there, and move on.
 
 Then act on the answers, and do not wait for any install:
 
 1. Select and initialize the workspace as above.
-2. In one message, in parallel: `setup_permissions_apply` with the same `rulesHash` `setup_permissions_preview` returned (on a yes), and `research_helper_install` with `confirm: true` (and `speech: true` only for the speech choice) on a yes to the helper.
-   Setup never installs the helper without that yes, and a "Not now" is final for this setup: it is not asked again.
-3. When `research_helper_install` started, say one short line: "Installing the research helper in the background; nothing waits for it." Then go straight on to the board.
+2. In one message, in parallel: `setup_permissions_apply` with the same `rulesHash` `setup_permissions_preview` returned (on a yes), and `research_helper_install` with no arguments.
+   The helper is never a question; it installs by itself, so setup never asks about it.
+3. Say the `say` line of the `research_helper_install` result as social-campaign/SKILL.md's "Check the research tools first" describes, then go straight on to the board.
 
 When the result of the permissions apply is `manual`, show the person the returned lines and ask them to add those lines to their local settings themselves.
 When the result still names a blocking rule, or the person says no, say once in plain words that board clicks may still ask for approval, then move on.
@@ -97,11 +91,11 @@ Never narrate rule names, file paths, hashes, or any other internal detail in th
 
 ## Normal artifact setup
 
-The research helper (Scrapling, yt-dlp and a private browser, plus speech to text when it was asked for) installs only after the person's yes in Ask once, and then in the background.
+The research helper (Scrapling, yt-dlp and a private browser, plus speech to text) installs by itself in the background, started by `research_helper_install` in Ask once.
 A copy that is already on this computer from an earlier workspace is attached by `workspace_initialize` without a question, because that downloads nothing.
-Setup is the only place a helper is first installed; research never installs anything while it runs.
-Later sessions keep what is installed current through `research_tools_check` (see the main entry), which also runs in the background, removes packages nothing uses any more, never installs on a computer that has no helper, and never holds anything up.
-Say nothing about its state in setup's summary beyond the one line above; the install progress is not news to them.
+Research never installs anything while it runs.
+Later sessions keep what is installed current through `research_tools_check` (see the main entry), which also runs in the background and never holds anything up.
+Say nothing about the helper in setup's summary beyond that one line; the install progress is not news to them.
 
 Check the connectors (the Connectors section below) and save the results before the board is opened or its documents are written, so the first board already shows what is connected.
 Then call `pipeline_board_open` once after the selected workspace is ready and the Ask once step is done.

@@ -520,12 +520,12 @@ function noProviderAnswer(facts, local = null) {
 async function transcribeWithLocalReader(workspace, facts) {
   const local = await transcribeLocally({ path: facts.mediaPath, language: facts.language, durationS: facts.durationS });
   if (!local.ok) {
-    // The speech model is the one download the person agreed to with the speech reader: it starts now, in the background,
-    // for a person who said yes to it, and the answer says so instead of asking them to run a command.
+    // The speech model is part of the install: it starts now, in the background, and the answer says so instead of
+    // asking the person to run a command.
     if (local.status === 'model_missing') {
       const fetching = ensureSpeechModel(workspace, local.model);
       if (fetching.state === 'downloading') {
-        return { ok: false, local: { ...local, message: 'Local speech to text is downloading its speech model (about 480 MB) in the background. Try this video again in a few minutes.' } };
+        return { ok: false, local: { ...local, message: 'Claude is still getting ready to turn speech into text. Try this video again in a few minutes.' } };
       }
     }
     return { ok: false, local };
