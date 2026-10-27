@@ -381,6 +381,63 @@ function withDerivedPlacements(jobSpec) {
   return changed ? { ...jobSpec, deliverables } : jobSpec;
 }
 
+// ---- Words people use for the post type and the goal ------------------------------------------
+//
+// "Reels", "stories", "feed" and "Feed post" are the post types people say. They are read as the fixed
+// post type before anything is checked. A word that is not one of them is left exactly as given, so it
+// still goes back to the person as a question.
+const PLACEMENT_WORDS = Object.freeze({
+  post: 'post', posts: 'post', feed: 'post', 'feed post': 'post', 'feed posts': 'post', 'in feed': 'post',
+  reel: 'reel', reels: 'reel', story: 'story', stories: 'story', carousel: 'carousel', carousels: 'carousel',
+  video: 'video', videos: 'video', photo: 'photo', photos: 'photo', 'photo post': 'photo', 'photo posts': 'photo',
+});
+
+function normalizePlacement(platform, value) {
+  if (typeof value !== 'string') return value;
+  let words = value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const own = PLATFORM_NAMES[platform] ? PLATFORM_NAMES[platform].toLowerCase() : null;
+  for (const name of [own, ...Object.values(PLATFORM_NAMES).map(item => item.toLowerCase())]) {
+    if (name && words.startsWith(name + ' ')) { words = words.slice(name.length + 1); break; }
+  }
+  return Object.hasOwn(PLACEMENT_WORDS, words) ? PLACEMENT_WORDS[words] : value;
+}
+
+const OBJECTIVES = Object.freeze(['awareness', 'engagement', 'traffic', 'leads', 'app_installs', 'sales', 'retention']);
+// What a free-text goal has to mention to be read as one of the allowed goals. One goal only: words that
+// fit two goals are not guessed.
+const OBJECTIVE_WORDS = Object.freeze({
+  awareness: /\b(aware(ness)?|brand recognition|reach|visibility|exposure|know (about|us|of)|get the word out|be seen|discover(ed|y)?|introduce)\b/,
+  engagement: /\b(engag\w*|likes?|comments?|shares?|saves?|interact\w*|conversation|community)\b/,
+  traffic: /\b(traffic|clicks?|click through|visits?|visitors?|send people to|drive people to)\b/,
+  leads: /\b(leads?|sign ?ups?|enquir\w*|inquir\w*|subscribers?|newsletter|register\w*|bookings?)\b/,
+  app_installs: /\b(app installs?|installs?|app downloads?|download the app)\b/,
+  sales: /\b(sales?|sell\w*|buy\w*|purchas\w*|revenue|orders|convert\w*|conversions?)\b/,
+  retention: /\b(retention|retain\w*|loyal\w*|repeat (customers?|buyers?|purchases?)|returning|past customers?|bring .{0,20} back|win back)\b/,
+});
+
+function normalizeObjective(value) {
+  if (typeof value !== 'string') return value;
+  const plain = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (OBJECTIVES.includes(plain)) return plain;
+  const words = value.toLowerCase();
+  const fits = OBJECTIVES.filter(goal => OBJECTIVE_WORDS[goal].test(words));
+  return fits.length === 1 ? fits[0] : value;
+}
+
+// The deliverables with each post type read as above; the list itself when nothing changed.
+function withNormalizedPlacements(deliverables) {
+  if (!Array.isArray(deliverables)) return deliverables;
+  let changed = false;
+  const next = deliverables.map(d => {
+    if (!d || typeof d !== 'object' || typeof d.placement !== 'string') return d;
+    const placement = normalizePlacement(d.platform, d.placement);
+    if (placement === d.placement) return d;
+    changed = true;
+    return { ...d, placement };
+  });
+  return changed ? next : deliverables;
+}
+
 // A final video clip is made at 720p or better; the lower setting is for a sample, or for a person who picked it on purpose.
 const FINAL_MIN_HEIGHT = 720;
 function resolutionHeight(value) {
@@ -405,4 +462,5 @@ module.exports = {
   placementPlatforms, placementsFor, offeredPlacementsFor, offeredIn, placementBelongs, allPlacements, isVerticalOnly,
   placementWords, placementChoices, describe, publishable, placementProblems, missingPlacementLabel,
   placementProblemLabel, validPlacementsFor, asksForPlacement, placementEntryWords, placementEntryRef, withImpliedRatios, derivePlacement, withDerivedPlacements,
+  normalizePlacement, normalizeObjective, withNormalizedPlacements,
 };

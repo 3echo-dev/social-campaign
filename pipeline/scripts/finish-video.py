@@ -52,7 +52,7 @@ Exit 7 music or a voice-over was chosen and none is saved: nothing is made. Say 
 Exit 5 finishing failed: final-raw.mp4 is put back as final.mp4 and the reason is printed
 (a failed variant just reports that it was not made).
 """
-import argparse, hashlib, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, hashlib, json, math, os, re, shutil, subprocess, sys, tempfile
 
 # Print UTF-8 whatever the console code page is (cp1252 on Windows when piped): a caption with an emoji in a message
 # this script prints must not end the script with UnicodeEncodeError.
@@ -764,6 +764,60 @@ def build_audio(D, has_speech, music_idx, vo_first, vos, has_clip_audio, music):
     return ";".join(g)
 
 
+OVERLAY_FPS = 30
+
+
+def render_overlay_track(tmp, overlays, W, H, D):
+    """All timed pictures [(png path, x, y, start, end)] as one transparent video track, or None when ffmpeg cannot make it.
+
+    The track shows, at each moment, every picture that is on at that moment, laid on a clear frame of the video's size.
+    A picture is on from its first frame to just before its end frame, so two words that meet are never both drawn.
+    """
+    fps = OVERLAY_FPS
+    total = max(1, int(round(D * fps)))
+    spans = []
+    for k, (p, x, y, s, e) in enumerate(overlays):
+        f0 = max(0, min(total, int(math.ceil(s * fps - 1e-6))))
+        f1 = max(0, min(total, int(math.ceil(e * fps - 1e-6))))
+        if f1 > f0:
+            spans.append((f0, f1, k))
+    cuts = sorted({0, total} | {f for f0, f1, _ in spans for f in (f0, f1)})
+    blank = os.path.join(tmp, "track-blank.png")
+    Image.new("RGBA", (W, H), (0, 0, 0, 0)).save(blank, compress_level=1)
+    made, rows = {}, []
+    for a, b in zip(cuts, cuts[1:]):
+        live = tuple(k for f0, f1, k in spans if f0 <= a < f1)
+        if live not in made:
+            if not live:
+                made[live] = blank
+            else:
+                frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                for k in live:
+                    p, x, y = overlays[k][:3]
+                    with Image.open(p) as im:
+                        im = im.convert("RGBA")
+                        frame.alpha_composite(im, (max(0, x), max(0, y)))
+                made[live] = os.path.join(tmp, "track-%d.png" % len(made))
+                frame.save(made[live], compress_level=1)
+        rows.append((made[live], (b - a) / float(fps)))
+    listing = os.path.join(tmp, "track.txt")
+
+    def quoted(path):
+        return "file '%s'" % path.replace("\\", "/").replace("'", "'\\''")
+
+    with open(listing, "w", encoding="utf-8", newline="\n") as f:
+        for path, dur in rows:
+            f.write("%s\nduration %.6f\n" % (quoted(path), dur))
+        f.write(quoted(rows[-1][0]) + "\n")
+    out = os.path.join(tmp, "track.mov")
+    r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing,
+             "-vf", "fps=%d,format=argb" % fps, "-frames:v", str(total), "-c:v", "qtrle", out])
+    if r.returncode != 0 or not os.path.isfile(out):
+        print(r.stderr.strip()[-400:], file=sys.stderr)
+        return None
+    return out
+
+
 def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp, tmp, resolve):
     info = probe(raw)
     if not info or not info["duration"] or not info["width"]:
@@ -797,9 +851,8 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
 
     # Voice-over files placed at their beat's start.
     # The per-beat files of the manifest are placed as before. A voice-over chosen on the combine card is one recording over the
-    # whole video and replaces them, so the same lines are never heard twice.
-    vos = read_voiceover(manifest, order, spans, resolve)
-    whole_voice = voice_file(jobdir) if a.want_voice else None
+    # whole video and replaces them, so the same lines are never heard twice and the per-beat files are not even looked up.
+    vos, whole_voice = None, voice_file(jobdir) if a.want_voice else None
     if whole_voice:
         vinfo = probe(whole_voice)
         if vinfo and vinfo["audio"] and vinfo["duration"]:
@@ -807,6 +860,8 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
         else:
             print("The chosen voice-over has no sound, so it is left out.", file=sys.stderr)
             whole_voice = None
+    if vos is None:
+        vos = read_voiceover(manifest, order, spans, resolve)
     vos = [v for v in vos if v["start"] < D]
 
     # Spoken line per clip: its own dialogue, else the voice-over text, else the script's beat at the same position.
@@ -926,25 +981,29 @@ def finish(a, manifest, items, order, jobdir, brand_dir, root, raw, final, stamp
     music_path = a.music or os.path.join(jobdir, "media", "music", "choice.json")
     music = music_file(jobdir, music_path) if a.want_music else None
 
+    # The text is drawn in its own pass into one transparent track, so the picture pass has one extra input however many
+    # captions there are (a picture input per caption made one command that ffmpeg could not run).
+    track = None
+    if overlays:
+        track = render_overlay_track(tmp, overlays, W, H, D)
+        if track is None:
+            return False
+
     # Filter graph.
     inputs = ["-i", raw]
-    for p, *_ in overlays:
-        inputs += ["-i", p]
-    graph, last = [], "0:v"
-    for i, (p, x, y, s, e) in enumerate(overlays, start=1):
-        graph.append("[%s][%d:v]overlay=%d:%d:enable='between(t,%.3f,%.3f)'[v%d]" % (last, i, x, y, s, e, i))
-        last = "v%d" % i
-    graph.append("[%s]format=yuv420p[vout]" % last)
-
     ainputs = ["-i", raw]
+    if track:
+        inputs += ["-i", track]
+    graph = ["[0:v][1:v]overlay=0:0:eof_action=pass,format=yuv420p[vout]" if track else "[0:v]format=yuv420p[vout]"]
     if music:
         inputs += ["-stream_loop", "-1", "-i", music]
         ainputs += ["-stream_loop", "-1", "-i", music]
     for v in vos:
         inputs += ["-i", v["file"]]
         ainputs += ["-i", v["file"]]
-    # The measure pass has no overlay inputs, so its input numbers differ.
-    pre = build_audio(D, has_speech, len(overlays) + 1, len(overlays) + 1 + (1 if music else 0), vos, info["audio"], music)
+    # The measure pass has no overlay track, so its input numbers differ.
+    shift = 1 if track else 0
+    pre = build_audio(D, has_speech, 1 + shift, 1 + shift + (1 if music else 0), vos, info["audio"], music)
     pre1 = build_audio(D, has_speech, 1, 1 + (1 if music else 0), vos, info["audio"], music)
 
     # Pass 1: measure the mixed audio. Pass 2 encodes with those numbers.

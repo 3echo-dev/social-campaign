@@ -738,6 +738,21 @@ export function mediaReview(root, brand, jobId, snapshot, gate) {
 }
 
 /**
+ * Whether the finished video was written after a decision asking for changes was settled (decision.settledAt, which is after the sound
+ * plan the request itself saved, else decision.decidedAt). Only a new final.mp4 or its finish stamp counts: the voice, the script or the
+ * finishing choice alone leave the old video in place, which the person must not be able to approve before the redo exists. A second of
+ * slack keeps what the decision itself wrote from counting as the change.
+ */
+function changeMadeSince(job, decided) {
+  let since = Date.parse(decided?.settledAt || decided?.decidedAt);
+  if (!Number.isFinite(since)) { try { since = statSync(join(job.dir, 'approvals', 'cut.json')).mtimeMs; } catch { return false; } }
+  const newer = path => { try { return statSync(path).mtimeMs > since + 1000; } catch { return false; } };
+  let entries = [];
+  try { entries = readdirSync(join(job.dir, 'media'), { withFileTypes: true }); } catch { return false; }
+  return entries.some(entry => entry.isDirectory() && /^D\d+$/.test(entry.name) && ['final.mp4', 'final-finished.sha256'].some(name => newer(join(job.dir, 'media', entry.name, name))));
+}
+
+/**
  * A "panel grid" review: one card per media item, approved all together or with changes asked on single cards. Used by the pictures
  * and clips reviews; a later review of the same shape (a joined video) registers itself by adding an entry to facts.MEDIA_REVIEWS,
  * its decision file, and calling this with its items.
@@ -757,7 +772,10 @@ export function panelGridReview({ job, brand, jobId, snapshot, gate, decisionFil
   // The same comparison facts.mediaSetApproved makes. A joined-video panel key ("D1-cut") is not a priced job key, so comparing canonical
   // keys alone never matched it and the card stayed waiting after the cut was approved.
   const same = decided && Array.isArray(decided.files) && decided.files.length === panels.length && panels.every(panel => decided.files.some(file => facts.sameKey(file?.key, panel.key) && file.sha256 === panel.sha256));
-  if (same && ['approve', 'changes'].includes(decided.decision)) return null;
+  if (same && decided.decision === 'approve') return null;
+  // A change asked on the rough cut stands only until the new finished video exists (written after the decision). A redo that
+  // leaves the picture files byte for byte the same would otherwise hide the cut for good.
+  if (same && decided.decision === 'changes' && !(gate === CUT_GATE && changeMadeSince(job, decided))) return null;
   return {
     brand, jobId, gate, revision: snapshot.project.revision, artifacts,
     mediaSet: { kind, panels: panels.map(panel => ({ key: panel.key, deliverable: panel.deliverable, panel: panel.panel, version: panel.version, path: panel.file, sha256: panel.sha256 })) },
@@ -4011,6 +4029,8 @@ function applyMediaDecision({root,file,record,args,validated,confirmedBy}) {
       : combinePicks ? recordCombine({job,combine:combinePicks,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`})
       : recordFinishingChoice({job,choice:finishingChoiceId,by:`the person, ${via==='board' ? 'board button' : via} (request ${record.requestId})`});
   }
+  // The sound plan the request saved was written after the decision; remember when all of it was done, so only a later redo reopens the cut.
+  if(finishingChoiceId) writeJsonAtomic(join(validated.dir,...facts.MEDIA_REVIEWS[gate].file.split('/')),{...saved,settledAt:new Date().toISOString()});
   const finishingWords = finishingChoiceId ? ` and ${finishingResult?.choice==='skip' ? 'used as it is' : combinePicks ? `finishing set (music ${combinePicks.music?.source ?? 'default'}, voice-over ${combinePicks.voice?.source ?? 'default'}, captions ${combinePicks.captions?.source ?? 'default'})` : `finishing set to ${finishingChoiceId}`}${fromNote ? ' (read from the note, the cut is not redone)' : ''}` : '';
   const summary = approve ? `All ${word} approved${finishingWords}` : `Changes asked on the ${word}${changed.length ? ` (${changed.map(entry=>`${entry.deliverable} ${entry.panel}: ${entry.note}`).join('; ')})` : ''}${note ? `: ${note}` : ''}${fromNote ? `. The sound is set (${finishingResult?.choice || finishingChoiceId}); the video will be finished again.` : ''}`;
   const decision = {decision:approve?'approve':args.decision,note,decidedBy:confirmedBy,decidedAt,requestId:record.requestId,[gate]:saved,...(finishingResult ? {finishing:{choice:finishingResult.choice,captions:finishingResult.captions,music:finishingResult.music,musicTrack:finishingResult.musicTrack,...(finishingResult.combine ? {voice:finishingResult.voice,combine:finishingResult.combine,waiting:finishingResult.waiting} : {}),message:finishingResult.message,...(fromNote ? {fromNote:true} : {})}} : {})};

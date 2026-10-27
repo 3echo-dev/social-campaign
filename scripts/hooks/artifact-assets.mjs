@@ -59,6 +59,10 @@ function collectAssetHits(node, depth, out) {
     return;
   }
   if (typeof node !== 'object') return;
+  if (typeof node.text === 'string' && node.type === 'text') {
+    const inner = parsed(node.text);
+    if (inner && typeof inner === 'object') collectAssetHits(inner, depth + 1, out);
+  }
   const url = firstString(node, ['url', 'assetUrl', 'asset_url']);
   const id = firstString(node, ['id', 'assetId', 'asset_id'])?.toLowerCase() || idFromUrl(url);
   const path = firstString(node, ['path', 'file_path', 'filePath', 'filename', 'name']);
@@ -72,37 +76,49 @@ function inputPaths(input) {
   return [];
 }
 
-function pairUploads(root, input, response) {
+// Pairs every uploaded file the result shows with its review copy path, even when other files in the same call failed.
+// A file the result does not show stays in `missing` so it can be uploaded again.
+// Returns null when the result shows no upload at all and was not flagged as an error.
+function pairUploads(root, input, response, flagged) {
   const paths = inputPaths(input).filter(path => isReviewCopyPath(root, path));
-  if (!paths.length) return [];
+  if (!paths.length) return { pairs: [], missing: [] };
   const hits = [];
   collectAssetHits(parsed(response), 0, hits);
-  if (!hits.length) return null;
+  if (!hits.length) return flagged ? { pairs: [], missing: [] } : null;
   const byPath = new Map();
   for (const hit of hits) {
     if (!hit.path) continue;
     const match = paths.find(path => path === hit.path || path.endsWith(hit.path) || hit.path.endsWith(path));
     if (match && !byPath.has(match)) byPath.set(match, hit);
   }
-  if (byPath.size === paths.length) return paths.map(path => ({ ...byPath.get(path), path }));
-  if (hits.length === paths.length) return paths.map((path, index) => ({ ...hits[index], path }));
-  return null;
+  if (!flagged && byPath.size < paths.length && hits.length === paths.length) {
+    return { pairs: paths.map((path, index) => ({ ...hits[index], path })), missing: [] };
+  }
+  const pairs = paths.filter(path => byPath.has(path)).map(path => ({ ...byPath.get(path), path }));
+  return { pairs, missing: paths.filter(path => !byPath.has(path)) };
+}
+
+function retryNote(left) {
+  return `Some review copies were saved. These were not: ${left.join(', ')}. Upload only these files again, once. If that fails, call pipeline_review_copies_record with each file's path, assetId and url.`;
 }
 
 function handleUpload(ctx) {
-  const pairs = pairUploads(ctx.root, ctx.input, ctx.response);
-  if (pairs === null) {
+  const found = pairUploads(ctx.root, ctx.input, ctx.response, ctx.flagged);
+  if (found === null) {
     tell(MANUAL_FALLBACK);
     return;
   }
-  if (!pairs.length) return;
   const uploadedAt = new Date().toISOString();
+  const left = [...found.missing];
   let recorded = 0;
-  for (const pair of pairs) {
+  for (const pair of found.pairs) {
     const sha = shaFromReviewCopyPath(pair.path);
     if (sha && recordReviewUpload(ctx.root, { sha, assetId: pair.id, url: pair.url, uploadedAt })) recorded += 1;
+    else left.push(pair.path);
   }
-  if (recorded < pairs.length) tell(MANUAL_FALLBACK);
+  if (!left.length) return;
+  if (!recorded && !ctx.flagged) tell(MANUAL_FALLBACK);
+  else if (recorded) tell(retryNote(left));
 }
 
 function handleDelete(ctx) {
@@ -113,15 +129,15 @@ function handleDelete(ctx) {
 async function main() {
   const event = await readEvent();
   if (!event || String(event.tool_name || '') !== 'Artifact') return;
-  if (flaggedAsError(event.tool_response)) return;
   const root = resolveWorkspaceRoot(event.cwd);
   if (!root) return;
   const input = asObject(event.tool_input);
   if (!isBoundBoardUrl({ root, url: input.url })) return;
   const action = input.action ?? 'publish';
-  const ctx = { root, input, response: event.tool_response };
+  const flagged = flaggedAsError(event.tool_response);
+  const ctx = { root, input, response: event.tool_response, flagged };
   if (action === 'publish' && input.asset === true) handleUpload(ctx);
-  else if (action === 'delete' && typeof input.path === 'string') handleDelete(ctx);
+  else if (action === 'delete' && typeof input.path === 'string' && !flagged) handleDelete(ctx);
 }
 
 main().catch(() => null).finally(() => {

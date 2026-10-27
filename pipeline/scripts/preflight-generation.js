@@ -181,6 +181,15 @@ for (const D of dels) {
     // END labelled references
   }
 
+  // A clip named for itself (S1.mp4) on a panel that also has a picture (P1.png): the clip's job key must say S1, not P1, or the
+  // landing check once compared the clip with the picture. Landing now matches by kind, so this is said, not refused.
+  const stem = it => (it.file ? path.basename(String(it.file)).replace(/\.[^.]+$/, '') : '');
+  for (const it of man.items || []) {
+    if (it.kind !== 'video' || !it.panel || !stem(it) || stem(it).toLowerCase() === String(it.panel).toLowerCase()) continue;
+    if ((man.items || []).some(other => other.kind === 'image' && String(other.panel).toLowerCase() === String(it.panel).toLowerCase()))
+      note(D + ' ' + it.panel + ' (video): the clip file is named ' + stem(it) + ' but its panel ' + it.panel + ' also has a picture. Use ' + stem(it) + ' in the clip\'s job key (<job id>-' + D + '-' + stem(it) + '-v1), not ' + it.panel + ', so it is checked as a clip and never against the picture.');
+  }
+
   // 8. What the prompts say. Each of these was watched happening on a real job: a clip
   // prompt reading "Same as the P1 image prompt above, animated", which the video model
   // renders as those words; a style field carrying a remark about a brand file; and a bottle

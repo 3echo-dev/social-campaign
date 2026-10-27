@@ -113,7 +113,9 @@ The Reel and the images play and open full size on the board from small review c
 3. Write the documents again in one batch call (`pipeline_status`), so the board links each output to its copy.
    `pipeline_review_present` also returns `reviewCopies.missing`; while it lists anything for a sample, the final post or the posting plan, the board keeps Approve off and tells the person you are adding copies, so do steps 1 to 3 before you ask them to look.
    Approving in chat still works meanwhile.
-4. If the upload result or a reminder says the copies could not be matched, call `pipeline_review_copies_record` with each path and the `assetId` and `url` the Artifact tool returned for it, then write the documents again.
+4. A stopped upload still saves the copies that went through, so never upload the whole set again.
+   If the upload stopped partway or a reminder lists copies that were not saved, upload only those files again, once.
+   If a reminder says the copies could not be matched, or the second try fails, call `pipeline_review_copies_record` with each remaining path and the `assetId` and `url` the Artifact tool returned for it, then write the documents again.
 5. After the final approval, or when the job is cancelled, call `pipeline_review_copies_cleanup` with the `brand` and `jobId` (add `force: true` for a cancel).
    Delete each returned item with the Artifact tool: `action` delete, `url` set to the bound board, and `path` set to its `assetId`.
    If the host asks the person to confirm a delete, that is expected; do not skip it.

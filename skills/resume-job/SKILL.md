@@ -27,8 +27,7 @@ Call pipeline_job_read only when the snapshot is absent or an external state cha
 Never pass a human gate or infer approval from conversation text.
 Reuse current artifacts and the existing bound artifact URL.
 
-Before deciding that a step failed or did not land, Read `agents.jsonl` in the job folder: a `started` line for a helper with no later `stopped`, `finished` or `failed` line for it means that helper is still working. Wait for its hand-back and never start the same helper a second time. A file that is missing a few minutes in is not a failed step.
-A run started more than 2 hours ago with no end line is stale: do not assume it is still working or that it stopped. Reconcile first (call `pipeline_agent_brief` for that agent and read `waiting`, and check whether the file it owes exists), and only then start it again once, and say so.
+Within about 5 minutes of a "waiting" notice, check the log, the file the helper owes and the media folder before saying "in progress", as social-campaign's Helpers and hand-backs describes.
 
 Call pipeline_board_open when the binding is missing or the workspace changed.
 

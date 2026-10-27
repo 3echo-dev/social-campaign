@@ -86,6 +86,7 @@ const brandProfileRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-pr
 const brandKitRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-kit.js'));
 const deliverableRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-deliverable.js'));
 const brandVoiceRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-voice.js'));
+const brandFilesRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-brand-files.js'));
 const durableLock = require(join(PIPELINE_ROOT, 'scripts', 'lib-durable.js'));
 const onboardingRunRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-onboarding-run.js'));
 const kindsRuntime = require(join(PIPELINE_ROOT, 'scripts', 'lib-kinds.js'));
@@ -796,11 +797,14 @@ function completeBrandOnboardingUnlocked(options = {}) {
     brandFilesReviewed: Boolean(options.brandFilesReviewed ?? workspace.brandFilesReviewed),
     updatedAt: now(),
   });
+  // Research needs the saved profile, so the brand files cannot be required first; the result says plainly that they are still blank.
+  const brandFilesPending = brandFilesRuntime.pendingNote(brand.path);
   return {
     brand: brandRecord(root, brand.path),
     onboarding,
     profile,
     created: true,
+    ...(brandFilesPending ? { brandFilesPending } : {}),
   };
 }
 
@@ -1426,12 +1430,22 @@ function defaultJobInput(options, jobId, brand) {
     const value = supplied[field] ?? options[field];
     if (value !== undefined && value !== null && String(value).trim()) job[field] = field === 'topic' ? String(value).trim() : value;
   }
+  // A goal in the person's own words is read as the nearest allowed goal when it clearly fits one; their words stay in the brief.
+  let goalWords = '';
+  if (typeof job.objective === 'string') {
+    const words = job.objective.trim();
+    const goal = deliverableRuntime.normalizeObjective(words);
+    if (goal !== job.objective) {
+      job.objective = goal;
+      if (goal !== words.toLowerCase().replace(/[\s-]+/g, '_')) goalWords = words;
+    }
+  }
   const kindReason = kindReasonOf(supplied.kindReason ?? options.kindReason);
   if (kindReason && job.kind) job.kindReason = kindReason;
   const arrayFields = ['deliverables', 'requiredClaims', 'prohibitedClaims'];
   for (const field of arrayFields) {
     const value = supplied[field] ?? options[field];
-    if (Array.isArray(value)) job[field] = field === 'deliverables' ? deliverableRuntime.withImpliedRatios(value) : value;
+    if (Array.isArray(value)) job[field] = field === 'deliverables' ? deliverableRuntime.withImpliedRatios(deliverableRuntime.withNormalizedPlacements(value)) : value;
   }
   const platformValues = supplied.platforms ?? options.platforms;
   if (Array.isArray(platformValues)) {
@@ -1449,6 +1463,7 @@ function defaultJobInput(options, jobId, brand) {
     if (value !== undefined) job[field] = value;
   }
   if (brief) job.request = brief;
+  if (goalWords && !brief.toLowerCase().includes(goalWords.toLowerCase())) job.request = brief ? `${brief} - Goal: ${goalWords}` : goalWords;
   if (Array.isArray(supplied.sourceRefs) || Array.isArray(options.sourceRefs)) {
     job.sourceRefs = Array.isArray(supplied.sourceRefs) ? supplied.sourceRefs : options.sourceRefs;
   }

@@ -52,7 +52,7 @@ The shared rules in `${CLAUDE_PLUGIN_ROOT}/docs/SHARED-RULES.md` apply. Read `${
 
 A job lives at `workspaces/{brand}/jobs/{job-id}/`, and its id is its page key. `job-intake` writes `job.json`, then runs `route-job.js` and `plan-job.js`.
 
-Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `job.json`, re-route, twice at most. Exit 4: say what is unsupported and stop; never improvise a discipline.
+Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `job.json`, re-route, twice at most; after each answer re-read `missingFields` and ask every field still missing in the same batch. Exit 4: say what is unsupported and stop; never improvise a discipline.
 
 `route.json` sets workflow, owner, support, risk flags and gates; append to `modelAddedRiskFlags` only; when a generated brand video casts a person or realistic voice, append `synthetic_person` there, spelled exactly, as the router flags it only for UGC and talking characters. In `plan.md` only `Status` and `Verified` change. The routed `workflowId` names its stage table under `workflows/`: follow it row by row, including the script rows. `set-state.js` prints the legal moves when it refuses one.
 
@@ -61,6 +61,7 @@ Exit 0: plan, then run. Exit 3: ask the `missingFields` in one batch, rewrite `j
 Per pending row, read its `task-contracts.json` entry, pass only `contextRefs`, enforce capabilities,
 then run producer rows or spawn the named agent and wait.
 Wait for a spawned agent's own hand-back, which arrives by itself when it finishes; never poll for its output files with a sleep loop, and never add a fixed sleep after a file appears.
+Never resume a helper by sending it a message, and never end your turn to wait for one: a message to a helper that has stopped wakes no one, and a turn that ends to wait is never woken. When you cannot go on, hand back at once in plain words with what is missing.
 Spawn each agent with `run_in_background: false`, written out in every call (the host runs an agent in the background when the flag is left out, and the hand-back then arrives before the helper's file exists), and never call `pipeline_review_present` or set a gate state while a spawned agent is still working: it may still be writing the file the review shows, and a file that changes after the person saw it locks their choice.
 `pipeline_review_present` refuses while an agent is still working on the job; wait for its hand-back, then call it again.
 Never start an agent that is already working on the job. "Launched", "async", "still running", a hand-back that says "not finished" and a file that is not on disk yet all mean wait. Before an agent runs a second time, call `pipeline_agent_brief` for it (its `waiting` lists the earlier run) and Read `agents.jsonl` in the job folder: a `started` line with no later `stopped`, `finished` or `failed` line for that agent means it is still working. Start it again only after `failed` or `stopped` with its file still missing, once, and say so in your hand-back. The agent-run hook refuses a second strategist, Creative Director, Scriptwriter or Media Buyer while the first is working.

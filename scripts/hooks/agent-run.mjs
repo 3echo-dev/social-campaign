@@ -77,7 +77,7 @@ function replyOf(event, input) {
   let launched;
   if (status === 'async_launched') launched = true;
   else if (status === 'completed') launched = false;
-  else launched = input.run_in_background === true;
+  else launched = input.run_in_background === true || input.run_in_background === 'true';
   return {
     launched,
     remote: status === 'remote_launched',
@@ -259,7 +259,8 @@ function onDispatch({ root, job, agent, input, event }) {
   }
   renewDirectorClaim({ job, event });
   const toolUseId = word(event.tool_use_id);
-  const background = input.run_in_background !== false;
+  // A producer once sent the flag as the text "false", which read as background and misled the run log.
+  const background = input.run_in_background !== false && input.run_in_background !== 'false';
   appendAgentLine(job.dir, {
     kind: 'dispatch',
     toolUseId,

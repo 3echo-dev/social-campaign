@@ -248,6 +248,7 @@ After the plan is made, the caption and the AI answer can still change until the
 After the create call for `publish_post`, read the answer's `route`.
 When it is ROUTED, say in one plain line what will be posted and where, then carry on as for any job: the person approves the final post, then the posting plan.
 When it is NEEDS_CLARIFICATION, ask only for what `route.missingFields` says, one plain question per item, in the board's Needs you and in chat together.
+After the last answer, read `route.missingFields` again and post whatever is still missing in the same step, as social-campaign's Route blockers describe.
 The usual ones are the files, the platforms when the brand lists none, and a post type that does not fit the file, for example a Reel that is not 9:16: offer the post types that do fit, and never change the file.
 Keep the caption word for word through every step.
 
@@ -308,7 +309,7 @@ Show the user only the fields that are still genuinely missing or ambiguous once
 
 Never ask for something the brief already states or implies, or that the saved brand profile already answers; references and supporting material are never one of these questions.
 
-Ask any remaining questions once, together, as a single batch, on the board through its inline intake form or in chat, whichever the user is using.
+Ask any remaining questions as social-campaign's Route blockers describe, on the board through its inline intake form or in chat, whichever the user is using.
 
 The board's Finish the brief form appears only when something is genuinely missing; it shows what was already filled in and marks only the missing answers as needed.
 

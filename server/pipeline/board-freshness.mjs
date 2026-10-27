@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -9,7 +10,7 @@ import { STALE_RUN_MS, readAgentLines } from './agent-log.mjs';
 import { lastChangeAt, runsFrom } from './agent-box.mjs';
 import { DIRECTOR, pendingMessages } from './agent-messages.mjs';
 import { handoffSent } from './handoff.mjs';
-import { BOARD_OWNER_TTL_MS, JOB_CLAIM_TTL_MS, jobClaimFile, liveClaim, readClaimRecord, releaseClaim, takeClaim } from './session-claims.mjs';
+import { BOARD_OWNER_TTL_MS, JOB_CLAIM_TTL_MS, holderGone, hookWindowPid, jobClaimFile, liveClaim, readClaimRecord, releaseClaim, takeClaim } from './session-claims.mjs';
 import { renameReplacing } from '../lib/rename.mjs';
 
 const BOARD_DIR = join('.social-pipeline', 'board');
@@ -245,6 +246,49 @@ const toldPath = root => boardPath(root, 'owner-told.json');
 
 /** An owner window that is answering a board message counts as busy this long after it last showed any sign of life. */
 export const BOARD_TURN_ACTIVE_MS = 2 * 60 * 1000;
+/** An owner whose window cannot be looked up (no window process number on its record) keeps the board against a board message only this long after its last sign of life. */
+export const BOARD_OWNER_LIFE_MS = 10 * 60 * 1000;
+
+/** The owner's last sign of life: the later of its own marks and its chat transcript being written; null when it left none. */
+function ownerLastSeen(record) {
+  const marks = [Date.parse(record?.activeAt ?? ''), Date.parse(record?.claimedAt ?? '')];
+  if (typeof record?.transcript === 'string' && record.transcript) {
+    try {
+      marks.push(statSync(record.transcript).mtimeMs);
+    } catch {
+      // no transcript to look at; the window's own marks decide
+    }
+  }
+  const seen = marks.filter(Number.isFinite);
+  return seen.length ? Math.max(...seen) : null;
+}
+
+/**
+ * Is this owner record a Claude window that is still there? A record that names its window's process (windowPid, on this computer)
+ * is alive while that process is and the owner has been heard from within BOARD_OWNER_TTL_MS, and gone the moment it is not: a window
+ * that was closed or crashed (nothing runs SessionEnd then) holds nothing. A record that cannot be looked up this way is alive only
+ * while it showed a sign of life within BOARD_OWNER_LIFE_MS. No record is not alive.
+ */
+export function boardOwnerAlive(record, now = Date.now()) {
+  if (!plainObject(record) || typeof record.sessionId !== 'string' || !record.sessionId) return false;
+  if (holderGone(record)) return false;
+  const seen = ownerLastSeen(record);
+  if (seen === null) return false;
+  const proven = record.host === hostname() && Number.isInteger(record.windowPid) && record.windowPid > 0;
+  return now - seen <= (proven ? BOARD_OWNER_TTL_MS : BOARD_OWNER_LIFE_MS);
+}
+
+/** Who holds the board now, as written: null when nobody does. */
+export function readBoardOwner(root) {
+  const held = readJson(ownerPath(root));
+  return plainObject(held) ? held : null;
+}
+
+/** What a window writes about itself on the board's owner record: its computer and its Claude window's process (when the host gives it). */
+function windowMarks() {
+  const pid = hookWindowPid();
+  return { host: hostname(), ...(pid ? { windowPid: pid } : {}) };
+}
 
 /**
  * Is this owner record a window that is answering a board message right now? Its turn began on a board message and has not
@@ -253,6 +297,8 @@ export const BOARD_TURN_ACTIVE_MS = 2 * 60 * 1000;
  */
 export function boardTurnBusy(record, now = Date.now()) {
   if (!plainObject(record) || record.boardTurn !== true) return false;
+  // A window that was closed answers nothing, however recently it wrote.
+  if (holderGone(record)) return false;
   const marks = [Date.parse(record.activeAt ?? '')];
   if (typeof record.transcript === 'string' && record.transcript) {
     try {
@@ -270,30 +316,35 @@ export function boardTurnBusy(record, now = Date.now()) {
  * person starts or writes in it (a new chat, a resume, /clear, or any message of their own), unless the owner is busy
  * answering a board message right now (then {owner: false, by, busy: true}). Without takeOver a window takes the board only
  * while it is free or its owner has been silent for BOARD_OWNER_TTL_MS, and keeps what it holds. Only the owner arms the
- * board's wake-up; another window is told once, and only while the owner is really busy. {owner: true} when this window owns
- * it, else {owner: false, by, busy}. Without a session id nothing can be told apart, so the window is treated as the owner.
+ * board's wake-up; another window is told once, and only while the owner is really busy. An owner whose Claude window has closed
+ * (its record names the window's process) holds nothing: any window takes the board at once. With {takeIfGone: true} (a board
+ * message reached this window) the board is also taken from an owner that cannot be shown to be there (see boardOwnerAlive).
+ * {owner: true} when this window owns it, else {owner: false, by, busy}. Without a session id nothing can be told apart, so the window is treated as the owner.
  */
-export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = false } = {}) {
+export function claimBoardOwner(root, sessionId, { now = Date.now(), takeOver = false, takeIfGone = false } = {}) {
   if (!sessionId) return { owner: true, by: null };
   try {
     mkdirSync(dirname(ownerPath(root)), { recursive: true });
     const file = ownerPath(root);
     const id = String(sessionId);
-    if (takeOver) {
-      const held = readJson(file);
-      if (plainObject(held) && typeof held.sessionId === 'string' && held.sessionId !== id && boardTurnBusy(held, now)) {
+    const marks = windowMarks();
+    const held = readJson(file);
+    const otherHolds = plainObject(held) && typeof held.sessionId === 'string' && held.sessionId !== id;
+    if (takeOver || (takeIfGone && otherHolds && !boardOwnerAlive(held, now))) {
+      if (takeOver && otherHolds && boardTurnBusy(held, now)) {
         return { owner: false, by: held.sessionId, busy: true };
       }
       const at = new Date(now).toISOString();
-      writeJsonAtomic(file, { sessionId: id, pid: process.pid, claimedAt: at, activeAt: at, boardTurn: false });
+      writeJsonAtomic(file, { sessionId: id, pid: process.pid, ...marks, claimedAt: at, activeAt: at, boardTurn: false });
       return { owner: true, by: id };
     }
-    const taken = takeClaim(file, id, { ttlMs: BOARD_OWNER_TTL_MS, now });
+    const taken = takeClaim(file, id, { ttlMs: BOARD_OWNER_TTL_MS, now, extra: marks });
     if (!taken.claimed) return { owner: false, by: taken.owner?.sessionId ?? null, busy: boardTurnBusy(taken.owner, now) };
     // Still the owner: note that it is here, so a quiet owner is told apart from a gone one.
     const current = readJson(file);
-    if (plainObject(current) && current.sessionId === id && now - Date.parse(current.claimedAt ?? '') > 60 * 1000) {
-      writeJsonAtomic(file, { ...current, claimedAt: new Date(now).toISOString() });
+    if (plainObject(current) && current.sessionId === id) {
+      const changed = Object.keys(marks).some(key => current[key] !== marks[key]);
+      if (changed || now - Date.parse(current.claimedAt ?? '') > 60 * 1000) writeJsonAtomic(file, { ...current, ...marks, claimedAt: new Date(now).toISOString() });
     }
     return { owner: true, by: id };
   } catch {
@@ -311,6 +362,8 @@ export function boardHeldByOtherWindow(root, sessionId, now = Date.now()) {
   try {
     const held = readJson(ownerPath(root));
     if (!plainObject(held) || typeof held.sessionId !== 'string' || held.sessionId === String(sessionId)) return false;
+    // An owner whose Claude window has closed holds nothing.
+    if (holderGone(held)) return false;
     const at = Date.parse(held.claimedAt ?? '');
     return Number.isFinite(at) && now - at <= BOARD_OWNER_TTL_MS;
   } catch {

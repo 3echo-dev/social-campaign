@@ -33,7 +33,7 @@ user-invocable: false
 ### Asking the person
 
 The producer runs as a helper and has no chat with the person.
-It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's "Approve and post now", "Approve and schedule", "Approve and save as a draft" or "Approve and download" click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the board, and name the question in its hand-back.
+It posts each question on the board first, as board-sync's Questions on the board describes: call `pipeline_board_ask` (with `inChat` true when it is a go-ahead for sending or spending; the board's "Approve and post now", "Approve and schedule", "Approve and save as a draft" or "Approve and download" click is the go-ahead for posting, so do not ask again in chat), publish the returned documents to the bound board address from `pipeline_board_open`, as board-sync's Publish current state describes (a second address for the same board is never a reason to skip the write), and name the question in its hand-back.
 The main session (the Director's chat) says the same one line in chat and records a chat answer with `pipeline_board_answer`; a board answer arrives as an `answer_question` request.
 The main session never posts a second card for a question the producer already posted.
 The Director asks the person with `pipeline_board_ask`, never only in chat: one card, shown the same in Needs you, on the job page and in the Director's chat, and closed in all three when it is answered anywhere.
@@ -110,6 +110,7 @@ Spawn every agent with `run_in_background: false`, written out in the call, ever
 The host runs an agent in the background when the flag is left out, and a Director that spawns in the background ends its turn with the helper still working: its hand-back says "not finished" and the file the helper owes is not there yet.
 Never present a review, and never move the job to a gate, while a spawned agent is still working.
 Wait for its own hand-back, which arrives by itself, and only then verify its files and call `pipeline_review_present`.
+Never resume a helper with a message or end your turn to wait for one; the canonical contract has the rule.
 An agent can still be writing the very file the review shows, and a file that changes after the person saw it locks their choice.
 `pipeline_review_present` refuses while an agent is still working on the job; when it does, wait for the hand-back and call it again.
 
@@ -178,6 +179,7 @@ Do not repeat research, provider checks, media extraction, or generation when a 
 
 A picture or clip is never paid for twice.
 When a make call is refused because that item "has already been made" or "is still being made", nothing more was charged: use the one that exists (check on it with `wait_for_job`, or save it with `pipeline_generation_land`) and never make it again to get round the refusal.
+When a landed file is turned down by the shape and length check, follow the rule in the generate skill (`pipeline_generation_land` with `reland: true` before any new make).
 After an interrupted session, look for the item's existing record before making it again; only a redo the person asked for (a new version inside the redo allowance) or a try after a failure that made nothing is made again.
 
 Keep route blockers visible and leave the job waiting when the brief is incomplete.

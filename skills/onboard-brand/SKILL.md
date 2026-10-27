@@ -170,6 +170,8 @@ The tool validates and writes a new profile revision before marking onboarding c
 
 The returned onboarding record includes status complete, profileRevision, completedAt, and reviewStatus.
 
+When the result carries `brandFilesPending`, the brand notes are still blank templates: start the brand research (section 4) before any post is planned, as its note says, and tell the person only that the brand research is starting, with nothing technical.
+
 Do not claim that a provider is authenticated because a profile URL was recorded.
 
 ## 4. Brand research pass

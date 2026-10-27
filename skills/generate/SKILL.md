@@ -78,6 +78,7 @@ The storyboard review shows every panel with its picture, and approving it appro
 The hooks record every paid call and its credits, land every output the moment a download link comes back, and move the job's state at the first paid call and once every quoted item lands; never write credits, a manifest `status` or `file`, or the job state for media by hand.
 
 Call `get_asset` for an item only when no download link came back, and call `pipeline_generation_land` to see what has landed, what is pending and what failed, and to retry an unexpired link.
+When a landed picture or clip is turned down by the shape and length check, never make it again first: correct the plan in the generation manifest if the plan was wrong (only its asked shape or ratio, length in seconds and kind of item; the status and file stay untouched), then call `pipeline_generation_land` with `reland: true`, which saves the file again with no new job and no credits, and make it again only when the file itself is wrong.
 
 Reuse the existing board URL after each observed result and refresh the job snapshot after the mutation.
 

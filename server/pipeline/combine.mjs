@@ -18,12 +18,16 @@
  * ElevenLabs" pick waits for the Director: upload through a board question that asks for the file, make after the price click. When
  * ElevenLabs makes several takes they are shown side by side on a board question and the pick is recorded here.
  * finish-video.py then mixes the chosen music (ducked under the voice-over) and voice-over and draws the chosen captions.
+ *
+ * A voice-over already made and paid for on the job (a take saved from it, a voice that landed under a voice key, or a voice-over
+ * chosen from those) is offered free: a "make" pick never asks to price another one. A new one is asked for only when none exists or
+ * the pick says `fresh: true`, and then under the next free version of the voice key, never one that was already used.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 
 import * as facts from './facts.mjs';
-import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, libraryDir, listLibrary } from './library.mjs';
+import { ELEVEN_LABS_LICENCE, addToLibrary, findItem, libraryBrands, libraryDir, listLibrary, readAll as readLibraryItems } from './library.mjs';
 import { chooseMusic, readChoice as readMusicChoice } from './music.mjs';
 import { askQuestion } from './questions.mjs';
 import { FINISHING_FILE, SOUND_ROWS, SUGGESTED_MESSAGE, clearSoundPicks, isSuggestion, madeByPerson, musicTrack, readSoundPicks, soundQuestionAnswered, transcriptSaved, writeFinishingRecord, writeSoundPicks } from './finishing.mjs';
@@ -72,6 +76,66 @@ export function voiceTrack(jobDir) {
   const choice = readVoiceChoice(jobDir);
   if (!choice || choice.source === 'none' || !choice.file) return null;
   return [choice.file, join(jobDir, choice.file), join(jobDir, 'media', 'voice', choice.file)].find(path => existsSync(path)) || null;
+}
+
+/** The item names a voice-over is made under (VO1, VO2, ...); music and pictures use other names. */
+const VOICE_ITEM = /^VO\d+$/;
+
+/** Every voice key the job has already used, newest version first: a key that was created or landed is spent. */
+function usedVoiceKeys(job) {
+  const found = new Map();
+  for (const entry of [...facts.readRecords(job), ...facts.readLanded(job)]) {
+    if (!entry || entry.provider !== facts.ELEVEN_LABS || typeof entry.key !== 'string') continue;
+    const parsed = facts.parseJobKey(entry.key);
+    if (parsed && VOICE_ITEM.test(parsed.item)) found.set(parsed.key, parsed);
+  }
+  return [...found.values()].sort((a, b) => b.version - a.version);
+}
+
+/** The key a new voice-over is priced and made under: the next free version of VO1, so a spent key is never reused. */
+export function nextVoiceKey(job) {
+  const used = usedVoiceKeys(job);
+  const deliverable = used[0]?.deliverable || 'D1';
+  const version = used.reduce((top, entry) => Math.max(top, entry.version), 0) + 1;
+  return facts.jobKey({ jobId: job.jobId, deliverable, item: 'VO1', version }) || `${job.jobId}-D1-VO1-v${version}`;
+}
+
+/** The files of the newest voice that landed under a voice key (paths relative to the job folder), or null. Landing is the paid result. */
+function landedVoice(job) {
+  const landed = facts.readLanded(job).filter(entry => entry && entry.type === 'landed' && entry.provider === facts.ELEVEN_LABS && typeof entry.file === 'string' && typeof entry.key === 'string' &&
+    existsSync(join(job.dir, ...entry.file.split('/'))));
+  const withKey = landed.map(entry => ({ entry, parsed: facts.parseJobKey(entry.key) })).filter(({ parsed }) => parsed && VOICE_ITEM.test(parsed.item));
+  if (!withKey.length) return null;
+  const newest = Math.max(...withKey.map(({ parsed }) => parsed.version));
+  const files = [...new Set(withKey.filter(({ parsed }) => parsed.version === newest).map(({ entry }) => entry.file))];
+  return { version: newest, files, sha256: new Set(withKey.map(({ entry }) => entry.sha256).filter(Boolean)) };
+}
+
+/** The takes already saved from a made voice-over, with their files present, or []. */
+function savedVoiceTakes(job) {
+  return takesFor(job, 'voice').filter(take => take && typeof take.label === 'string' && typeof take.file === 'string' && existsSync(join(job.dir, ...take.file.split('/'))));
+}
+
+/**
+ * The voice-over this job already uses that was made on it: media/voice/choice.json names a library file whose bytes are one of the job's
+ * own saved takes or landed voice files. { id, title, take, file } (id and take only when they can be told), or null. A voice-over picked
+ * from the library that came from another job, or one the person recorded, is not this.
+ */
+export function settledMadeVoice(job) {
+  const choice = readVoiceChoice(job.dir);
+  if (!choice || choice.source !== 'library' || !choice.sha256 || !voiceTrack(job.dir)) return null;
+  const own = savedVoiceTakes(job).find(take => take.sha256 === choice.sha256);
+  if (!own && !landedVoice(job)?.sha256.has(choice.sha256)) return null;
+  const item = (own?.libraryId && findItem({ root: job.root, id: own.libraryId, kind: 'voice' })?.item) || readLibraryItems(job.root).find(entry => entry.kind === 'voice' && entry.sha256 === choice.sha256) || null;
+  return { id: item?.id || null, title: choice.title || item?.title || null, take: own?.label || null, file: choice.file };
+}
+
+/** What the job already holds of a made voice-over ({ settled, takes, landed }), or null when nothing was made. */
+export function madeVoice(job) {
+  const settled = settledMadeVoice(job);
+  const takes = savedVoiceTakes(job);
+  const landed = landedVoice(job);
+  return settled || takes.length || landed ? { settled, takes, landed } : null;
 }
 
 function safeFileName(file) {
@@ -235,9 +299,30 @@ function voiceFields(given) {
 function mergedRow(row, kept, given, hasVoiceOver) {
   const merged = { ...kept, ...given };
   if (row === 'captions' && hasText(given.style) && merged.source === 'none') return { ...merged, source: hasVoiceOver ? 'voice' : 'script' };
-  if (row === 'voice' && (hasText(given.voiceId) || hasText(given.voiceName)) && merged.source !== 'make') return { source: 'make', voiceId: given.voiceId, voiceName: given.voiceName };
+  if (row === 'voice' && (hasText(given.voiceId) || hasText(given.voiceName)) && merged.source !== 'make') return { source: 'make', voiceId: given.voiceId, voiceName: given.voiceName, ...(given.fresh === true ? { fresh: true } : {}) };
+  if (row === 'voice' && given.fresh === true && merged.source !== 'make') return { source: 'make', fresh: true };
   if (row === 'music' && hasText(given.mood) && merged.source !== 'make') return { source: 'make', mood: given.mood };
   return merged;
+}
+
+/**
+ * A voice-over "make" pick, whole. It keeps the voice named (or the one kept before) and the take already chosen for it: the chosen
+ * take's id, title and label stay through every later recording, so recording the card again never sends the voice back to waiting.
+ * A voice-over this job already made and settled is picked up the same way when the record lost it. `fresh: true` asks for a new one:
+ * it drops the chosen take and the pick waits for a new voice (priced, under the next free key). Naming a different voice than the one
+ * made is a request for a new one too.
+ */
+function voiceMakePick({ root, job, kept, given }) {
+  const named = voiceFields(given);
+  const keptMake = isPlain(kept) && kept.source === 'make' ? kept : null;
+  const sameVoice = !named.voiceId || (Boolean(keptMake?.voiceId) && named.voiceId === keptMake.voiceId);
+  const asked = isPlain(given) && given.fresh !== undefined ? given.fresh === true : Boolean(keptMake?.fresh && !keptMake.id);
+  const out = { source: 'make', ...(named.voiceId ? named : carried(kept, 'voice')) };
+  if (asked || (named.voiceId && keptMake?.id && !sameVoice)) return { ...out, fresh: true };
+  const takeOf = entry => ({ id: entry.id, ...(entry.title ? { title: entry.title } : {}), ...(entry.take ? { take: entry.take } : {}) });
+  if (sameVoice && keptMake?.id && findItem({ root, id: keptMake.id, kind: 'voice' })) return { ...out, ...takeOf(keptMake) };
+  const settled = sameVoice ? settledMadeVoice(job) : null;
+  return settled?.id ? { ...out, ...takeOf(settled) } : out;
 }
 
 /**
@@ -264,7 +349,7 @@ export function normaliseCombine({ root, job, combine, rows = SOUND_ROWS }) {
     const source = typeof given === 'string' ? given : given?.source;
     if (!SOURCES[row].includes(source)) throw new Error(`Pick one of: ${COMBINE_ROWS[row].map(option => option.label).join(', ')} for ${row === 'voice' ? 'the voice-over' : row === 'captions' ? 'the subtitles' : row}.`);
     if (row === 'captions') { out[row] = source === 'none' ? { source } : { source, ...carried(kept, 'captions'), ...captionFields(given) }; continue; }
-    if (source === 'make' && row === 'voice') { const named = voiceFields(given); out[row] = { source, ...(named.voiceId ? named : carried(kept, 'voice')) }; continue; }
+    if (source === 'make' && row === 'voice') { out[row] = voiceMakePick({ root, job, kept, given }); continue; }
     if (source === 'make' && row === 'music') { const named = musicFields(given); out[row] = { source, ...(named.mood ? named : carried(kept, 'music')) }; continue; }
     if (source === 'none' || source === 'upload' || source === 'make') { out[row] = { source }; continue; }
     const id = typeof given === 'object' && typeof given.id === 'string' ? given.id.trim() : '';
@@ -293,9 +378,28 @@ export function applyCombine({ root, job, combine, why }) {
   else if (combine.music.source === 'library') { const picked = chooseMusic({ root, brand: job.brand, jobId: job.jobId, id: combine.music.id, why }); stored.music = { ...combine.music, title: picked.title }; }
   else pendingMusic(job, why);
   if (combine.voice.source === 'none') chooseVoice({ root, job, id: 'none', why });
+  else if (combine.voice.source === 'make' && combine.voice.id) { const picked = chooseVoice({ root, job, id: combine.voice.id, why }); stored.voice = { ...combine.voice, title: picked.title }; }
   else if (combine.voice.source === 'library') { const picked = chooseVoice({ root, job, id: combine.voice.id, why }); stored.voice = { ...combine.voice, title: picked.title }; }
   else chooseVoice({ root, job, id: 'pending', why });
   return stored;
+}
+
+/**
+ * The Director's step for a "make with ElevenLabs" voice-over, or null when nothing is left to do (a made voice-over is chosen already).
+ * A voice-over already made and paid for on the job is saved or chosen for free; only a pick with `fresh` true, or a job where none was
+ * made, is priced, under the next free voice key.
+ */
+function voiceMakeStep(job, voice) {
+  if (!voice.fresh) {
+    if (voice.id) return null;
+    const made = madeVoice(job);
+    if (made?.settled) return null;
+    const newOne = ' If the person asks for a new voice-over instead, record the voice row again with fresh true.';
+    if (made?.takes.length) return `Voice-over: a voice-over was already made and paid for on this job and its takes are saved (${made.takes.map(take => take.label).join(', ')}). Do not price or make another. Once the person has picked one, record it with pipeline_combine_set {row: "voice", source: "make", take: "<label>"}; a take question may still be open on the board.${newOne}`;
+    if (made?.landed) return `Voice-over: a voice-over was already made and paid for on this job (${made.landed.files.join(', ')}). Do not price or make another. Save it with pipeline_combine_takes {kind: "voice", files: [${made.landed.files.map(file => `"${file}"`).join(', ')}]}, which costs nothing and shows the takes side by side when there are several.${newOne}`;
+  }
+  const picked = voice.voiceId ? ` Use the voice the person picked${voice.voiceName ? `, ${voice.voiceName}` : ''}, as voice_id ${voice.voiceId}; it is recorded already, so do not pick another.` : '';
+  return `Voice-over: price the script read aloud with creative_generate_speech (estimate_only true, generations_count 2 or 3 so the person gets takes to pick from), save a voice price item {provider elevenLabs, kind voice, key ${nextVoiceKey(job)}, generationsCount} with pipeline_quote_save; the person clicks the price on the board.${picked} After the approval make it, then pipeline_combine_takes {kind: "voice", files}, which shows the takes side by side.`;
 }
 
 /** What is still to do after the picks, as plain steps for the Director (and whether anything is). */
@@ -305,10 +409,7 @@ export function combineNextSteps(job, combine) {
   if (combine.music.source === 'upload') steps.push('Music: ask the person for the track with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "music", source: "upload", path}.');
   if (combine.music.source === 'make') steps.push(`Music: price it (creative_generate_in_flow with node_type "music", an eleven_music model, a prompt from the brief${combine.music.mood ? ` in a ${combine.music.mood} mood` : ''} and estimate_only true, generations_count 1), save one price item {provider elevenLabs, kind music, key ${code}-D1-M1-v1, the estimateId} with pipeline_quote_save and show the price: the person must click it on the board. Only after the approval make it with the same call without estimate_only, then pipeline_combine_takes {kind: "music", files}. Never make music any other way.`);
   if (combine.voice.source === 'upload') steps.push('Voice-over: ask the person for the recording with pipeline_board_ask (wantsUpload type audio), then pipeline_combine_set {row: "voice", source: "upload", path}.');
-  if (combine.voice.source === 'make') {
-    const picked = combine.voice.voiceId ? ` Use the voice the person picked${combine.voice.voiceName ? `, ${combine.voice.voiceName}` : ''}, as voice_id ${combine.voice.voiceId}; it is recorded already, so do not pick another.` : '';
-    steps.push(`Voice-over: price the script read aloud with creative_generate_speech (estimate_only true, generations_count 2 or 3 so the person gets takes to pick from), save a voice price item {provider elevenLabs, kind voice, key ${code}-D1-VO1-v1, generationsCount} with pipeline_quote_save; the person clicks the price on the board.${picked} After the approval make it, then pipeline_combine_takes {kind: "voice", files}, which shows the takes side by side.`);
-  }
+  if (combine.voice.source === 'make') { const step = voiceMakeStep(job, combine.voice); if (step) steps.push(step); }
   if (combine.captions.source === 'voice' && combine.voice.source !== 'none') steps.push('Captions: once the voice-over is chosen, transcribe it (media_transcribe on the voice-over file, or creative_transcribe_audio after its price) so the captions use its real words; without a transcript they use the script wording and you must say so.');
   return steps;
 }
@@ -365,7 +466,10 @@ export async function setCombineRow({ root, job, row, source, id, take, path, ti
       combine[row] = { source, id: item.id, title: picked.title };
       message = `Using ${picked.title} (added to the library, tagged ${job.brand}).`;
     } else {
-      if (!take) { if (row === 'music') pendingMusic(job, why); else chooseVoice({ root, job, id: 'pending', why }); combine[row] = { source, ...carried(before, row) }; message = 'Waiting for ElevenLabs to make it.'; }
+      // A voice-over this job already made and chose stays in use unless the person asked for a new one.
+      const settled = row === 'voice' && !take && !before?.fresh ? settledMadeVoice(job) : null;
+      if (settled?.id) { combine[row] = { source, id: settled.id, ...(settled.title ? { title: settled.title } : {}), ...(settled.take ? { take: settled.take } : {}), ...carried(before, row) }; message = 'The voice-over already made is in use.'; }
+      else if (!take) { if (row === 'music') pendingMusic(job, why); else chooseVoice({ root, job, id: 'pending', why }); combine[row] = { source, ...carried(before, row), ...(row === 'voice' && before?.fresh ? { fresh: true } : {}) }; message = 'Waiting for ElevenLabs to make it.'; }
       else {
         const found = takesFor(job, kind).find(entry => entry.label.toLowerCase() === String(take).trim().toLowerCase());
         if (!found) throw new Error(`There is no ${take} for the ${row === 'voice' ? 'voice-over' : 'music'}. The takes are: ${takesFor(job, kind).map(entry => entry.label).join(', ') || 'none yet'}.`);
@@ -430,7 +534,9 @@ export function soundPriceGaps(job, combine) {
   if (!saved) return out;
   for (const kind of ['music', 'voice']) {
     const lines = saved.quote.items.filter(item => item && item.provider === facts.ELEVEN_LABS && item.kind === kind);
-    if (combine[kind]?.source === 'make') { if (!lines.length) out.missing.push(kind); } else out.drop.push(...lines.map(item => item.key));
+    // A voice-over already made and paid for needs no new price line; a fresh one does.
+    const have = kind === 'voice' && combine.voice?.source === 'make' && !combine.voice.fresh && (Boolean(combine.voice.id) || Boolean(madeVoice(job)));
+    if (combine[kind]?.source === 'make') { if (!lines.length && !have) out.missing.push(kind); } else out.drop.push(...lines.map(item => item.key));
   }
   return out;
 }
@@ -501,7 +607,7 @@ export function recordCombine({ job, combine, by }) {
   const { suggested } = writeFinishingRecord({ job, choice, parts: { captions: flags.captions, music: flags.music }, extra: { voice: flags.voice, combine: stored }, by });
   if (!suggested) clearSoundPicks(job);
   const noTrack = flags.music && !musicTrack(job.dir);
-  const waiting = ['music', 'voice'].filter(row => ['upload', 'make'].includes(stored[row].source));
+  const waiting = ['music', 'voice'].filter(row => ['upload', 'make'].includes(stored[row].source) && !stored[row].id);
   const steps = combineNextSteps(job, stored);
   const base = {
     recorded: true, choice, captions: flags.captions, music: flags.music, musicTrack: flags.music ? !noTrack : null, transcript: flags.captions ? transcriptSaved(job) : null,

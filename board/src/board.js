@@ -5355,9 +5355,10 @@ const CHANGE_PLACEHOLDERS = Object.freeze({ findings: 'For example: compare pric
  * their note the opening line picked plus, one per line, each line the person
  * added (`own`) or edited (`edited`), and, when a strategy pick differs from its default or an option was added
  * (`strategyPicks`, `strategyOwn`), the "Strategy picks:" line and a "Your own ..." line per option added;
+ * the storyboard reads its marks from `panels`; the pictures, clips, cut and finish reviews read theirs from `mediaPanels`;
  * price approvals carry the totals shown.
  */
-export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, accepted = {}, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
+export function decisionArgs({ project, doc, verdict, choice = null, comment = '', requestId, recipeState = {}, panels = {}, mediaPanels = {}, accepted = {}, hooks = {}, own = {}, edited = {}, strategyPicks = {}, strategyOwn = {} }) {
   const review = pendingReview(project);
   if (!review?.artifacts?.length) return { error: REVIEW_WAITING.preparing };
   if (!['approve', 'request_changes'].includes(verdict)) return { error: 'Unsupported decision.' };
@@ -5383,7 +5384,7 @@ export function decisionArgs({ project, doc, verdict, choice = null, comment = '
     return { args };
   }
   if (MEDIA_GATE_IDS.has(gate)) {
-    const states = mediaPanelStates(doc, panels);
+    const states = mediaPanelStates(doc, mediaPanels);
     const decided = mediaPanelsOf(doc).map(panel => {
       const mine = states[mediaPanelKey(panel)];
       return { panel: trimmed(panel.panel), ...(trimmed(panel.deliverable) ? { deliverable: trimmed(panel.deliverable) } : {}), verdict: mine.verdict, ...(mine.verdict === 'changes' && trimmed(mine.note) ? { note: trimmed(mine.note) } : {}) };
@@ -11290,7 +11291,7 @@ if (typeof document !== 'undefined') {
     if (verdict === 'approve' && state.hookEdit && cleanHookLine(state.hookEdit.text)) { state.error = 'Save or cancel your opening line first.'; render(); return; }
     if (verdict === 'approve' && state.strategyEdit && cleanHookLine(state.strategyEdit.text)) { state.error = 'Save or cancel your option first.'; render(); return; }
     const requestId = state.requestId || randomId(globalThis);
-    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, accepted: state.accepted || {}, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
+    const { args, error } = decisionArgs({ project, doc: docFor(project), verdict, choice: state.choice, comment, requestId, recipeState: uiFor(project).recipe, panels: state.panels || {}, mediaPanels: state.mediaPanels || {}, accepted: state.accepted || {}, hooks: state.hooks || {}, own: state.ownLines || {}, edited: state.editedLines || {}, strategyPicks: state.strategyPicks || {}, strategyOwn: state.strategyOwn || {} });
     if (error) { state.error = error; render(); return; }
     Object.assign(state, { requestId, busy: true, verdict, error: '', declined: false, operation: 'submit_decision', args });
     render();

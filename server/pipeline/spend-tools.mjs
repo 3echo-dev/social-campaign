@@ -44,7 +44,7 @@ export const READ_ONLY_TOOLS = Object.freeze(new Set([
   'preview_studio_take_prompt', 'list_studio_productions', 'list_studio_sequences', 'list_studio_shots', 'list_studio_takes',
   'list_studio_reference_bible_items', 'list_studio_fine_cuts', 'list_studio_releases',
   // ElevenLabs reads.
-  'get_more_tools', 'creative_list_voices', 'creative_get_flow_run_status', 'creative_show_flow_results', 'creative_get_flow',
+  'get_more_tools', 'creative_list_voices', 'creative_get_flow_run_status', 'creative_show_flow_results', 'creative_get_flow', 'creative_get_generations',
   'creative_get_flow_node', 'creative_get_flow_node_types', 'creative_get_model_guide', 'creative_get_model_schema',
   'creative_get_available_assets', 'creative_get_voice_design_previews', 'creative_get_brand_kit', 'creative_list_brand_kits',
 ]));

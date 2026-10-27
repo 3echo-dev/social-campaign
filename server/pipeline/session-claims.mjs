@@ -29,6 +29,16 @@ export function windowSessionId() {
 /** The Claude window this server runs in: CLAUDE_PID when the host gives it, else the process that started the server. */
 export const windowPid = () => Number.parseInt(process.env.CLAUDE_PID ?? '', 10) || process.ppid;
 
+/**
+ * The Claude window a hook runs for: only CLAUDE_PID, which the host gives its hooks too, or null. A hook is a short-lived child
+ * (its own parent is the forwarder, gone as soon as the hook ends), so the parent-process fallback of windowPid would name a process
+ * that is already finished and make the window look gone at once.
+ */
+export function hookWindowPid(env = process.env) {
+  const pid = Number.parseInt(env.CLAUDE_PID ?? '', 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
 /** True only when the system says there is no such process; any other answer (such as no permission) means it is still there. */
 function processGone(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -41,7 +51,7 @@ function processGone(pid) {
 }
 
 /** A claim that names its window's process, on this computer, whose process has gone: the holder is gone, whatever the clock says. */
-const holderGone = claim => claim.host === hostname() && processGone(claim.windowPid);
+export const holderGone = claim => Boolean(claim) && claim.host === hostname() && processGone(claim.windowPid);
 
 function readClaim(file) {
   try {

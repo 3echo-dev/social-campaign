@@ -51,6 +51,7 @@ A `refresh_board` request (the header button reads Update board), or a reminder 
 
 A connector check changes what the Connectors step shows, and the projection from before it is out of date: after `integration_probe`, `integration_probes_save`, `pipeline_metricool_brands_save` or `pipeline_ad_accounts_save`, call `pipeline_status` again and write the documents it returns, so a connected connector reads Connected on its card.
 Use the workspace's existing artifact binding from `pipeline_board_open`.
+Write to that bound address even when another address for the same board is in sight (see Reading a comment from the board); two addresses are one board and never a reason to skip a write.
 `pipeline_status`, `pipeline_board_open`, `pipeline_board_source` and `pipeline_review_present` return `documents`: a list of `{collection, doc_id, file_path}` entries, the job documents first and the workspace projection last.
 Get a job's full detail for a summary or for the board from `pipeline_board_job_documents` with its brand and jobId.
 Call `pipeline_job_read` only for the job this chat runs: reading a job makes this chat its Director, and it is refused while another chat is running it.
@@ -217,6 +218,11 @@ When a decision opens:
    For the concept pick, when the producer's hand-back said the brief and the ideas disagree, or that a helper was run twice, add one plain line saying so (see social-campaign's Helpers and hand-backs).
    Never open the concept pick while a blocking question of the Director's on the job is open: the server refuses, so answer or take back the question first.
 3. End the turn there; the board's doorbell comment, or the next session's sweep of saved requests, brings whichever answer comes first.
+
+A recommendation is not a pick.
+When you recommend one idea, never write it as chat text such as "go with Option A": a typed "yes" to it records nothing.
+Put the recommendation on the decision card itself: the ideas file marks one idea "(recommended)" and the board shows that mark.
+Say in chat which idea to pick on the board, and never post a separate question for it.
 
 An answer on the board arrives as a `submit_decision` request.
 Apply it immediately with `pipeline_decision_apply` as described above, write the `documents` it returns (it already refreshed them, so no `pipeline_status` call is needed), do its `next`, and acknowledge it in chat in one line naming the job's brand and title, for example 'SK-II "Anna Sawai serum Reel": concept B approved on the board.'

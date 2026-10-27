@@ -100,8 +100,11 @@ function failedCheckBefore(job, assetId) {
 
 const fileHash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 
+// Only an item whose file is named for the slot: a clip item that merely shares the slot's panel says nothing about
+// what this file should be called in the media folder.
 function manifestFileFor(job, parsed, fileKind) {
-  return manifestItemFor(job.dir, parsed.deliverable, parsed.item, fileKind).hit?.file ?? null;
+  const hit = manifestItemFor(job.dir, parsed.deliverable, parsed.item, fileKind, parsed.version).hit;
+  return hit && basename(hit.file, extname(hit.file)).toLowerCase() === parsed.item.toLowerCase() ? hit.file : null;
 }
 
 const IMAGE_FORMATS = new Set(['png', 'jpg', 'jpeg', 'webp']);
@@ -386,7 +389,7 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
       renameReplacing(temp, target);
       const sha256 = createHash('sha256').update(got.bytes).digest('hex');
       // Is it the shape and length the job asked for? Only a clear mismatch stops it; a check that cannot run is noted and the file goes on.
-      const check = provider === THREE_ECHO && parsed ? checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item, kindOfFile(target))) : { verdict: 'unverified', why: 'only 3Echo pictures and clips are checked' };
+      const check = provider === THREE_ECHO && parsed ? checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item, kindOfFile(target), parsed.version)) : { verdict: 'unverified', why: 'only 3Echo pictures and clips are checked' };
       if (check.verdict === 'mismatch') {
         // Kept on disk for the person to look at, but not copied into the media folder, so an earlier good file there stays as it is.
         // The record is a failure, so the report shows this item as failed with the reason, and nothing is made again by itself.
@@ -414,6 +417,57 @@ export async function landOutputs(task, { attempts = 3, backoffMs = 1500 } = {})
     outcome.state = await finishMediaWithRetry(job);
   } catch {
     outcome.state = null;
+  }
+  return outcome;
+}
+
+/**
+ * Land again, for free, the files the shape and length check turned down: it is the plan that was wrong (a manifest that
+ * named the wrong slot, a corrected shape), not the file. Nothing is downloaded and nothing is made again; the file kept
+ * on disk is checked once more against the plan as it is now, and goes on exactly as a fresh landing would when it passes.
+ * A file that still does not pass is left as it was. Returns `{ landed, stillFailed: [{ assetId, key, reason }] }`.
+ */
+export async function relandCheckFailed(job) {
+  const outcome = { landed: [], stillFailed: [] };
+  if (!job) return outcome;
+  const lastByAsset = new Map();
+  for (const entry of readLanded(job)) if (entry.assetId) lastByAsset.set(entry.assetId, entry);
+  for (const [assetId, last] of lastByAsset) {
+    if (last.type !== 'failed' || last.reason !== 'check_failed' || !last.file) continue;
+    const target = join(job.dir, ...String(last.file).split('/'));
+    const parsed = parseJobKey(last.key);
+    if (!parsed || !existsSync(target)) continue;
+    const release = claim(job, assetId);
+    if (!release) continue;
+    try {
+      const provider = last.provider || THREE_ECHO;
+      const check = checkGeneratedMedia(target, requestedFor(job.dir, parsed.deliverable, parsed.item, kindOfFile(target), parsed.version));
+      if (check.verdict === 'mismatch') {
+        outcome.stillFailed.push({ assetId, key: last.key, reason: check.reason });
+        continue;
+      }
+      // Only the first output of an item is promoted, and its file is the one named for the item and version.
+      const primary = isPrimary({ file: last.file, panel: parsed.item, version: parsed.version });
+      const promotion = primary ? promote(job, { key: last.key, outputs: [assetId], assetId }, parsed, last.file) : { promoted: null, archived: null };
+      const bytes = readFileSync(target);
+      outcome.landed.push(appendLanded(job, {
+        type: 'landed', key: parsed.key, deliverable: parsed.deliverable, panel: parsed.item, version: parsed.version,
+        provider, providerJobId: last.providerJobId ?? null, assetId, file: last.file,
+        sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, mimeType: last.mimeType ?? null,
+        ...promotion,
+        check: check.verdict === 'ok' ? { status: 'ok' } : { status: 'unverified', why: check.why },
+        finalCredits: finalCreditsFor(job, last.providerJobId) ?? null,
+      }));
+    } finally {
+      release();
+    }
+  }
+  if (outcome.landed.length) {
+    try {
+      outcome.state = await finishMediaWithRetry(job);
+    } catch {
+      outcome.state = null;
+    }
   }
   return outcome;
 }

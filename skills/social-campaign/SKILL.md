@@ -219,6 +219,8 @@ Moved to `branches/pasted-link.md` (relative to this skill folder); see Routing 
 Use the job snapshot to show the current route, missing fields, questions, plan, stages, artifacts, decisions, and metrics.
 
 Route blockers are actionable questions.
+Each time the person answers one, check what is still open: when it was the last open question, re-read `route.missingFields` (call `pipeline_job_read` for the job this chat runs), and post every blocker that remains as its own board question in that same step, then say in one line what comes next.
+Never end a turn after the last answer without either posting the next card or starting the next step; the person must not have to ask what is next.
 
 Do not run stages while the route is waiting for clarification.
 

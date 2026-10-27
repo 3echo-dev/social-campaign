@@ -92,6 +92,11 @@ const agentFor = disc => agentsReg.agents.find(a => a.discipline === disc);
 // fall back to the brand profile's audience, and further down for evidence and research.
 const brandDir = path.resolve(path.dirname(jobPath), '..', '..');
 
+// Words people use ("reels", "feed", a goal in their own words) are read as the allowed values before anything is checked.
+// Read side only: the job file is not rewritten here.
+if (typeof job.objective === 'string') job.objective = deliverable.normalizeObjective(job.objective);
+if (Array.isArray(job.deliverables)) job.deliverables = deliverable.withNormalizedPlacements(job.deliverables);
+
 const kindEntry = kinds.kindOf(job.kind);
 const producesContent = kinds.makesContent(job.kind);
 // A kind whose pictures or video the person already has (publish_post). The files were copied into

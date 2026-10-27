@@ -621,6 +621,22 @@ function untouchedTemplates(brandDir) {
   });
 }
 
+const FILE_WORDS = Object.freeze({ audience: 'audience', positioning: 'positioning', 'platform-playbook': 'platform' });
+
+/**
+ * What a person should hear when a brand's profile is saved while its brand files are still the untouched templates, or null when none is.
+ * Saving the profile has to come first (research needs it), so this is a note and not a refusal: { files, note }.
+ */
+function pendingNote(brandDir) {
+  const files = untouchedTemplates(brandDir);
+  if (!files.length) return null;
+  const names = files.map(stem => FILE_WORDS[stem]).join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return {
+    files,
+    note: 'The profile is saved, but the ' + names + ' notes for this brand are still blank. Run the brand research now so they are filled in before any post is planned.',
+  };
+}
+
 /**
  * Why a brand whose research looks current still needs one more onboarding run, in plain words, or null.
  * An untouched template file means research never filled it; a saved source with no capture means the research was
@@ -668,6 +684,7 @@ module.exports = {
   countRows,
   evidenceGate,
   untouchedTemplates,
+  pendingNote,
   upgradeReason,
   FILES_REASON,
   RESEARCH_REASON,

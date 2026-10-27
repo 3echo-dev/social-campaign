@@ -153,8 +153,10 @@ async function main() {
     const fromHost = HOST_PROMPT.test(prompt);
     const boardMessage = isBoardMessage(prompt, bound);
     // The window the person writes in owns the board, unless the owner is answering a board message right now (it ends with its
-    // Stop hook). A prompt the host sent (a board comment) never moves the board: it only takes a board nobody holds.
-    const ownership = claimBoardOwner(root, event.session_id, { takeOver: !fromHost });
+    // Stop hook). A prompt the host sent (a board comment) never moves the board from a window that is still there: it takes a board
+    // nobody holds, or one whose owner window has closed or cannot be shown to be open (then this window handles the message, instead
+    // of staying silent for an owner that handles nothing).
+    const ownership = claimBoardOwner(root, event.session_id, { takeOver: !fromHost, takeIfGone: boardMessage });
     if (!ownership.owner) {
       // Said only while the other window really is busy; an owner that went quiet is replaced, not announced.
       if (ownership.busy && !fromHost) {

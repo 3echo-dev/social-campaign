@@ -43,27 +43,54 @@ export function kindOfFile(file) {
 
 const itemKind = entry => (entry.kind === 'image' || entry.kind === 'video' ? entry.kind : kindOfFile(entry.file));
 
+const fileBase = entry => basename(entry.file, extname(entry.file)).toLowerCase();
+// "S1-take2" is the second take (version 2) of the clip S1; a file with no take suffix is the first.
+const takeOf = entry => Number(/-take(\d+)$/.exec(fileBase(entry))?.[1] || 1);
+const askedShape = entry => JSON.stringify([[entry.ratio, entry.aspectRatio, entry.aspect_ratio].find(value => parseRatio(value) !== null) ?? null, [entry.headroom?.askSec, entry.durationSeconds].map(number).find(value => value > 0) ?? null]);
+
+/** Several items of one kind share the slot: pick by the version they carry, then by their take number, then by what they ask for. */
+function narrowByVersion(pool, version) {
+  if (pool.length < 2 || !Number.isInteger(version)) return pool;
+  const stated = pool.filter(entry => entry.version !== undefined && entry.version !== null);
+  if (stated.length) {
+    const hit = stated.filter(entry => Number(entry.version) === version);
+    if (hit.length) return hit;
+  }
+  if (new Set(pool.map(takeOf)).size === pool.length) {
+    const hit = pool.filter(entry => takeOf(entry) === version);
+    if (hit.length) return hit;
+  }
+  // Takes that ask for exactly the same thing cannot give a different answer, so there is nothing to guess.
+  return new Set(pool.map(askedShape)).size === 1 ? [pool[0]] : pool;
+}
+
 /**
- * The one generation manifest item for a slot: matched on base name and on kind (picture or clip) so P1.png and P1.mp4 are
- * different items. `fileKind` is the kind of the file that landed. When it matches nothing of its own kind, the single item
- * with that name is still returned, so a picture landing for a clip slot is reported as a wrong kind. More than one match
- * is never guessed: `ambiguous` is true and `hit` is null.
+ * The one generation manifest item for a slot. `item` is the slot's name from its job key (a panel such as P1, or a clip
+ * such as S1), `fileKind` the kind of the file that landed (picture or clip) and `version` the version in the key.
+ *
+ * An item belongs to the slot when its file is named for it, or else when its panel is. Only items of the landed kind
+ * count, so a clip is never compared with the picture that shares its name or panel; when nothing of that kind is listed
+ * the answer is no item (the check then lets the file through unchecked). When several items of the kind share the slot,
+ * the version picks one (see narrowByVersion). Still more than one is never guessed: `ambiguous` is true and `hit` is null.
+ * Without a `fileKind` the kinds are not told apart.
  */
-export function manifestItemFor(jobDir, deliverable, item, fileKind = null) {
-  let named = [];
+export function manifestItemFor(jobDir, deliverable, item, fileKind = null, version = null) {
+  let items = [];
   try {
     const manifest = JSON.parse(readFileSync(join(jobDir, 'drafts', deliverable, 'generation-manifest.json'), 'utf8'));
-    named = (Array.isArray(manifest?.items) ? manifest.items : []).filter(entry => typeof entry?.file === 'string' && basename(entry.file, extname(entry.file)).toLowerCase() === String(item).toLowerCase());
-  } catch { named = []; }
-  const sameKind = fileKind ? named.filter(entry => itemKind(entry) === fileKind) : [];
-  const pool = sameKind.length ? sameKind : named;
+    items = (Array.isArray(manifest?.items) ? manifest.items : []).filter(entry => typeof entry?.file === 'string');
+  } catch { items = []; }
+  const wanted = String(item).toLowerCase();
+  const ofKind = items.filter(entry => !fileKind || itemKind(entry) === fileKind);
+  const named = ofKind.filter(entry => fileBase(entry) === wanted);
+  const pool = narrowByVersion(named.length ? named : ofKind.filter(entry => String(entry.panel ?? '').toLowerCase() === wanted), version === null ? null : Number(version));
   if (pool.length > 1) return { hit: null, ambiguous: true };
   return { hit: pool[0] || null, ambiguous: false };
 }
 
 /** What the generation manifest asked for this slot: `{ kind, ratio, ratioText, seconds }`, each null when not stated. */
-export function requestedFor(jobDir, deliverable, item, fileKind = null) {
-  const { hit, ambiguous } = manifestItemFor(jobDir, deliverable, item, fileKind);
+export function requestedFor(jobDir, deliverable, item, fileKind = null, version = null) {
+  const { hit, ambiguous } = manifestItemFor(jobDir, deliverable, item, fileKind, version);
   if (!hit) return { kind: null, ratio: null, ratioText: null, seconds: null, ambiguous };
   const kind = itemKind(hit);
   const ratioText = [hit.ratio, hit.aspectRatio, hit.aspect_ratio].find(value => parseRatio(value) !== null) ?? null;
